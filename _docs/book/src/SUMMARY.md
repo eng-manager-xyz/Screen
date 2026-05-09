@@ -19,12 +19,30 @@
 
 - [Overview](./wisp/overview.md)
 - [Stories](./wisp/stories.md)
+  - [Textured quad — M0.6](./wisp/chunks/hello-quad.md)
+  - [Nested transforms — M0.7 / M0.8](./wisp/chunks/transform-nesting.md)
+  - [Sprite batcher — M0.9](./wisp/chunks/sprite-batcher.md)
+  - [Rounded rect with stroke — M0.12 / M0.13](./wisp/chunks/graphics-rounded.md)
+  - [Animated click ripple — M0.13](./wisp/chunks/graphics-ellipse.md)
+  - [Gradient fills — M0.14](./wisp/chunks/graphics-gradients.md)
+  - [Bitmap text — M0.15](./wisp/chunks/text-bitmap.md)
+  - [Blur filter — M0.16](./wisp/chunks/filter-blur.md)
+  - [Drop shadow — M0.17](./wisp/chunks/filter-drop-shadow.md)
+  - [Motion blur — M0.18](./wisp/chunks/filter-motion-blur.md)
+  - [Color matrix — M0.18](./wisp/chunks/filter-color-matrix.md)
+  - [Perspective rotation — M0.19](./wisp/chunks/mesh-perspective.md)
 
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)
 - [Components](./ui/components.md)
+  - [Button — variants](./ui/chunks/button-variants.md)
+  - [Button — sizes](./ui/chunks/button-sizes.md)
+  - [Card — header + body](./ui/chunks/card-basic.md)
 - [Dope sheet](./ui/dope-sheet.md)
+  - [Multi-track](./ui/chunks/dope-sheet-basic.md)
+  - [Dense keyframes](./ui/chunks/dope-sheet-dense.md)
+  - [Editor panel composition](./ui/chunks/card-with-dope-sheet.md)
 
 # Milestones
 

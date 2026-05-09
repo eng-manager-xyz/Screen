@@ -15,14 +15,25 @@ After any non-trivial change — adding code, editing config, removing a dep, fi
             - unit / integration / snapshot / property / regression
             - chunks that don't fit any layer are scaffolding-only
 2. STORY:   for any chunk that adds a *renderable* feature, add a story to
-            `crates/wisp-storybook/src/stories/` with a write-up.
-            Run `just storybook` to verify it appears and renders.
+            `crates/wisp-storybook/src/stories/` (wgpu) or
+            `crates/ui-storybook/src/stories.rs` (Leptos) with a write-up.
             Non-render chunks (math, capture, encode, file I/O) are exempt.
-3. CHECK:   `just gate`        →  loop recursively until green
-4. UPDATE:  PROGRESS.md         →  what changed, what was verified
+3. ASSET:   `just snapshots` → regenerates the chunk's PNG/HTML under
+            `_docs/book/src/assets/<crate>/<id>.{png,html}`. Commit it.
+4. CHAPTER: write a per-chunk mdBook chapter at
+            `_docs/book/src/<crate>/chunks/<id>.md`:
+              - `# <Title> — M<n>.<m>`
+              - one-paragraph what + why
+              - `![](../../assets/<crate>/<id>.png)` (or `<iframe>` for UI)
+              - "Done when" recap from the milestone doc
+              - link into the rustdoc: `[api](../../api/<crate_name>/…)`
+            Add the chapter to `_docs/book/src/SUMMARY.md` under its milestone.
+5. CHECK:   `just gate`        →  loop recursively until green
+            `just site`         →  visually verify the chapter renders
+6. UPDATE:  PROGRESS.md         →  what changed, what was verified
             ISSUES.md           →  if you found a bug or deferral
             milestone doc       →  ✅ a chunk's "Done when:" if satisfied
-5. STATUS:  TaskUpdate          →  mark task completed only when gate is green
+7. STATUS:  TaskUpdate          →  mark task completed only when gate is green
 ```
 
 **`just gate` runs:** fmt → check → lint → nextest → doctest. All five must pass. See `_docs/QA.md` for higher tiers and `_docs/TESTING.md` for the testing strategy.
@@ -124,6 +135,27 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
+### mdBook / engineering site
+
+- **`mdbook build --dest-dir` is resolved relative to the source dir, not the
+  cwd.** `mdbook build _docs/book --dest-dir ../../target/book` looks correct
+  but lands the output at `<one-up-from-project>/target/book`. **Pass an
+  absolute path:** `--dest-dir "$(pwd)/target/book"`. (Found this turn.)
+- **mdBook 0.5 dropped `multilingual` and `copy-fonts` from `book.toml`.**
+  Older book.toml files crash with a deserialization error rather than a
+  helpful warning. Strip those keys; mdBook surfaces the full set of valid
+  keys in the error message. (Found this turn.)
+- **Two binaries with the same name across crates collide in `cargo doc`.**
+  `target/doc/<bin-name>/` is one namespace, so duplicate names abort with
+  "document output filename collision". Prefix per-crate (e.g.
+  `wisp-export-stories`, `ui-export-stories`).
+- **mdBook chapters cannot reference the rustdoc directly via intra-doc
+  links.** Link to `api/<crate_name>/index.html` (note: underscores, not
+  hyphens, in the crate path — `wisp_storybook`, not `wisp-storybook`).
+- **`additional-css` paths in book.toml resolve relative to the source dir.**
+  If you reference a stylesheet that doesn't exist mdBook silently emits a
+  broken `<link>` rather than failing the build.
+
 ### Build hygiene
 
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
@@ -187,6 +219,7 @@ For every task in the task list:
 - **Every UI component (Leptos / HTML) ships with a story.** Both isolated views and compositions must appear in `crates/ui-storybook/src/stories.rs` and pass the SSR snapshot gate (`tests/snapshots.rs`). The convention parallels wisp's "every renderable chunk ships with a story" — same shape, different rendering layer.
 - **Every public item has a `///` doc + every crate has a `//!` header.** `missing_docs` is a workspace `warn` lint; `just docs-strict` (in `just gate`) treats broken intra-doc links and rustdoc warnings as errors. New public items without docs trip the gate.
 - **Every visible chunk regenerates its asset under `_docs/book/src/assets/<crate>/<id>.{png,html}`.** `just snapshots` runs the headless exporters for both storybooks; the resulting files are committed and embedded into the mdBook chapters via standard markdown. Without an asset, the chunk's docs page renders empty — that's the gate.
+- **Every chunk gets its own mdBook chapter at `_docs/book/src/<crate>/chunks/<id>.md`** and is linked into `SUMMARY.md` under its milestone heading. The chapter MUST embed the chunk's screenshot/HTML (no asset = empty page = gate fails). Milestone close requires `just site` to render every chapter green and `just docs-strict` to pass without broken intra-doc links.
 - **`just gate` must be green before any task is marked done.** No exceptions.
 - **Recursive-fix loop:** if `just gate` is red, loop until green. Never disable tests, never `#[allow]` clippy without reason, never bypass deny/machete findings.
 - **Append to `PROGRESS.md` for every completed task.** It's the only durable record across context windows.

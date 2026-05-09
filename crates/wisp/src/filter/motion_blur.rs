@@ -1,7 +1,7 @@
 //! `MotionBlurFilter` — directional Gaussian blur driven by a velocity vector.
 //!
-//! Reuses [`crate::filter::blur::run_blur_pass`] with an arbitrary direction
-//! instead of the axis-aligned `(1,0)` / `(0,1)` used by [`BlurFilter`].
+//! Reuses `crate::filter::blur::run_blur_pass` with an arbitrary direction
+//! instead of the axis-aligned `(1,0)` / `(0,1)` used by [`crate::BlurFilter`].
 
 use crate::filter::{Filter, FilterContext};
 use crate::texture::render_texture::RenderTexture;
