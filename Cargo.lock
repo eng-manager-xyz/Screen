@@ -1065,6 +1065,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "decode"
+version = "0.1.0"
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7643,6 +7647,7 @@ name = "wisp"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "decode",
  "font8x8",
  "glam",
  "image",

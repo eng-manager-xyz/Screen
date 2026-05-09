@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-DEC.1 — VideoStream trait + MockVideoStream + playback_demo
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first chunk on the path to "play an MP4 in the Tauri-Leptos app via wisp" (5–6 chunks total).
+- **Files:** new `crates/decode/` (Cargo.toml, src/lib.rs, src/mock.rs); `crates/wisp/Cargo.toml` adds `decode` as dev-dep; `crates/wisp/examples/playback_demo.rs` drives the full decode → upload → render pipeline; `_docs/book/src/decode/overview.md`; `SUMMARY.md` adds a `decode` section; 8 PNG assets at `_docs/book/src/assets/decode/frame_NN.png`.
+- **Verified:** `just gate` green; example runs and writes 8 frames; `decode` lib runs 5 unit tests + 1 doctest.
+- **Why a trait:** the recorder will eventually wire 3+ codec backends (`AVFoundation`, `MediaFoundation`, `ffmpeg-next`). The consumer side — wisp's `VideoTexture::upload_bgra` — is uniform: `Vec<u8>` BGRA at known dims, ticked at known timestamps. `VideoStream` locks that contract.
+- **`MockVideoStream`** synthesizes a deterministic scrolling-gradient stream. No external deps; the `motion_is_visible_between_frames` test gates against a regression where adjacent frames somehow come out identical (which would mean the GPU upload path was caching).
+- **Next:** M-DEC.2 wires `AVFoundation` via `objc2` for real MP4 decode on macOS (the path the recorder will use day-to-day).
+
+---
+
 ## M-UI.4 — StatusBar (ready / busy / error)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — fourth chunk under the workflow.

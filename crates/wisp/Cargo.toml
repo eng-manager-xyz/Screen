@@ -27,3 +27,6 @@ winit = "0.30"
 rstest = "0.25"
 insta = { version = "1", features = ["json", "yaml", "redactions"] }
 proptest = "1"
+# Decode crate — consumed by the `playback_demo` example to prove the
+# decode → VideoTexture → render path end-to-end.
+decode = { path = "../decode" }

@@ -32,6 +32,10 @@
   - [Color matrix — M0.18](./wisp/chunks/filter-color-matrix.md)
   - [Perspective rotation — M0.19](./wisp/chunks/mesh-perspective.md)
 
+# `decode` — video decode
+
+- [Overview](./decode/overview.md)
+
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)
