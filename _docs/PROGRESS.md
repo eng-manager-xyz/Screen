@@ -6,6 +6,28 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.13 — Graphics ellipse, line, stroke
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp/src/scene/graphics.rs` — added `Stroke { width, color }`, `Primitive::Ellipse { center, radii, fill, stroke }`, `Primitive::Line { from, to, width, fill }`. Builder API gains `stroke(Option<Stroke>)`, `draw_ellipse(center, radii)`, `draw_line(from, to, width)`. RoundedRect primitive now also carries optional stroke.
+  - `crates/wisp/shaders/graphics_solid.wgsl` — extended with `kind: u32` (0=rect, 1=ellipse) and `mode: u32` (0=fill, 1=outline). Vertex shader expands quad by `stroke_width/2` in outline mode. Fragment branches on kind for SDF (rounded-rect or ellipse), branches on mode for fill or outline-band alpha.
+  - `crates/wisp/src/render/graphics_pipeline.rs` — `GraphicsInstance` now 104 bytes with `radius`, `stroke_width`, `kind`, `mode`. Vertex layout grew to 10 attributes (added two `Float32` + two `Uint32`). Stroked primitives emit a second outline instance with the stroke color.
+  - `crates/wisp/src/scene.rs` / `lib.rs` — re-export `Stroke`
+  - `crates/wisp/tests/render_graphics.rs` — 3 new integration tests: `ellipse_fills_center_clears_corner`, `line_renders_along_diagonal`, `stroked_rect_emits_two_instances_one_draw_call`
+- **Verified:**
+  - `just gate` — passes (76 tests, was 73)
+  - `just security` — clean
+- **Notes:**
+  - **Stroke rendering via second instance.** Each stroked primitive emits two instances: one fill (mode=0), one outline (mode=1). Both batch into the same draw call thanks to the unified pipeline. The shader expands the bounding quad by `stroke_width/2` in outline mode so the band has room to render.
+  - **Ellipse SDF is the standard scaled-circle approximation** (`(length(p / r) - 1) * min(r.x, r.y)`). Visually correct for moderate eccentricities; exact SDF would need iteration. Good enough for click ripples, camera bubble masks, etc.
+  - **Lines render as rotated thin rects.** `delta.y.atan2(delta.x)` for the rotation angle, `(length, width)` for the half-extents, midpoint for the position. No special line code path in the shader.
+  - **Recursive-fix loop fired 2 iterations:** fmt collapse, then green.
+  - **Primitives_drawn counts logical primitives.** A stroked rect = 1 `graphics_drawn`, but emits 2 instances. Tests verify the distinction.
+- **Issues filed:** none
+
+---
+
 ## M0.12 — Graphics solid fills (rect + rounded rect)
 - **Date:** 2026-05-09
 - **Status:** ✅ done

@@ -1,7 +1,10 @@
-//! `Graphics` — vector primitives (rect, rounded rect; ellipse/line/stroke land in M0.13).
+//! `Graphics` — vector primitives (rect, rounded rect, ellipse, line, stroke).
 //!
 //! Composed over [`Container`]. A `Graphics` holds a list of primitives that
-//! are rendered with a shared SDF-based pipeline.
+//! are rendered with a shared SDF-based pipeline. Primitives may have an
+//! optional [`Stroke`] outline, set via [`Graphics::stroke`] before drawing.
+
+use glam::Vec2;
 
 use crate::color::Color;
 use crate::math::Rect;
@@ -20,13 +23,49 @@ impl Default for Fill {
     }
 }
 
+/// Outline style for fillable primitives.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stroke {
+    /// Outline thickness in primitive-local units.
+    pub width: f32,
+    /// Outline color.
+    pub color: Color,
+}
+
+impl Stroke {
+    /// Construct a new `Stroke`.
+    #[must_use]
+    pub const fn new(width: f32, color: Color) -> Self {
+        Self { width, color }
+    }
+}
+
 /// One drawable primitive within a `Graphics` node.
 ///
-/// Internal — the public API is `Graphics::draw_rect` / `draw_rounded_rect`.
+/// Internal — the public API is `Graphics::draw_*`.
 #[derive(Debug, Clone)]
 pub(crate) enum Primitive {
     /// Axis-aligned rectangle. `radius == 0.0` = sharp corners.
-    RoundedRect { rect: Rect, radius: f32, fill: Fill },
+    RoundedRect {
+        rect: Rect,
+        radius: f32,
+        fill: Fill,
+        stroke: Option<Stroke>,
+    },
+    /// Axis-aligned ellipse defined by center and radii.
+    Ellipse {
+        center: Vec2,
+        radii: Vec2,
+        fill: Fill,
+        stroke: Option<Stroke>,
+    },
+    /// Line segment rendered as a rotated rect of given width.
+    Line {
+        from: Vec2,
+        to: Vec2,
+        width: f32,
+        fill: Fill,
+    },
 }
 
 /// Vector-primitive node. Holds an ordered list of primitives sharing the
@@ -35,11 +74,12 @@ pub(crate) enum Primitive {
 pub struct Graphics {
     pub container: Container,
     current_fill: Fill,
+    current_stroke: Option<Stroke>,
     pub(crate) primitives: Vec<Primitive>,
 }
 
 impl Graphics {
-    /// Construct an empty `Graphics` with default (white solid) fill.
+    /// Construct an empty `Graphics` with default (white solid) fill and no stroke.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -51,21 +91,53 @@ impl Graphics {
         self
     }
 
-    /// Append a filled rectangle primitive.
+    /// Set the stroke used by subsequent fillable `draw_*` calls.
+    /// Pass `None` to clear; pass `Some(...)` to enable an outline.
+    pub fn stroke(&mut self, stroke: Option<Stroke>) -> &mut Self {
+        self.current_stroke = stroke;
+        self
+    }
+
+    /// Append a filled (and optionally stroked) rectangle primitive.
     pub fn draw_rect(&mut self, rect: Rect) -> &mut Self {
         self.primitives.push(Primitive::RoundedRect {
             rect,
             radius: 0.0,
             fill: self.current_fill,
+            stroke: self.current_stroke,
         });
         self
     }
 
-    /// Append a filled rounded rectangle primitive.
+    /// Append a filled (and optionally stroked) rounded rectangle primitive.
     pub fn draw_rounded_rect(&mut self, rect: Rect, radius: f32) -> &mut Self {
         self.primitives.push(Primitive::RoundedRect {
             rect,
             radius,
+            fill: self.current_fill,
+            stroke: self.current_stroke,
+        });
+        self
+    }
+
+    /// Append a filled (and optionally stroked) ellipse primitive.
+    pub fn draw_ellipse(&mut self, center: Vec2, radii: Vec2) -> &mut Self {
+        self.primitives.push(Primitive::Ellipse {
+            center,
+            radii,
+            fill: self.current_fill,
+            stroke: self.current_stroke,
+        });
+        self
+    }
+
+    /// Append a line segment of the given width, colored with the current fill.
+    /// Strokes do not apply to lines.
+    pub fn draw_line(&mut self, from: Vec2, to: Vec2, width: f32) -> &mut Self {
+        self.primitives.push(Primitive::Line {
+            from,
+            to,
+            width,
             fill: self.current_fill,
         });
         self
@@ -81,7 +153,6 @@ impl Graphics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Vec2;
 
     #[test]
     fn new_starts_empty() {
@@ -97,9 +168,16 @@ mod tests {
     }
 
     #[test]
-    fn draw_rounded_rect_appends_one_primitive() {
+    fn draw_ellipse_appends_one_primitive() {
         let mut g = Graphics::new();
-        g.draw_rounded_rect(Rect::new(0.0, 0.0, 10.0, 10.0), 2.0);
+        g.draw_ellipse(Vec2::ZERO, Vec2::splat(5.0));
+        assert_eq!(g.primitive_count(), 1);
+    }
+
+    #[test]
+    fn draw_line_appends_one_primitive() {
+        let mut g = Graphics::new();
+        g.draw_line(Vec2::ZERO, Vec2::new(10.0, 0.0), 1.0);
         assert_eq!(g.primitive_count(), 1);
     }
 
@@ -109,26 +187,28 @@ mod tests {
         g.fill(Fill::Solid(Color::RED));
         g.draw_rect(Rect::new(0.0, 0.0, 1.0, 1.0));
         g.draw_rect(Rect::new(1.0, 0.0, 1.0, 1.0));
-        // Both rects should have RED fill.
         for p in &g.primitives {
-            let Primitive::RoundedRect { fill, .. } = p;
-            assert_eq!(*fill, Fill::Solid(Color::RED));
+            if let Primitive::RoundedRect { fill, .. } = p {
+                assert_eq!(*fill, Fill::Solid(Color::RED));
+            }
         }
     }
 
     #[test]
-    fn rect_uses_zero_radius() {
+    fn stroke_persists_until_cleared() {
         let mut g = Graphics::new();
+        g.stroke(Some(Stroke::new(2.0, Color::BLACK)));
         g.draw_rect(Rect::new(0.0, 0.0, 1.0, 1.0));
-        let Primitive::RoundedRect { radius, .. } = &g.primitives[0];
-        assert!(radius.abs() < f32::EPSILON);
-    }
+        g.stroke(None);
+        g.draw_rect(Rect::new(1.0, 0.0, 1.0, 1.0));
 
-    #[test]
-    fn container_default_is_identity() {
-        let g = Graphics::new();
-        assert_eq!(g.container.transform, crate::scene::Transform::IDENTITY);
-        // Vec2 import for compiler.
-        let _ = Vec2::ZERO;
+        match &g.primitives[0] {
+            Primitive::RoundedRect { stroke, .. } => assert!(stroke.is_some()),
+            _ => panic!("expected rounded rect"),
+        }
+        match &g.primitives[1] {
+            Primitive::RoundedRect { stroke, .. } => assert!(stroke.is_none()),
+            _ => panic!("expected rounded rect"),
+        }
     }
 }

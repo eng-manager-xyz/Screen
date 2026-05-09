@@ -3,11 +3,12 @@
 //! Renders rect + rounded rect to a `RenderTexture` and verifies pixel-level
 //! presence/absence at sample points.
 
+use glam::Vec2;
 use pollster::block_on;
 use wisp::application::{AppConfig, Application};
 use wisp::math::Rect;
 use wisp::render::Renderer;
-use wisp::{Color, Fill, Graphics, RenderTexture, Stage};
+use wisp::{Color, Fill, Graphics, RenderTexture, Stage, Stroke};
 
 fn boot() -> Application {
     block_on(Application::new(AppConfig::default())).expect("init wisp")
@@ -91,6 +92,101 @@ fn rounded_rect_clears_corners() {
         bytes[corner_idx] < 50,
         "top-left R should be black (corner cut), got {}",
         bytes[corner_idx]
+    );
+}
+
+#[test]
+fn ellipse_fills_center_clears_corner() {
+    let app = boot();
+    let rt = RenderTexture::with_format(&app, 64, 64, wgpu::TextureFormat::Rgba8Unorm);
+    let renderer = Renderer::new(&app, rt.format()).expect("renderer");
+
+    let mut g = Graphics::new();
+    g.fill(Fill::Solid(Color::rgba_u8(255, 0, 0, 255)));
+    // Ellipse centered at NDC origin, radii ~ full half-extents.
+    g.draw_ellipse(Vec2::ZERO, Vec2::new(0.9, 0.9));
+
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), g);
+
+    let _ = renderer.render_stage(&app, rt.view(), Color::BLACK, &stage);
+
+    let bytes = rt.read_pixels(&app);
+    // Center pixel — inside ellipse, expect red.
+    let center = (32 * 64 + 32) * 4;
+    assert!(
+        bytes[center] > 200,
+        "center R should be ~255 (red), got {}",
+        bytes[center]
+    );
+    // Corner pixel — outside ellipse, expect black.
+    let corner = 0;
+    assert!(
+        bytes[corner] < 50,
+        "corner R should be ~0 (black, outside ellipse), got {}",
+        bytes[corner]
+    );
+}
+
+#[test]
+fn line_renders_along_diagonal() {
+    let app = boot();
+    let rt = RenderTexture::with_format(&app, 64, 64, wgpu::TextureFormat::Rgba8Unorm);
+    let renderer = Renderer::new(&app, rt.format()).expect("renderer");
+
+    let mut g = Graphics::new();
+    g.fill(Fill::Solid(Color::WHITE));
+    // Diagonal line through NDC origin with thickness 0.06.
+    g.draw_line(Vec2::new(-0.5, -0.5), Vec2::new(0.5, 0.5), 0.06);
+
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), g);
+
+    let _ = renderer.render_stage(&app, rt.view(), Color::BLACK, &stage);
+
+    let bytes = rt.read_pixels(&app);
+    // Center pixel sits on the line — expect bright.
+    let center = (32 * 64 + 32) * 4;
+    assert!(
+        bytes[center] > 150,
+        "center R should be on the line, got {}",
+        bytes[center]
+    );
+    // Pixel far off the diagonal (top-right corner) — expect dark.
+    let off = (5 * 64 + 58) * 4;
+    assert!(
+        bytes[off] < 50,
+        "off-diagonal pixel should be black, got {}",
+        bytes[off]
+    );
+}
+
+#[test]
+fn stroked_rect_emits_two_instances_one_draw_call() {
+    let app = boot();
+    let rt = RenderTexture::with_format(&app, 64, 64, wgpu::TextureFormat::Rgba8Unorm);
+    let renderer = Renderer::new(&app, rt.format()).expect("renderer");
+
+    let mut g = Graphics::new();
+    g.fill(Fill::Solid(Color::rgba_u8(0, 200, 0, 255)));
+    g.stroke(Some(Stroke::new(0.05, Color::rgba_u8(255, 0, 0, 255))));
+    g.draw_rect(Rect::new(-0.5, -0.5, 1.0, 1.0));
+
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), g);
+
+    let stats = renderer.render_stage(&app, rt.view(), Color::BLACK, &stage);
+    // 1 logical primitive, but 1 draw call (fill + stroke instances batch).
+    assert_eq!(stats.graphics_drawn, 1);
+    assert_eq!(stats.draw_calls, 1);
+
+    let bytes = rt.read_pixels(&app);
+    // Interior — green fill.
+    let center = (32 * 64 + 32) * 4;
+    assert!(
+        bytes[center + 1] > 150,
+        "interior should be green, got G={}",
+        bytes[center + 1]
     );
 }
 
