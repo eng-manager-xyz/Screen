@@ -1,10 +1,6 @@
-//! `wisp-storybook` — interactive feature gallery.
+//! `wisp-storybook` — interactive feature gallery binary.
 //!
 //! Run with: `cargo run -p wisp-storybook` (or `just storybook`).
-
-mod app;
-mod stories;
-mod story;
 
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt()
@@ -26,6 +22,6 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "wisp-storybook",
         native_options,
-        Box::new(|cc| Ok(Box::new(app::StorybookApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(wisp_storybook::app::StorybookApp::new(cc)))),
     )
 }

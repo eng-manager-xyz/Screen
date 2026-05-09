@@ -6400,6 +6400,8 @@ dependencies = [
  "eframe",
  "egui",
  "glam",
+ "insta",
+ "pollster",
  "tracing-subscriber",
  "wgpu",
  "wisp",

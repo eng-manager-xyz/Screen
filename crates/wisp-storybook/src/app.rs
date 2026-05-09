@@ -35,6 +35,7 @@ struct CanvasRender {
 }
 
 impl StorybookApp {
+    #[must_use]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Borrow eframe's wgpu device so wisp shares the same GPU context.
         let render_state = cc

@@ -9,6 +9,14 @@ description = "Interactive feature gallery for the wisp 2D renderer."
 [lints]
 workspace = true
 
+[lib]
+name = "wisp_storybook"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wisp-storybook"
+path = "src/main.rs"
+
 [dependencies]
 wisp = { workspace = true }
 glam = { workspace = true }
@@ -16,3 +24,12 @@ wgpu = { workspace = true }
 tracing-subscriber = { workspace = true }
 eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts"] }
 egui = "0.31"
+
+[dev-dependencies]
+pollster = { workspace = true }
+insta = { version = "1", features = ["yaml"] }
+
+[package.metadata.cargo-machete]
+# `tracing-subscriber` is used in the bin's main.rs (machete sometimes loses
+# track when both lib + bin coexist).
+ignored = ["tracing-subscriber"]

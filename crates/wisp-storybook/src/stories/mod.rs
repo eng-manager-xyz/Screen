@@ -2,12 +2,14 @@
 //! adds one entry here.
 
 mod s_blur_filter;
+mod s_color_matrix;
 mod s_drop_shadow;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
 mod s_mesh_perspective;
+mod s_motion_blur;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
@@ -15,6 +17,7 @@ mod s_transform_nesting;
 use crate::story::Story;
 
 /// Build the full story list. Order = display order within a category.
+#[must_use]
 pub fn all_stories() -> Vec<Story> {
     vec![
         s_hello_quad::story(),
@@ -26,6 +29,8 @@ pub fn all_stories() -> Vec<Story> {
         s_graphics_gradients::story(),
         s_blur_filter::story(),
         s_drop_shadow::story(),
+        s_motion_blur::story(),
+        s_color_matrix::story(),
         s_mesh_perspective::story(),
     ]
 }
