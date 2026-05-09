@@ -6,6 +6,44 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-UI.1 — DropZone Leptos component (idle + active)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first chunk shipped under the new full workflow (story → asset → chapter → gate → site).
+- **Files:** `crates/ui-storybook/src/components/drop_zone.rs`; `assets/style.css` (60 new lines); `stories.rs` registers two new stories; SSR snapshot updated; `_docs/book/src/ui/chunks/drop-zone-{idle,active}.md`; `SUMMARY.md`.
+- **Verified:** `just gate` green; `just snapshots-ui` regenerated 8 HTML demos (was 6); `just site` renders both chunk pages with embedded `<iframe>` previews.
+- **Notes:**
+  - Two states: `Idle` (dashed outline, neutral copy, kbd hint) and `Active` (sky-blue solid border, transform-scale, distinct glyph + copy).
+  - Glyphs differ between states (`⤓` idle, `⇣` active) — clippy's `match_same_arms` caught the initial duplicate and forced real visual differentiation.
+  - Pure presentational: takes `state: DropZoneState` prop. Tauri shell will drive it from `WindowEvent::DragDrop` (next chunk M-UI.2).
+
+---
+
+## Side quest — Per-chunk mdBook chapters + workflow lock
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files:** `_docs/book/src/{wisp,ui}/chunks/<id>.md` × 18; `SUMMARY.md`; `CLAUDE.md` per-task workflow expanded to 7 steps with explicit ASSET + CHAPTER between STORY and CHECK.
+- **Verified:** `just gate` green; `just docs-strict` passes (after fixing two broken intra-doc links in `wisp::filter::motion_blur`); `just site` renders all 18 chapters.
+- **Four mdBook lessons** in CLAUDE.md: `--dest-dir` is source-relative not cwd-relative; 0.5 dropped `multilingual` and `copy-fonts`; duplicate bin names collide in `cargo doc`; rustdoc paths use underscored crate names.
+
+---
+
+## Side quest — Docs infrastructure (rustdoc + mdBook + screenshot pipeline)
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files:** workspace lints (`missing_docs = "warn"` + rustdoc broken-link enforcement); `justfile` (`docs`, `docs-strict`, `site`, `snapshots`); `_docs/book/` mdBook scaffold; `crates/{wisp,ui}-storybook/src/bin/export_stories.rs`; per-feature assets at `_docs/book/src/assets/`.
+- **Verified:** `just gate` (now includes `docs`); `just site` produces `target/book/` with prose + rustdoc API ref + 18 per-feature assets.
+- **80+ missing-docs warnings backfilled** across wisp (34), wisp-storybook (2), screen-app (1), ui-storybook (42 via module-level allow because UI components are documented in mdBook stories).
+
+---
+
+## Side quest — Leptos UI (Button + Card + DopeSheet + SSR snapshots)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — `crates/ui-storybook/` parallels `wisp-storybook` for the HTML/CSS layer.
+- **Files:** new crate with `src/{lib.rs, components/{button,card,dope_sheet}.rs, stories.rs}`; SSR snapshot `tests/snapshots.rs`; plain-CSS stylesheet in rust-ui's dark zinc aesthetic.
+- **3 new lessons:** `#[component]` macro rewrites function shape (use module-level allow); `leptos::prelude::*` brings `RenderHtml::to_html()` into scope; `<Show when=…>` requires `'static` closure.
+
+---
+
 ## Side quest — Story integration tests + deferred examples
 - **Date:** 2026-05-09
 - **Status:** ✅ done
