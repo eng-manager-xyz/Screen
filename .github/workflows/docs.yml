@@ -49,6 +49,27 @@ jobs:
         with:
           components: rustfmt
 
+      # `cargo doc --workspace` compiles every crate, including screen-app
+      # which transitively pulls Tauri 2's gtk-rs / glib / webkit2gtk
+      # toolchain. Without these dev headers `glib-sys`'s build script
+      # aborts at pkg-config.
+      - name: Install Linux build deps (Tauri 2)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            curl \
+            wget \
+            file
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:
