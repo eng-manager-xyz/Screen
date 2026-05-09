@@ -110,6 +110,13 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **`tauri::generate_context!` is a procedural macro** that depends on `tauri` at expansion time. `cargo machete` doesn't see this — add `[package.metadata.cargo-machete] ignored = ["tauri"]` to suppress the false positive.
 - **Tauri 2's Linux backend pulls archived gtk-rs crates.** Expect ~16 RustSec advisories on Linux (RUSTSEC-2024-0411..0420 family + 2025-0075..0100). All unmaintained-only, none exploits. Add to `deny.toml` `[advisories].ignore` once. (M1.1, ISS-02.)
 
+### Story testing pattern (insta + wgpu error scopes)
+
+- **`insta` first-run UX:** initial run stores `*.snap.new` and FAILS the test (no baseline to compare). Accept by `mv *.snap.new *.snap` (or `cargo insta accept`). `INSTA_UPDATE=auto` does NOT auto-accept first-time snapshots — it only auto-accepts mismatches once a baseline exists.
+- **wgpu validation as a "no console errors" gate:** `device.push_error_scope(ErrorFilter::Validation)` before story rendering, `pollster::block_on(device.pop_error_scope())` after — assert empty. Catches every wgpu validation issue silently and surfaces them as test failures rather than runtime console noise.
+- **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
+- **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
+
 ### Build hygiene
 
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.

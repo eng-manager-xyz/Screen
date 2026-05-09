@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Side quest — Story integration tests + deferred examples
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files:** wisp-storybook split into `[lib]` + `[[bin]]`; `tests/story_smoke.rs` (2 tests: validation-scope + visibility); `tests/story_fingerprints.rs` (insta YAML quadrant snapshot); `tests/snapshots/` baseline; 2 new stories (s_motion_blur + s_color_matrix); `crates/wisp/examples/recorder_mock.rs` and `examples/video_texture.rs`.
+- **Verified:** `just gate` passes (95 tests, was 92); `just security` clean. Both new examples actually run and produce PNGs (`target/recorder_mock.png` 1280×720; `target/video_texture/frame_NN.png` × 8).
+- **Three layers of story testing:**
+  1. **Smoke** — wgpu validation error scope catches "console errors at runtime"
+  2. **Visibility** — at least 50 pixels diverge from clear color (story actually drew)
+  3. **Fingerprint** — insta YAML snapshot of 4×4 quadrant averages, bucketed for ~3% driver tolerance
+- **4 new CLAUDE.md lessons** captured under "Story testing pattern": insta first-run UX, wgpu error scope as console-error gate, quadrant fingerprint pattern, `tick(0.0)` for animated stories.
+- **All 12 storybook stories now under regression testing.** Future story changes show structured snapshot diffs.
+
+---
+
 ## M1.1 → M4.3 — Tauri shell + drop-zone player (consolidated)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — all 11 chunks delivered as one Tauri shell with vanilla HTML/CSS/JS frontend.
