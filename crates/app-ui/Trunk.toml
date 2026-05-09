@@ -1,0 +1,12 @@
+# Trunk configuration for the recorder shell.
+#
+# Run from this directory:
+#   trunk serve --open       # dev — hot reload at localhost:8080
+#   trunk build --release    # produce dist/ for Tauri to serve
+
+[build]
+target = "index.html"
+
+[serve]
+address = "127.0.0.1"
+port = 8080

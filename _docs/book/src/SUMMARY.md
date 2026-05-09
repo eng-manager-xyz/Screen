@@ -41,6 +41,10 @@
 - [Overview](./playback/overview.md)
   - [Real MP4 → wisp playback (M-DEC.2)](./playback/play-file.md)
 
+# `app-ui` — recorder shell
+
+- [Overview](./app-ui/overview.md)
+
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)

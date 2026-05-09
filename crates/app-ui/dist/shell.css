@@ -1,0 +1,58 @@
+/* Shell-level layout. The component-level CSS comes from
+ * ui-storybook/assets/style.css (copied into dist/assets/ at build time
+ * via Trunk's `copy-dir` link in index.html). */
+
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  gap: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.shell-main {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.shell-drop-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.shell-drop-wrap > * {
+  min-width: 480px;
+  max-width: 720px;
+  width: 100%;
+}
+
+.player-view {
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 12px;
+}
+.player-surface {
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(167, 139, 250, 0.16)),
+    var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}

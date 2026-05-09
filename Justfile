@@ -82,6 +82,14 @@ storybook:
 ui-storybook:
     cd crates/ui-storybook && trunk serve --no-default-features --features csr --open
 
+# Build the recorder shell (Leptos CSR) — dev server with hot reload.
+app-ui:
+    cd crates/app-ui && trunk serve --open
+
+# Production-build the recorder shell into `crates/app-ui/dist/`.
+app-ui-build:
+    cd crates/app-ui && trunk build --release
+
 # ─── Supply chain & dependency hygiene ────────────────────────────────────────
 
 # RustSec advisory check.

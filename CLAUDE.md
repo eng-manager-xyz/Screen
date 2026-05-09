@@ -135,6 +135,24 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
+### Trunk + Leptos CSR
+
+- **`data-cargo-features="…"` only if the feature actually exists.** Trunk
+  forwards `--features X` to `cargo build`; if the crate doesn't declare
+  feature `X`, cargo fails with `does not contain this feature`. For an
+  app-ui crate that just depends on leptos's csr feature, drop the
+  attribute entirely. (M-INT.1 burnt one cycle on this.)
+- **`crate-type = ["cdylib", "rlib"]`** — `cdylib` for Trunk's wasm-bindgen
+  step, `rlib` so `cargo check --workspace` (native) still type-checks the
+  crate. Drop `rlib` and the workspace gate goes red on native targets.
+- **`<link data-trunk rel="copy-dir">` is the way to pull peer-crate
+  assets** (e.g. `../ui-storybook/assets`) into the Trunk dist. Don't
+  symlink and don't `<link rel="stylesheet" href="../...">` — neither
+  survives the dev server.
+- **`#[wasm_bindgen(start)]` on a top-level fn is the Trunk entry point**.
+  No need for an explicit `<script>main()</script>` in `index.html`;
+  wasm-bindgen invokes it automatically.
+
 ### GStreamer / external CLI integration
 
 - **`brew install gstreamer` is the prerequisite, not `gstreamer-tools` or

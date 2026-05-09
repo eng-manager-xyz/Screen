@@ -6,6 +6,21 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-INT.1 — Trunk + Leptos CSR app (`crates/app-ui/`)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — fourth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1 native winit, M-PLAY.2 Tauri↔player IPC; M-INT.2 Tauri-frontendDist swap is a small follow-on).
+- **Files:** new `crates/app-ui/` (Cargo.toml, Trunk.toml, index.html, shell.css, src/lib.rs, src/app.rs); `justfile` adds `app-ui` and `app-ui-build` recipes; `.gitignore` excludes `crates/app-ui/dist`; `_docs/book/src/app-ui/overview.md`; `SUMMARY.md`.
+- **Verified:** `trunk build` produces a clean WASM bundle in `crates/app-ui/dist/` (wasm + js shim + copied assets + shell.css); `cargo check -p app-ui` passes on native target via the `rlib` crate-type; `just gate` green.
+- **Architecture lock:** `app-ui` consumes the components from `ui-storybook` directly (`use ui_storybook::components::{DropZone, PlayerControls, RecordingToolbar, StatusBar}`) — no duplication. Adding a new component once means it's available in the gallery, the shell, and the mdBook chapter.
+- **Demo affordance:** clicking the drop-zone in M-INT.1 flips a Leptos signal into the loaded view, so reviewers can exercise both surfaces before the actual file-drop event lands in M-INT.2.
+- **4 new lessons captured in CLAUDE.md** under "Trunk + Leptos CSR":
+  - `data-cargo-features="…"` only if the feature actually exists (one cycle lost on `data-cargo-features="csr"` when the crate declared no `csr` feature).
+  - `crate-type = ["cdylib", "rlib"]` — both, so workspace native gate still type-checks.
+  - `<link data-trunk rel="copy-dir">` is the way to pull peer-crate assets into the Trunk dist.
+  - `#[wasm_bindgen(start)]` is the Trunk entry point; no need for `<script>main()</script>` in `index.html`.
+
+---
+
 ## M-DEC.2 — GstreamerPipeStream + first real MP4 → wisp playback
 - **Date:** 2026-05-09
 - **Status:** ✅ done — third chunk on the path to first MP4 playback. **3 chunks remain.**
