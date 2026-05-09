@@ -135,6 +135,98 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
+### CI / GitHub Actions / Linux runner
+
+- **`just fmt-fix` (or `cargo fmt --all`) before every commit, no exceptions.**
+  CI's first step is `cargo fmt --all --check`. A stray multi-line array
+  literal that rustfmt would collapse to one line burns 2-3 minutes of
+  runner time just to fail on fmt before any real work runs. Local fmt
+  costs <1s — no excuse.
+
+- **`macos-latest` is the truth runner for wgpu tests.** GitHub-hosted
+  Linux runners only have lavapipe (mesa's software Vulkan), which loses
+  the device on multi-bind-group filter pipelines. macOS runners have
+  real Apple Silicon Metal — same backend as the dev box — and run all
+  117 tests without skips. macos-latest minutes are free on public
+  repos; on private repos they're 10× the multiplier so use a matrix
+  judiciously. **Default the gate to a matrix `[macos-latest,
+  ubuntu-latest]` with `fail-fast: false`**: macOS validates "real
+  hardware passes everything"; Linux validates the build path
+  (gtk-rs/winit/apt deps) with the lavapipe-affected tests skipped via
+  `WISP_SKIP_GPU_FILTER_TESTS=1`.
+- **Don't rely on Linux GPU tests in CI without real hardware.**
+  Filter pipelines that work on Metal/hardware-Vulkan/D3D will fail on
+  lavapipe with `Validation Error / Parent device is lost`. Refactoring
+  the pipelines to fit lavapipe is the wrong call — it compromises
+  real-GPU design for a software emulator's limits. Either run on
+  macos-latest, gate the test on an env-var skip, or bring real
+  hardware via a self-hosted runner.
+
+- **winit 0.30 fails to compile on Linux with
+  `compile_error!("The platform you're compiling for is not supported by
+  winit")` if `x11` and `wayland` features aren't active.** Both are
+  defaults, so this normally Just Works — but a transitive dep somewhere
+  in our tree pulls winit with `default-features = false`, and cargo's
+  feature unification then leaves Linux without any backend. **Fix:**
+  pin `winit = { version = "0.30", features = ["x11", "wayland",
+  "wayland-dlopen", "wayland-csd-adwaita"] }` explicitly in our
+  Cargo.toml so the unified feature set always carries a Linux backend.
+  Also apt-install the matching headers for CI (`libx11-dev`,
+  `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`,
+  `libxcursor-dev`, `libxrandr-dev`, `libxi-dev`).
+  **AND** chase down every dep edge that re-pulls winit. eframe with
+  `default-features = false` strips its own `x11`/`wayland` features
+  (which proxy to `winit/x11`/`winit/wayland`); add them back
+  explicitly: `eframe = { default-features = false, features = ["wgpu",
+  "default_fonts", "x11", "wayland"] }`. The `cargo check --all-features`
+  workspace gate masks this because feature unification activates them
+  via SOME other edge; `cargo doc` (no `--all-features`) is stricter
+  and surfaces the gap.
+- **Never set `RUSTFLAGS: -D warnings` at the workflow `env:` level.**
+  It promotes transitive-crate future-incompat warnings (`block v0.1.6`,
+  `proc-macro-error2 v2.0.1`, …) into hard failures. We can't fix those
+  upstream warnings; they pour in any time `cargo doc --workspace`
+  touches the dep tree. For docs-strict semantics, scope `RUSTDOCFLAGS`
+  to a single command (`RUSTDOCFLAGS="-D warnings -D rustdoc::broken-intra-doc-links" cargo doc …`),
+  not a workflow-wide env var.
+- **wgpu on Linux CI needs `mesa-vulkan-drivers` + `libvulkan1`** so
+  lavapipe (software Vulkan) is available as the wgpu adapter. Without
+  this the first wisp test that calls `Application::new` either hangs on
+  adapter probe or aborts with "no adapters found". Pair with
+  `WGPU_BACKEND=vulkan` + `WGPU_POWER_PREF=low` in the workflow env so
+  wgpu doesn't spend cycles probing every backend.
+- **Lavapipe loses the device on multi-bind-group filter pipelines.**
+  Symptom: `wgpu error: Validation Error / In Device::create_render_pipeline,
+  label = 'wisp::blur pipeline' / Parent device is lost`. Real adapters
+  (Metal, hardware Vulkan) build the same pipelines fine. Pattern: add
+  a `skip_on_software_adapter()` helper guard at the top of affected
+  tests, gated on `WISP_SKIP_GPU_FILTER_TESTS=1` set only in the CI
+  workflow's `$GITHUB_ENV`. Local dev and real-hardware CI leave the
+  env var unset and run the tests normally — gate stays green without
+  losing the assertion on real GPUs.
+- **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
+  `cargo check` time, not just at link time.** `glib-sys`'s build script
+  invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
+  headers aren't present. **Install before any cargo invocation in CI:**
+  `pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  build-essential` (the official Tauri 2 prerequisite list). Affects
+  *every* CI workflow that compiles the workspace, not just the gate —
+  the docs workflow's `cargo doc --workspace` hits the same wall.
+- **GStreamer in CI: install `gstreamer1.0-tools gstreamer1.0-plugins-base
+  gstreamer1.0-plugins-good gstreamer1.0-libav`.** Without
+  `gstreamer1.0-libav` the H.264 fixture in `decode/tests/fixtures/sample.mp4`
+  doesn't decode (libav is what carries the H.264 plugin on stock Ubuntu).
+- **Cache `target/` plus `~/.cargo/registry/{index,cache}` and
+  `~/.cargo/git/db`** keyed on `Cargo.lock`. Caching just `~/.cargo` and
+  not `target/` halves the speedup; caching the workspace `target/`
+  yields the biggest win.
+- **HTTPS push to a fresh GitHub repo can hit transient HTTP 400
+  ("send-pack: unexpected disconnect").** Fix: `git config --local
+  http.postBuffer 524288000` (500 MB). The default 1 MB buffer is
+  enough for small commits but stalls on initial repo seeding with
+  binary assets (PNGs, MP4 fixtures).
+
 ### Trunk + Leptos CSR
 
 - **`data-cargo-features="…"` only if the feature actually exists.** Trunk

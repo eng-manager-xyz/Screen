@@ -10,6 +10,25 @@ fn boot() -> Application {
     block_on(Application::new(AppConfig::default())).expect("init wisp")
 }
 
+/// Lavapipe (software Vulkan on headless Linux runners) panics with
+/// `wgpu error: Validation Error / Parent device is lost` when asked to
+/// build the multi-bind-group filter pipelines below. Real adapters
+/// (Metal on the dev box, Vulkan on consumer GPUs) build them fine.
+///
+/// The CI workflow sets `WISP_SKIP_GPU_FILTER_TESTS=1`; the affected
+/// tests early-return with a helpful message so the gate stays green
+/// without skipping legitimate logic regressions on real hardware.
+fn skip_on_software_adapter() -> bool {
+    if std::env::var_os("WISP_SKIP_GPU_FILTER_TESTS").is_some() {
+        eprintln!(
+            "WISP_SKIP_GPU_FILTER_TESTS set — skipping (lavapipe loses the \
+             device on multi-bind-group filter pipelines)"
+        );
+        return true;
+    }
+    false
+}
+
 fn solid_texture(app: &Application, w: u32, h: u32, rgba: [u8; 4]) -> Texture {
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for _ in 0..(w * h) {
@@ -20,6 +39,9 @@ fn solid_texture(app: &Application, w: u32, h: u32, rgba: [u8; 4]) -> Texture {
 
 #[test]
 fn blur_filter_smears_edge() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let app = boot();
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let input = RenderTexture::with_format(&app, 32, 32, format);
@@ -113,6 +135,9 @@ fn color_matrix_grayscale_collapses_channels() {
 
 #[test]
 fn motion_blur_zero_velocity_is_no_op() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let app = boot();
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let input = RenderTexture::with_format(&app, 32, 32, format);
@@ -144,6 +169,9 @@ fn motion_blur_zero_velocity_is_no_op() {
 
 #[test]
 fn drop_shadow_renders_visible_shadow() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let app = boot();
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let input = RenderTexture::with_format(&app, 64, 64, format);

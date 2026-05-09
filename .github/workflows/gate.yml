@@ -1,0 +1,119 @@
+# `just gate` in CI — fmt, check, lint, nextest, doctest, cargo doc.
+#
+# # Why a matrix
+#
+# **macos-latest is the truth runner.** It has real Apple Silicon Metal,
+# the same backend the dev box uses, so every wgpu test runs against a
+# real GPU and *all 117 tests pass without skips*.
+#
+# **ubuntu-latest validates the Linux build path** (Tauri 2's gtk-rs
+# toolchain, winit's x11/wayland features, GStreamer apt deps). It also
+# runs every non-GPU-heavy test. The 3 multi-bind-group filter tests
+# (`blur_filter_smears_edge`, `motion_blur_zero_velocity_is_no_op`,
+# `drop_shadow_renders_visible_shadow`) are skipped via
+# `WISP_SKIP_GPU_FILTER_TESTS=1` because lavapipe (mesa's software
+# Vulkan) reliably loses the device when wgpu asks it to build those
+# specific pipelines. A future real-hardware Linux CI runner would
+# leave the env var unset and run them.
+#
+# `fail-fast: false` so one platform's failure doesn't cancel the other.
+
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (nightly per rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-gate-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-gate-
+
+      - name: Install macOS deps (GStreamer)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install gstreamer
+
+      - name: Install Linux deps (Tauri 2 + GStreamer + lavapipe + winit)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            gstreamer1.0-tools \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-libav \
+            mesa-vulkan-drivers \
+            libvulkan1 \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev
+
+      - name: Configure wgpu for Linux headless CI
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
+          echo "WGPU_POWER_PREF=low" >> "$GITHUB_ENV"
+          # Lavapipe loses the device on multi-bind-group filter
+          # pipelines; the affected tests guard on this env var. macOS
+          # uses real Metal and runs them.
+          echo "WISP_SKIP_GPU_FILTER_TESTS=1" >> "$GITHUB_ENV"
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: just gate
+        run: just gate
