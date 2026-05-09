@@ -22,7 +22,12 @@ tracing = "0.1"
 [dev-dependencies]
 pollster = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-winit = "0.30"
+# winit's default features include `x11` + `wayland` on Linux; one of our
+# transitive deps appears to pull winit with `default-features = false`,
+# which leaves no `target_os = "linux"` branch active and trips winit's
+# `compile_error!`. Re-enable the Linux backends explicitly so the
+# union-unified feature set has at least one Linux backend.
+winit = { version = "0.30", features = ["x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
 # Testing spine — see _docs/TESTING.md
 rstest = "0.25"
 insta = { version = "1", features = ["json", "yaml", "redactions"] }

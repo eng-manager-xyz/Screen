@@ -137,6 +137,18 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 ### CI / GitHub Actions / Linux runner
 
+- **winit 0.30 fails to compile on Linux with
+  `compile_error!("The platform you're compiling for is not supported by
+  winit")` if `x11` and `wayland` features aren't active.** Both are
+  defaults, so this normally Just Works — but a transitive dep somewhere
+  in our tree pulls winit with `default-features = false`, and cargo's
+  feature unification then leaves Linux without any backend. **Fix:**
+  pin `winit = { version = "0.30", features = ["x11", "wayland",
+  "wayland-dlopen", "wayland-csd-adwaita"] }` explicitly in our
+  Cargo.toml so the unified feature set always carries a Linux backend.
+  Also apt-install the matching headers for CI (`libx11-dev`,
+  `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`,
+  `libxcursor-dev`, `libxrandr-dev`, `libxi-dev`).
 - **Never set `RUSTFLAGS: -D warnings` at the workflow `env:` level.**
   It promotes transitive-crate future-incompat warnings (`block v0.1.6`,
   `proc-macro-error2 v2.0.1`, …) into hard failures. We can't fix those
