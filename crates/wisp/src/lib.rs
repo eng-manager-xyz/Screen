@@ -29,7 +29,9 @@ mod error;
 pub use blend::BlendMode;
 pub use color::Color;
 pub use error::Error;
-pub use filter::{BlurFilter, DropShadowFilter, Filter, FilterContext};
+pub use filter::{
+    BlurFilter, ColorMatrixFilter, DropShadowFilter, Filter, FilterContext, MotionBlurFilter,
+};
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
 pub use scene::{
     Container, Fill, Font, Graphics, Node, NodeId, Sprite, Stage, Stroke, Text, Transform,

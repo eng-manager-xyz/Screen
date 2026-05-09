@@ -79,6 +79,70 @@ fn blur_passes_count_is_two() {
 }
 
 #[test]
+fn color_matrix_grayscale_collapses_channels() {
+    let app = boot();
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let input = RenderTexture::with_format(&app, 16, 16, format);
+    let output = RenderTexture::with_format(&app, 16, 16, format);
+    let renderer = Renderer::new(&app, format).expect("renderer");
+
+    // Pure red input.
+    let texture = solid_texture(&app, 4, 4, [255, 0, 0, 255]);
+    let mut sprite = Sprite::from_texture(texture).with_anchor(Vec2::splat(0.5));
+    sprite.container.transform.scale = Vec2::splat(2.0);
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), sprite);
+    let _ = renderer.render_stage(&app, input.view(), Color::BLACK, &stage);
+
+    let filter = wisp::ColorMatrixFilter::grayscale();
+    renderer.apply_filter(&app, &filter, &input, &output);
+
+    let bytes = output.read_pixels(&app);
+    let center = (8 * 16 + 8) * 4;
+    let r = bytes[center];
+    let g = bytes[center + 1];
+    let b = bytes[center + 2];
+    // After grayscale: R=G=B. For pure red input, all should equal 0.2126*255 ≈ 54.
+    assert!(r.abs_diff(g) <= 2, "grayscale R≈G; got R={r} G={g}");
+    assert!(g.abs_diff(b) <= 2, "grayscale G≈B; got G={g} B={b}");
+    assert!(
+        (40..=70).contains(&r),
+        "luminance of pure red should be ~54; got R={r}"
+    );
+}
+
+#[test]
+fn motion_blur_zero_velocity_is_no_op() {
+    let app = boot();
+    let format = wgpu::TextureFormat::Rgba8Unorm;
+    let input = RenderTexture::with_format(&app, 32, 32, format);
+    let output = RenderTexture::with_format(&app, 32, 32, format);
+    let renderer = Renderer::new(&app, format).expect("renderer");
+
+    let texture = solid_texture(&app, 4, 4, [200, 100, 50, 255]);
+    let mut sprite = Sprite::from_texture(texture).with_anchor(Vec2::splat(0.5));
+    sprite.container.transform.scale = Vec2::splat(0.5);
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), sprite);
+    let _ = renderer.render_stage(&app, input.view(), Color::BLACK, &stage);
+
+    let filter = wisp::MotionBlurFilter::default();
+    renderer.apply_filter(&app, &filter, &input, &output);
+
+    let bytes = output.read_pixels(&app);
+    let center = (16 * 32 + 16) * 4;
+    // With zero velocity the filter falls back to a 0-radius blur. Source
+    // texels go through sRGB decode (texture is Rgba8UnormSrgb) before being
+    // written to a linear Rgba8Unorm output, so values shift but remain
+    // substantial.
+    assert!(
+        bytes[center] > 100,
+        "zero-velocity motion blur should preserve substantial brightness; got R={}",
+        bytes[center]
+    );
+}
+
+#[test]
 fn drop_shadow_renders_visible_shadow() {
     let app = boot();
     let format = wgpu::TextureFormat::Rgba8Unorm;
