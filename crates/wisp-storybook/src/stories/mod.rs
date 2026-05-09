@@ -2,6 +2,7 @@
 //! adds one entry here.
 
 mod s_blur_filter;
+mod s_drop_shadow;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
@@ -23,5 +24,6 @@ pub fn all_stories() -> Vec<Story> {
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),
         s_blur_filter::story(),
+        s_drop_shadow::story(),
     ]
 }

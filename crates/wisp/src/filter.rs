@@ -16,6 +16,7 @@ pub mod drop_shadow;
 pub mod motion_blur;
 
 pub use blur::BlurFilter;
+pub use drop_shadow::DropShadowFilter;
 
 use crate::application::Application;
 use crate::texture::render_texture::RenderTexture;

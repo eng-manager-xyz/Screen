@@ -59,7 +59,7 @@ impl Filter for BlurFilter {
     }
 }
 
-fn run_blur_pass(
+pub(crate) fn run_blur_pass(
     app: &Application,
     encoder: &mut wgpu::CommandEncoder,
     input: &RenderTexture,
