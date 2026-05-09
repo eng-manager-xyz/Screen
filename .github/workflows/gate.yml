@@ -45,7 +45,7 @@ jobs:
       # toolchain; without these dev headers `glib-sys`'s build script
       # fails at pkg-config. List sourced from the official Tauri 2
       # prerequisites for Debian/Ubuntu.
-      - name: Install Linux build deps (Tauri 2 + GStreamer)
+      - name: Install Linux build deps (Tauri 2 + GStreamer + wgpu lavapipe)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -64,7 +64,19 @@ jobs:
             gstreamer1.0-tools \
             gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good \
-            gstreamer1.0-libav
+            gstreamer1.0-libav \
+            mesa-vulkan-drivers \
+            libvulkan1
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      # wgpu picks the highest-priority adapter; on a headless Linux runner
+      # that's lavapipe (software Vulkan from mesa-vulkan-drivers).
+      # Without these env vars wgpu can hang on initial adapter probe.
+      - name: Configure wgpu for headless CI
+        run: |
+          echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
+          echo "WGPU_POWER_PREF=low" >> "$GITHUB_ENV"
 
       - name: Install just
         uses: extractions/setup-just@v2

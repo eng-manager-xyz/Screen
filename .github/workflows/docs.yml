@@ -32,8 +32,11 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
   MDBOOK_VERSION: "0.4.40"
+  # Note: do NOT set `RUSTFLAGS: -D warnings` globally — it promotes
+  # transitive-crate future-incompat warnings (e.g. `block v0.1.6`,
+  # `proc-macro-error2`) into hard failures. Use `RUSTDOCFLAGS` only,
+  # scoped to the strict-docs path (`just docs-strict`).
 
 jobs:
   build:

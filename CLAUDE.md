@@ -137,6 +137,19 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 ### CI / GitHub Actions / Linux runner
 
+- **Never set `RUSTFLAGS: -D warnings` at the workflow `env:` level.**
+  It promotes transitive-crate future-incompat warnings (`block v0.1.6`,
+  `proc-macro-error2 v2.0.1`, …) into hard failures. We can't fix those
+  upstream warnings; they pour in any time `cargo doc --workspace`
+  touches the dep tree. For docs-strict semantics, scope `RUSTDOCFLAGS`
+  to a single command (`RUSTDOCFLAGS="-D warnings -D rustdoc::broken-intra-doc-links" cargo doc …`),
+  not a workflow-wide env var.
+- **wgpu on Linux CI needs `mesa-vulkan-drivers` + `libvulkan1`** so
+  lavapipe (software Vulkan) is available as the wgpu adapter. Without
+  this the first wisp test that calls `Application::new` either hangs on
+  adapter probe or aborts with "no adapters found". Pair with
+  `WGPU_BACKEND=vulkan` + `WGPU_POWER_PREF=low` in the workflow env so
+  wgpu doesn't spend cycles probing every backend.
 - **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
   `cargo check` time, not just at link time.** `glib-sys`'s build script
   invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
