@@ -31,9 +31,11 @@ allow = [
     "BSL-1.0",
     "0BSD",
     "CDLA-Permissive-2.0",
+    # Fonts in the egui ecosystem (epaint_default_fonts → Open Sans, Hack, etc.)
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
 ]
 confidence-threshold = 0.8
-exceptions = []
 
 [bans]
 multiple-versions = "warn"

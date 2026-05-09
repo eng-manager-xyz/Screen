@@ -46,6 +46,10 @@ docs:
 # Per-task gate. Run before marking any task done.
 gate: fmt check lint test doctest
 
+# Run the wisp-storybook GUI — one window with every shipped feature.
+storybook:
+    cargo run -p wisp-storybook --release
+
 # ─── Supply chain & dependency hygiene ────────────────────────────────────────
 
 # RustSec advisory check.

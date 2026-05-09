@@ -28,6 +28,7 @@ Order:
 4. **Stay inside the chunk.** If you spot adjacent work, file in `_docs/ISSUES.md` and continue. Do not expand scope.
 5. **Don't refactor unrelated code.** If a refactor is genuinely needed, stop and ask.
 6. **Add at least one test** matching the chunk's behavior. See `_docs/TESTING.md` "Per-chunk testing minimum" — unit / integration / snapshot / property / regression. Pure scaffolding chunks (module stubs, file moves) are exempt; everything else has a test.
+7. **Add a storybook entry** if the chunk adds a renderable feature. New file in `crates/wisp-storybook/src/stories/`, registered in `stories/mod.rs`, with a markdown write-up in `stories/writeups/`. Verify with `just storybook` — your story should appear in the top-bar menu and render live in the canvas. Non-render features (math, capture, encode, file I/O) are exempt.
 
 ## 4. Verify (`just gate` — recursive-fix loop)
 

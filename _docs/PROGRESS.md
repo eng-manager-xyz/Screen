@@ -6,6 +6,41 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Side quest — wisp-storybook + locked convention
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp-storybook/` — new crate. eframe (egui+winit+wgpu) shell, `Story` trait, registry, app with top-bar story picker + 4/5 canvas + 1/5 right-sidebar write-up. wisp renders to a `RenderTexture` registered with egui via `register_native_texture` — zero-copy GPU-side display.
+  - `crates/wisp-storybook/src/stories/s_sprite_batcher.rs` + writeup — animated 100-sprite Lissajous demo (M0.9)
+  - `crates/wisp-storybook/src/stories/s_graphics_rounded.rs` + writeup — 3 rectangles with fill/stroke/sharp variants (M0.12 + M0.13)
+  - `crates/wisp-storybook/src/stories/s_graphics_ellipse.rs` + writeup — animated 3-ripple click effect (M0.13)
+  - `crates/wisp/src/application.rs` — added `Application::from_wgpu(instance, adapter, device, queue, config)` for embedding hosts that already own a wgpu context
+  - `Cargo.toml` (workspace) — added `[workspace.dependencies]` for shared deps
+  - `Justfile` — `just storybook` recipe
+  - `deny.toml` — added `OFL-1.1` and `Ubuntu-font-1.0` to license allowlist (egui's bundled fonts)
+  - `CLAUDE.md`, `_docs/WORKFLOW.md`, `_docs/PROGRESS.md` template — locked the storybook-entry convention into the workflow
+- **Verified:**
+  - `just gate` — passes (76 tests; storybook builds clean)
+  - `just security` — passes after license allowlist update
+  - `just storybook` — opens window with 3 stories, top-bar nav, sidebar write-up, live render
+- **Notes:**
+  - **Locked convention:** every renderable feature ships with a story in `crates/wisp-storybook/src/stories/`. The CLAUDE.md non-negotiable loop is now `TEST → STORY → CHECK → UPDATE → STATUS`. Non-render features (math, capture, encode) are exempt.
+  - **eframe + wisp share one wgpu device.** Storybook accepts eframe's wgpu device via `Application::from_wgpu`. wisp renders to a `RenderTexture`; the texture view is registered with egui via `register_native_texture`. egui samples it as `egui::Image` — zero CPU readback.
+  - **egui 0.31** (latest as of 2026-05) is the version aligned with wgpu 24. Earlier 0.29 used wgpu 22 and caused type-mismatch errors.
+  - **Recursive-fix loop fired 8 iterations** — every category we've trained on:
+    1. wgpu version mismatch (egui 0.29 vs wgpu 24) → bumped to egui 0.31
+    2. fmt collapse (×2)
+    3. clippy: dead `id` field, f32→u32 casts (×4), collapsible_if, i32→f32 cast precision
+    4. cargo-deny: wildcard wisp dep → set explicit version
+    5. cargo-deny: license OFL-1.1 not allowed → added
+    6. cargo-deny: Ubuntu-font-1.0 not allowed → added
+    7. cargo-machete: pollster + egui-wgpu unused (eframe transitively re-exports)
+    8. cargo-machete: tracing unused
+  - **Backfilled 3 stories of 9.** M0.5 hello_triangle, M0.6 hello_quad, M0.7 transform, M0.8 scene graph, M0.10 image, M0.11 video texture, M0.12 sharp rect remain. Will land per-chunk in subsequent passes.
+- **Issues filed:** none
+
+---
+
 ## M0.13 — Graphics ellipse, line, stroke
 - **Date:** 2026-05-09
 - **Status:** ✅ done
@@ -380,6 +415,7 @@ Copy this block to the top of the log. Replace placeholders. Keep entries terse.
 - **Verified:**
   - `just gate` — passes (fmt, check, lint, nextest, doctest)
   - `cargo run -p <crate> --example <name>` — visual confirm OK (if applicable)
+  - `just storybook` — story renders correctly (if chunk is renderable)
   - `just security` — passes (if dep tree changed)
 - **Notes:**
   - any non-obvious decision or surprise

@@ -11,14 +11,18 @@ This file is auto-loaded into every Claude Code session. **Read it first** when 
 After any non-trivial change — adding code, editing config, removing a dep, fixing a bug:
 
 ```
-1. TEST:   add at least one test (see _docs/TESTING.md "anti-regression gravity")
-           - unit / integration / snapshot / property / regression
-           - chunks that don't fit any layer are scaffolding-only
-2. CHECK:  `just gate`        →  loop recursively until green
-3. UPDATE: PROGRESS.md         →  what changed, what was verified
-           ISSUES.md           →  if you found a bug or deferral
-           milestone doc       →  ✅ a chunk's "Done when:" if satisfied
-4. STATUS: TaskUpdate          →  mark task completed only when gate is green
+1. TEST:    add at least one test (see _docs/TESTING.md "anti-regression gravity")
+            - unit / integration / snapshot / property / regression
+            - chunks that don't fit any layer are scaffolding-only
+2. STORY:   for any chunk that adds a *renderable* feature, add a story to
+            `crates/wisp-storybook/src/stories/` with a write-up.
+            Run `just storybook` to verify it appears and renders.
+            Non-render chunks (math, capture, encode, file I/O) are exempt.
+3. CHECK:   `just gate`        →  loop recursively until green
+4. UPDATE:  PROGRESS.md         →  what changed, what was verified
+            ISSUES.md           →  if you found a bug or deferral
+            milestone doc       →  ✅ a chunk's "Done when:" if satisfied
+5. STATUS:  TaskUpdate          →  mark task completed only when gate is green
 ```
 
 **`just gate` runs:** fmt → check → lint → nextest → doctest. All five must pass. See `_docs/QA.md` for higher tiers and `_docs/TESTING.md` for the testing strategy.
@@ -97,6 +101,7 @@ For every task in the task list:
 ## Hard rules (the full list)
 
 - **Every meaningful chunk ships with at least one test** (unit / integration / snapshot / property / regression). See `_docs/TESTING.md` "anti-regression gravity".
+- **Every renderable feature ships with a storybook story.** New visible behavior must show up in `just storybook` with a write-up in the right sidebar. Non-render features (math, capture, encode, file I/O) are exempt.
 - **`just gate` must be green before any task is marked done.** No exceptions.
 - **Recursive-fix loop:** if `just gate` is red, loop until green. Never disable tests, never `#[allow]` clippy without reason, never bypass deny/machete findings.
 - **Append to `PROGRESS.md` for every completed task.** It's the only durable record across context windows.

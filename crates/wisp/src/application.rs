@@ -44,6 +44,29 @@ pub struct Application {
 }
 
 impl Application {
+    /// Adopt a pre-existing wgpu context (e.g. from `eframe`).
+    ///
+    /// All four wgpu resources are cloned into the `Application`; `wgpu` types
+    /// are `Arc`-backed so this is cheap. Use this instead of [`Application::new`]
+    /// when integrating with an embedding host that owns the device.
+    #[must_use]
+    pub fn from_wgpu(
+        instance: Instance,
+        adapter: Adapter,
+        device: Device,
+        queue: Queue,
+        config: AppConfig,
+    ) -> Self {
+        Self {
+            config,
+            instance,
+            adapter,
+            device,
+            queue,
+            stage: Stage::new(),
+        }
+    }
+
     /// Construct a new `Application`.
     ///
     /// # Errors

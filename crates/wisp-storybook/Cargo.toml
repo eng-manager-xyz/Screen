@@ -1,0 +1,18 @@
+[package]
+name = "wisp-storybook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Interactive feature gallery for the wisp 2D renderer."
+
+[lints]
+workspace = true
+
+[dependencies]
+wisp = { workspace = true }
+glam = { workspace = true }
+wgpu = { workspace = true }
+tracing-subscriber = { workspace = true }
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts"] }
+egui = "0.31"
