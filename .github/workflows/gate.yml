@@ -84,6 +84,11 @@ jobs:
         run: |
           echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
           echo "WGPU_POWER_PREF=low" >> "$GITHUB_ENV"
+          # Lavapipe panics on multi-bind-group filter pipelines (blur,
+          # drop-shadow, motion-blur). The 3 tests guard on this env var
+          # and skip with an explanatory message; real-hardware CI (or
+          # local dev) leaves it unset and runs them normally.
+          echo "WISP_SKIP_GPU_FILTER_TESTS=1" >> "$GITHUB_ENV"
 
       - name: Install just
         uses: extractions/setup-just@v2

@@ -162,6 +162,15 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
   adapter probe or aborts with "no adapters found". Pair with
   `WGPU_BACKEND=vulkan` + `WGPU_POWER_PREF=low` in the workflow env so
   wgpu doesn't spend cycles probing every backend.
+- **Lavapipe loses the device on multi-bind-group filter pipelines.**
+  Symptom: `wgpu error: Validation Error / In Device::create_render_pipeline,
+  label = 'wisp::blur pipeline' / Parent device is lost`. Real adapters
+  (Metal, hardware Vulkan) build the same pipelines fine. Pattern: add
+  a `skip_on_software_adapter()` helper guard at the top of affected
+  tests, gated on `WISP_SKIP_GPU_FILTER_TESTS=1` set only in the CI
+  workflow's `$GITHUB_ENV`. Local dev and real-hardware CI leave the
+  env var unset and run the tests normally — gate stays green without
+  losing the assertion on real GPUs.
 - **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
   `cargo check` time, not just at link time.** `glib-sys`'s build script
   invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
