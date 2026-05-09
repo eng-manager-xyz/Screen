@@ -36,6 +36,10 @@
 
 - [Overview](./decode/overview.md)
 
+# `playback` — player state machine
+
+- [Overview](./playback/overview.md)
+
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)

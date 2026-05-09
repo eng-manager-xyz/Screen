@@ -1,0 +1,26 @@
+[package]
+name = "playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Player state machine: owns a VideoStream + VideoTexture and pumps frames into the GPU at the source frame rate."
+
+[lints]
+workspace = true
+
+[lib]
+name = "playback"
+path = "src/lib.rs"
+
+[dependencies]
+wisp = { workspace = true }
+decode = { path = "../decode" }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
+wgpu = { workspace = true }
+tracing-subscriber = { workspace = true }
+glam = { workspace = true }

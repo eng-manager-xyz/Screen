@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-PLAY.1 — Player state machine + frame pump
+- **Date:** 2026-05-09
+- **Status:** ✅ done — second chunk on the path to first MP4 playback. 4 chunks remain.
+- **Files:** new `crates/playback/` (Cargo.toml, src/lib.rs); `tests/timing.rs` (6 tests proving the timing contract); `examples/timed_playback.rs` drives the player for 1 s wallclock at 60 Hz render against a 30 fps source and writes 30 frames to `_docs/book/src/assets/playback/`; `_docs/book/src/playback/overview.md`; `SUMMARY.md`.
+- **Verified:** `just gate` green; tests pass (paused-no-advance, first-tick-immediate, ~30-frames-in-1s, end-of-stream→Ended, pause-freezes, duration_hint correct); example reports `31 frames pulled, state = Playing` (the +1 over 30 is the round-up on the wallclock boundary).
+- **`Player::tick(dt)` returns the number of frames it uploaded** so the shell can drive a redraw signal off it (no re-render needed when no new frame is due — important for native winit power efficiency on still video sections).
+- **Architecture lock:** `Box<dyn VideoStream + Send>` so the player works against any decoder backend without changes. The shell (Tauri / native winit) needs only `Player::play / pause / tick / texture / state / elapsed / duration_hint`.
+- **3 clippy fixes via real refactors** (no `#[allow]` shortcuts):
+  - `match next_frame() { Some => …, None => break }` → `let-else`. Reads cleaner.
+  - `u64 as f64` precision-loss: kept the cast with a documented `reason` (2^52 frames at 60 fps ≈ 2.4M years; not a realistic concern).
+  - Manual `Debug` impl that didn't include all fields → dropped the impl entirely. The `Box<dyn>` field can't be `Debug` and the impl wasn't load-bearing.
+
+---
+
 ## M-DEC.1 — VideoStream trait + MockVideoStream + playback_demo
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first chunk on the path to "play an MP4 in the Tauri-Leptos app via wisp" (5–6 chunks total).
