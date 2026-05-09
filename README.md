@@ -1,203 +1,356 @@
-# `screen` — the production
+# screen
 
-A cinematic screen recorder built as an all-Rust stack. The codebase is laid out like a theatre production: a **Stage** (the renderer), a **Cast** (scene-graph nodes), **Acts and Scenes** (milestones and chunks), **Rehearsals** (tests), and a **Playbill** (interactive feature gallery) you can flip through to see every scene we've blocked so far.
+> A cinematic screen recorder in the Screen Studio / OpenScreen lineage, built
+> as an all-Rust stack. Tauri 2 shell, Leptos UI, custom wgpu renderer, GStreamer
+> decode, native preview window. Library-first: the renderer (`wisp`) and the
+> player (`playback`) are reusable in their own right.
 
-This README is the map. Use it to find your way around the source tree and the docs in `_docs/`.
+```text
+              ┌──────────────────────────┐
+              │      screen-app          │   Tauri 2 shell
+              │   (native binary)        │   ◀── M-INT.2 will land here
+              └──────────┬───────────────┘
+                         │   serves frontendDist
+                         ▼
+              ┌──────────────────────────┐
+              │      app-ui              │   Leptos CSR app
+              │   (WASM via Trunk)       │
+              └──┬─────────────────┬─────┘
+                 │ uses            │ uses
+                 ▼                 ▼
+        ┌────────────────┐  ┌────────────────┐
+        │  ui-storybook  │  │   playback     │ ◀── orchestrator
+        │ (component     │  │   (Player)     │
+        │  library +     │  └──┬──────────┬──┘
+        │  gallery)      │     │          │
+        └────────────────┘     ▼          ▼
+                       ┌────────────┐ ┌────────────┐
+                       │   decode   │ │    wisp    │
+                       │  (Video    │ │  (wgpu     │
+                       │   Stream + │ │   renderer)│
+                       │   GStreamer│ └────────────┘
+                       │   pipe)    │
+                       └────────────┘
+```
+
+The codebase also carries a parallel **theatre metaphor** that you'll see
+referenced in commits and docs (`Stage`, `Cast`, `Wings`, `Acts`, `Scenes`,
+`Rehearsal`). It's the navigation language for the project — see
+[`_docs/book/src/orientation/metaphor.md`](./_docs/book/src/orientation/metaphor.md).
 
 ---
 
-## The cast of metaphors
+## Status
 
-Every concrete artifact in this project has a theatre name. Use these terms to navigate the source code, conversations, and commits:
+| Track | Where |
+|---|---|
+| **`wisp` renderer** | ✅ M0 complete — 21 chunks: stage, transforms, sprites, graphics (SDF rect/ellipse/gradient), bitmap text, blur / drop-shadow / motion-blur / color-matrix filters, mesh perspective. |
+| **Tauri shell + drop-zone player** | ✅ M1 complete — 11 chunks consolidated, vanilla HTML/JS frontend with `convertFileSrc` + HTML5 video. |
+| **Component library** | ✅ ui-storybook with 18 stories: Button, Card, DopeSheet, DropZone, PlayerControls, RecordingToolbar, StatusBar. SSR snapshot regression gate. |
+| **Decode → wisp pipeline** | ✅ M-DEC.1 + M-PLAY.1 + M-DEC.2 — `VideoStream` trait, `MockVideoStream`, `Player` state machine, `GstreamerPipeStream` reading real MP4s end-to-end. |
+| **Recorder shell (Leptos CSR)** | ✅ M-INT.1 — `app-ui` builds via Trunk; mounts `<App>` composing existing components. |
+| **Tauri ↔ Leptos integration** | ⏳ M-INT.2 — `tauri.conf.json` frontendDist swap + OS file-drop wiring. |
+| **Native winit preview window** | ⏳ M-PREVIEW.1 — wisp surface as a sibling window to the Tauri webview. |
+| **Tauri ↔ player IPC** | ⏳ M-PLAY.2 — load / play / pause / seek dispatched from Leptos to the native player loop. |
 
-| Theatre term | What it actually is | Where it lives |
-|---|---|---|
-| **The Production** | The whole project | the workspace root |
-| **The Stage** | `wisp` — the 2D scene graph + filter chain on `wgpu` | `crates/wisp/` (literal `Stage` type at `src/scene.rs`) |
-| **The Wings** | `screen-app` — the Tauri+Leptos shell that brings the Stage to the audience | `crates/app/` (M1 fills this in) |
-| **The Playbill** | `wisp-storybook` — interactive gallery with every shipped scene | `crates/wisp-storybook/` |
-| **Acts** | Milestones (M0, M1, …) — major phases | `_docs/milestone-N-*.md` |
-| **Scenes** | Chunks within an act (M0.5, M0.6, …) — single units of work | listed inside each milestone doc |
-| **The Cast** | Scene-graph node types — the players on the Stage | `crates/wisp/src/scene/` |
-| **Choreography** | `Transform` — how cast members move (position / scale / rotation / pivot) | `crates/wisp/src/scene/transform.rs` |
-| **Backdrops** | Textures — image, video, render | `crates/wisp/src/texture/` |
-| **Sets** | Vector primitives drawn by `Graphics` (rect, ellipse, line, gradient) | `crates/wisp/src/scene/graphics.rs` |
-| **Props** | Sprites — small textured quads carried by the cast | `crates/wisp/src/scene/sprite.rs` |
-| **Lighting** | Filters (blur, drop shadow, motion blur, color matrix) — the atmosphere | `crates/wisp/src/filter/` (lands M0.16+) |
-| **Rehearsals** | Tests — unit, integration, snapshot, property | `crates/*/tests/` and `#[cfg(test)]` blocks |
-| **Dress Rehearsal** | `just gate` — must pass green before any scene is "blocked" (marked done) | `Justfile` |
-| **Tech Week** | Side quests — the off-stage scaffolding that makes the show possible | QA toolchain, testing spine, storybook |
-| **The Promptbook** | `_docs/PROGRESS.md` — append-only log of every scene that's been performed | newest entries at top |
-| **Stage Directions** | `_docs/WORKFLOW.md` — what to do for every scene | step-by-step |
-| **House Rules** | `_docs/CONVENTIONS.md` — code standards and naming | naming, errors, tests, modules |
-| **Tech Notes** | `_docs/TESTING.md` and `_docs/QA.md` — the testing pyramid + tooling tiers | what gates exist and why |
-| **Call Sheet** | `_docs/ISSUES.md` — bugs / deferrals / open questions to revisit | append-only |
-| **The Director's Bible** | `CLAUDE.md` — auto-loaded into every Claude Code session | the non-negotiable loop lives here |
-
-> **The members of the Cast are concrete:** `Container` (ensemble member), `Sprite` (featured player carrying a Backdrop), `Graphics` (scenic painter), `Text` (the captioner), `Mesh` (the special-effects performer — M0.19). They all share a `Container` aspect that gives them a place on the Stage and a Choreography of their own.
+3 chunks separate us from the first end-to-end "drag MP4 → see it play through wisp" demo. Full chunk-by-chunk log in [`_docs/PROGRESS.md`](./_docs/PROGRESS.md).
 
 ---
 
 ## Quick start
 
-```bash
-# Bootstrap the QA toolchain (one-time per machine).
-just bootstrap
+### Prerequisites
 
-# The dress rehearsal — must pass before marking any chunk done.
+The project pins to **Rust nightly** (see `rust-toolchain.toml`); rustup will
+auto-install it on first build.
+
+#### Required
+
+```bash
+# Rust toolchain (nightly + wasm32 target)
+rustup target add wasm32-unknown-unknown
+
+# Task runner — one place for every QA recipe.
+brew install just                # macOS
+# or: cargo install --locked just
+
+# QA tools used by `just gate`
+cargo install --locked cargo-nextest cargo-deny cargo-audit cargo-machete
+
+# Documentation site builder
+cargo install --locked mdbook
+
+# WASM bundler for the Leptos shell
+cargo install --locked trunk
+
+# Video decode backend
+brew install gstreamer           # macOS — the cask name is just `gstreamer`
+# or: apt install gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-libav
+```
+
+`just bootstrap` automates the Rust-side tools once Homebrew + Rust are
+present.
+
+#### Optional / on demand
+
+```bash
+cargo install --locked cargo-llvm-cov   # coverage
+cargo install --locked cargo-semver-checks
+cargo install --locked cargo-public-api
+cargo install --locked cargo-msrv
+cargo install --locked cargo-bloat
+cargo install --locked cargo-geiger
+cargo install --locked cargo-mutants
+rustup component add miri --toolchain nightly
+rustup component add llvm-tools-preview
+```
+
+### Build & run
+
+```bash
+git clone https://github.com/eng-manager-xyz/Screen.git
+cd Screen
+
+# Verify the gate is green from a fresh checkout (~1–2 min on first build).
 just gate
 
-# Open the Playbill — interactive feature gallery.
-just storybook
-
-# Supply-chain gate (license + advisories + unused deps).
-just security
-
-# See all recipes.
-just
+# Build everything once.
+cargo build --workspace
 ```
 
----
-
-## Acts in progress
-
-### Act 0 — `wisp` Foundations *(in progress)*
-
-Building the Stage from the ground up.
-
-- **Scenes M0.1 – M0.14: completed.** Workspace, wgpu device, scene graph, transforms, sprites, textures, render targets, graphics primitives, gradients.
-- **Scenes M0.15 – M0.21: pending.** Bitmap text, the Lighting rig (filters), Mesh + custom WGSL, the proof-point examples (recorder_mock, headless_export).
-- See `_docs/milestone-0-renderer.md` for the full scene breakdown.
-
-### Act 1 — Tauri + Leptos drop-zone player *(pending)*
-
-The Wings — drop in an MP4, see it play. Validates the Tauri+Leptos toolchain before wiring anything renderer-heavy.
-
-- 11 scenes, see `_docs/milestone-1-drop-zone-player.md`.
-
----
-
-## The non-negotiable loop
-
-For every scene we block, this is the discipline (defined fully in `CLAUDE.md`):
-
-```
-1. TEST    → at least one rehearsal (unit / integration / snapshot / property)
-2. STORY   → if it's a renderable feature, add a Playbill entry with a write-up
-3. CHECK   → `just gate` — loop recursively until green; never bypass
-4. UPDATE  → PROGRESS, ISSUES, milestone tick
-5. STATUS  → mark the scene "blocked" (done) in the task list
-```
-
-If `just gate` is red, **keep iterating until it's green.** Never `#[allow]` past clippy without `reason = "..."`. Never `#[ignore]` a failing rehearsal without an `ISS-NN`. Never bypass `cargo deny` or `cargo machete` without a documented exemption.
-
----
-
-## Layout
-
-```
-screen/                                # The Production
-├─ README.md                           # this file — map to the production
-├─ CLAUDE.md                           # The Director's Bible (auto-loaded)
-├─ Justfile                            # `just <recipe>` — every gate and tool
-├─ rustfmt.toml                        # House Rules: formatting
-├─ deny.toml                           # House Rules: licenses + advisories + bans
-├─ Cargo.toml                          # workspace root + shared lints
-├─ rust-toolchain.toml                 # nightly
-├─ crates/
-│  ├─ wisp/                            # The Stage — 2D renderer
-│  │  ├─ src/scene/                    # The Cast (Container, Sprite, Graphics, Text, Mesh)
-│  │  ├─ src/scene/transform.rs        # Choreography
-│  │  ├─ src/texture/                  # Backdrops
-│  │  ├─ src/filter/                   # Lighting (M0.16+)
-│  │  ├─ src/render/                   # internal — pipelines and pass orchestration
-│  │  ├─ shaders/                      # WGSL — what the Stage's lighting board executes
-│  │  ├─ examples/                     # standalone scene rehearsals (winit windows)
-│  │  └─ tests/                        # integration rehearsals (RenderTexture pixel-readback)
-│  ├─ wisp-storybook/                  # The Playbill — interactive gallery
-│  │  ├─ src/main.rs                   # eframe entry (the curtain-up)
-│  │  ├─ src/app.rs                    # 4/5 canvas + 1/5 write-up sidebar
-│  │  └─ src/stories/                  # one file per scene (s_*.rs + writeups/*.md)
-│  └─ app/                             # The Wings — Tauri+Leptos shell (M1)
-└─ _docs/
-   ├─ README.md                        # index of all docs
-   ├─ PROGRESS.md                      # The Promptbook (newest at top)
-   ├─ WORKFLOW.md                      # Stage Directions
-   ├─ CONVENTIONS.md                   # House Rules (code)
-   ├─ TESTING.md                       # Tech Notes — testing strategy
-   ├─ QA.md                            # Tech Notes — gate tiers + tools
-   ├─ ISSUES.md                        # Call Sheet
-   ├─ milestone-0-renderer.md          # Act 0 scenes
-   ├─ milestone-1-drop-zone-player.md  # Act 1 scenes
-   ├─ synthesis-and-stack.md           # production-design rationale
-   ├─ recorder-features-and-render-api.md  # full feature inventory
-   ├─ openscreen-research.md           # research — open-source reference
-   └─ screen-studio-research.md        # research — commercial reference
-```
-
----
-
-## How to read the source
-
-### "Show me what `wisp` can render right now"
+### Try it now (deepest demo currently shippable)
 
 ```bash
+# End-to-end: decode an MP4 → upload to GPU → render through wisp.
+# Output: 7 PNGs at _docs/book/src/assets/playback/playfile_NN.png
+cargo run -p playback --example play_file
+```
+
+The committed test fixture (`crates/decode/tests/fixtures/sample.mp4`,
+11 KB) is opened via GStreamer, streamed frame-by-frame as BGRA bytes,
+uploaded to a `wisp::VideoTexture`, rendered through the same `Sprite`
+pipeline the live recorder will use, and written to disk.
+
+```bash
+# Browse the recorder shell (Leptos CSR app).
+just app-ui          # localhost:8080 — the Leptos CSR shell
+
+# Browse the wgpu story gallery (native eframe window).
 just storybook
 ```
 
-The Playbill opens with every shipped scene grouped by category. Top-bar menu navigates between them; the right sidebar (1/5 of the window) explains what each scene demonstrates and why it matters for the recorder.
+### View the offline engineering site
 
-### "Where does Sprite live?"
-
+```bash
+just site
+# Opens target/book/index.html — prose chapters + per-feature
+# screenshots + full rustdoc API reference.
 ```
-crates/wisp/src/scene/sprite.rs            # the Cast member
-crates/wisp/src/render/sprite_pipeline.rs  # how the Stage renders it
-crates/wisp/shaders/sprite.wgsl            # the lighting cue (shader)
-crates/wisp/tests/render_sprite.rs         # the rehearsals
-crates/wisp-storybook/src/stories/         # the Playbill entries
-   s_sprite_batcher.rs                     # 100-sprite batching demo
-```
-
-### "What's been done? What's next?"
-
-```
-_docs/PROGRESS.md                          # newest entry first — every blocked scene
-TaskList                                   # via Claude Code's task tool — what's pending
-```
-
-### "How do I add a new scene?"
-
-Open `_docs/WORKFLOW.md` § 3 ("Implement"). The short version: start with the rehearsals (tests), add the implementation, add a Playbill entry if the feature is renderable, run `just gate` recursively until green, then mark the scene done.
-
-### "What rules govern the code?"
-
-`_docs/CONVENTIONS.md`. The high points: parent-module file pattern (no `mod.rs`), `clippy::pedantic` on, `#[allow]` only with `reason = "..."`, error types per crate via `thiserror`, no panics in library code outside tests, snapshot tests for filter outputs, `proptest` for invariants, no features added ahead of need (`cargo machete` enforces it).
 
 ---
 
-## What's in the Tech Week toolchain
+## Repository layout
 
-The infrastructure that makes the show possible — installed once via `just bootstrap`:
+```
+screen/
+├─ CLAUDE.md                # Auto-loaded into every Claude Code session.
+│                            Architecture, conventions, anti-patterns,
+│                            the 11-step per-task workflow.
+├─ Justfile                 # Every QA recipe — `just` to list.
+├─ rust-toolchain.toml      # Pins nightly.
+├─ deny.toml                # cargo-deny: license / advisory / source policy.
+├─ rustfmt.toml             # Formatter config.
+├─ Cargo.toml               # Workspace + shared lints.
+│
+├─ crates/
+│  ├─ wisp/                 # The wgpu renderer. Pixi-shaped public API:
+│  │                          Stage, Container, Sprite, Graphics, Text,
+│  │                          Mesh, Transform, RenderTexture, VideoTexture,
+│  │                          BlurFilter, DropShadowFilter, MotionBlurFilter,
+│  │                          ColorMatrixFilter.
+│  │
+│  ├─ decode/               # VideoStream trait + MockVideoStream +
+│  │                          GstreamerPipeStream. The codec-agnostic seam
+│  │                          between video files and wisp.
+│  │
+│  ├─ playback/             # Player state machine — owns the boxed
+│  │                          VideoStream + a wisp VideoTexture; pumps
+│  │                          frames at the source frame rate.
+│  │
+│  ├─ ui-storybook/         # Leptos component library + isolated visual
+│  │                          gallery + SSR snapshot tests. Feature-tested
+│  │                          building blocks for the recorder.
+│  │
+│  ├─ app-ui/               # The actual Leptos CSR shell. Trunk-built.
+│  │                          Composes ui-storybook components into the
+│  │                          recorder surface.
+│  │
+│  ├─ wisp-storybook/       # Interactive wgpu gallery (eframe), one window
+│  │                          showing every renderable wisp feature.
+│  │
+│  └─ app/                  # Tauri 2 shell — native binary.
+│
+└─ _docs/
+   ├─ PROGRESS.md           # Append-only log, newest at top. Every chunk
+   │                          gets an entry here.
+   ├─ WORKFLOW.md           # Canonical 11-step per-task workflow.
+   ├─ TESTING.md            # Anti-regression gravity, per-chunk minimums.
+   ├─ QA.md                 # `just gate` definition + tier system.
+   ├─ CONVENTIONS.md        # Code conventions.
+   ├─ ISSUES.md             # Known bugs / deferrals / open questions.
+   ├─ milestone-0-renderer.md, milestone-1-drop-zone-player.md
+   │
+   └─ book/                 # mdBook prose site (rendered to target/book/).
+      └─ src/
+         ├─ orientation/    # What this is, stack, theatre metaphor.
+         ├─ conventions/    # Workflow, testing, docs gate, screenshots.
+         ├─ wisp/           # Renderer overview + per-chunk chapters.
+         ├─ ui/             # UI components + per-chunk chapters.
+         ├─ decode/         # Decoder overview.
+         ├─ playback/       # Player overview + real-MP4 chapter.
+         ├─ app-ui/         # Recorder shell overview.
+         ├─ milestones/     # Per-milestone summaries.
+         └─ assets/         # Per-feature screenshots — committed.
+```
 
-| Tool | Tier | Purpose |
+---
+
+## Engineering workflow (the short version)
+
+> Full canonical version in [`_docs/WORKFLOW.md`](./_docs/WORKFLOW.md). What follows
+> is a TL;DR of the 11-step per-task contract that every chunk goes through.
+
+For every chunk:
+
+1. **Pick** the next unblocked task.
+2. **Mark in_progress** (one task at a time).
+3. **Implement** the smallest unit that satisfies the chunk's "Done when:".
+4. **Test** — unit / snapshot / integration / property / regression.
+5. **Story** — every renderable feature ships with a story in
+   `crates/wisp-storybook/` (wgpu) or `crates/ui-storybook/` (HTML/Leptos).
+6. **Asset** — `just snapshots` regenerates the chunk's PNG/HTML under
+   `_docs/book/src/assets/<crate>/<id>.{png,html}`.
+7. **Chapter** — write `_docs/book/src/<crate>/chunks/<id>.md`, embed the
+   asset, add to `SUMMARY.md`.
+8. **Check** — `just gate` must be green. Loop until it is.
+9. **Site** — `just site` rebuilds the engineering site, verify the chapter
+   renders.
+10. **Update** — append entry to `_docs/PROGRESS.md`, file new issues in
+    `_docs/ISSUES.md`.
+11. **Mark completed** + **commit**. Conventional-commit format with the
+    workflow checklist in the body.
+
+### `just gate`
+
+```bash
+just gate    # fmt + check + lint + nextest + doctest + cargo doc
+```
+
+All six must pass. Failures loop until green — never disable tests, never
+`#[allow]` clippy without `reason = "..."`, never bypass `cargo deny` /
+`cargo audit` / `cargo machete`.
+
+### Higher tiers
+
+```bash
+just pr           # gate + cargo deny + cargo audit + cargo machete + coverage
+just docs-strict  # rustdoc with broken-link enforcement (milestone close)
+just release      # pr + semver + msrv + bench + bloat + geiger
+just full         # everything (slow — adds miri + mutants)
+```
+
+---
+
+## Documentation
+
+- **`CLAUDE.md`** — auto-loaded into every Claude Code session. Architecture,
+  conventions, the per-task workflow, plus an
+  ever-growing list of *anti-patterns we've earned* (each one cost a
+  recursive-fix iteration somewhere; capturing them prophylactically).
+- **`_docs/PROGRESS.md`** — append-only log, newest at top. The only
+  durable cross-session record of what's been done.
+- **`_docs/WORKFLOW.md`** — canonical 11-step per-task workflow.
+- **`_docs/book/`** — the mdBook prose site (`just site` to build/open).
+  Includes per-feature chapters with embedded screenshots.
+- **rustdoc** — every public item has a `///` doc. `missing_docs` is a
+  workspace-level lint; `just docs-strict` flips broken intra-doc links
+  to errors.
+
+---
+
+## Stories — every renderable feature is captured
+
+Every chunk that renders something gets a story. Stories are deterministic
+constructions of a feature in isolation; they drive:
+
+1. The interactive gallery (`just storybook` for wgpu, `just app-ui` for HTML).
+2. Integration tests (`tests/story_smoke.rs`, `tests/story_fingerprints.rs`,
+   `tests/snapshots.rs`).
+3. Per-chunk mdBook chapters with embedded PNG / iframe HTML.
+
+This is the project's **anti-regression gravity**: a renderable feature without
+a story isn't shippable.
+
+| Crate | Stories | Asset format |
 |---|---|---|
-| `just` | gate | recipe runner |
-| `cargo-nextest` | gate | faster, isolated test runner |
-| `cargo-deny` | pr | license + advisory + ban + source policy |
-| `cargo-machete` | pr | unused-dep detection (caught real YAGNI violations already) |
-| `cargo-llvm-cov` | pr | coverage measurement |
-| `cargo-mutants` | full | mutation testing |
-| `miri` | full | UB detection on pure-Rust modules |
-| `cargo-flamegraph` | optional | profiling |
+| `wisp` | 12 (M0.6 → M0.19) | 256×256 PNG |
+| `ui-storybook` | 18 (Button, Card, DopeSheet, DropZone, PlayerControls, RecordingToolbar, StatusBar, compositions) | Standalone HTML with stylesheet inlined |
+| `playback` | 2 example outputs (`timed_playback`, `play_file`) | PNG sequences |
 
-See `_docs/QA.md` for the full tier breakdown — `gate` (~30s) → `pr` (~3 min) → `release` (~10 min) → `full` (slow, on demand).
+Regenerate any time:
+
+```bash
+just snapshots          # both storybooks
+just snapshots-wisp     # wgpu stories only
+just snapshots-ui       # Leptos UI stories only
+```
 
 ---
 
-## Why this metaphor
+## Stack
 
-The wisp library has a literal `Stage` type. It's the root of the scene graph — every renderable lives under it. Building from there: `Container` is the ensemble player, `Sprite` carries a Backdrop (a Texture), `Graphics` paints scenery (the Sets), and Filters provide the Lighting that gives each scene its mood.
+| Layer | Choice |
+|---|---|
+| Shell | Tauri 2 (multi-window) |
+| UI | Leptos 0.7 (Rust → WASM) inside the Tauri webview |
+| Renderer | `wisp` (this repo) — wgpu + WGSL, Pixi-shaped public API |
+| Editor preview | native `winit` sibling window rendered by `wisp` |
+| Decode | GStreamer 1.x (CLI-pipe today; `gstreamer-rs` Rust bindings later) |
+| Capture | `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux) |
+| Encode | `ffmpeg-next` for MVP; `VideoToolbox` / `MediaFoundation` HW paths in v2 |
 
-When you say "block scene M0.14" or "the Promptbook says we ran the dress rehearsal yesterday", the meaning is unambiguous. The metaphor names map one-to-one to source files and tools, so navigating the codebase becomes navigating a production you already understand.
+Locked 2026-05-09. Stack changes require an entry in `_docs/ISSUES.md`.
 
-When in doubt, the Director's Bible (`CLAUDE.md`) is the entry point. It loads automatically on every Claude Code session and lays out the non-negotiable loop in two screens.
+---
+
+## Contributing
+
+This codebase grew under one set of conventions; new contributors should read
+in this order:
+
+1. [`CLAUDE.md`](./CLAUDE.md) — top-level conventions + the anti-patterns list.
+2. [`_docs/WORKFLOW.md`](./_docs/WORKFLOW.md) — the 11-step per-task contract.
+3. [`_docs/TESTING.md`](./_docs/TESTING.md) — testing strategy + per-chunk
+   minimums.
+4. [`_docs/CONVENTIONS.md`](./_docs/CONVENTIONS.md) — code standards.
+5. The current milestone doc (e.g. `_docs/milestone-0-renderer.md`).
+6. [`_docs/ISSUES.md`](./_docs/ISSUES.md) — known bugs / deferrals.
+
+> Anything that costs a recursive-fix iteration *and isn't already in
+> CLAUDE.md* is a missing rehearsal note. Add it the same commit you fix
+> the bug.
+
+---
+
+## License
+
+MIT. Workspace `Cargo.toml` declares `license = "MIT"` for every crate.
+
+---
+
+## Acknowledgements
+
+The renderer's public API shape is informed by [PixiJS](https://pixijs.com)
+(decade-refined 2D scene-graph design). The recorder UX takes cues from
+[Screen Studio](https://screen.studio) and the open-source
+[OpenScreen](https://github.com/siddharthvaddem/openscreen) project.
