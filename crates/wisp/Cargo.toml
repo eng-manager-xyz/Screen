@@ -1,0 +1,29 @@
+[package]
+name = "wisp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "2D scene graph + filter chain on wgpu, Pixi-shaped."
+
+[lints]
+workspace = true
+
+[dependencies]
+wgpu = "24"
+glam = "0.29"
+bytemuck = { version = "1", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+slotmap = "1"
+thiserror = "2"
+tracing = "0.1"
+# fontdue added in M0.15 (text).
+
+[dev-dependencies]
+pollster = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+winit = "0.30"
+# Testing spine — see _docs/TESTING.md
+rstest = "0.25"
+insta = { version = "1", features = ["json", "yaml", "redactions"] }
+proptest = "1"
