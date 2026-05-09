@@ -110,6 +110,13 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **`tauri::generate_context!` is a procedural macro** that depends on `tauri` at expansion time. `cargo machete` doesn't see this — add `[package.metadata.cargo-machete] ignored = ["tauri"]` to suppress the false positive.
 - **Tauri 2's Linux backend pulls archived gtk-rs crates.** Expect ~16 RustSec advisories on Linux (RUSTSEC-2024-0411..0420 family + 2025-0075..0100). All unmaintained-only, none exploits. Add to `deny.toml` `[advisories].ignore` once. (M1.1, ISS-02.)
 
+### Leptos `#[component]` specifics
+
+- **`#[component]` rewrites function shape.** It generates a builder-pattern struct + wrapper fn; clippy lints (`must_use_candidate`, `needless_pass_by_value`) fire on the *generated* code regardless of where you put `#[allow]` on the source fn. **Use module-level `#![allow(...)]`** in `components/mod.rs` rather than per-fn pragmas.
+- **`leptos::prelude::*` re-exports `tachys::prelude::*`,** which brings `RenderHtml::to_html()` into scope. SSR test pattern: `view.into_view().to_html()` — synchronous, returns `String`, perfect for `insta`.
+- **`<Show when=…>` requires the `when` closure to be `'static`.** If the `when` reads from a captured `String`, capture a `bool` instead and clone the `String` inside the body.
+- **Plain CSS over Tailwind in this workspace.** Keeps the toolchain Rust-only (no npm / standalone binary fetch). Class names mirror rust-ui's hooks so a future swap is search-and-replace, not a rewrite.
+
 ### Story testing pattern (insta + wgpu error scopes)
 
 - **`insta` first-run UX:** initial run stores `*.snap.new` and FAILS the test (no baseline to compare). Accept by `mv *.snap.new *.snap` (or `cargo insta accept`). `INSTA_UPDATE=auto` does NOT auto-accept first-time snapshots — it only auto-accepts mismatches once a baseline exists.
@@ -176,7 +183,10 @@ For every task in the task list:
 ## Hard rules (the full list)
 
 - **Every meaningful chunk ships with at least one test** (unit / integration / snapshot / property / regression). See `_docs/TESTING.md` "anti-regression gravity".
-- **Every renderable feature ships with a storybook story.** New visible behavior must show up in `just storybook` with a write-up in the right sidebar. Non-render features (math, capture, encode, file I/O) are exempt.
+- **Every renderable feature ships with a storybook story.** New visible behavior must show up in `just storybook` (wgpu side) or `just ui-storybook` (HTML/Leptos side) with a write-up in the right sidebar. Non-render features (math, capture, encode, file I/O) are exempt.
+- **Every UI component (Leptos / HTML) ships with a story.** Both isolated views and compositions must appear in `crates/ui-storybook/src/stories.rs` and pass the SSR snapshot gate (`tests/snapshots.rs`). The convention parallels wisp's "every renderable chunk ships with a story" — same shape, different rendering layer.
+- **Every public item has a `///` doc + every crate has a `//!` header.** `missing_docs` is a workspace `warn` lint; `just docs-strict` (in `just gate`) treats broken intra-doc links and rustdoc warnings as errors. New public items without docs trip the gate.
+- **Every visible chunk regenerates its asset under `_docs/book/src/assets/<crate>/<id>.{png,html}`.** `just snapshots` runs the headless exporters for both storybooks; the resulting files are committed and embedded into the mdBook chapters via standard markdown. Without an asset, the chunk's docs page renders empty — that's the gate.
 - **`just gate` must be green before any task is marked done.** No exceptions.
 - **Recursive-fix loop:** if `just gate` is red, loop until green. Never disable tests, never `#[allow]` clippy without reason, never bypass deny/machete findings.
 - **Append to `PROGRESS.md` for every completed task.** It's the only durable record across context windows.
@@ -228,6 +238,10 @@ screen/
 ├─ rust-toolchain.toml      # nightly
 ├─ crates/
 │  ├─ app/                  # screen-app — Tauri+Leptos shell (M1+)
-│  └─ wisp/                 # the renderer library (M0+)
+│  ├─ wisp/                 # the renderer library (M0+)
+│  ├─ wisp-storybook/       # wgpu story gallery (eframe)
+│  └─ ui-storybook/         # Leptos UI gallery (SSR snapshots; Trunk for browser)
 └─ _docs/                   # all planning, research, ops docs
+   └─ book/                 # mdBook prose site (rendered to target/book/)
+      └─ src/assets/        # per-crate generated screenshots / story HTML
 ```

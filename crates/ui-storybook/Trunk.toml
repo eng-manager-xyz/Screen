@@ -1,0 +1,19 @@
+# Trunk configuration for browser-side serving.
+#
+# The default `cargo` flow uses the `ssr` feature for snapshot tests on a
+# native target. To serve in a browser we need the `csr` feature instead and
+# a `wasm32-unknown-unknown` target — Trunk wires that up.
+#
+# Run from this directory:
+#   trunk serve --no-default-features --features csr --open
+#
+# Note: a `csr` entry-point (`src/main.rs` with `mount_to_body`) is not yet
+# wired up. The current state ships SSR + snapshot-test coverage; csr will
+# follow in a later chunk that adds a story-router with sidebar navigation.
+
+[build]
+target = "index.html"
+
+[serve]
+address = "127.0.0.1"
+port = 8080

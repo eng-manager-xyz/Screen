@@ -1,0 +1,28 @@
+[package]
+name = "ui-storybook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Leptos-based UI component gallery (parallels wisp-storybook for the HTML/CSS side)."
+
+[lints]
+workspace = true
+
+[lib]
+name = "ui_storybook"
+path = "src/lib.rs"
+
+[features]
+# `ssr` is the default so `cargo check` / `cargo test` work on a native target
+# without Trunk or the wasm toolchain. Browser-side serving via Trunk is a
+# separate path (use `--no-default-features --features csr` for that).
+default = ["ssr"]
+ssr = ["leptos/ssr"]
+csr = ["leptos/csr"]
+
+[dependencies]
+leptos = { version = "0.7", default-features = false }
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
