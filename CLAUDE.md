@@ -174,6 +174,14 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
   Also apt-install the matching headers for CI (`libx11-dev`,
   `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`,
   `libxcursor-dev`, `libxrandr-dev`, `libxi-dev`).
+  **AND** chase down every dep edge that re-pulls winit. eframe with
+  `default-features = false` strips its own `x11`/`wayland` features
+  (which proxy to `winit/x11`/`winit/wayland`); add them back
+  explicitly: `eframe = { default-features = false, features = ["wgpu",
+  "default_fonts", "x11", "wayland"] }`. The `cargo check --all-features`
+  workspace gate masks this because feature unification activates them
+  via SOME other edge; `cargo doc` (no `--all-features`) is stricter
+  and surfaces the gap.
 - **Never set `RUSTFLAGS: -D warnings` at the workflow `env:` level.**
   It promotes transitive-crate future-incompat warnings (`block v0.1.6`,
   `proc-macro-error2 v2.0.1`, …) into hard failures. We can't fix those

@@ -28,7 +28,12 @@ wisp = { workspace = true }
 glam = { workspace = true }
 wgpu = { workspace = true }
 tracing-subscriber = { workspace = true }
-eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts"] }
+# `default-features = false` strips eframe's `x11` + `wayland` features
+# (which proxy through to `winit/x11` + `winit/wayland`); without them
+# `cargo doc` on Linux trips winit's `compile_error!`. `cargo check
+# --all-features` union-merges enough features to mask this from the
+# rest of the gate, so the failure only surfaces in `just docs`.
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
 egui = "0.31"
 pollster = { workspace = true }
 image = "0.25"
