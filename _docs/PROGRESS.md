@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-UI.4 — StatusBar (ready / busy / error)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — fourth chunk under the workflow.
+- **Files:** `crates/ui-storybook/src/components/status_bar.rs` (StatusBar + StatusKind + format_bytes); `assets/style.css` (~55 lines: cells, pill variants, pulsing-busy dot reusing `@keyframes rec-pulse`); `stories.rs` (3 new stories under "Shell" category, plus `#[allow(too_many_lines)]` on `all_stories` since the registry pattern reads better flat); SSR snapshot regenerated; 3 chapters under `ui/chunks/`; `SUMMARY.md`.
+- **Verified:** `just gate` green; `just snapshots-ui` regenerated 18 demos (was 15); `just site` renders all three chapters.
+- **Three telemetry cells + health pill:**
+  - `Ready` (green pill, no detail)
+  - `Busy` (sky pill with pulsing dot, free-text detail e.g. `"Encoding · 38%"`)
+  - `Error` (red pill, no pulse — explicit "stopped" state, free-text detail carries the error)
+- `format_bytes` rolls B → KB → MB → GB with appropriate fractional precision so `24_117_248` reads as `23.0 MB` rather than a wall of digits.
+
+---
+
 ## M-UI.3 — RecordingToolbar (idle / recording / paused)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — third chunk under the workflow.
