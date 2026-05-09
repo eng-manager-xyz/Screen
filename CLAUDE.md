@@ -135,6 +135,31 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
+### CI / GitHub Actions / Linux runner
+
+- **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
+  `cargo check` time, not just at link time.** `glib-sys`'s build script
+  invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
+  headers aren't present. **Install before any cargo invocation in CI:**
+  `pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  build-essential` (the official Tauri 2 prerequisite list). Affects
+  *every* CI workflow that compiles the workspace, not just the gate —
+  the docs workflow's `cargo doc --workspace` hits the same wall.
+- **GStreamer in CI: install `gstreamer1.0-tools gstreamer1.0-plugins-base
+  gstreamer1.0-plugins-good gstreamer1.0-libav`.** Without
+  `gstreamer1.0-libav` the H.264 fixture in `decode/tests/fixtures/sample.mp4`
+  doesn't decode (libav is what carries the H.264 plugin on stock Ubuntu).
+- **Cache `target/` plus `~/.cargo/registry/{index,cache}` and
+  `~/.cargo/git/db`** keyed on `Cargo.lock`. Caching just `~/.cargo` and
+  not `target/` halves the speedup; caching the workspace `target/`
+  yields the biggest win.
+- **HTTPS push to a fresh GitHub repo can hit transient HTTP 400
+  ("send-pack: unexpected disconnect").** Fix: `git config --local
+  http.postBuffer 524288000` (500 MB). The default 1 MB buffer is
+  enough for small commits but stalls on initial repo seeding with
+  binary assets (PNGs, MP4 fixtures).
+
 ### Trunk + Leptos CSR
 
 - **`data-cargo-features="…"` only if the feature actually exists.** Trunk
