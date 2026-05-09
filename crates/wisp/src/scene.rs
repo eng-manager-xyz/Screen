@@ -15,6 +15,7 @@ pub mod transform;
 use slotmap::SlotMap;
 
 pub use container::Container;
+pub use graphics::{Fill, Graphics};
 pub use node::{Node, NodeId};
 pub use sprite::Sprite;
 pub use transform::Transform;

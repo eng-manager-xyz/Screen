@@ -6,6 +6,34 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.12 — Graphics solid fills (rect + rounded rect)
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp/src/scene/graphics.rs` — `Graphics`, `Fill::Solid(Color)`, internal `Primitive::RoundedRect { rect, radius, fill }`. Builder API: `new()`, `fill(Fill)`, `draw_rect(Rect)`, `draw_rounded_rect(Rect, radius)`. 6 unit tests.
+  - `crates/wisp/src/scene/node.rs` — added `Node::Graphics(Graphics)` variant + `From<Graphics> for Node`
+  - `crates/wisp/src/scene.rs` / `lib.rs` — re-export `Fill`, `Graphics`
+  - `crates/wisp/shaders/graphics_solid.wgsl` — instanced SDF rounded-rect shader (radius=0 ⇒ sharp); `fwidth`-based AA
+  - `crates/wisp/src/render/graphics_pipeline.rs` — instance vertex layout (`mat4×4 + vec4 + vec2 + f32 + pad`), `draw_stage` collects primitives across all `Graphics` nodes into one batch
+  - `crates/wisp/src/render.rs` — wire `GraphicsPipeline` into `Renderer`, add `RenderStats::graphics_drawn`
+  - `crates/wisp/tests/render_graphics.rs` — 4 integration tests including `solid_rect_fills_specified_region` (pixel verification at center + corner) and `rounded_rect_clears_corners` (corner pixel cut by SDF) + `many_primitives_batch_into_one_draw_call` (50 rects = 1 draw call)
+- **Verified:**
+  - `just gate` — passes (73 tests, was 63)
+  - `just security` — clean
+- **Notes:**
+  - **One unified shader for rect + rounded rect.** The milestone doc suggested separate `graphics_solid.wgsl` and `rounded_quad.wgsl`; collapsed into one because `radius == 0` already produces a sharp rect under the SDF. Less code, one pipeline, primitives across all `Graphics` batch into one draw call.
+  - **Pixel-readback verification works.** The center-of-rect / corner-of-rounded-rect tests confirm the SDF + AA produce visually-correct output, not just non-panicking submissions.
+  - **Recursive-fix loop fired 4 iterations:**
+    1. `fmt` collapses
+    2. `clippy::derivable_impls` — replaced manual `Default for Graphics` with `#[derive(Default)]`
+    3. `clippy::identity_op` — `1 * 32 + 1` → `32 + 1`
+    4. green
+  - **All Graphics primitives across the entire scene batch into 1 draw call.** Stress test: 50 primitives in one Graphics, all in one draw call — verified by `many_primitives_batch_into_one_draw_call`.
+  - **Sprite + Graphics together = 2 draw calls** (one per pipeline). Render order: sprites first, then graphics. M0.13/M0.14 keep adding to graphics; render order stays sprite→graphics for now.
+- **Issues filed:** none
+
+---
+
 ## M0.11 — VideoTexture + RenderTexture
 - **Date:** 2026-05-09
 - **Status:** ✅ done

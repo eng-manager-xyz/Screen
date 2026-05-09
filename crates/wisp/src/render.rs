@@ -10,10 +10,12 @@ pub mod batcher;
 pub mod pass;
 pub mod pipeline;
 
+mod graphics_pipeline;
 mod quad_pipeline;
 mod sprite_pipeline;
 mod triangle_pipeline;
 
+use graphics_pipeline::GraphicsPipeline;
 use quad_pipeline::QuadPipeline;
 use sprite_pipeline::SpritePipeline;
 use triangle_pipeline::TrianglePipeline;
@@ -31,6 +33,8 @@ pub struct RenderStats {
     pub draw_calls: u32,
     /// Total sprites rendered across all batches.
     pub sprites_drawn: u32,
+    /// Total graphics primitives rendered.
+    pub graphics_drawn: u32,
 }
 
 /// 2D renderer.
@@ -41,6 +45,7 @@ pub struct Renderer {
     triangle: TrianglePipeline,
     quad: QuadPipeline,
     sprite: SpritePipeline,
+    graphics: GraphicsPipeline,
 }
 
 impl Renderer {
@@ -53,10 +58,12 @@ impl Renderer {
         let triangle = TrianglePipeline::new(app, output_format);
         let quad = QuadPipeline::new(app, output_format);
         let sprite = SpritePipeline::new(app, output_format);
+        let graphics = GraphicsPipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
             sprite,
+            graphics,
         })
     }
 
@@ -94,9 +101,11 @@ impl Renderer {
     ) -> RenderStats {
         let mut stats = RenderStats::default();
         Self::with_clearing_pass(app, view, clear, |pass| {
-            let (draw_calls, sprites_drawn) = self.sprite.draw_stage(app, pass, stage);
-            stats.draw_calls = draw_calls;
+            let (sprite_calls, sprites_drawn) = self.sprite.draw_stage(app, pass, stage);
+            let (graphics_calls, graphics_drawn) = self.graphics.draw_stage(app, pass, stage);
+            stats.draw_calls = sprite_calls + graphics_calls;
             stats.sprites_drawn = sprites_drawn;
+            stats.graphics_drawn = graphics_drawn;
         });
         stats
     }
