@@ -137,6 +137,25 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 ### CI / GitHub Actions / Linux runner
 
+- **`macos-latest` is the truth runner for wgpu tests.** GitHub-hosted
+  Linux runners only have lavapipe (mesa's software Vulkan), which loses
+  the device on multi-bind-group filter pipelines. macOS runners have
+  real Apple Silicon Metal — same backend as the dev box — and run all
+  117 tests without skips. macos-latest minutes are free on public
+  repos; on private repos they're 10× the multiplier so use a matrix
+  judiciously. **Default the gate to a matrix `[macos-latest,
+  ubuntu-latest]` with `fail-fast: false`**: macOS validates "real
+  hardware passes everything"; Linux validates the build path
+  (gtk-rs/winit/apt deps) with the lavapipe-affected tests skipped via
+  `WISP_SKIP_GPU_FILTER_TESTS=1`.
+- **Don't rely on Linux GPU tests in CI without real hardware.**
+  Filter pipelines that work on Metal/hardware-Vulkan/D3D will fail on
+  lavapipe with `Validation Error / Parent device is lost`. Refactoring
+  the pipelines to fit lavapipe is the wrong call — it compromises
+  real-GPU design for a software emulator's limits. Either run on
+  macos-latest, gate the test on an env-var skip, or bring real
+  hardware via a self-hosted runner.
+
 - **winit 0.30 fails to compile on Linux with
   `compile_error!("The platform you're compiling for is not supported by
   winit")` if `x11` and `wayland` features aren't active.** Both are

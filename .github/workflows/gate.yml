@@ -1,9 +1,22 @@
 # `just gate` in CI — fmt, check, lint, nextest, doctest, cargo doc.
 #
-# Runs on pushes to `main` and on every PR. GStreamer is installed because
-# the decode crate's integration tests depend on `gst-launch-1.0` /
-# `gst-discoverer-1.0` — without it those tests skip but the build still
-# needs the system libs for the `gstreamer` runtime probe to be honest.
+# # Why a matrix
+#
+# **macos-latest is the truth runner.** It has real Apple Silicon Metal,
+# the same backend the dev box uses, so every wgpu test runs against a
+# real GPU and *all 117 tests pass without skips*.
+#
+# **ubuntu-latest validates the Linux build path** (Tauri 2's gtk-rs
+# toolchain, winit's x11/wayland features, GStreamer apt deps). It also
+# runs every non-GPU-heavy test. The 3 multi-bind-group filter tests
+# (`blur_filter_smears_edge`, `motion_blur_zero_velocity_is_no_op`,
+# `drop_shadow_renders_visible_shadow`) are skipped via
+# `WISP_SKIP_GPU_FILTER_TESTS=1` because lavapipe (mesa's software
+# Vulkan) reliably loses the device when wgpu asks it to build those
+# specific pipelines. A future real-hardware Linux CI runner would
+# leave the env var unset and run them.
+#
+# `fail-fast: false` so one platform's failure doesn't cancel the other.
 
 name: gate
 
@@ -19,7 +32,12 @@ env:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    name: gate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,11 +59,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-gate-
 
-      # Tauri 2's Linux backend pulls a chunky gtk-rs / glib / webkit2gtk
-      # toolchain; without these dev headers `glib-sys`'s build script
-      # fails at pkg-config. List sourced from the official Tauri 2
-      # prerequisites for Debian/Ubuntu.
-      - name: Install Linux build deps (Tauri 2 + GStreamer + wgpu lavapipe)
+      - name: Install macOS deps (GStreamer)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install gstreamer
+
+      - name: Install Linux deps (Tauri 2 + GStreamer + lavapipe + winit)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -74,20 +96,15 @@ jobs:
             libxcursor-dev \
             libxrandr-dev \
             libxi-dev
-        env:
-          DEBIAN_FRONTEND: noninteractive
 
-      # wgpu picks the highest-priority adapter; on a headless Linux runner
-      # that's lavapipe (software Vulkan from mesa-vulkan-drivers).
-      # Without these env vars wgpu can hang on initial adapter probe.
-      - name: Configure wgpu for headless CI
+      - name: Configure wgpu for Linux headless CI
+        if: matrix.os == 'ubuntu-latest'
         run: |
           echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
           echo "WGPU_POWER_PREF=low" >> "$GITHUB_ENV"
-          # Lavapipe panics on multi-bind-group filter pipelines (blur,
-          # drop-shadow, motion-blur). The 3 tests guard on this env var
-          # and skip with an explanatory message; real-hardware CI (or
-          # local dev) leaves it unset and runs them normally.
+          # Lavapipe loses the device on multi-bind-group filter
+          # pipelines; the affected tests guard on this env var. macOS
+          # uses real Metal and runs them.
           echo "WISP_SKIP_GPU_FILTER_TESTS=1" >> "$GITHUB_ENV"
 
       - name: Install just
