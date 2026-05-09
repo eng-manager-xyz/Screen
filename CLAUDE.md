@@ -56,6 +56,66 @@ This convention is enforced by `_docs/WORKFLOW.md` § 4 and `_docs/TESTING.md`. 
 
 ---
 
+## ⚠️ Notes from rehearsal — anti-patterns we've earned
+
+Every rule below cost a recursive-fix iteration somewhere in the source. **Apply them prophylactically.** Repeating a documented mistake is a worse miss than a fresh one — the lesson is here to be applied.
+
+**The discipline:** every time the loop closes on a NEW mistake — diagnose, fix, then add a one-line lesson here. The cost is one line in this file; the cost of recreation is a recursive-fix iteration.
+
+### Cast hygiene (Rust idioms / clippy)
+
+- **`f32::from(x)` for `u8`/`u16` → `f32`**, never `x as f32` (clippy::cast_precision_loss).
+- **`u32::try_from(x).expect(...)` for `usize` → `u32`**, never `x as u32` (clippy::cast_possible_truncation).
+- **`f32 as u32` requires `#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "...")]`** even after `clamp` + `round` — the clamp bound isn't visible to clippy.
+- **`iter.next_back()`**, never `iter.rev().next()` (clippy::manual_next_back).
+- **Chained `if let Some(a) && let Some(b)`** (Rust 2024), never nested `if let` (clippy::collapsible_if).
+- **No `let mut x` if `x` isn't mutated** (unused_mut).
+- **No `1 * N`** (clippy::identity_op).
+- **Use associated `Self::method` if `&self` isn't used** (clippy::unused_self).
+- **`#[derive(Default)]` if the manual impl matches** (clippy::derivable_impls).
+- **Iterator returns: declare `impl DoubleEndedIterator + ExactSizeIterator`** when callers need `.rev()` / `.len()` — bare `impl Iterator` drops those.
+
+### Foreign-type wrappers
+
+- **Public structs containing wgpu / winit types need manual `impl Debug`** — those crates don't all derive Debug.
+
+### Search/replace discipline
+
+- **NEVER `replace_all` on a substring** that appears in unrelated identifiers. M0.11 disaster: `_texture` → `texture` clobbered `render_texture`, `video_texture`, `create_texture`, `write_texture`, `wgpu_texture`. **Audit matches first** or use `Edit` with surrounding context.
+
+### Coordinate / pixel-readback
+
+- **sRGB byte-exact tests use `Rgba8Unorm`** (linear). `Rgba8UnormSrgb` is for display — clear color `0.251` becomes `137` on read-back, not `64`.
+- **Interior pixel sampling:** for a primitive in NDC `[-0.5, +0.5]` rendered to an N-row image, valid interior rows are `~N/4..3N/4`. Boundary rows hit the SDF anti-alias band; rows just outside the rect read as the clear color (M0.14 bug — picked row 24 in a 32-row image, which is at NDC y=-0.53, outside).
+
+### Slotmap & ownership
+
+- **`NodeId`s aren't unique across distinct `SlotMap`s** — both start at slot 0/gen 1 and collide. For staleness tests: `destroy(id)` then re-use the same map.
+
+### Dependencies
+
+- **YAGNI for deps** — `cargo machete` is the gate. M0.2 pre-added `slotmap` / `image` / `fontdue` ahead of need; machete caught it. Don't add until the first `use` site.
+- **Embedding-host wgpu version match first.** When adding an embedding host (`eframe`, `iced`, etc.), bump it to whichever major aligns with our wgpu *before* any integration. egui 0.29 = wgpu 22; egui 0.31 = wgpu 24 — we burned a build cycle on this.
+- **GUI deps bring font licenses.** Expect new entries in `deny.toml` (`OFL-1.1`, `Ubuntu-font-1.0`) when adding eframe / similar. These are routine, not red flags.
+
+### wgpu API specifics
+
+- **wgpu names shift between majors** — `ImageCopyTexture` → `TexelCopyTextureInfo`, `ImageDataLayout` → `TexelCopyBufferLayout` (renamed in 24). `request_adapter` returns `Option`, not `Result`. `request_device` takes `(descriptor, trace_path)`. Iterate via cargo errors when bumping.
+
+### Build hygiene
+
+- **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
+- **`#[allow(clippy::*)]` requires `reason = "..."`** — no exceptions.
+
+### When you hit a NEW mistake
+
+1. Fix the issue (recursive-fix loop).
+2. **Add a one-line lesson here** under the right category.
+3. Commit the lesson alongside the fix (or as `docs:` if separated).
+4. Future runs apply the lesson prophylactically — that's the whole point.
+
+---
+
 ## What this project is
 
 A native screen recorder in the Screen Studio / OpenScreen lineage, built as an all-Rust stack. Two parallel deliverables:
