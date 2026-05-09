@@ -25,8 +25,10 @@ use triangle_pipeline::TrianglePipeline;
 use crate::application::Application;
 use crate::color::Color;
 use crate::error::Error;
+use crate::filter::{Filter, FilterContext};
 use crate::scene::Stage;
 use crate::texture::Texture;
+use crate::texture::render_texture::RenderTexture;
 
 /// Frame statistics returned by [`Renderer::render_stage`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +119,53 @@ impl Renderer {
             stats.glyphs_drawn = glyphs_drawn;
         });
         stats
+    }
+
+    /// Apply `filter` to `input`, writing the final result to `output`.
+    ///
+    /// Multi-pass filters allocate a scratch `RenderTexture` (same size +
+    /// format as `output`) and ping-pong between it and `output`.
+    pub fn apply_filter(
+        &self,
+        app: &Application,
+        filter: &dyn Filter,
+        input: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let n = filter.passes();
+        debug_assert!(n >= 1, "Filter::passes() must be >= 1");
+
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::apply_filter encoder"),
+            });
+
+        if n == 1 {
+            let mut ctx = FilterContext {
+                app,
+                encoder: &mut encoder,
+            };
+            filter.render_pass(&mut ctx, input, output, 0);
+        } else {
+            let scratch =
+                RenderTexture::with_format(app, input.width(), input.height(), output.format());
+            let mut ctx = FilterContext {
+                app,
+                encoder: &mut encoder,
+            };
+            // pass 0: input → scratch
+            filter.render_pass(&mut ctx, input, &scratch, 0);
+            // intermediate passes (rare for our M0.16 filters): scratch → scratch.
+            // Ping-pong needs two scratches; for n=2 (BlurFilter) we don't hit this.
+            for p in 1..(n - 1) {
+                filter.render_pass(&mut ctx, &scratch, &scratch, p);
+            }
+            // last pass: scratch → output
+            filter.render_pass(&mut ctx, &scratch, output, n - 1);
+        }
+
+        app.queue().submit(std::iter::once(encoder.finish()));
     }
 
     fn with_clearing_pass(

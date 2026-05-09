@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.16 — Filter trait + BlurFilter
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files:** `filter.rs` (trait + FilterContext), `filter/blur.rs`, `shaders/filter_blur.wgsl`, `render.rs::apply_filter` orchestrator, tests, storybook story
+- **Verified:** `just gate` (87 tests, was 85), `just security` clean, storybook "Blur filter"
+- **Notes:** Two-pass separable Gaussian. Filter::apply_filter orchestrator allocates a scratch RenderTexture and ping-pongs. Test caught a real geometry surprise: blur with `radius=4` and offset multiplier `i*radius` spans 16 texels — too wide for a 12-px input square; centers darken under wide blur. Test now uses `radius=1.0` for the brightness assertion + a sum-of-diffs check that proves the blur ran.
+- **Issues filed:** none
+
+---
+
 ## M0.15 — Bitmap font atlas + Text node
 - **Date:** 2026-05-09
 - **Status:** ✅ done

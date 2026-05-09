@@ -1,6 +1,7 @@
 //! Registry of all stories. Each chunk that introduces a renderable feature
 //! adds one entry here.
 
+mod s_blur_filter;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
@@ -21,5 +22,6 @@ pub fn all_stories() -> Vec<Story> {
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),
+        s_blur_filter::story(),
     ]
 }
