@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.15 — Bitmap font atlas + Text node
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:** `Cargo.toml` (font8x8), `scene/text.rs`, `scene/node.rs`, `shaders/text.wgsl`, `render/text_pipeline.rs`, `render.rs` (+ glyphs_drawn stat), tests, storybook story
+- **Verified:** `just gate` (85 tests, was 78), `just security` clean, storybook shows "Bitmap text"
+- **Notes:**
+  - **Decision:** font8x8 (bitmap, embedded) over fontdue (vector, needs binary). Avoids checking in font files; vector swap is a future chunk if needed.
+  - **New lesson recorded:** empty wgpu buffer panics on `buffer.slice(..)` — always skip empty batches before the draw path. Documented in CLAUDE.md.
+  - **Recursive-fix loop:** 4 iterations (fmt, clippy similar_names + cast_precision in atlas math, doc backticks, empty-buffer panic).
+- **Issues filed:** none
+
+---
+
 ## M0.14 — Graphics gradient fills (linear + radial)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first chunk under the locked storybook convention

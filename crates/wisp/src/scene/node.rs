@@ -1,7 +1,7 @@
 //! Tagged union of scene-graph node variants.
 //!
 //! As new node types land they're added as variants. M0.8 starts with only
-//! `Container`; M0.9 adds `Sprite`; M0.12 adds `Graphics`. M0.15 adds `Text`,
+//! `Container`; M0.9 adds `Sprite`; M0.12 adds `Graphics`; M0.15 adds `Text`.
 //! M0.19 adds `Mesh`.
 
 use slotmap::new_key_type;
@@ -9,6 +9,7 @@ use slotmap::new_key_type;
 use crate::scene::container::Container;
 use crate::scene::graphics::Graphics;
 use crate::scene::sprite::Sprite;
+use crate::scene::text::Text;
 
 new_key_type! {
     /// Stable handle for a scene-graph node owned by a [`crate::scene::Stage`].
@@ -22,8 +23,10 @@ pub enum Node {
     Container(Container),
     /// Textured quad sprite.
     Sprite(Sprite),
-    /// Vector-primitive node (filled rects, rounded rects; M0.13 adds ellipse/line/stroke).
+    /// Vector-primitive node (rect / rounded rect / ellipse / line / gradients).
     Graphics(Graphics),
+    /// Bitmap glyph-string text node.
+    Text(Text),
 }
 
 impl Node {
@@ -37,6 +40,7 @@ impl Node {
             Self::Container(c) => c,
             Self::Sprite(s) => &s.container,
             Self::Graphics(g) => &g.container,
+            Self::Text(t) => &t.container,
         }
     }
 
@@ -46,6 +50,7 @@ impl Node {
             Self::Container(c) => c,
             Self::Sprite(s) => &mut s.container,
             Self::Graphics(g) => &mut g.container,
+            Self::Text(t) => &mut t.container,
         }
     }
 }
@@ -65,5 +70,11 @@ impl From<Sprite> for Node {
 impl From<Graphics> for Node {
     fn from(g: Graphics) -> Self {
         Self::Graphics(g)
+    }
+}
+
+impl From<Text> for Node {
+    fn from(t: Text) -> Self {
+        Self::Text(t)
     }
 }

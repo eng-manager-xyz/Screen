@@ -15,9 +15,9 @@ glam = "0.29"
 bytemuck = { version = "1", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 slotmap = "1"
+font8x8 = { version = "0.3", default-features = false, features = ["unicode"] }
 thiserror = "2"
 tracing = "0.1"
-# fontdue added in M0.15 (text).
 
 [dev-dependencies]
 pollster = "0.4"

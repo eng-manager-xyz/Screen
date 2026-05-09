@@ -13,11 +13,13 @@ pub mod pipeline;
 mod graphics_pipeline;
 mod quad_pipeline;
 mod sprite_pipeline;
+mod text_pipeline;
 mod triangle_pipeline;
 
 use graphics_pipeline::GraphicsPipeline;
 use quad_pipeline::QuadPipeline;
 use sprite_pipeline::SpritePipeline;
+use text_pipeline::TextPipeline;
 use triangle_pipeline::TrianglePipeline;
 
 use crate::application::Application;
@@ -35,6 +37,8 @@ pub struct RenderStats {
     pub sprites_drawn: u32,
     /// Total graphics primitives rendered.
     pub graphics_drawn: u32,
+    /// Total text glyphs rendered.
+    pub glyphs_drawn: u32,
 }
 
 /// 2D renderer.
@@ -46,6 +50,7 @@ pub struct Renderer {
     quad: QuadPipeline,
     sprite: SpritePipeline,
     graphics: GraphicsPipeline,
+    text: TextPipeline,
 }
 
 impl Renderer {
@@ -59,11 +64,13 @@ impl Renderer {
         let quad = QuadPipeline::new(app, output_format);
         let sprite = SpritePipeline::new(app, output_format);
         let graphics = GraphicsPipeline::new(app, output_format);
+        let text = TextPipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
             sprite,
             graphics,
+            text,
         })
     }
 
@@ -103,9 +110,11 @@ impl Renderer {
         Self::with_clearing_pass(app, view, clear, |pass| {
             let (sprite_calls, sprites_drawn) = self.sprite.draw_stage(app, pass, stage);
             let (graphics_calls, graphics_drawn) = self.graphics.draw_stage(app, pass, stage);
-            stats.draw_calls = sprite_calls + graphics_calls;
+            let (text_calls, glyphs_drawn) = self.text.draw_stage(app, pass, stage);
+            stats.draw_calls = sprite_calls + graphics_calls + text_calls;
             stats.sprites_drawn = sprites_drawn;
             stats.graphics_drawn = graphics_drawn;
+            stats.glyphs_drawn = glyphs_drawn;
         });
         stats
     }

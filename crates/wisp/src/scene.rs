@@ -18,6 +18,7 @@ pub use container::Container;
 pub use graphics::{Fill, Graphics, Stroke};
 pub use node::{Node, NodeId};
 pub use sprite::Sprite;
+pub use text::{Font, Text};
 pub use transform::Transform;
 
 /// Scene graph root.

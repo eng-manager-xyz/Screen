@@ -101,6 +101,7 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 ### wgpu API specifics
 
 - **wgpu names shift between majors** — `ImageCopyTexture` → `TexelCopyTextureInfo`, `ImageDataLayout` → `TexelCopyBufferLayout` (renamed in 24). `request_adapter` returns `Option`, not `Result`. `request_device` takes `(descriptor, trace_path)`. Iterate via cargo errors when bumping.
+- **Empty wgpu buffers panic when sliced.** `create_buffer_init` with `contents: &[]` produces a 0-byte buffer, then `buffer.slice(..)` aborts at `slice offset 0 is out of range for buffer of size 0`. Always `if batch.is_empty() { continue; }` before the buffer + draw path. (M0.15 caught this.)
 
 ### Build hygiene
 
