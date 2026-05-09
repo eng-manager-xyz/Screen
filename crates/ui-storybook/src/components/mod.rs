@@ -26,7 +26,9 @@
 pub mod button;
 pub mod card;
 pub mod dope_sheet;
+pub mod drop_zone;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use card::{Card, CardBody, CardHeader};
 pub use dope_sheet::{DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, TrackKind};
+pub use drop_zone::{DropZone, DropZoneState};

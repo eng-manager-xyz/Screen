@@ -39,6 +39,8 @@
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)
+  - [Drop zone — idle](./ui/chunks/drop-zone-idle.md)
+  - [Drop zone — active](./ui/chunks/drop-zone-active.md)
 - [Dope sheet](./ui/dope-sheet.md)
   - [Multi-track](./ui/chunks/dope-sheet-basic.md)
   - [Dense keyframes](./ui/chunks/dope-sheet-dense.md)

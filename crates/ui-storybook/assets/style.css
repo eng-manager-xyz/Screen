@@ -196,6 +196,61 @@ kbd {
   pointer-events: none;
 }
 
+/* ───── DropZone ───── */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 56px 32px;
+  border-radius: var(--radius-lg);
+  text-align: center;
+  transition: background 160ms ease, border-color 160ms ease,
+              transform 160ms ease;
+  user-select: none;
+}
+.drop-zone-idle {
+  background: var(--bg-elev);
+  border: 1.5px dashed var(--border-strong);
+}
+.drop-zone-idle:hover {
+  border-color: var(--fg-muted);
+  background: #1c1c20;
+}
+.drop-zone-active {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1.5px solid var(--kf-linear);
+  transform: scale(1.005);
+}
+.drop-zone-glyph {
+  font-size: 42px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.drop-zone-active .drop-zone-glyph {
+  color: var(--kf-linear);
+}
+.drop-zone-headline {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.drop-zone-subtext {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+.drop-zone-hint {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
 /* track-kind tints (subtle accents on the row backgrounds) */
 .track-video .dope-track { background: linear-gradient(0deg, rgba(56, 189, 248, 0.04), rgba(56, 189, 248, 0.04)), var(--bg); }
 .track-cursor .dope-track { background: linear-gradient(0deg, rgba(167, 139, 250, 0.04), rgba(167, 139, 250, 0.04)), var(--bg); }

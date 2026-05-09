@@ -8,7 +8,7 @@ use leptos::prelude::*;
 
 use crate::components::{
     Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, DopeSheet, DopeSheetKeyframe,
-    DopeSheetTrack, KeyframeKind, TrackKind,
+    DopeSheetTrack, DropZone, DropZoneState, KeyframeKind, TrackKind,
 };
 
 /// One UI gallery story — a closure that renders an `IntoView` to its SSR
@@ -65,7 +65,31 @@ pub fn all_stories() -> Vec<Story> {
             title: "Editor panel — card wrapping dope sheet",
             render: render_editor_panel,
         },
+        Story {
+            id: "drop-zone-idle",
+            category: "App surfaces",
+            title: "Drop zone — idle",
+            render: render_drop_zone_idle,
+        },
+        Story {
+            id: "drop-zone-active",
+            category: "App surfaces",
+            title: "Drop zone — active (file dragged)",
+            render: render_drop_zone_active,
+        },
     ]
+}
+
+fn render_drop_zone_idle() -> String {
+    render(view! {
+        <DropZone state=DropZoneState::Idle hint="⌘O to browse" />
+    })
+}
+
+fn render_drop_zone_active() -> String {
+    render(view! {
+        <DropZone state=DropZoneState::Active />
+    })
 }
 
 fn render<V>(view: V) -> String
