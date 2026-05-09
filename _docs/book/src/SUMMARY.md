@@ -41,10 +41,14 @@
   - [Card — header + body](./ui/chunks/card-basic.md)
   - [Drop zone — idle](./ui/chunks/drop-zone-idle.md)
   - [Drop zone — active](./ui/chunks/drop-zone-active.md)
+  - [Player — paused](./ui/chunks/player-controls-paused.md)
+  - [Player — playing](./ui/chunks/player-controls-playing.md)
+  - [Player — near end](./ui/chunks/player-controls-near-end.md)
 - [Dope sheet](./ui/dope-sheet.md)
   - [Multi-track](./ui/chunks/dope-sheet-basic.md)
   - [Dense keyframes](./ui/chunks/dope-sheet-dense.md)
   - [Editor panel composition](./ui/chunks/card-with-dope-sheet.md)
+  - [Editor mock — full composition](./ui/chunks/editor-mock.md)
 
 # Milestones
 

@@ -8,7 +8,7 @@ use leptos::prelude::*;
 
 use crate::components::{
     Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, DopeSheet, DopeSheetKeyframe,
-    DopeSheetTrack, DropZone, DropZoneState, KeyframeKind, TrackKind,
+    DopeSheetTrack, DropZone, DropZoneState, KeyframeKind, PlayState, PlayerControls, TrackKind,
 };
 
 /// One UI gallery story — a closure that renders an `IntoView` to its SSR
@@ -77,7 +77,81 @@ pub fn all_stories() -> Vec<Story> {
             title: "Drop zone — active (file dragged)",
             render: render_drop_zone_active,
         },
+        Story {
+            id: "player-controls-paused",
+            category: "Player",
+            title: "Player controls — paused at start",
+            render: render_player_paused,
+        },
+        Story {
+            id: "player-controls-playing",
+            category: "Player",
+            title: "Player controls — playing mid-clip",
+            render: render_player_playing,
+        },
+        Story {
+            id: "player-controls-near-end",
+            category: "Player",
+            title: "Player controls — near end of clip",
+            render: render_player_near_end,
+        },
+        Story {
+            id: "editor-mock",
+            category: "Compositions",
+            title: "Editor mock — drop zone result + player + dope sheet",
+            render: render_editor_mock,
+        },
     ]
+}
+
+fn render_player_paused() -> String {
+    render(view! {
+        <PlayerControls state=PlayState::Paused position=0.0 duration_seconds=84.0 />
+    })
+}
+
+fn render_player_playing() -> String {
+    render(view! {
+        <PlayerControls state=PlayState::Playing position=0.32 duration_seconds=84.0 />
+    })
+}
+
+fn render_player_near_end() -> String {
+    render(view! {
+        <PlayerControls state=PlayState::Playing position=0.94 duration_seconds=84.0 />
+    })
+}
+
+fn render_editor_mock() -> String {
+    render(view! {
+        <div class="editor-mock">
+            <Card>
+                <CardHeader title="Recording 02" subtitle="Captured 2026-05-09 · 1m 24s" />
+                <CardBody>
+                    <div class="editor-mock-preview">
+                        <div class="editor-mock-screen">
+                            <div class="editor-mock-screen-label">"Player surface"</div>
+                        </div>
+                    </div>
+                    <PlayerControls
+                        state=PlayState::Playing
+                        position=0.42
+                        duration_seconds=84.0
+                    />
+                </CardBody>
+            </Card>
+            <Card>
+                <CardHeader title="Timeline" subtitle="4 tracks · 8.0s window" />
+                <CardBody>
+                    <DopeSheet
+                        tracks=sample_tracks()
+                        duration_seconds=8.0
+                        playhead_seconds=3.4
+                    />
+                </CardBody>
+            </Card>
+        </div>
+    })
 }
 
 fn render_drop_zone_idle() -> String {

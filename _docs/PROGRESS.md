@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-UI.2 — PlayerControls + editor-mock composition
+- **Date:** 2026-05-09
+- **Status:** ✅ done — second chunk under the locked workflow.
+- **Files:** `crates/ui-storybook/src/components/player_controls.rs` (PlayerControls + PlayState); `assets/style.css` (~95 new lines for transport bar + editor-mock surface); `stories.rs` registers four new stories (paused / playing / near-end / editor-mock); SSR snapshot regenerated; four new chapters under `ui/chunks/`; `SUMMARY.md`.
+- **Verified:** `just gate` green; `just snapshots-ui` regenerated 12 HTML demos (was 8); `just site` renders all four chapters.
+- **Three player stories:**
+  - `paused` (position 0.0) — round-trip the resting state.
+  - `playing` (position 0.32) — the typical state, also covers the toggle-glyph swap.
+  - `near-end` (position 0.94) — anti-regression for handle clipping at the right edge of the scrub track. Without an explicit story for this case, an SSR snapshot can't catch a careless dimension tweak that pushes the dot off the track.
+- **Editor mock** composition: full editor preview as a single story — `Card`(metadata) → preview surface → `PlayerControls` → `Card`(Timeline) → `DopeSheet`. Becomes the reference layout the Tauri shell mounts when M-INT.1 lands.
+
+---
+
 ## M-UI.1 — DropZone Leptos component (idle + active)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first chunk shipped under the new full workflow (story → asset → chapter → gate → site).
