@@ -1,4 +1,7 @@
-//! Graphics primitive pipeline — M0.12 (rect/rounded rect), M0.13 (ellipse / line / stroke).
+//! Graphics primitive pipeline.
+//!
+//! Evolution: M0.12 (rect/rounded rect) → M0.13 (ellipse / line / stroke) →
+//! M0.14 (linear + radial gradient fills).
 //!
 //! All graphics primitives across all `Graphics` nodes batch into a single
 //! draw call. Stroked primitives emit a second outline instance. Lines are
@@ -17,30 +20,42 @@ const KIND_RECT: u32 = 0;
 const KIND_ELLIPSE: u32 = 1;
 const MODE_FILL: u32 = 0;
 const MODE_OUTLINE: u32 = 1;
+const FILL_SOLID: u32 = 0;
+const FILL_LINEAR: u32 = 1;
+const FILL_RADIAL: u32 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub(crate) struct GraphicsInstance {
     pub model: [[f32; 4]; 4],
     pub color: [f32; 4],
+    pub color_b: [f32; 4],
     pub half_extents: [f32; 2],
     pub radius: f32,
     pub stroke_width: f32,
+    pub grad_a: [f32; 2],
+    pub grad_b: [f32; 2],
     pub kind: u32,
     pub mode: u32,
+    pub fill_kind: u32,
+    pub _padding: u32,
 }
 
-const ATTR_LAYOUT: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_array![
-    0 => Float32x4,
-    1 => Float32x4,
-    2 => Float32x4,
-    3 => Float32x4,
-    4 => Float32x4,
-    5 => Float32x2,
-    6 => Float32,
-    7 => Float32,
-    8 => Uint32,
-    9 => Uint32,
+const ATTR_LAYOUT: [wgpu::VertexAttribute; 14] = wgpu::vertex_attr_array![
+    0  => Float32x4,
+    1  => Float32x4,
+    2  => Float32x4,
+    3  => Float32x4,
+    4  => Float32x4,
+    5  => Float32x4,
+    6  => Float32x2,
+    7  => Float32,
+    8  => Float32,
+    9  => Float32x2,
+    10 => Float32x2,
+    11 => Uint32,
+    12 => Uint32,
+    13 => Uint32,
 ];
 
 pub(crate) struct GraphicsPipeline {
@@ -96,11 +111,6 @@ impl GraphicsPipeline {
         Self { pipeline }
     }
 
-    /// Walk `stage` in pre-order and emit one instance per visible primitive
-    /// (plus an outline instance per stroked primitive). One draw call total.
-    ///
-    /// Returns `(draw_calls, primitives_drawn)` where `primitives_drawn`
-    /// counts logical primitives (a stroked rect counts as 1, not 2).
     pub(crate) fn draw_stage(
         &self,
         app: &Application,
@@ -253,15 +263,20 @@ fn rect_instance(
     mode: u32,
     stroke_width: f32,
 ) -> GraphicsInstance {
-    let color = resolve_fill(fill, parent_alpha);
+    let resolved = resolve_fill(fill, parent_alpha);
     GraphicsInstance {
         model: model.to_cols_array_2d(),
-        color,
+        color: resolved.color,
+        color_b: resolved.color_b,
         half_extents: [half.x, half.y],
         radius,
         stroke_width,
+        grad_a: resolved.grad_a,
+        grad_b: resolved.grad_b,
         kind: KIND_RECT,
         mode,
+        fill_kind: resolved.fill_kind,
+        _padding: 0,
     }
 }
 
@@ -273,21 +288,67 @@ fn ellipse_instance(
     mode: u32,
     stroke_width: f32,
 ) -> GraphicsInstance {
-    let color = resolve_fill(fill, parent_alpha);
+    let resolved = resolve_fill(fill, parent_alpha);
     GraphicsInstance {
         model: model.to_cols_array_2d(),
-        color,
+        color: resolved.color,
+        color_b: resolved.color_b,
         half_extents: [radii.x, radii.y],
         radius: 0.0,
         stroke_width,
+        grad_a: resolved.grad_a,
+        grad_b: resolved.grad_b,
         kind: KIND_ELLIPSE,
         mode,
+        fill_kind: resolved.fill_kind,
+        _padding: 0,
     }
 }
 
-fn resolve_fill(fill: Fill, parent_alpha: f32) -> [f32; 4] {
+struct ResolvedFill {
+    fill_kind: u32,
+    color: [f32; 4],
+    color_b: [f32; 4],
+    grad_a: [f32; 2],
+    grad_b: [f32; 2],
+}
+
+fn resolve_fill(fill: Fill, parent_alpha: f32) -> ResolvedFill {
     match fill {
-        Fill::Solid(c) => apply_alpha(c, parent_alpha),
+        Fill::Solid(c) => {
+            let arr = apply_alpha(c, parent_alpha);
+            ResolvedFill {
+                fill_kind: FILL_SOLID,
+                color: arr,
+                color_b: arr,
+                grad_a: [0.0, 0.0],
+                grad_b: [0.0, 0.0],
+            }
+        }
+        Fill::LinearGradient {
+            start,
+            end,
+            color_a,
+            color_b,
+        } => ResolvedFill {
+            fill_kind: FILL_LINEAR,
+            color: apply_alpha(color_a, parent_alpha),
+            color_b: apply_alpha(color_b, parent_alpha),
+            grad_a: [start.x, start.y],
+            grad_b: [end.x, end.y],
+        },
+        Fill::RadialGradient {
+            center,
+            radius,
+            color_a,
+            color_b,
+        } => ResolvedFill {
+            fill_kind: FILL_RADIAL,
+            color: apply_alpha(color_a, parent_alpha),
+            color_b: apply_alpha(color_b, parent_alpha),
+            grad_a: [center.x, center.y],
+            grad_b: [radius, 0.0],
+        },
     }
 }
 
@@ -304,6 +365,5 @@ fn mat3_to_mat4(m: Mat3) -> Mat4 {
     )
 }
 
-// `Stroke` is consumed via `*p` deref; this re-export keeps the imports clean.
 #[allow(dead_code, reason = "re-exported to keep collect_instances readable")]
 const _: Option<Stroke> = None;

@@ -96,6 +96,94 @@ fn rounded_rect_clears_corners() {
 }
 
 #[test]
+fn linear_gradient_visually_red_at_top_blue_at_bottom() {
+    let app = boot();
+    let rt = RenderTexture::with_format(&app, 32, 32, wgpu::TextureFormat::Rgba8Unorm);
+    let renderer = Renderer::new(&app, rt.format()).expect("renderer");
+
+    let mut g = Graphics::new();
+    // Coordinate system: +Y up (NDC). For "red at the visual top, blue at the
+    // visual bottom" we put the gradient START at +Y (top) and END at -Y (bottom).
+    g.fill(Fill::LinearGradient {
+        start: Vec2::new(0.0, 0.5),
+        end: Vec2::new(0.0, -0.5),
+        color_a: Color::rgba_u8(255, 0, 0, 255),
+        color_b: Color::rgba_u8(0, 0, 255, 255),
+    });
+    g.draw_rect(Rect::new(-0.5, -0.5, 1.0, 1.0));
+
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), g);
+
+    let _ = renderer.render_stage(&app, rt.view(), Color::BLACK, &stage);
+
+    let bytes = rt.read_pixels(&app);
+    // Rect spans rows 8..24 (NDC y in [-0.5, +0.5]). Sample well inside.
+    // Row 10 ≈ NDC y +0.41 — near top (start, color_a = red).
+    let top_idx = (10 * 32 + 16) * 4;
+    assert!(
+        bytes[top_idx] > 200,
+        "top R should be ~255, got {}",
+        bytes[top_idx]
+    );
+    assert!(
+        bytes[top_idx + 2] < 60,
+        "top B should be ~0, got {}",
+        bytes[top_idx + 2]
+    );
+
+    // Row 21 ≈ NDC y -0.34 — near bottom (end, color_b = blue).
+    let bot_idx = (21 * 32 + 16) * 4;
+    assert!(
+        bytes[bot_idx] < 60,
+        "bottom R should be ~0, got {}",
+        bytes[bot_idx]
+    );
+    assert!(
+        bytes[bot_idx + 2] > 200,
+        "bottom B should be ~255, got {}",
+        bytes[bot_idx + 2]
+    );
+}
+
+#[test]
+fn radial_gradient_center_to_edge() {
+    let app = boot();
+    let rt = RenderTexture::with_format(&app, 32, 32, wgpu::TextureFormat::Rgba8Unorm);
+    let renderer = Renderer::new(&app, rt.format()).expect("renderer");
+
+    let mut g = Graphics::new();
+    g.fill(Fill::RadialGradient {
+        center: Vec2::ZERO,
+        radius: 0.5,
+        color_a: Color::rgba_u8(255, 255, 255, 255),
+        color_b: Color::rgba_u8(0, 0, 0, 255),
+    });
+    g.draw_rect(Rect::new(-0.5, -0.5, 1.0, 1.0));
+
+    let mut stage = Stage::new();
+    let _ = stage.add_child(stage.root(), g);
+
+    let _ = renderer.render_stage(&app, rt.view(), Color::BLACK, &stage);
+
+    let bytes = rt.read_pixels(&app);
+    // Center pixel — bright (close to white).
+    let center_idx = (16 * 32 + 16) * 4;
+    assert!(
+        bytes[center_idx] > 200,
+        "center should be near white, got R={}",
+        bytes[center_idx]
+    );
+    // Pixel at half-radius distance (col 20, NDC x=0.25, t=0.5) — gray-ish.
+    let mid_idx = (16 * 32 + 20) * 4;
+    let mid_r = bytes[mid_idx];
+    assert!(
+        (60..=200).contains(&mid_r),
+        "half-radius pixel should be partway through gradient, got R={mid_r}"
+    );
+}
+
+#[test]
 fn ellipse_fills_center_clears_corner() {
     let app = boot();
     let rt = RenderTexture::with_format(&app, 64, 64, wgpu::TextureFormat::Rgba8Unorm);

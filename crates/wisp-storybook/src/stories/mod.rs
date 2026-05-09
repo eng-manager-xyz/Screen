@@ -2,6 +2,7 @@
 //! adds one entry here.
 
 mod s_graphics_ellipse;
+mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
 mod s_sprite_batcher;
@@ -17,5 +18,6 @@ pub fn all_stories() -> Vec<Story> {
         s_transform_nesting::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
+        s_graphics_gradients::story(),
     ]
 }

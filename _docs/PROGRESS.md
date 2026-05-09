@@ -6,6 +6,33 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.14 — Graphics gradient fills (linear + radial)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first chunk under the locked storybook convention
+- **Files changed:**
+  - `crates/wisp/src/scene/graphics.rs` — `Fill` extended with `LinearGradient { start, end, color_a, color_b }` and `RadialGradient { center, radius, color_a, color_b }`. Endpoints in primitive-local coords.
+  - `crates/wisp/shaders/graphics_solid.wgsl` — added `color_b`, `grad_a`, `grad_b`, `fill_kind` instance fields. New `evaluate_fill` function: solid (kind=0), linear gradient via projection (kind=1), radial gradient via distance (kind=2).
+  - `crates/wisp/src/render/graphics_pipeline.rs` — `GraphicsInstance` now 144 bytes with 14 vertex attributes. New `ResolvedFill` struct decouples Fill enum from instance encoding.
+  - `crates/wisp/tests/render_graphics.rs` — 2 new integration tests: `linear_gradient_visually_red_at_top_blue_at_bottom`, `radial_gradient_center_to_edge`.
+  - `crates/wisp-storybook/src/stories/s_graphics_gradients.rs` + writeup — story showing linear + radial side-by-side.
+- **Verified:**
+  - `just gate` — passes (78 tests, was 76)
+  - `just security` — clean
+  - `just storybook` — `Graphics → Gradient fills` story renders correctly
+- **Notes:**
+  - **Recursive-fix loop fired 5 iterations:**
+    1. fmt collapse
+    2. test failure: bottom row blue=0 → I had picked row 24 which is OUTSIDE the rect (NDC y=-0.53, rect spans -0.5..+0.5). Fixed by picking row 21 (NDC y≈-0.34, well inside).
+    3. test failure on first run: gradient direction swapped — I'd put red at -Y, but +Y is up in NDC and "top" visually. Reordered start/end so red lives at the visual top.
+    4. another fmt collapse from the assertion changes
+    5. green
+  - **Coordinate sanity-check learned:** for a 32-row image rendering an NDC rect from y=-0.5 to y=+0.5, valid interior rows are 8..23. Row 8 has NDC y≈+0.47 (just inside top), row 23 has NDC y≈-0.47 (just inside bottom), row 24 has NDC y≈-0.53 (outside, below).
+  - **Gradient coordinates are primitive-local.** `(0, +0.5)` is the top of a unit-half-extent rect; `(0, -0.5)` is the bottom. Same axes the SDF uses; gradients transform with the primitive.
+  - **Solid fill backward compatible.** `Fill::Solid` resolves to `fill_kind=0` with `color_b == color`. Existing M0.12/M0.13 tests pass unchanged.
+- **Issues filed:** none
+
+---
+
 ## Side quest — wisp-storybook + locked convention
 - **Date:** 2026-05-09
 - **Status:** ✅ done

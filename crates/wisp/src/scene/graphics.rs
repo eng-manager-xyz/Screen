@@ -10,11 +10,28 @@ use crate::color::Color;
 use crate::math::Rect;
 use crate::scene::container::Container;
 
-/// Fill style. `Fill::Gradient` lands in M0.14.
+/// Fill style for a `Graphics` primitive.
+///
+/// Gradient endpoints (`start`/`end` for linear, `center`/`radius` for radial)
+/// are in primitive-local coordinates: `[-half_extents, +half_extents]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Fill {
     /// Single solid color (linear-srgb f32).
     Solid(Color),
+    /// Linear gradient between two colors along `start → end`.
+    LinearGradient {
+        start: Vec2,
+        end: Vec2,
+        color_a: Color,
+        color_b: Color,
+    },
+    /// Radial gradient from `center` outward to `radius`, blending two colors.
+    RadialGradient {
+        center: Vec2,
+        radius: f32,
+        color_a: Color,
+        color_b: Color,
+    },
 }
 
 impl Default for Fill {
