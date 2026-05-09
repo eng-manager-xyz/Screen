@@ -7,6 +7,7 @@ mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
+mod s_mesh_perspective;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
@@ -25,5 +26,6 @@ pub fn all_stories() -> Vec<Story> {
         s_graphics_gradients::story(),
         s_blur_filter::story(),
         s_drop_shadow::story(),
+        s_mesh_perspective::story(),
     ]
 }

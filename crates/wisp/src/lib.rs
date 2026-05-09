@@ -34,7 +34,7 @@ pub use filter::{
 };
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
 pub use scene::{
-    Container, Fill, Font, Graphics, Node, NodeId, Sprite, Stage, Stroke, Text, Transform,
+    Container, Fill, Font, Graphics, Mesh, Node, NodeId, Sprite, Stage, Stroke, Text, Transform,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;

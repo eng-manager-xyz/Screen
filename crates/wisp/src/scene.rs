@@ -16,6 +16,7 @@ use slotmap::SlotMap;
 
 pub use container::Container;
 pub use graphics::{Fill, Graphics, Stroke};
+pub use mesh::Mesh;
 pub use node::{Node, NodeId};
 pub use sprite::Sprite;
 pub use text::{Font, Text};
