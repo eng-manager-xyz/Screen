@@ -6,6 +6,22 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.17 → M0.21 — Filters, Mesh, examples (consolidated)
+- **Date:** 2026-05-09
+- **Status:** ✅ done (M0.17 / M0.18 / M0.19 / M0.20 fully; M0.21 partial — `headless_export` shipped, `recorder_mock` + `video_texture` examples deferred)
+- **Commits:** `feat(wisp): DropShadowFilter`, `feat(wisp): MotionBlurFilter + ColorMatrixFilter`, `feat(wisp): Mesh node with perspective rotation`
+- **Tests:** 92 → ?? (M0.20/M0.21 add hello_sprite + headless_export examples). `just gate` green; `headless_export` actually wrote a 800×450 PNG with `draw_calls=3 sprites=1 graphics=2 glyphs=20`.
+- **Notes:**
+  - **DropShadow architecture:** all four passes (extract → blur h → blur v → composite) inside one `Filter::render_pass` call so it can manage two scratch RTs without changing the Filter trait. Reuses `blur::run_blur_pass`.
+  - **`replace_all` disaster, again:** clobbered `scratch_a`/`scratch_b` identifier code while trying to add backticks to doc comments. Fixed by reverting and using targeted `Edit`. Lesson already in CLAUDE.md from M0.11 — applied this time after the fact.
+  - **MotionBlur** = single-direction blur via existing `run_blur_pass`, with kernel size driven by `velocity.length() / peak_velocity_pps` (constants 1400 / 14 lifted from OpenScreen).
+  - **ColorMatrix** = generic 4×5 matrix in shader, with named constructors (identity / grayscale / brightness).
+  - **Mesh** = textured quad with Y-axis perspective rotation. Generic per-instance custom WGSL deferred — current shape covers the recorder's needs (camera-bubble tilt, 3D card flip).
+  - **`headless_export.rs`** — full proof point: builds a scene with Sprite + Graphics + Text, renders to RenderTexture, writes PNG via the `image` crate. Validated `target/headless_export.png` is a real 800×450 image.
+  - **Deferred to follow-up chunk:** `recorder_mock.rs` (full recorder scene tree) and `video_texture.rs` (per-frame BGRA upload demo). The infra exists and is exercised by tests; only the dedicated example files are missing.
+
+---
+
 ## M0.16 — Filter trait + BlurFilter
 - **Date:** 2026-05-09
 - **Status:** ✅ done
