@@ -6,6 +6,24 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-DEC.2 — GstreamerPipeStream + first real MP4 → wisp playback
+- **Date:** 2026-05-09
+- **Status:** ✅ done — third chunk on the path to first MP4 playback. **3 chunks remain.**
+- **Files:** `crates/decode/Cargo.toml` (adds `thiserror` + `tracing`); `src/gstreamer_pipe.rs` (~330 lines: `GstreamerPipeStream`, `Error`, `VideoMetadata`, `parse_discoverer`, 6 unit tests for the parser); `tests/gstreamer_integration.rs` (3 integration tests against a real MP4); `tests/fixtures/sample.mp4` (committed 11 KB H.264 fixture, encoded once with x264 from the M-DEC.1 mock-stream PNGs); `crates/playback/examples/play_file.rs` (end-to-end demo: decode → Player → wisp → PNG); `_docs/book/src/playback/play-file.md` chapter; `SUMMARY.md`.
+- **Verified:** `just gate` green; the 3 GStreamer integration tests pass; `play_file` example runs end-to-end producing 7 PNGs at `_docs/book/src/assets/playback/playfile_NN.png` and exits with `state = Ended`.
+- **Pivot during the chunk:** initial implementation used FFmpeg CLI; user asked to use GStreamer instead. Rewrote (~30 min to drop FFmpeg, run `brew install gstreamer` in background, port logic, re-encode fixture, retest). All 3 integration tests + 6 parser tests pass cleanly under GStreamer 1.26.8.
+- **5 lessons captured in CLAUDE.md** under new "GStreamer / external CLI integration" section:
+  - `brew install gstreamer` is the cask name (not `gstreamer-tools`).
+  - CLI-pipe approach beats `gstreamer-rs` for first integration — zero compile-time integration with libgstreamer, swap to bindings later via the `VideoStream` trait.
+  - `gst-discoverer-1.0` for metadata, `gst-launch-1.0` for the stream — pipeline caps can't be read out from the consumer side, probe separately.
+  - `fdsink fd=1` is the stdout fdsink (don't try `filesink location=-`).
+  - `Drop`-kill the child or `gst-launch-1.0` keeps decoding into the dropped pipe.
+- **2 clippy refactors** during the gate loop (no `#[allow]`):
+  - `.map(...).unwrap_or(false)` on `Result` → `.is_ok_and(...)`.
+  - `format!("…{path:?}")` → `format!("…{}", path.display())` for non-UTF-8 path messages.
+
+---
+
 ## M-PLAY.1 — Player state machine + frame pump
 - **Date:** 2026-05-09
 - **Status:** ✅ done — second chunk on the path to first MP4 playback. 4 chunks remain.

@@ -135,6 +135,32 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
+### GStreamer / external CLI integration
+
+- **`brew install gstreamer` is the prerequisite, not `gstreamer-tools` or
+  `gst-launch`.** The cask name is just `gstreamer` and pulls in the CLI
+  binaries (`gst-launch-1.0`, `gst-discoverer-1.0`) plus enough plugins to
+  decode H.264/AAC out of the box. Don't waste a cycle searching for the
+  right cask name — it's `gstreamer`.
+- **CLI-pipe over `gstreamer-rs` for first integration.** Spawning the
+  GStreamer CLI as a subprocess (`gst-launch-1.0 -q filesrc ! decodebin
+  ! videoconvert ! video/x-raw,format=BGRA ! fdsink fd=1`) avoids any
+  compile-time integration with libgstreamer. Works on any machine with
+  `brew install gstreamer`. Upgrading to `gstreamer-rs` Rust bindings is a
+  later chunk; the `VideoStream` trait makes it a one-line swap at the
+  call site.
+- **`gst-discoverer-1.0` for metadata, `gst-launch-1.0` for the stream.**
+  Discover before launch; the launch pipeline can't carry caps in a way
+  the consumer can read out, so `width × height × 4` for `read_exact`
+  must come from a separate probe.
+- **`fdsink fd=1` is the stdout fdsink.** Don't try `filesink location=-`
+  or shell redirection inside `gst-launch-1.0`'s arg parser — they don't
+  work. `fdsink fd=1` is the canonical way to emit the raw stream on
+  stdout.
+- **Drop-kill the child.** Implementing `Drop` for the stream struct with
+  `child.kill()` + `child.wait()` matters: `gst-launch-1.0` will keep
+  decoding into a dropped pipe and burn CPU otherwise.
+
 ### mdBook / engineering site
 
 - **`mdbook build --dest-dir` is resolved relative to the source dir, not the

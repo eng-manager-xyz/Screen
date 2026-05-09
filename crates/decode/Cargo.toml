@@ -12,3 +12,7 @@ workspace = true
 [lib]
 name = "decode"
 path = "src/lib.rs"
+
+[dependencies]
+thiserror = "2"
+tracing = { workspace = true }

@@ -29,6 +29,7 @@
 //! assert_eq!(frame.bgra.len(), (64 * 36 * 4) as usize);
 //! ```
 
+pub mod gstreamer_pipe;
 pub mod mock;
 
 /// One decoded frame in BGRA8 layout, the canonical wgpu input format for

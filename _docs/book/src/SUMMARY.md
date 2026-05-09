@@ -39,6 +39,7 @@
 # `playback` — player state machine
 
 - [Overview](./playback/overview.md)
+  - [Real MP4 → wisp playback (M-DEC.2)](./playback/play-file.md)
 
 # `ui-storybook` — Leptos UI
 
