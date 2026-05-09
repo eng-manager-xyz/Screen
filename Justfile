@@ -51,9 +51,12 @@ docs-strict:
 
 # Build the prose site (mdBook) and combine with rustdoc under target/book/.
 # Output: target/book/index.html (prose) + target/book/api/<crate>/index.html (rustdoc).
+#
+# `--dest-dir` is resolved relative to the source dir, so we pass an absolute
+# path rooted at the workspace.
 site: docs
     @mkdir -p target/book
-    mdbook build _docs/book --dest-dir ../../target/book
+    mdbook build _docs/book --dest-dir "$(pwd)/target/book"
     @rm -rf target/book/api && cp -r target/doc target/book/api
     @echo
     @echo "Open: file://$(pwd)/target/book/index.html"

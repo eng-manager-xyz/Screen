@@ -1,7 +1,6 @@
 [book]
 authors = ["screen team"]
 language = "en"
-multilingual = false
 src = "src"
 title = "screen — engineering site"
 description = "Architecture, milestones, conventions, per-feature stories with screenshots, plus the rustdoc API reference under /api."
@@ -9,12 +8,8 @@ description = "Architecture, milestones, conventions, per-feature stories with s
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = ""
-edit-url-template = ""
 no-section-label = false
 mathjax-support = false
-copy-fonts = true
-additional-css = ["theme/zinc.css"]
 
 [output.html.fold]
 enable = true
