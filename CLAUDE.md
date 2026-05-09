@@ -103,6 +103,13 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **wgpu names shift between majors** — `ImageCopyTexture` → `TexelCopyTextureInfo`, `ImageDataLayout` → `TexelCopyBufferLayout` (renamed in 24). `request_adapter` returns `Option`, not `Result`. `request_device` takes `(descriptor, trace_path)`. Iterate via cargo errors when bumping.
 - **Empty wgpu buffers panic when sliced.** `create_buffer_init` with `contents: &[]` produces a 0-byte buffer, then `buffer.slice(..)` aborts at `slice offset 0 is out of range for buffer of size 0`. Always `if batch.is_empty() { continue; }` before the buffer + draw path. (M0.15 caught this.)
 
+### Tauri 2 specifics
+
+- **`tauri::generate_context!()` requires `icons/icon.png` at compile time** even when `bundle.active = false`. The macro embeds the icon into the binary. Minimum: a real PNG file at `crates/app/icons/icon.png`. (M1.1 caught this — a one-line Python script generates a 32×32 transparent PNG when needed.)
+- **`tauri` feature `protocol-asset`** is required to use `convertFileSrc` in JS. Without it, build fails with "Tauri dependency features … does not match the allowlist."
+- **`tauri::generate_context!` is a procedural macro** that depends on `tauri` at expansion time. `cargo machete` doesn't see this — add `[package.metadata.cargo-machete] ignored = ["tauri"]` to suppress the false positive.
+- **Tauri 2's Linux backend pulls archived gtk-rs crates.** Expect ~16 RustSec advisories on Linux (RUSTSEC-2024-0411..0420 family + 2025-0075..0100). All unmaintained-only, none exploits. Add to `deny.toml` `[advisories].ignore` once. (M1.1, ISS-02.)
+
 ### Build hygiene
 
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.

@@ -25,6 +25,19 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-02: Tauri 2 Linux backend pulls gtk-rs unmaintained crates
+- **Filed:** 2026-05-09
+- **By:** M1.1 (Tauri foundation setup)
+- **Severity:** tech-debt
+- **Affects:** `screen-app` (transitive — Linux-only)
+- **Status:** open (16 advisories exempted in `deny.toml`)
+- **Description:**
+  Tauri 2's Linux WebView backend depends on `gtk-rs` GTK3 bindings (atk, gdk, gtk, gio, etc.) that have been archived upstream. RustSec emits ~16 unmaintained advisories. None are exploits — all are "no longer actively maintained." macOS/Windows backends don't pull these.
+- **Resolution:**
+  Exempted in `deny.toml` `[advisories].ignore` with reason. Re-evaluate when Tauri migrates to GTK4 (tracked in tauri-apps issues).
+
+---
+
 ## ISS-01: `paste` crate unmaintained (transitive via wgpu)
 - **Filed:** 2026-05-09
 - **By:** side quest (QA toolchain setup)

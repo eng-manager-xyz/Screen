@@ -13,6 +13,24 @@ ignore = [
     # paste is unmaintained (not vulnerable). Transitive via metal → wgpu-hal → wgpu.
     # See _docs/ISSUES.md ISS-01. Re-evaluate when wgpu drops the metal/paste path.
     { id = "RUSTSEC-2024-0436", reason = "transitive via wgpu-hal; no upstream fix yet; unmaintained-only, not a vulnerability" },
+    # gtk-rs GTK3 family — Tauri 2's Linux backend pulls these. Archived upstream;
+    # Tauri tracks migration. All unmaintained-only (no exploit). See ISS-02.
+    { id = "RUSTSEC-2024-0370", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0411", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0412", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0413", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0414", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0415", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0416", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0417", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0418", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0419", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2024-0420", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2025-0075", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2025-0080", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2025-0081", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2025-0098", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
+    { id = "RUSTSEC-2025-0100", reason = "transitive via Tauri 2 Linux backend; unmaintained-only" },
 ]
 
 [licenses]
