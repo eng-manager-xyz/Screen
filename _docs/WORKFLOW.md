@@ -28,7 +28,36 @@ Order:
 4. **Stay inside the chunk.** If you spot adjacent work, file in `_docs/ISSUES.md` and continue. Do not expand scope.
 5. **Don't refactor unrelated code.** If a refactor is genuinely needed, stop and ask.
 6. **Add at least one test** matching the chunk's behavior. See `_docs/TESTING.md` "Per-chunk testing minimum" — unit / integration / snapshot / property / regression. Pure scaffolding chunks (module stubs, file moves) are exempt; everything else has a test.
-7. **Add a storybook entry** if the chunk adds a renderable feature. New file in `crates/wisp-storybook/src/stories/`, registered in `stories/mod.rs`, with a markdown write-up in `stories/writeups/`. Verify with `just storybook` — your story should appear in the top-bar menu and render live in the canvas. Non-render features (math, capture, encode, file I/O) are exempt.
+7. **Add a storybook entry** if the chunk adds a renderable feature.
+   - **wgpu side** (wisp): new file in `crates/wisp-storybook/src/stories/`,
+     registered in `stories/mod.rs`, with a markdown write-up in
+     `stories/writeups/`. Verify with `just storybook`.
+   - **HTML side** (Leptos UI): new file in
+     `crates/ui-storybook/src/components/`, registered in `components/mod.rs`
+     with a `pub use`, and a story registered in `stories.rs`. Verify with
+     `cargo test -p ui-storybook` (SSR snapshot regenerates; accept with
+     `mv tests/snapshots/*.snap.new tests/snapshots/*.snap`).
+   - Non-render features (math, capture, encode, file I/O) are exempt.
+
+8. **Regenerate the asset.** `just snapshots` runs both headless exporters
+   and writes the chunk's PNG/HTML to
+   `_docs/book/src/assets/<crate>/<id>.{png,html}`. Commit the asset.
+
+9. **Write the per-chunk mdBook chapter.** Path:
+   `_docs/book/src/<crate>/chunks/<id>.md`. Template:
+   - `# <Title> — M<n>.<m>`
+   - One-paragraph what + why.
+   - Embed the asset: `![](../../assets/<crate>/<id>.png)` for wisp, or
+     `<iframe src="../../assets/ui/<id>.html" …>` for UI.
+   - Recap the chunk's "Done when:" criteria.
+   - Footer: `[<Type> API](../../api/<crate_name>/…)` link into rustdoc.
+
+10. **Add the chapter to `SUMMARY.md`** under its milestone heading. mdBook
+    will not see the file otherwise.
+
+11. **Verify the chapter** with `just site` and visually open the resulting
+    page at `target/book/<crate>/chunks/<id>.html`. The asset must render
+    inline. An empty page = the gate failed.
 
 ## 4. Verify (`just gate` — recursive-fix loop)
 
@@ -59,6 +88,10 @@ just gate
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo nextest run --workspace --all-features`
 - `cargo test --workspace --doc`
+- `cargo doc --workspace --no-deps --document-private-items` (catches missing-doc / broken-link warnings)
+
+For milestone close, also run `just docs-strict` — it flips broken intra-doc
+links and rustdoc warnings to errors via `RUSTDOCFLAGS="-D warnings"`.
 
 If a chunk references a runnable example, also run it:
 
