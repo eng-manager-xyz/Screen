@@ -34,11 +34,7 @@ fn clear_color() -> Color {
 /// macos-latest CI) build them fine. The CI workflow sets
 /// `WISP_SKIP_GPU_FILTER_TESTS=1` on the Linux job; this filter
 /// transparently drops those stories so the remaining 9 can still run.
-const LAVAPIPE_INCOMPATIBLE: &[&str] = &[
-    "filter-blur",
-    "filter-drop-shadow",
-    "filter-motion-blur",
-];
+const LAVAPIPE_INCOMPATIBLE: &[&str] = &["filter-blur", "filter-drop-shadow", "filter-motion-blur"];
 
 fn stories_for_env() -> Vec<wisp_storybook::story::Story> {
     let all = wisp_storybook::stories::all_stories();
