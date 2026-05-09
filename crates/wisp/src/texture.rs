@@ -120,6 +120,46 @@ impl Texture {
         Self::from_rgba(app, rgba.width(), rgba.height(), rgba.as_raw())
     }
 
+    /// Construct an empty (zeroed) texture for the given format.
+    ///
+    /// Usage flags include `TEXTURE_BINDING | COPY_DST`, suitable for
+    /// sampling and per-frame uploads (e.g. backing a [`crate::texture::video_texture`]).
+    /// For render targets see [`crate::texture::render_texture`].
+    #[must_use]
+    pub fn empty(app: &Application, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
+        let device = app.device();
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("wisp::Texture::empty"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("wisp::Texture::empty sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        Self {
+            inner: Arc::new(TextureInner {
+                _texture: texture,
+                view,
+                sampler,
+                width,
+                height,
+            }),
+        }
+    }
+
     /// Texture width in pixels.
     #[must_use]
     pub fn width(&self) -> u32 {

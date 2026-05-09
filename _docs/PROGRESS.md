@@ -6,6 +6,25 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.10 — Image Texture loading
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp/src/texture.rs` — added `Texture::empty(app, w, h, format)` (default usage: `TEXTURE_BINDING | COPY_DST`)
+  - `crates/wisp/tests/texture_loading.rs` — 4 tests: empty in sRGB + BGRA, grayscale `from_image` conversion, full PNG round-trip via `image::load_from_memory`
+- **Verified:**
+  - `just gate` — passes (58 tests, was 54)
+  - `just security` — clean
+- **Notes:**
+  - M0.6 already shipped `Texture::from_rgba` and `Texture::from_image` along with the `Arc<TextureInner>` storage. M0.10's residual scope was `Texture::empty` plus explicit PNG-byte verification.
+  - **No recursive-fix loop iterations needed** — first run was green.
+  - **PNG round-trip without checked-in binaries:** the test encodes a synthetic `RgbaImage` to PNG bytes via `DynamicImage::write_to`, decodes via `image::load_from_memory`, and feeds the result to `Texture::from_image`. Repo stays binary-free.
+  - **`Texture::empty` accepts BGRA format** — verified for the 1920×1080 surface that `VideoTexture` (M0.11) will use.
+  - **`Texture::empty` usage flags are fixed** at `TEXTURE_BINDING | COPY_DST`. A `with_usage` constructor will land in M0.11 to support `RenderTexture`'s `RENDER_ATTACHMENT | COPY_SRC | TEXTURE_BINDING`.
+- **Issues filed:** none
+
+---
+
 ## M0.9 — Sprite API + instanced batcher
 - **Date:** 2026-05-09
 - **Status:** ✅ done
