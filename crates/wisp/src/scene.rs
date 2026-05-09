@@ -16,6 +16,7 @@ use slotmap::SlotMap;
 
 pub use container::Container;
 pub use node::{Node, NodeId};
+pub use sprite::Sprite;
 pub use transform::Transform;
 
 /// Scene graph root.

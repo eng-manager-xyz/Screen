@@ -1,12 +1,13 @@
 //! Tagged union of scene-graph node variants.
 //!
 //! As new node types land they're added as variants. M0.8 starts with only
-//! `Container`. M0.9 adds `Sprite`, M0.12 adds `Graphics`, M0.15 adds `Text`,
+//! `Container`; M0.9 adds `Sprite`. M0.12 adds `Graphics`, M0.15 adds `Text`,
 //! M0.19 adds `Mesh`.
 
 use slotmap::new_key_type;
 
 use crate::scene::container::Container;
+use crate::scene::sprite::Sprite;
 
 new_key_type! {
     /// Stable handle for a scene-graph node owned by a [`crate::scene::Stage`].
@@ -18,6 +19,8 @@ new_key_type! {
 pub enum Node {
     /// Plain container — groups children with a transform and visibility state.
     Container(Container),
+    /// Textured quad sprite.
+    Sprite(Sprite),
 }
 
 impl Node {
@@ -29,6 +32,7 @@ impl Node {
     pub fn container(&self) -> &Container {
         match self {
             Self::Container(c) => c,
+            Self::Sprite(s) => &s.container,
         }
     }
 
@@ -36,6 +40,7 @@ impl Node {
     pub fn container_mut(&mut self) -> &mut Container {
         match self {
             Self::Container(c) => c,
+            Self::Sprite(s) => &mut s.container,
         }
     }
 }
@@ -43,5 +48,11 @@ impl Node {
 impl From<Container> for Node {
     fn from(c: Container) -> Self {
         Self::Container(c)
+    }
+}
+
+impl From<Sprite> for Node {
+    fn from(s: Sprite) -> Self {
+        Self::Sprite(s)
     }
 }

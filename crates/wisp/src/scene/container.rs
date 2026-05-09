@@ -34,7 +34,8 @@ impl Container {
     }
 
     /// Iterate child node IDs in insertion order.
-    pub fn children(&self) -> impl Iterator<Item = NodeId> + '_ {
+    #[must_use = "iterator must be consumed"]
+    pub fn children(&self) -> impl DoubleEndedIterator<Item = NodeId> + ExactSizeIterator + '_ {
         self.children.iter().copied()
     }
 

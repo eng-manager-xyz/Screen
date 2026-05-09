@@ -6,6 +6,41 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.9 — Sprite API + instanced batcher
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp/src/scene/sprite.rs` — `Sprite { container, texture, anchor, tint }` via composition; `from_texture`/`with_anchor`/`with_tint` builders; 3 unit tests
+  - `crates/wisp/src/scene/node.rs` — added `Node::Sprite(Sprite)` variant + `From<Sprite> for Node`
+  - `crates/wisp/src/scene.rs` — `pub use sprite::Sprite`
+  - `crates/wisp/src/lib.rs` — re-export `Sprite`
+  - `crates/wisp/src/scene/container.rs` — `children()` now returns `impl DoubleEndedIterator + ExactSizeIterator` (the bare `impl Iterator` opaque type drops `rev()` capability)
+  - `crates/wisp/src/texture.rs` — manual `impl Debug for Texture` (wgpu types don't all derive Debug); `id()` accessor for batching identity
+  - `crates/wisp/shaders/sprite.wgsl` — instanced sprite shader: 6-vert quad, per-instance `(model: mat4x4f, tint: vec4f, anchor: vec2f)`
+  - `crates/wisp/src/render/sprite_pipeline.rs` — `SpritePipeline`, `SpriteInstance` (88 bytes, `Pod`), `Float32x4×4 + Float32x4 + Float32x2` instance vertex buffer layout, `collect_batches` traversal
+  - `crates/wisp/src/render.rs` — `RenderStats { draw_calls, sprites_drawn }`, `Renderer::render_stage` + `SpritePipeline` field
+  - `crates/wisp/tests/render_sprite.rs` — 5 integration tests including the **headline `one_hundred_sprites_share_texture_one_draw_call`**
+- **Verified:**
+  - `just gate` — passes (54 tests, was 46)
+  - `just security` — passes
+- **Notes:**
+  - **The headline test passes.** 100 sprites sharing a texture batch into exactly 1 draw call, 100 sprites drawn — the M0.9 anti-regression contract.
+  - **Pre-order batching with stable order:** the batcher uses an `order: Vec<Key>` alongside the `HashMap` so batches drain in first-encounter order. Texture-pointer-equality (`Arc::as_ptr`) is the batch key; clones of the same `Texture` collapse into one batch.
+  - **Hidden parents skip descendants** (`hidden_container_skips_sprite_descendants` test): the traversal `continue`s on `!container.visible` and never pushes its children.
+  - **Scene-graph traversal lives in the renderer** (`sprite_pipeline::collect_batches`), not in `Stage`. Stage owns the data; rendering owns the policy of how to walk it. This keeps Stage focused on storage.
+  - **Recursive-fix loop fired 5 iterations:**
+    1. `fmt` — rustfmt collapsed long expressions in scene/sprite.rs and sprite_pipeline.rs
+    2. `check` — `Texture` lacked `Debug`; `impl Iterator` opaque type lacked `DoubleEndedIterator`
+    3. `clippy` — `len() as u32` cast warnings (×2), `must_use` candidates on `render_stage` and `children` (×2)
+    4. `clippy` (test) — `i as f32` cast precision warning; switched loop var to `u16` for lossless `f32::from`
+    5. green
+  - **Coordinate system: NDC for now.** Each sprite's transform.position is in NDC space `[-1, 1]`. Pixel-space projection (orthographic camera) lands in a later chunk. The 100-sprite test scatters across NDC for visual variety; doesn't depend on this.
+  - **Anchor handling:** local quad is `[0, 1]²`; vertex shader subtracts `anchor` so that point lands at local origin before the model is applied. `anchor = (0.5, 0.5)` centers the sprite at its position.
+  - **Per-batch allocation** (instance buffer + bind group per draw call) is acceptable for M0.9. Persistent per-frame buffers + arena allocator are post-M0 hardening if needed.
+- **Issues filed:** none
+
+---
+
 ## M0.8 — Container + scene graph storage
 - **Date:** 2026-05-09
 - **Status:** ✅ done

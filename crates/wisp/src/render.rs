@@ -1,24 +1,37 @@
 //! Renderer — pipeline cache, draw-call batcher, filter pass orchestrator.
 //!
-//! M0.5 introduced [`Renderer`] with a hardcoded triangle pipeline. M0.6 adds
-//! the textured-quad path. Subsequent milestones add the sprite batcher (M0.9)
-//! and filter pass orchestrator (M0.16).
+//! Evolution:
+//!   M0.5: hardcoded triangle.
+//!   M0.6: textured-quad path (`render_quad`).
+//!   M0.9: sprite batcher with scene-graph traversal (`render_stage`).
+//!   M0.16: filter pass orchestrator.
 
 pub mod batcher;
 pub mod pass;
 pub mod pipeline;
 
 mod quad_pipeline;
+mod sprite_pipeline;
 mod triangle_pipeline;
 
-use glam::Mat4;
 use quad_pipeline::QuadPipeline;
+use sprite_pipeline::SpritePipeline;
 use triangle_pipeline::TrianglePipeline;
 
 use crate::application::Application;
 use crate::color::Color;
 use crate::error::Error;
+use crate::scene::Stage;
 use crate::texture::Texture;
+
+/// Frame statistics returned by [`Renderer::render_stage`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RenderStats {
+    /// Number of `draw` calls submitted to the GPU.
+    pub draw_calls: u32,
+    /// Total sprites rendered across all batches.
+    pub sprites_drawn: u32,
+}
 
 /// 2D renderer.
 ///
@@ -27,6 +40,7 @@ use crate::texture::Texture;
 pub struct Renderer {
     triangle: TrianglePipeline,
     quad: QuadPipeline,
+    sprite: SpritePipeline,
 }
 
 impl Renderer {
@@ -38,7 +52,12 @@ impl Renderer {
     pub fn new(app: &Application, output_format: wgpu::TextureFormat) -> Result<Self, Error> {
         let triangle = TrianglePipeline::new(app, output_format);
         let quad = QuadPipeline::new(app, output_format);
-        Ok(Self { triangle, quad })
+        let sprite = SpritePipeline::new(app, output_format);
+        Ok(Self {
+            triangle,
+            quad,
+            sprite,
+        })
     }
 
     /// Clear the target with `clear`, then draw the M0.5 hardcoded triangle.
@@ -47,21 +66,39 @@ impl Renderer {
     }
 
     /// Clear the target with `clear`, then draw a single textured quad.
-    ///
-    /// `model` is a 4×4 matrix applied to the unit-square vertices; `tint`
-    /// multiplies the sampled texel.
     pub fn render_quad(
         &self,
         app: &Application,
         view: &wgpu::TextureView,
         clear: Color,
         texture: &Texture,
-        model: Mat4,
+        model: glam::Mat4,
         tint: Color,
     ) {
         Self::with_clearing_pass(app, view, clear, |pass| {
             self.quad.draw(app, pass, texture, model, tint);
         });
+    }
+
+    /// Clear the target, traverse `stage`, and draw every visible sprite,
+    /// batching sprites with the same texture and blend mode.
+    ///
+    /// Returns [`RenderStats`] with the resulting draw-call and sprite counts.
+    #[must_use]
+    pub fn render_stage(
+        &self,
+        app: &Application,
+        view: &wgpu::TextureView,
+        clear: Color,
+        stage: &Stage,
+    ) -> RenderStats {
+        let mut stats = RenderStats::default();
+        Self::with_clearing_pass(app, view, clear, |pass| {
+            let (draw_calls, sprites_drawn) = self.sprite.draw_stage(app, pass, stage);
+            stats.draw_calls = draw_calls;
+            stats.sprites_drawn = sprites_drawn;
+        });
+        stats
     }
 
     fn with_clearing_pass(

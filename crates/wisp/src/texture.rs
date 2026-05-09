@@ -17,6 +17,16 @@ pub struct Texture {
     inner: Arc<TextureInner>,
 }
 
+impl std::fmt::Debug for Texture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Texture")
+            .field("width", &self.inner.width)
+            .field("height", &self.inner.height)
+            .field("id", &self.id())
+            .finish()
+    }
+}
+
 struct TextureInner {
     _texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -128,5 +138,14 @@ impl Texture {
 
     pub(crate) fn sampler(&self) -> &wgpu::Sampler {
         &self.inner.sampler
+    }
+
+    /// Identity for batching — texture-pointer-equality.
+    ///
+    /// Two `Texture` clones (or two views into the same `Arc`) share the same
+    /// id; two independently-constructed textures don't. Used by the renderer
+    /// to group sprite draws.
+    pub(crate) fn id(&self) -> usize {
+        Arc::as_ptr(&self.inner) as usize
     }
 }

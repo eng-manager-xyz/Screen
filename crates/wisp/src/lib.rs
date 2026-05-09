@@ -30,7 +30,7 @@ pub use blend::BlendMode;
 pub use color::Color;
 pub use error::Error;
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
-pub use scene::{Container, Node, NodeId, Stage, Transform};
+pub use scene::{Container, Node, NodeId, Sprite, Stage, Transform};
 pub use texture::Texture;
 
 /// Convenience alias for `Result<T, wisp::Error>`.
