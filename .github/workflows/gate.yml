@@ -1,0 +1,62 @@
+# `just gate` in CI — fmt, check, lint, nextest, doctest, cargo doc.
+#
+# Runs on pushes to `main` and on every PR. GStreamer is installed because
+# the decode crate's integration tests depend on `gst-launch-1.0` /
+# `gst-discoverer-1.0` — without it those tests skip but the build still
+# needs the system libs for the `gstreamer` runtime probe to be honest.
+
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (nightly per rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-gate-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-gate-
+
+      - name: Install GStreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gstreamer1.0-tools \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-libav
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: just gate
+        run: just gate
