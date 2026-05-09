@@ -6,6 +6,32 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0.11 — VideoTexture + RenderTexture
+- **Date:** 2026-05-09
+- **Status:** ✅ done
+- **Files changed:**
+  - `crates/wisp/src/texture.rs` — renamed internal field `_texture` → `texture` (now used by `wgpu_texture()`); added `pub(crate) wgpu_texture()` accessor
+  - `crates/wisp/src/texture/video_texture.rs` — `VideoTexture { texture: Texture }` with `new`, `upload_bgra` (BGRA8 per-frame upload via `queue.write_texture`), `width`, `height`, `texture` accessor; panics on byte-length mismatch
+  - `crates/wisp/src/texture/render_texture.rs` — `RenderTexture` with own `Arc<RenderTextureInner>` storage (RENDER_ATTACHMENT | COPY_SRC | TEXTURE_BINDING), `new`/`with_format` constructors, `view`/`sampler`/`format`/`width`/`height` accessors, **`read_pixels(app) -> Vec<u8>`** with proper `COPY_BYTES_PER_ROW_ALIGNMENT` padding strip
+  - `crates/wisp/src/lib.rs` — re-export `VideoTexture` and `RenderTexture`
+  - `crates/wisp/tests/render_texture.rs` — 5 integration tests including the **first real pixel-readback verification**: clear-color round-trip + a sprite captured at the texture's center pixel
+- **Verified:**
+  - `just gate` — passes (63 tests, was 58)
+  - `just security` — clean
+- **Notes:**
+  - **`read_pixels` is the unlock.** Subsequent chunks (Graphics M0.12+, filters M0.16+) get real pixel-level assertions instead of just "validation passed without panic." Pattern: render to a `RenderTexture`, `read_pixels`, assert specific pixel positions.
+  - **sRGB sting:** the first run of `render_texture_read_pixels_round_trips_clear_color` failed because the clear color (linear f32) gets gamma-encoded when written to an `Rgba8UnormSrgb` target — `0.251 → 0.537 = 137` not the expected 64. Fix: use `RenderTexture::with_format(Rgba8Unorm)` (non-sRGB) for the round-trip test so bytes match.
+  - **`COPY_BYTES_PER_ROW_ALIGNMENT` (256-byte rows):** `read_pixels` allocates a padded staging buffer and strips padding row-by-row before returning a tightly-packed buffer. Verified by tests asserting `bytes.len() == w*h*4`.
+  - **Recursive-fix loop fired 4 iterations:**
+    1. `clippy used_underscore_binding` — the `_texture` field is now read by `wgpu_texture()`; rename
+    2. `fmt` failed because my over-eager `replace_all _texture → texture` clobbered `pub mod render_texture`/`video_texture`/`create_texture`/`write_texture`/`wgpu_texture` (each contained `_texture` substring). **Lesson: never `replace_all` on a substring without auditing matches.** Recovered by rewriting `texture.rs` cleanly.
+    3. test failure on sRGB conversion (above)
+    4. green
+  - **`VideoTexture` defaults to `Bgra8UnormSrgb`** — matches macOS ScreenCaptureKit output. Other backends (Windows/Linux) may need `Rgba8UnormSrgb`; revisit when we wire the recorder.
+- **Issues filed:** none
+
+---
+
 ## M0.10 — Image Texture loading
 - **Date:** 2026-05-09
 - **Status:** ✅ done

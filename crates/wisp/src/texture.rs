@@ -28,7 +28,7 @@ impl std::fmt::Debug for Texture {
 }
 
 struct TextureInner {
-    _texture: wgpu::Texture,
+    texture: wgpu::Texture,
     view: wgpu::TextureView,
     sampler: wgpu::Sampler,
     width: u32,
@@ -104,7 +104,7 @@ impl Texture {
 
         Self {
             inner: Arc::new(TextureInner {
-                _texture: texture,
+                texture,
                 view,
                 sampler,
                 width,
@@ -151,7 +151,7 @@ impl Texture {
         });
         Self {
             inner: Arc::new(TextureInner {
-                _texture: texture,
+                texture,
                 view,
                 sampler,
                 width,
@@ -178,6 +178,10 @@ impl Texture {
 
     pub(crate) fn sampler(&self) -> &wgpu::Sampler {
         &self.inner.sampler
+    }
+
+    pub(crate) fn wgpu_texture(&self) -> &wgpu::Texture {
+        &self.inner.texture
     }
 
     /// Identity for batching — texture-pointer-equality.

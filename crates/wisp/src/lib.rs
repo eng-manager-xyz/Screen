@@ -32,6 +32,8 @@ pub use error::Error;
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
 pub use scene::{Container, Node, NodeId, Sprite, Stage, Transform};
 pub use texture::Texture;
+pub use texture::render_texture::RenderTexture;
+pub use texture::video_texture::VideoTexture;
 
 /// Convenience alias for `Result<T, wisp::Error>`.
 pub type Result<T> = core::result::Result<T, Error>;
