@@ -137,6 +137,12 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 ### CI / GitHub Actions / Linux runner
 
+- **`just fmt-fix` (or `cargo fmt --all`) before every commit, no exceptions.**
+  CI's first step is `cargo fmt --all --check`. A stray multi-line array
+  literal that rustfmt would collapse to one line burns 2-3 minutes of
+  runner time just to fail on fmt before any real work runs. Local fmt
+  costs <1s — no excuse.
+
 - **`macos-latest` is the truth runner for wgpu tests.** GitHub-hosted
   Linux runners only have lavapipe (mesa's software Vulkan), which loses
   the device on multi-bind-group filter pipelines. macOS runners have
