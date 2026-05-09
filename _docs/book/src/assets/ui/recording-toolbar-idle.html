@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Player controls — playing mid-clip</title>
+    <title>Recording toolbar — idle (ready)</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -474,6 +474,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="group" aria-label="Player transport" class="player-controls"><button type="button" aria-label="Pause" class="player-toggle player-toggle-playing"><span class="player-toggle-glyph">❚❚</span></button><div data-role="current" class="player-time">0:27</div><div class="player-scrub"><div class="player-scrub-track"><div class="player-scrub-fill" style="width: 32.00%;"></div><div class="player-scrub-handle" style="left: 32.00%;"></div></div></div><div data-role="total" class="player-time">1:24</div></div>
+    <div role="toolbar" aria-label="Recording controls" class="recording-toolbar rec-idle"><div class="rec-status"><span class="rec-dot"></span><span class="rec-status-label">Ready</span></div><div class="rec-timer">00:00</div><div class="rec-source"><span class="rec-source-glyph">⌬</span><span class="rec-source-label">Built-in Display</span></div><div class="rec-actions"><button type="button" class="rec-action rec-action-primary"><span class="rec-dot rec-dot-static"></span><span>Start recording</span></button></div></div>
   </body>
 </html>

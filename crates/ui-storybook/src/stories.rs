@@ -8,7 +8,8 @@ use leptos::prelude::*;
 
 use crate::components::{
     Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, DopeSheet, DopeSheetKeyframe,
-    DopeSheetTrack, DropZone, DropZoneState, KeyframeKind, PlayState, PlayerControls, TrackKind,
+    DopeSheetTrack, DropZone, DropZoneState, KeyframeKind, PlayState, PlayerControls,
+    RecordingState, RecordingToolbar, TrackKind,
 };
 
 /// One UI gallery story — a closure that renders an `IntoView` to its SSR
@@ -101,7 +102,55 @@ pub fn all_stories() -> Vec<Story> {
             title: "Editor mock — drop zone result + player + dope sheet",
             render: render_editor_mock,
         },
+        Story {
+            id: "recording-toolbar-idle",
+            category: "Recorder",
+            title: "Recording toolbar — idle (ready)",
+            render: render_recording_idle,
+        },
+        Story {
+            id: "recording-toolbar-recording",
+            category: "Recorder",
+            title: "Recording toolbar — recording",
+            render: render_recording_recording,
+        },
+        Story {
+            id: "recording-toolbar-paused",
+            category: "Recorder",
+            title: "Recording toolbar — paused",
+            render: render_recording_paused,
+        },
     ]
+}
+
+fn render_recording_idle() -> String {
+    render(view! {
+        <RecordingToolbar
+            state=RecordingState::Idle
+            elapsed_seconds=0.0
+            source="Built-in Display"
+        />
+    })
+}
+
+fn render_recording_recording() -> String {
+    render(view! {
+        <RecordingToolbar
+            state=RecordingState::Recording
+            elapsed_seconds=137.0
+            source="Built-in Display"
+        />
+    })
+}
+
+fn render_recording_paused() -> String {
+    render(view! {
+        <RecordingToolbar
+            state=RecordingState::Paused
+            elapsed_seconds=137.0
+            source="Built-in Display"
+        />
+    })
 }
 
 fn render_player_paused() -> String {

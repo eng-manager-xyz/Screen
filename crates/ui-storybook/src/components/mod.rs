@@ -28,9 +28,11 @@ pub mod card;
 pub mod dope_sheet;
 pub mod drop_zone;
 pub mod player_controls;
+pub mod recording_toolbar;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use card::{Card, CardBody, CardHeader};
 pub use dope_sheet::{DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, TrackKind};
 pub use drop_zone::{DropZone, DropZoneState};
 pub use player_controls::{PlayState, PlayerControls};
+pub use recording_toolbar::{RecordingState, RecordingToolbar};

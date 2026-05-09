@@ -351,6 +351,112 @@ kbd {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
+/* ───── RecordingToolbar ───── */
+.recording-toolbar {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.rec-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+}
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  display: inline-block;
+}
+.rec-recording .rec-dot:not(.rec-dot-static) {
+  background: var(--danger);
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  animation: rec-pulse 1.4s ease-out infinite;
+}
+.rec-paused .rec-dot:not(.rec-dot-static) {
+  background: var(--kf-marker);
+}
+.rec-status-label {
+  font-weight: 500;
+}
+.rec-recording .rec-status-label { color: var(--danger); }
+.rec-paused .rec-status-label { color: var(--kf-marker); }
+.rec-timer {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--fg);
+  min-width: 60px;
+}
+.rec-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  justify-self: start;
+}
+.rec-source-glyph {
+  color: var(--kf-linear);
+  font-size: 14px;
+  line-height: 1;
+}
+.rec-actions {
+  display: flex;
+  gap: 8px;
+}
+.rec-action {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 120ms ease;
+}
+.rec-action-primary {
+  background: var(--danger);
+  color: #fff;
+}
+.rec-action-primary:hover { background: #dc2626; }
+.rec-action-primary .rec-dot-static {
+  background: #fff;
+}
+.rec-action-secondary {
+  background: var(--secondary);
+  color: var(--fg);
+}
+.rec-action-secondary:hover { background: #3f3f46; }
+.rec-action-stop {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border);
+}
+.rec-action-stop:hover {
+  background: var(--bg-elev);
+  border-color: var(--border-strong);
+}
+
+@keyframes rec-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0); }
+}
+
 /* track-kind tints (subtle accents on the row backgrounds) */
 .track-video .dope-track { background: linear-gradient(0deg, rgba(56, 189, 248, 0.04), rgba(56, 189, 248, 0.04)), var(--bg); }
 .track-cursor .dope-track { background: linear-gradient(0deg, rgba(167, 139, 250, 0.04), rgba(167, 139, 250, 0.04)), var(--bg); }

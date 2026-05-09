@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-UI.3 — RecordingToolbar (idle / recording / paused)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — third chunk under the workflow.
+- **Files:** `crates/ui-storybook/src/components/recording_toolbar.rs`; `assets/style.css` (~95 lines: layout, source pill, action variants, pulsing-dot keyframe); `stories.rs` registers three new stories; SSR snapshot regenerated; three new chapters under `ui/chunks/`; `SUMMARY.md`.
+- **Verified:** `just gate` green; `just snapshots-ui` regenerated 15 demos (was 12); `just site` renders all three chapters.
+- **Three states drive everything:**
+  - `Idle` — single primary "Start recording" button (red), source picker, status reads "Ready". Intentionally one-button — pause/stop would be muted-and-dead before capture starts.
+  - `Recording` — pulsing red dot (CSS keyframes, ~1.4s loop), red status label, ticking M:SS timer, action stack `Pause` + `Stop`.
+  - `Paused` — dot stops pulsing, color shifts to `--kf-marker` (same yellow the dope sheet uses for markers — visual consistency for "interrupted" states), action stack `Resume` (red, same as Start) + `Stop`.
+- Timer formats `M:SS` until the hour, then `H:MM:SS`.
+
+---
+
 ## M-UI.2 — PlayerControls + editor-mock composition
 - **Date:** 2026-05-09
 - **Status:** ✅ done — second chunk under the locked workflow.
