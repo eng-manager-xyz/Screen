@@ -13,6 +13,13 @@ workspace = true
 name = "ui_storybook"
 path = "src/lib.rs"
 
+# Headless story exporter — writes a standalone HTML file per story under
+# `_docs/book/src/assets/ui/<id>.html` for the mdBook site.
+[[bin]]
+name = "ui-export-stories"
+path = "src/bin/export_stories.rs"
+required-features = ["ssr"]
+
 [features]
 # `ssr` is the default so `cargo check` / `cargo test` work on a native target
 # without Trunk or the wasm toolchain. Browser-side serving via Trunk is a

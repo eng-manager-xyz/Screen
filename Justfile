@@ -39,16 +39,45 @@ test:
 doctest:
     cargo test --workspace --doc
 
-# Generate docs — catches broken doc links.
+# Generate docs (warn-level missing_docs allowed — used in `gate`).
 docs:
     cargo doc --workspace --no-deps --document-private-items
 
+# Strict docs — broken intra-doc links and rustdoc warnings become errors.
+# Use this before milestone close; gate uses the lenient `docs` so backfill
+# doesn't block unrelated chunks.
+docs-strict:
+    RUSTDOCFLAGS="-D warnings -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links" cargo doc --workspace --no-deps --document-private-items
+
+# Build the prose site (mdBook) and combine with rustdoc under target/book/.
+# Output: target/book/index.html (prose) + target/book/api/<crate>/index.html (rustdoc).
+site: docs
+    @mkdir -p target/book
+    mdbook build _docs/book --dest-dir ../../target/book
+    @rm -rf target/book/api && cp -r target/doc target/book/api
+    @echo
+    @echo "Open: file://$(pwd)/target/book/index.html"
+
+# Regenerate per-feature screenshots / story HTML into _docs/book/src/assets/.
+# Used by mdBook chapters; commit the output so docs build is reproducible.
+snapshots: snapshots-wisp snapshots-ui
+
+snapshots-wisp:
+    cargo run -p wisp-storybook --bin wisp-export-stories
+
+snapshots-ui:
+    cargo run -p ui-storybook --bin ui-export-stories
+
 # Per-task gate. Run before marking any task done.
-gate: fmt check lint test doctest
+gate: fmt check lint test doctest docs
 
 # Run the wisp-storybook GUI — one window with every shipped feature.
 storybook:
     cargo run -p wisp-storybook --release
+
+# Run the UI storybook (Leptos) in the browser via Trunk.
+ui-storybook:
+    cd crates/ui-storybook && trunk serve --no-default-features --features csr --open
 
 # ─── Supply chain & dependency hygiene ────────────────────────────────────────
 
@@ -147,6 +176,7 @@ bootstrap:
     cargo install --locked cargo-deny
     cargo install --locked cargo-audit
     cargo install --locked cargo-machete
+    cargo install --locked mdbook
     @echo
     @echo "Optional tools (install on demand):"
     @echo "  cargo install --locked cargo-llvm-cov   # coverage"

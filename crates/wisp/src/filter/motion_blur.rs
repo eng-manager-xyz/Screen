@@ -14,8 +14,11 @@ use crate::texture::render_texture::RenderTexture;
 /// `zoomTransform.ts` defaults — they feel right for cursor zoom motion.
 #[derive(Debug, Clone, Copy)]
 pub struct MotionBlurFilter {
+    /// Direction + magnitude, in primitive-local pixels per frame.
     pub velocity: glam::Vec2,
+    /// Reference speed at which the kernel reaches `max_kernel_px`.
     pub peak_velocity_pps: f32,
+    /// Upper bound on per-tap displacement.
     pub max_kernel_px: f32,
 }
 

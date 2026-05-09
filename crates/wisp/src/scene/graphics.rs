@@ -20,16 +20,24 @@ pub enum Fill {
     Solid(Color),
     /// Linear gradient between two colors along `start → end`.
     LinearGradient {
+        /// Gradient start position (color = `color_a`).
         start: Vec2,
+        /// Gradient end position (color = `color_b`).
         end: Vec2,
+        /// Color at `start`.
         color_a: Color,
+        /// Color at `end`.
         color_b: Color,
     },
     /// Radial gradient from `center` outward to `radius`, blending two colors.
     RadialGradient {
+        /// Gradient center.
         center: Vec2,
+        /// Distance at which the gradient reaches `color_b`.
         radius: f32,
+        /// Color at `center`.
         color_a: Color,
+        /// Color at `radius`.
         color_b: Color,
     },
 }
@@ -89,6 +97,7 @@ pub(crate) enum Primitive {
 /// node's container transform.
 #[derive(Debug, Clone, Default)]
 pub struct Graphics {
+    /// Transform / visibility container.
     pub container: Container,
     current_fill: Fill,
     current_stroke: Option<Stroke>,

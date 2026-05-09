@@ -19,6 +19,15 @@ publish = false
 [workspace.lints.rust]
 unsafe_code = "warn"
 unused_imports = "warn"
+# Documentation gate. `warn` (not `deny`) so the cascade can be backfilled
+# crate-by-crate without blocking unrelated work; `just docs-strict` flips it
+# to deny via RUSTDOCFLAGS for the full check.
+missing_docs = "warn"
+
+[workspace.lints.rustdoc]
+# Broken intra-doc links + private intra-doc links are real bugs.
+broken_intra_doc_links = "warn"
+private_intra_doc_links = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

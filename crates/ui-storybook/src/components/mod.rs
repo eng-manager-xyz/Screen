@@ -14,6 +14,14 @@
     clippy::needless_pass_by_value,
     reason = "Leptos `#[component]` macro rewrites these patterns; lints fire on generated code"
 )]
+// UI components are documented via mdBook stories under `_docs/book/src/ui/`,
+// not via rustdoc — every visible variant has a screenshot + use case there.
+// `missing_docs` would otherwise fire on macro-generated builder structs we
+// don't author directly.
+#![allow(
+    missing_docs,
+    reason = "components documented in mdBook stories; rustdoc gate would fire on macro-generated builder structs"
+)]
 
 pub mod button;
 pub mod card;

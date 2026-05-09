@@ -16,14 +16,21 @@ new_key_type! {
 /// Scene-graph node — tagged union over the renderable types.
 #[derive(Debug, Clone)]
 pub enum Node {
+    /// Plain transform-only container (no draw of its own).
     Container(Container),
+    /// Textured quad.
     Sprite(Sprite),
+    /// SDF-based vector graphics (rounded rect, ellipse, gradients, …).
     Graphics(Graphics),
+    /// Bitmap-font text run.
     Text(Text),
+    /// Indexed triangle mesh (currently used for the perspective demo).
     Mesh(Mesh),
 }
 
 impl Node {
+    /// Borrow the underlying [`Container`] (transform + visibility) regardless
+    /// of variant.
     #[must_use]
     pub fn container(&self) -> &Container {
         match self {
@@ -35,6 +42,7 @@ impl Node {
         }
     }
 
+    /// Mutable borrow of the underlying [`Container`].
     pub fn container_mut(&mut self) -> &mut Container {
         match self {
             Self::Container(c) => c,

@@ -17,6 +17,7 @@ use crate::story::Story;
 
 const CANVAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
+/// The eframe app that hosts the storybook gallery.
 pub struct StorybookApp {
     wisp: Application,
     renderer: Renderer,
@@ -35,6 +36,7 @@ struct CanvasRender {
 }
 
 impl StorybookApp {
+    /// Construct a new app, sharing eframe's wgpu device with `wisp`.
     #[must_use]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Borrow eframe's wgpu device so wisp shares the same GPU context.

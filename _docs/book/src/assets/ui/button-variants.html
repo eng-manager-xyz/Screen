@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Button — variants</title>
+    <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
+ *
+ * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
+ * naming intentionally mirrors rust-ui's component class hooks so swapping
+ * to Tailwind later is a string replacement, not a rewrite.
+ */
+
+:root {
+  --bg: #09090b;            /* zinc-950 */
+  --bg-elev: #18181b;       /* zinc-900 */
+  --bg-row-alt: #1f1f23;
+  --fg: #fafafa;            /* zinc-50 */
+  --fg-muted: #a1a1aa;      /* zinc-400 */
+  --border: #27272a;        /* zinc-800 */
+  --border-strong: #3f3f46; /* zinc-700 */
+  --accent: #fafafa;
+  --accent-fg: #09090b;
+  --danger: #ef4444;        /* red-500 */
+  --secondary: #27272a;
+  --kf-hold: #a1a1aa;
+  --kf-linear: #38bdf8;     /* sky-400 */
+  --kf-ease: #a78bfa;       /* violet-400 */
+  --kf-marker: #facc15;     /* yellow-400 */
+
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-lg: 10px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+}
+
+/* ───── Button ───── */
+.btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  user-select: none;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { padding: 4px 10px; font-size: 12px; height: 28px; }
+.btn-md { padding: 6px 14px; font-size: 14px; height: 34px; }
+.btn-lg { padding: 8px 18px; font-size: 15px; height: 40px; }
+
+.btn-default { background: var(--accent); color: var(--accent-fg); }
+.btn-default:hover:not(:disabled) { background: #e4e4e7; }
+
+.btn-outline { background: transparent; color: var(--fg); border-color: var(--border); }
+.btn-outline:hover:not(:disabled) { background: var(--bg-elev); border-color: var(--border-strong); }
+
+.btn-ghost { background: transparent; color: var(--fg); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-elev); }
+
+.btn-destructive { background: var(--danger); color: #fff; }
+.btn-destructive:hover:not(:disabled) { background: #dc2626; }
+
+.btn-secondary { background: var(--secondary); color: var(--fg); }
+.btn-secondary:hover:not(:disabled) { background: #3f3f46; }
+
+/* ───── Card ───── */
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.card-header {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title { font-size: 15px; font-weight: 600; }
+.card-subtitle { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+.card-body { padding: 14px 18px; }
+
+/* ───── Story layout helpers ───── */
+.story-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+kbd {
+  font-family: var(--font-mono);
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+/* ───── DopeSheet ───── */
+.dope-sheet {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+}
+.dope-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+.dope-row:last-child { border-bottom: 0; }
+.dope-row:nth-child(odd) .dope-track { background: var(--bg-row-alt); }
+.dope-ruler { background: var(--bg-elev); color: var(--fg-muted); }
+
+.dope-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.dope-label-spacer { background: var(--bg-elev); }
+.dope-label-glyph {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+}
+.dope-label-text { color: var(--fg); }
+
+.dope-track {
+  position: relative;
+  height: 28px;
+}
+.dope-ruler-track { height: 22px; }
+.dope-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.dope-tick-label {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.dope-keyframe {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  transform: rotate(45deg);
+  background: var(--kf-hold);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.dope-keyframe.kf-hold { background: var(--kf-hold); }
+.dope-keyframe.kf-linear { background: var(--kf-linear); }
+.dope-keyframe.kf-ease { background: var(--kf-ease); }
+.dope-keyframe.kf-marker {
+  background: var(--kf-marker);
+  width: 3px;
+  height: 22px;
+  margin-left: -1.5px;
+  margin-top: -11px;
+  transform: none;
+  border-radius: 1px;
+}
+
+.dope-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: 119px; /* offset past the labels column */
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(250, 250, 250, 0.4);
+  pointer-events: none;
+}
+
+/* track-kind tints (subtle accents on the row backgrounds) */
+.track-video .dope-track { background: linear-gradient(0deg, rgba(56, 189, 248, 0.04), rgba(56, 189, 248, 0.04)), var(--bg); }
+.track-cursor .dope-track { background: linear-gradient(0deg, rgba(167, 139, 250, 0.04), rgba(167, 139, 250, 0.04)), var(--bg); }
+.track-audio .dope-track { background: linear-gradient(0deg, rgba(34, 197, 94, 0.04), rgba(34, 197, 94, 0.04)), var(--bg); }
+.track-caption .dope-track { background: linear-gradient(0deg, rgba(250, 204, 21, 0.04), rgba(250, 204, 21, 0.04)), var(--bg); }
+.track-effect .dope-track { background: linear-gradient(0deg, rgba(244, 114, 182, 0.04), rgba(244, 114, 182, 0.04)), var(--bg); }
+</style>
+    <style>
+      body { padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <div class="story-row"><button class="btn btn-default btn-md">Default</button><button class="btn btn-outline btn-md">Outline</button><button class="btn btn-ghost btn-md">Ghost</button><button class="btn btn-destructive btn-md">Destructive</button><button class="btn btn-secondary btn-md">Secondary</button></div>
+  </body>
+</html>

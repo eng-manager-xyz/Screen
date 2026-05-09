@@ -26,7 +26,9 @@ use crate::texture::render_texture::RenderTexture;
 /// Per-filter render context — provides the wgpu device / queue / encoder
 /// needed to enqueue draw work for a filter pass.
 pub struct FilterContext<'a> {
+    /// The wisp `Application` (device, queue, surface).
     pub app: &'a Application,
+    /// Command encoder this filter pass should record into.
     pub encoder: &'a mut wgpu::CommandEncoder,
 }
 

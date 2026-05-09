@@ -11,13 +11,21 @@ use crate::components::{
     DopeSheetTrack, KeyframeKind, TrackKind,
 };
 
+/// One UI gallery story — a closure that renders an `IntoView` to its SSR
+/// HTML string, plus identifying metadata.
 pub struct Story {
+    /// Stable kebab-case identifier — also the asset filename
+    /// (`_docs/book/src/assets/ui/<id>.html`).
     pub id: &'static str,
+    /// Logical bucket in the gallery (e.g. `"Primitives"`, `"Editor"`).
     pub category: &'static str,
+    /// Display title shown in the gallery sidebar.
     pub title: &'static str,
+    /// Render closure — produces SSR HTML synchronously.
     pub render: fn() -> String,
 }
 
+/// Every shipped story, in display order.
 #[must_use]
 pub fn all_stories() -> Vec<Story> {
     vec![

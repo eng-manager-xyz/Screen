@@ -11,8 +11,11 @@ use crate::texture::Texture;
 /// Textured quad with 3D perspective rotation around the Y axis.
 #[derive(Debug, Clone)]
 pub struct Mesh {
+    /// Transform / visibility container.
     pub container: Container,
+    /// Texture sampled across the quad.
     pub texture: Texture,
+    /// Multiplicative tint applied to the sampled texel.
     pub tint: Color,
     /// Rotation angle around the Y (vertical) axis, in radians.
     pub rotation_y: f32,

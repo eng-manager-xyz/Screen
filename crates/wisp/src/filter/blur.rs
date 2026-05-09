@@ -14,10 +14,12 @@ use crate::texture::render_texture::RenderTexture;
 /// once with `pass=1` (vertical) using ping-pong render targets.
 #[derive(Debug, Clone, Copy)]
 pub struct BlurFilter {
+    /// Texel-space spread per pass.
     pub radius: f32,
 }
 
 impl BlurFilter {
+    /// Construct a blur with an explicit radius.
     #[must_use]
     pub const fn new(radius: f32) -> Self {
         Self { radius }

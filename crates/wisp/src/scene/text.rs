@@ -17,9 +17,13 @@ use crate::texture::Texture;
 /// Per-glyph metrics — UV rect in the atlas.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphMetrics {
+    /// Left U coordinate in the atlas.
     pub u_min: f32,
+    /// Top V coordinate in the atlas.
     pub v_min: f32,
+    /// Right U coordinate in the atlas.
     pub u_max: f32,
+    /// Bottom V coordinate in the atlas.
     pub v_max: f32,
 }
 
@@ -132,9 +136,13 @@ impl std::fmt::Debug for Font {
 /// `cursor.y` by `line_height` (= `cell_size` × `cell_pixels`).
 #[derive(Debug, Clone)]
 pub struct Text {
+    /// Transform / visibility container.
     pub container: Container,
+    /// String to render. Newlines start a new line.
     pub content: String,
+    /// Bitmap font supplying the glyph atlas.
     pub font: Font,
+    /// Text color tint.
     pub color: Color,
     /// NDC units per atlas pixel. Default `0.02` ≈ glyphs ~16% of NDC tall.
     pub cell_size: f32,
