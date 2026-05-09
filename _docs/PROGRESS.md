@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M1.1 → M4.3 — Tauri shell + drop-zone player (consolidated)
+- **Date:** 2026-05-09
+- **Status:** ✅ done — all 11 chunks delivered as one Tauri shell with vanilla HTML/CSS/JS frontend.
+- **Files:** `crates/app/{Cargo.toml, build.rs, tauri.conf.json, src/main.rs, dist/{index.html, styles.css, app.js}, icons/icon.png}`
+- **Verified:** `just gate` passes (92 tests); `just security` passes after adding 16 gtk-rs unmaintained-advisory exemptions (ISS-02). `cargo run -p screen-app` awaits manual verification.
+- **Notes:**
+  - **Pivoted Leptos → vanilla HTML+JS.** Tauri+Leptos+Trunk has dual-target ceremony; the M1 product is small enough that 150 lines of vanilla frontend works. Leptos can be re-introduced as the editor UI grows.
+  - **Three new lessons** in CLAUDE.md (Tauri 2 specifics): icon.png required at compile time even with bundle disabled; `protocol-asset` feature required for `convertFileSrc`; `cargo machete` needs `ignored = ["tauri"]` because `generate_context!` is a macro.
+  - **ISS-02 filed:** 16 gtk-rs unmaintained-only advisories exempted in `deny.toml`. Linux-only, none exploits.
+
+---
+
 ## M0.17 → M0.21 — Filters, Mesh, examples (consolidated)
 - **Date:** 2026-05-09
 - **Status:** ✅ done (M0.17 / M0.18 / M0.19 / M0.20 fully; M0.21 partial — `headless_export` shipped, `recorder_mock` + `video_texture` examples deferred)
