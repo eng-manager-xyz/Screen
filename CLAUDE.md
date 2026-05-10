@@ -36,7 +36,17 @@ After any non-trivial change — adding code, editing config, removing a dep, fi
 7. STATUS:  TaskUpdate          →  mark task completed only when gate is green
 ```
 
-**`just gate` runs:** fmt → check → lint → nextest → doctest. All five must pass. See `_docs/QA.md` for higher tiers and `_docs/TESTING.md` for the testing strategy.
+**`just gate` runs:** fmt → check → lint → nextest → doctest → docs → snapshots-check. All seven must pass. See `_docs/QA.md` for higher tiers and `_docs/TESTING.md` for the testing strategy.
+
+### Asset choice for mdBook chapters
+
+The chapter's hero asset is part of the delivery; pick the medium that *shows the feature*. The chunk isn't done if the asset doesn't communicate.
+
+- **`<video controls autoplay muted loop playsinline>` (MP4) when motion is the feature.** Any story with `tick: Some(...)` — perspective rotation, motion blur, animated reveals, audio histograms scrolling, video playback — must ship an MP4 captured by `wisp-export-animated` (or the equivalent media exporter) and embed via the `<video>` tag. A static PNG of a frozen frame doesn't communicate motion.
+- **PNG (`![](path)`) for static demos** — masks, filters applied to static content, layout, transforms with a clear single-frame story. Cheaper to generate, cheaper to review.
+- **White / light backdrop** for *anything that uses alpha or subtle luminance differences* — drop shadows, glow, dim-outside, vignettes, motion-blur trails, near-transparent overlays. Black-on-black is the most-recurring "the feature is there, you just can't see it" mistake. The storybook exporter clears to BLACK by default; if your story needs a light backdrop, render a colored RT and attach it as a Sprite (Sprite-on-Sprite ordering follows scene-tree order; a Graphics backdrop paints AFTER Sprites and overlays them — that's the M-MASK / M-FILTER bug class).
+- **Real content over synthetic gradients** for blend modes, color filters, and anything where structure matters. Bundle a license-clean image (e.g. the bundled Apollo 17 "Blue Marble" at `crates/wisp-storybook/assets/images/`) rather than two gradients overlapping. Real chroma + luminance + edges + dark regions makes per-mode behavior legible at a glance.
+- **`just snapshots-wisp-animated`** runs the gstreamer-backed `wisp-export-animated` binary. It is intentionally *not* chained into `just snapshots-wisp` (it depends on the `gst-launch-1.0` CLI on PATH). Run it before commit when an animated story's `tick` changes. The committed `.mp4` is the source of truth for CI / mdBook — CI does not regenerate videos.
 
 ### The recursive-fix loop
 
