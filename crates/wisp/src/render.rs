@@ -15,8 +15,13 @@ mod blend_pipeline;
 mod blit;
 mod clip;
 mod graphics_pipeline;
+mod mask_cache;
+pub mod mask_combine;
+mod mask_compose;
+mod mask_texture;
 mod mesh_pipeline;
 mod path_clip;
+mod path_mask_texture;
 mod quad_pipeline;
 mod sprite_pipeline;
 mod text_pipeline;
@@ -68,6 +73,11 @@ pub struct Renderer {
     blit: blit::BlitPipeline,
     clip: clip::ClipPipeline,
     path_clip: path_clip::PathClipPipeline,
+    mask_texture: mask_texture::MaskTexturePipeline,
+    path_mask_texture: path_mask_texture::PathMaskTexturePipeline,
+    mask_compose: mask_compose::MaskComposePipeline,
+    mask_combine: mask_combine::MaskCombinePipeline,
+    mask_cache: mask_cache::MaskCacheCell,
     output_format: wgpu::TextureFormat,
 }
 
@@ -88,6 +98,11 @@ impl Renderer {
         let blit_pipeline = blit::BlitPipeline::new(app, output_format);
         let clip_pipeline = clip::ClipPipeline::new(app, output_format);
         let path_clip_pipeline = path_clip::PathClipPipeline::new(app, output_format);
+        let mask_texture_pipeline = mask_texture::MaskTexturePipeline::new(app, output_format);
+        let path_mask_texture_pipeline =
+            path_mask_texture::PathMaskTexturePipeline::new(app, output_format);
+        let mask_compose_pipeline = mask_compose::MaskComposePipeline::new(app, output_format);
+        let mask_combine_pipeline = mask_combine::MaskCombinePipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -99,6 +114,11 @@ impl Renderer {
             blit: blit_pipeline,
             clip: clip_pipeline,
             path_clip: path_clip_pipeline,
+            mask_texture: mask_texture_pipeline,
+            path_mask_texture: path_mask_texture_pipeline,
+            mask_compose: mask_compose_pipeline,
+            mask_combine: mask_combine_pipeline,
+            mask_cache: std::cell::RefCell::new(mask_cache::MaskCache::new()),
             output_format,
         })
     }
@@ -203,7 +223,50 @@ impl Renderer {
         foreground: &RenderTexture,
         output: &RenderTexture,
     ) {
-        self.clip.apply(app, shape, foreground, output);
+        // M-VEC.6: explicit clip primitive routes through the
+        // separated mask + compose path. The auto-dispatch in
+        // `render_stage` keeps using the inline `clip` pipeline (hot
+        // path; refactoring it would add a render pass per dispatched
+        // node every frame).
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_clip_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            foreground,
+            output,
+        );
+    }
+
+    /// Vector-driven variant of [`Self::apply_clip`] (M-VEC.6 /
+    /// AUT-58). Generates the mask via the M-DYN.1 path (cached) and
+    /// composes against the foreground via [`Self::apply_mask_to_texture`].
+    /// Accepts paths.
+    pub fn apply_clip_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let w = foreground.width();
+        let h = foreground.height();
+        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
+        self.mask_compose.apply(app, foreground, &mask_arc, output);
     }
 
     /// Composition primitive — render `base`, blurred only inside
@@ -247,21 +310,62 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
-        let format = self.output_format;
-        let blur_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        // M-VEC.4 refactor: route through the shared vector-mask path
+        // by wrapping the `MaskShape` in a `VectorShape`. Output is
+        // byte-equivalent to the previous inline-clip implementation.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_privacy_blur_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            radius,
+            base,
+            output,
+        );
+    }
 
-        // 1. Blur the whole frame.
-        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
-
-        // 2. Mask the blur to the shape.
-        self.clip.apply(app, shape, &blur_rt, &masked_rt);
-
-        // 3. Copy base → output (replaces output's prior contents).
-        self.blit.blit(app, base, output.view());
-
-        // 4. Composite the masked blur over the base inside output.
-        self.blit.compose_over(app, &masked_rt, output);
+    /// Vector-driven variant of [`Self::apply_privacy_blur`] (M-VEC.4
+    /// / AUT-56). Same composition shape but the mask is produced
+    /// from a [`Vector`](crate::scene::Vector) instead of a
+    /// [`MaskShape`], unlocking path support and the M-DYN.2 cache
+    /// for repeated regions across frames.
+    ///
+    /// Pipeline:
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ──────────► blur_rt
+    ///                                              │
+    ///   vector ─ generate_vector_mask_texture ─► mask_rt
+    ///                                              │
+    ///                          (blur_rt × mask_rt) ► masked_rt
+    ///                                              │
+    ///   base ───────────────────────────────────► output  (REPLACE)
+    ///   masked_rt ──────────────────────────────► output  (compose_over)
+    /// ```
+    pub fn apply_privacy_blur_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        radius: f32,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let mask_arc = self.cached_vector_mask_texture(app, vector, base.width(), base.height());
+        self.compose_blur_through_mask(app, base, radius, &mask_arc, output);
     }
 
     /// Composition primitive — render `base`, with `shape` filled by
@@ -297,11 +401,53 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
-        let format = self.output_format;
-        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        // M-VEC.5 refactor: route through the shared vector-mask
+        // path. Output is byte-equivalent to the previous
+        // inline-clip implementation.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_solid_redaction_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            color,
+            base,
+            output,
+        );
+    }
 
-        // 1. Clear fill_rt to `color` — no draws, just LoadOp::Clear.
+    /// Vector-driven variant of [`Self::apply_solid_redaction`]
+    /// (M-VEC.5 / AUT-57). Same composition shape, but the mask is
+    /// produced from a [`Vector`](crate::scene::Vector) — including
+    /// freehand polygons via [`VectorShape::Path`].
+    pub fn apply_solid_redaction_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        // 1. Clear fill_rt to `color`.
         let mut encoder = app
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -330,14 +476,325 @@ impl Renderer {
         }
         app.queue().submit(std::iter::once(encoder.finish()));
 
-        // 2. Mask the fill to the shape.
-        self.clip.apply(app, shape, &fill_rt, &masked_rt);
+        // 2. Generate / fetch the mask texture.
+        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
 
-        // 3. Copy base → output.
+        // 3. Compose fill × mask into masked_rt.
+        self.mask_compose
+            .apply(app, &fill_rt, &mask_arc, &masked_rt);
+
+        // 4. Copy base → output, then composite masked redaction over.
         self.blit.blit(app, base, output.view());
-
-        // 4. Compose the masked redaction over base inside output.
         self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Combine two alpha-mask textures via a boolean operation
+    /// (M-VEC.11 / AUT-63). The resulting mask is itself a regular
+    /// alpha-mask `RenderTexture` and can drive any downstream
+    /// composition primitive (`apply_mask_to_texture`,
+    /// `compose_blur_through_mask`, etc.).
+    pub fn combine_masks(
+        &self,
+        app: &Application,
+        a: &RenderTexture,
+        b: &RenderTexture,
+        op: mask_combine::MaskCombineOp,
+        output: &RenderTexture,
+    ) {
+        self.mask_combine.apply(app, a, b, op, output);
+    }
+
+    /// Compose privacy blur through an explicit alpha-mask texture
+    /// (M-DYN.3 / AUT-45). Lower-level than [`Self::apply_privacy_blur`]:
+    /// the caller supplies the mask texture, which lets multiple
+    /// effects share one mask without regenerating it. Same composition
+    /// shape as the high-level method:
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ──► blur_rt
+    ///                                    │
+    ///                  blur_rt × mask  ── masked_rt   ← apply_mask_to_texture
+    ///                                    │
+    ///   base ─────────────────────────► output  (REPLACE)
+    ///   masked_rt ─────────────────────► output  (compose_over)
+    /// ```
+    ///
+    /// Use case: when a region is being privacy-blurred *and*
+    /// solid-redacted *and* spotlighted on the same frame, generate
+    /// the mask once via
+    /// [`Self::cached_vector_mask_texture`](Self::cached_vector_mask_texture)
+    /// and pass the result to all three composition primitives.
+    pub fn compose_blur_through_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        radius: f32,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let blur_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
+        self.mask_compose.apply(app, &blur_rt, mask, &masked_rt);
+        self.blit.blit(app, base, output.view());
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose solid-color redaction through an explicit alpha-mask
+    /// texture (M-DYN.4 / AUT-46). Sister of
+    /// [`Self::compose_blur_through_mask`] — same shape, but the
+    /// "what's inside" is a solid color instead of a blur.
+    pub fn compose_solid_through_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        color: Color,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::compose_solid fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::compose_solid fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        self.mask_compose.apply(app, &fill_rt, mask, &masked_rt);
+        self.blit.blit(app, base, output.view());
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose dim-outside (spotlight) through an explicit *inverted*
+    /// alpha-mask texture (M-DYN.5 / AUT-47). The mask should already
+    /// be inverted (e.g., from
+    /// [`Self::cached_mask_texture_inverted`]); this primitive just
+    /// composes a constant `dim_color` through it.
+    pub fn compose_dim_through_inverted_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        dim_color: Color,
+        inverted_mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        // Same as compose_solid_through_mask — the "inverted" part
+        // is purely about how the mask was generated upstream. The
+        // composition itself just multiplies fill × mask.alpha.
+        self.compose_solid_through_mask(app, base, dim_color, inverted_mask, output);
+    }
+
+    /// Compose `foreground × mask.alpha` into `output` (M-VEC.4..6 /
+    /// AUT-56..58 building block). The mask texture must store
+    /// coverage in alpha (the format produced by
+    /// [`Self::generate_mask_texture`] et al).
+    ///
+    /// All three RTs must share dimensions and format. This is the
+    /// primitive that the vector-driven privacy blur / redaction /
+    /// spotlight refactor uses internally; expose it as part of the
+    /// public surface so app-level code (when it lands) can drive
+    /// composition through the same path.
+    pub fn apply_mask_to_texture(
+        &self,
+        app: &Application,
+        foreground: &RenderTexture,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.mask_compose.apply(app, foreground, mask, output);
+    }
+
+    /// Generate an alpha-mask `RenderTexture` for `shape` at
+    /// `(w, h)` (M-DYN.1 / AUT-43). The texture stores coverage as
+    /// `(m, m, m, m)` so consumers can either alpha-multiply (sample
+    /// `.a`) or display as a grayscale silhouette.
+    ///
+    /// This primitive owns *only* coverage. Privacy blur, redaction,
+    /// and spotlight composition layers (M-DYN.3+, M-VEC.4+) consume
+    /// these textures separately. The cache (`AUT-44`) layers on top
+    /// to avoid regenerating identical masks every frame.
+    #[must_use]
+    pub fn generate_mask_texture(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        self.mask_texture
+            .generate(app, shape, w, h, self.output_format)
+    }
+
+    /// Generate an alpha-mask `RenderTexture` for a [`Vector`]
+    /// primitive (M-VEC.3 / AUT-55). Routes to the analytic-SDF or
+    /// path-mask path depending on the underlying [`VectorShape`].
+    ///
+    /// Only [`Vector::shape`] is consulted — `fill` / `stroke` /
+    /// `opacity` / `transform` don't affect mask coverage.
+    /// `transform` *does* shift the SDF center / path points if
+    /// honored; for V1 we ignore it (the mask is always evaluated in
+    /// NDC against the raw shape data).
+    ///
+    /// This is the bridge used by M-VEC.4..6: any caller that wants
+    /// to drive a mask from vector data uses this entry point, and
+    /// the underlying primitive (privacy blur, redaction, spotlight)
+    /// gets the same alpha texture regardless of which `VectorShape`
+    /// variant produced it.
+    #[must_use]
+    pub fn generate_vector_mask_texture(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            self.generate_mask_texture(app, mask_shape, w, h)
+        } else if let Some(points) = vector.shape.as_path_points() {
+            self.generate_path_mask_texture(app, points, w, h)
+        } else {
+            debug_assert!(false, "VectorShape variant not handled by mask bridge");
+            RenderTexture::with_format(app, w, h, self.output_format)
+        }
+    }
+
+    /// Cached variant of [`Self::generate_vector_mask_texture`].
+    /// Analytic shapes go through the M-DYN.2 cache; path shapes
+    /// bypass (V1: paths not cached — see M-DYN.2's chapter).
+    #[must_use]
+    pub fn cached_vector_mask_texture(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            self.cached_mask_texture(app, mask_shape, w, h)
+        } else if let Some(points) = vector.shape.as_path_points() {
+            std::sync::Arc::new(self.generate_path_mask_texture(app, points, w, h))
+        } else {
+            debug_assert!(false, "VectorShape variant not handled by mask bridge");
+            std::sync::Arc::new(RenderTexture::with_format(app, w, h, self.output_format))
+        }
+    }
+
+    /// Cached variant of [`Self::generate_mask_texture`] (M-DYN.2 /
+    /// AUT-44). Returns an `Arc<RenderTexture>` that may be shared
+    /// across the cache and other call sites; identical (shape, w,
+    /// h) inputs reuse the same GPU texture across frames instead of
+    /// regenerating.
+    ///
+    /// Cache eviction is FIFO at 64 entries — see
+    /// [`mask_cache::MAX_ENTRIES`]. `f32` fields hash by exact bits,
+    /// so callers re-passing the same shape value Just Work.
+    #[must_use]
+    pub fn cached_mask_texture(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        let key = mask_cache::MaskKey::new(shape, w, h, false);
+        let mut cache = self.mask_cache.borrow_mut();
+        cache.get_or_insert(key, || {
+            self.mask_texture
+                .generate(app, shape, w, h, self.output_format)
+        })
+    }
+
+    /// Cached + inverted variant.
+    #[must_use]
+    pub fn cached_mask_texture_inverted(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        let key = mask_cache::MaskKey::new(shape, w, h, true);
+        let mut cache = self.mask_cache.borrow_mut();
+        cache.get_or_insert(key, || {
+            let rt = RenderTexture::with_format(app, w, h, self.output_format);
+            self.mask_texture.render_into(app, shape, true, &rt);
+            rt
+        })
+    }
+
+    /// Returns `(hits, misses)` for the mask texture cache. Useful
+    /// for tests and observability.
+    #[must_use]
+    pub fn mask_cache_stats(&self) -> (u64, u64) {
+        self.mask_cache.borrow().stats()
+    }
+
+    /// Drop every entry in the mask texture cache. Call when the
+    /// renderer's underlying resources change (e.g., format swap) or
+    /// in tests that want to start from a clean slate.
+    pub fn clear_mask_cache(&self) {
+        self.mask_cache.borrow_mut().clear();
+    }
+
+    /// Inverse variant of [`Self::generate_mask_texture`]: pixels
+    /// outside the shape are opaque, inside are transparent. Used by
+    /// spotlight / dim-outside composition (M-DYN.5).
+    #[must_use]
+    pub fn generate_mask_texture_inverted(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        let rt = RenderTexture::with_format(app, w, h, self.output_format);
+        self.mask_texture.render_into(app, shape, true, &rt);
+        rt
+    }
+
+    /// Generate an alpha-mask `RenderTexture` for a freehand polygon
+    /// (M-DYN.1 / AUT-43, path variant). Up to 32 vertices honored
+    /// (uniform-buffer cap; same as `apply_path_clip`).
+    #[must_use]
+    pub fn generate_path_mask_texture(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        self.path_mask_texture
+            .generate(app, points, w, h, self.output_format)
     }
 
     /// Apply a freehand polygon mask to `foreground`, writing the
@@ -452,9 +909,48 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
+        // M-VEC.6 refactor: route through inverse-mask + compose.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_spotlight_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            dim_color,
+            base,
+            output,
+        );
+    }
+
+    /// Vector-driven variant of [`Self::apply_spotlight`] (M-VEC.6 /
+    /// AUT-58). Inverse-mask path: pixels OUTSIDE the shape are
+    /// dimmed by `dim_color`. Accepts paths.
+    pub fn apply_spotlight_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        dim_color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
         let format = self.output_format;
-        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
 
         // 1. Clear fill_rt to dim_color.
         let mut encoder = app
@@ -485,8 +981,28 @@ impl Renderer {
         }
         app.queue().submit(std::iter::once(encoder.finish()));
 
-        // 2. Inverse-clip the dim fill — opaque OUTSIDE the shape.
-        self.clip.apply_inverted(app, shape, &fill_rt, &masked_rt);
+        // 2. Generate the *inverse* mask texture (analytic shapes
+        // route through the cached inverted variant; paths are
+        // handled by the path-mask path which has no inverted form
+        // yet — fall back to applying clip-inverted on the existing
+        // pipeline for path shapes).
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            let mask_arc = self.cached_mask_texture_inverted(app, mask_shape, w, h);
+            self.mask_compose
+                .apply(app, &fill_rt, &mask_arc, &masked_rt);
+        } else if let Some(points) = vector.shape.as_path_points() {
+            // Path inverse: generate normal path mask, then use the
+            // existing path-clip in inverted mode by routing through
+            // a temporary "inverted-color" mask. Simpler: generate
+            // mask, then re-apply via inverted blend in mask_compose.
+            // For V1 we compose the path mask directly and rely on
+            // path_clip.wgsl's invert flag through the legacy clip.
+            // This keeps the spotlight-path case working at minimum.
+            self.path_clip
+                .apply(app, points, true, &fill_rt, &masked_rt);
+            // Suppress unused warning about points capture.
+            let _ = points;
+        }
 
         // 3. Copy base → output.
         self.blit.blit(app, base, output.view());
@@ -518,6 +1034,22 @@ impl Renderer {
             base,
             output,
         );
+    }
+
+    /// Vector-driven variant of [`Self::apply_dim_outside_data`]
+    /// (M-VEC.7 / AUT-59). Same composition as `apply_spotlight_vector`
+    /// but the dim color is derived from a [`DimStrength`] preset
+    /// (`Light` / `Medium` / `Heavy` / `Custom(alpha)`). Accepts paths.
+    pub fn apply_dim_outside_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        strength: crate::scene::DimStrength,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let dim_color = Color::rgba(0.0, 0.0, 0.0, strength.alpha());
+        self.apply_spotlight_vector(app, vector, dim_color, base, output);
     }
 
     /// Convenience wrapper over [`Self::apply_privacy_blur`] that

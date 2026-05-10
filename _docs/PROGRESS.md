@@ -6,6 +6,199 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.12 — Vector primitive examples gallery (AUT-64) — phase complete
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the M-VEC track. Single-canvas storybook entry tying together the entire vector catalog plus an mdBook chapter that indexes every M-DYN / M-VEC chunk.
+- **Linear:** [AUT-64](https://linear.app/harwood/issue/AUT-64).
+- **Files:** new `crates/wisp-storybook/src/stories/s_vector_gallery.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. New `_docs/book/src/wisp/chunks/vector-gallery.md` (gallery image + chunk index for both M-VEC and M-DYN tracks).
+- **Verified:** storybook fingerprint snapshot updated; PNG visually confirmed.
+
+### Next-phase summary — 20 issues, 17 commits
+
+The `mvp/next-phase` branch closes 20 issues across two milestone tracks plus two P0 mask-followups:
+
+| Track | Issues | Commits |
+|---|---|---|
+| M-DYN.1..6 (dynamic textures) | AUT-43/44/45/46/47/48 | 3 |
+| M-VEC.1..12 (vector primitives) | AUT-53..64 | 10 |
+| P0 export-parity | AUT-27, AUT-33 | 1 |
+
+**Key architectural delivery:** the *separated mask + composition* model. Coverage (M-DYN.1 `MaskTexturePipeline`) is decoupled from composition (M-VEC.4 `MaskComposePipeline`), with a cache (M-DYN.2) and a vector data model (M-VEC.1) layered in between. The five existing mask primitives (clip, privacy_blur, solid_redaction, spotlight, dim_outside) were refactored onto this path while keeping their public APIs byte-equivalent. Path-driven variants land for every primitive.
+
+**+45 tests** beyond the M-MASK baseline (201 → 266 across the branch).
+
+**Test count milestones:**
+- M-MASK baseline (start of branch): 201
+- After M-DYN.1+.2 + M-VEC.1: 221
+- After M-VEC.2+.3: 229
+- After M-VEC.4-6 refactor: 235
+- After AUT-27/-33 export parity: 243
+- After M-DYN.3-6: 247
+- After M-VEC.7-12: 266
+
+**Lessons captured in CLAUDE.md** during this phase:
+- "Renderer batching / draw order" — Graphics paints AFTER Sprites in `render_stage` regardless of scene-tree order.
+- "WGSL ↔ Rust uniform layout" — vec3 fields force 16-byte alignment; size the Rust struct to match.
+
+The architecture is now app-ready: an editor inspector can drive privacy blur, redaction, spotlight, dim-outside, crop, webcam shape, and freehand-path masks through a single `Vector` data type, with caching, export parity, and full primitive composability.
+
+---
+
+## M-VEC.10 + M-VEC.11 — Path stroke + mask boolean ops (AUT-62 + AUT-63)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — two chunks shipped together. Path stroke unblocks `Callout::arrow_to`; mask boolean ops let masks combine via union / intersect / subtract.
+- **Linear:** [AUT-62](https://linear.app/harwood/issue/AUT-62), [AUT-63](https://linear.app/harwood/issue/AUT-63).
+- **Files:** new `crates/wisp/src/scene/path.rs` (`PathBuilder`, `Path`, adaptive Bezier flattening); new `crates/wisp/shaders/mask_combine.wgsl` and `crates/wisp/src/render/mask_combine.rs` (`MaskCombineOp`, `MaskCombinePipeline`). `crates/wisp/src/scene/callout.rs` adds `Callout::arrow_to` using the new path stroke. `crates/wisp/src/render.rs` adds `Renderer::combine_masks`. `lib.rs` re-exports `Path`, `PathBuilder`, `PathCommand`, `MaskCombineOp`. New `crates/wisp/tests/mask_combine.rs` (3 cases). Two new stories: `path-stroke`, `mask-combine`. New `_docs/book/src/wisp/chunks/vector-path-stroke.md`. CLAUDE.md gains a new lesson under "WGSL ↔ Rust uniform layout."
+- **Verified:** 6 path unit tests + 3 mask-combine integration tests pass. Full `just gate` green.
+- **`vec3<u32>` alignment gotcha** (caught during M-VEC.11 first run): WGSL `vec3<u32>` is 16-byte aligned, so a struct `{ op: u32, _pad: vec3<u32> }` is 32 bytes, not 16. The matching Rust struct must pad to the same size or wgpu rejects the bind group with "Buffer is bound with size N where the shader expects M." Validation error is silent at compile time and only surfaces at run time. Documented in CLAUDE.md "WGSL ↔ Rust uniform layout."
+- **`draw_line` colors via `current_fill`, not stroke** — caught during M-VEC.10 story rendering. The first version of `Path::stroke_to_graphics` set `Stroke` but `draw_line` ignores stroke (the docstring explicitly says "Strokes do not apply to lines"). Fixed by setting `Fill::Solid(color)` before emitting segments. Small lesson; not adding to CLAUDE.md — the docstring is clear and the fix is local.
+- **Adaptive Bezier flattening via perpendicular-distance test:** for a curve to subdivide, the max perpendicular distance from a control point to the chord must exceed `tolerance`. Quadratic checks one control point; cubic checks both. Standard de Casteljau subdivision when triggered. NDC tolerance of 0.005 produces visually smooth curves at 256px output.
+
+---
+
+## M-VEC.8 + M-VEC.9 — Highlight + callout primitives (AUT-60 + AUT-61)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — preset constructors for the most common attention-guiding overlays. Outputs are plain `Vector`s so they chain through every existing builder. Two issues, one chunk because they share the architectural pattern (preset → `Vector`).
+- **Linear:** [AUT-60](https://linear.app/harwood/issue/AUT-60), [AUT-61](https://linear.app/harwood/issue/AUT-61).
+- **Files:** new `crates/wisp/src/scene/highlight.rs` (`Highlight::outline / filled / pill / glow`); new `crates/wisp/src/scene/callout.rs` (`Callout::label_box / badge / caption_pill`); `crates/wisp/src/scene.rs` and `lib.rs` re-exports. New `crates/wisp-storybook/src/stories/s_vector_overlays.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. New `_docs/book/src/wisp/chunks/vector-highlight-callout.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/vector-overlays.png`.
+- **Verified:** 8 unit tests (4 highlight + 4 callout) cover constructor invariants; storybook smoke + fingerprint green; PNG visually checked (yellow outline ring, cyan pill, amber label, red badge, dark caption pill).
+- **Known gaps documented in chapter:**
+  - Arrow / pointer-line callouts need M-VEC.10 stroke-along-path commands. Once landed, an `arrow_to` constructor joins `Callout` without breaking changes.
+  - True Gaussian glow depends on M-DYN.7 (P2) feathering. `Highlight::glow` is a wider-stroke / lower-alpha approximation in V1.
+
+---
+
+## M-VEC.7 — Vector spotlight + inverse-dim effects (AUT-59)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the path-accepting gap. `apply_dim_outside_data` was already shipped (M-MASK.7) but only accepted analytic SDF shapes; this chunk adds `apply_dim_outside_vector` for path support, and a chapter that ties M-VEC.7 to the existing `apply_spotlight_vector` (M-VEC.6) + `compose_dim_through_inverted_mask` (M-DYN.5).
+- **Linear:** [AUT-59](https://linear.app/harwood/issue/AUT-59).
+- **Files:** `crates/wisp/src/render.rs` adds `apply_dim_outside_vector(vector, strength, base, output)`. New `crates/wisp/tests/dim_outside_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-spotlight-dim.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** byte-equivalence with `apply_dim_outside_data` for analytic shapes; path variant dims correctly around a diamond polygon. `just gate` green.
+
+---
+
+## M-DYN.3..6 — Explicit-mask composition primitives (AUT-45 / -46 / -47 / -48)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes four P1 mask-followup tickets in one chunk. Lower-level companion primitives that take the mask texture as an explicit parameter, allowing one mask to be shared across multiple effects in the same frame.
+- **Linear:** [AUT-45](https://linear.app/harwood/issue/AUT-45), [AUT-46](https://linear.app/harwood/issue/AUT-46), [AUT-47](https://linear.app/harwood/issue/AUT-47), [AUT-48](https://linear.app/harwood/issue/AUT-48).
+- **Files:** `crates/wisp/src/render.rs` adds `compose_blur_through_mask` (M-DYN.3), `compose_solid_through_mask` (M-DYN.4), `compose_dim_through_inverted_mask` (M-DYN.5). M-DYN.6 (webcam crop dynamic texture) is satisfied by the existing `apply_clip_vector` with `VectorShape::Circle` / `RoundedRect` — pure documentation. Refactored `apply_privacy_blur_vector` to delegate to `compose_blur_through_mask`. New `crates/wisp/tests/blur_mask_reuse.rs` (2 cases). New `crates/wisp/tests/compose_through_mask.rs` (2 cases). New `_docs/book/src/wisp/chunks/compose-through-mask.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 19 existing privacy-blur tests still pass; 4 new tests pass; full `just gate` green.
+- **Why batch four issues into one chunk?** They're all the same architectural pattern — "expose the mask texture as an explicit parameter to the composition primitive." Shipping them separately would have meant 4 PROGRESS entries / 4 chapters / 4 commits for what is one coherent design decision. Linked them in a single chapter that covers all four.
+- **M-DYN.6 needed no new code.** Spec said "webcam overlays should crop through the dynamic mask path." `apply_clip_vector(vec_circle_or_rounded_rect, foreground, output)` already does exactly that — generates mask via `MaskTexturePipeline`, composes via `MaskComposePipeline`. Documented the connection explicitly so M-DYN.6 isn't lost.
+- **High-level methods now route through the explicit primitives.** `apply_privacy_blur_vector` is a one-liner that calls `compose_blur_through_mask` with the cached mask. The high-level path stays ergonomic; the low-level path stays composable.
+
+---
+
+## Export + copy-frame mask parity (AUT-27 + AUT-33)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — both P0 mask-followups closed in one chunk. Five export-parity tests + three copy-frame tests lock in: every mask primitive produces identical bytes whether you render to a preview view or to an export RT, and `read_pixels` returns the masked content (not the base).
+- **Linear:** [AUT-27](https://linear.app/harwood/issue/AUT-27), [AUT-33](https://linear.app/harwood/issue/AUT-33).
+- **Files:** new `crates/wisp/tests/export_mask_parity.rs` (5 cases — clip, redaction, spotlight, privacy blur, path-vector clip). New `crates/wisp/tests/copy_frame_mask_parity.rs` (3 cases — redaction, spotlight, privacy blur). New `_docs/book/src/wisp/chunks/export-mask-parity.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** all 8 new tests pass; full `just gate` green.
+- **Architecture is already export-safe — these tests just guard it.** `Renderer::render_stage` is the only code path that produces frames. `apply_*` primitives go through it identically whether the caller binds a preview surface view or an export RT view. The tests render the same scene twice to different RTs and assert byte-equality — guards against any future preview-only shortcut.
+- **Both issues in one chunk** because they share the same architectural property (single render path → identical output) and the same underlying primitives. AUT-27 is the byte-equality test; AUT-33 is the inside-vs-outside-mask test on `read_pixels`.
+
+---
+
+## M-VEC.6 — Clip + spotlight on vector masks (AUT-58) — refactor zone closed
+- **Date:** 2026-05-10
+- **Status:** ✅ done — completes the M-VEC.4..6 refactor of existing M-MASK primitives onto the M-VEC pipeline.
+- **Linear:** [AUT-58](https://linear.app/harwood/issue/AUT-58).
+- **Files:** `crates/wisp/src/render.rs` — refactored `apply_clip` and `apply_spotlight` internals; added `apply_clip_vector` + `apply_spotlight_vector`. New `crates/wisp/tests/clip_spotlight_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-clip-spotlight.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 16 existing M-MASK clip + spotlight + dim-outside + ellipse + circle tests still pass byte-equivalent; 2 new path-driven tests pass; full `just gate` green.
+- **Auto-dispatch path NOT refactored.** `render_stage` calls `self.clip.apply(...)` directly when handling `Container::clip = Some(MaskShape)` — the hot path runs per dispatched node every frame. The new vector-mask path adds a render pass; that's fine for explicit calls (cache hits offset it) but would be a regression on auto-dispatch. Documented in the chapter.
+- **Spotlight path-inverse special case.** `cached_mask_texture_inverted` exists for SDF shapes but no equivalent for paths in V1. The path route routes through `path_clip.apply(..., invert: true, ...)` — uses the existing inline-clip pipeline directly. Future enhancement: cached path mask + an inverse-compose shader. Not blocking — path-driven spotlight works end-to-end.
+
+---
+
+## M-VEC.5 — Solid redaction on vector masks (AUT-57)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — same refactor pattern as M-VEC.4. `apply_solid_redaction(MaskShape, ...)` keeps its API; internals route through the shared mask + compose path. Adds `apply_solid_redaction_vector` for path support.
+- **Linear:** [AUT-57](https://linear.app/harwood/issue/AUT-57).
+- **Files:** `crates/wisp/src/render.rs` — refactored `apply_solid_redaction` to wrap its `MaskShape` in a `Vector` and forward to new `apply_solid_redaction_vector`. New `crates/wisp/tests/solid_redaction_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-solid-redaction.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 existing M-MASK.5 redaction tests still pass; 2 new vector tests pass; full `just gate` green.
+- **Reuses M-VEC.4 infrastructure entirely.** No new pipelines or shaders. The `MaskComposePipeline` and `cached_vector_mask_texture` from M-VEC.4 cover this primitive too. Only the "fill source" differs (clear-to-color instead of blur).
+
+---
+
+## M-VEC.4 — Privacy blur on vector masks (AUT-56)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first refactor of an existing M-MASK primitive onto the M-VEC pipeline. `apply_privacy_blur(shape: MaskShape, ...)` now routes through the separated mask-texture path internally; output is byte-equivalent to the previous inline-clip implementation.
+- **Linear:** [AUT-56](https://linear.app/harwood/issue/AUT-56).
+- **Files:** new `crates/wisp/shaders/mask_compose.wgsl` (samples foreground RT × mask RT → `(fg.rgb, fg.a * mask.a)`); new `crates/wisp/src/render/mask_compose.rs` (`MaskComposePipeline`); `crates/wisp/src/render.rs` adds `apply_mask_to_texture(foreground, mask, output)` public primitive plus `apply_privacy_blur_vector(vector, radius, base, output)`. `apply_privacy_blur` itself was rewritten to wrap its `MaskShape` in a `VectorShape` and forward — same external API, new internals. New `crates/wisp/tests/privacy_blur_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-privacy-blur.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 9 existing M-MASK.2/.3/.4 privacy-blur tests still pass unchanged (proves the refactor is byte-equivalent); 2 new vector-driven tests pass; full `just gate` green.
+- **Architectural pivot — separated mask + composition.** The old pipeline ran `ClipPipeline` to compute mask + sample foreground in one shader. The new pipeline runs `MaskTexturePipeline` (mask only) then `MaskComposePipeline` (multiply foreground × mask). One extra render pass per call, offset by mask-cache hits — static masks across frames now regenerate exactly once.
+- **Path support unlocked.** Privacy blur can now use `VectorShape::Path` — previously impossible because `apply_privacy_blur(shape: MaskShape, ...)` had no Path variant in the enum. Test `path_vector_blurs_inside_polygon` covers a diamond polygon over a red/blue split: center mixes both colors, far corner stays as base red.
+- **Old API preserved.** `apply_privacy_blur` still takes a `MaskShape` and produces the same bytes. Existing M-MASK.2/.3/.4 stories, tests, and chapters keep working without modification. The chapter notes the previous inline-clip pipeline description in those chapters is now historical.
+- **`apply_mask_to_texture` is now public.** Made it part of the `Renderer` public surface so AUT-57 (solid redaction) and AUT-58 (rounded crops) can reuse the same intermediate primitive — and eventually any app-level code that wants direct control over mask × foreground composition.
+
+---
+
+## M-VEC.3 — Render vectors to alpha-mask textures (AUT-55)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — bridge between `Vector` (M-VEC.1) and `MaskTexturePipeline` (M-DYN.1). Unblocks the M-VEC.4..6 refactor of existing mask primitives.
+- **Linear:** [AUT-55](https://linear.app/harwood/issue/AUT-55).
+- **Files:** `crates/wisp/src/render.rs` adds `Renderer::generate_vector_mask_texture(vector, w, h)` and `cached_vector_mask_texture(...)`. New `crates/wisp/tests/vector_mask_bridge.rs` (4 cases). New `_docs/book/src/wisp/chunks/vector-mask-bridge.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 bridge tests pass; full `just gate` green.
+- **Pure routing — no new pipelines or shaders.** The bridge dispatches on `VectorShape` and forwards to either `generate_mask_texture` (SDF path) or `generate_path_mask_texture` (path). Output is byte-equivalent to the direct primitive call.
+- **Cached variant respects existing semantics.** Analytic shapes go through the M-DYN.2 cache (counted in `mask_cache_stats()`); path shapes bypass and wrap in `Arc` per call. `cached_path_vector_does_not_use_cache` test locks in the V1 limitation.
+- **No story.** This is dispatch infrastructure; the renderable output is identical to what the existing `mask-texture` story already shows. M-VEC.4 (privacy blur refactor) will be the first user-facing demonstration.
+
+---
+
+## M-VEC.2 — Render vector primitives to scene geometry (AUT-54)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — thin layer on top of the existing graphics rasterizer; Vector primitives now appear in `render_stage` output.
+- **Linear:** [AUT-54](https://linear.app/harwood/issue/AUT-54).
+- **Files:** `crates/wisp/src/scene/vector.rs` adds `Vector::to_graphics()` (analytic shapes → `Graphics`; path returns `None`) and `Vector::add_to_stage()` convenience wrapper. `crates/wisp/src/scene/vector.rs` includes a `scale_fill_alpha` helper that folds opacity into all three `Fill` variants (Solid / LinearGradient / RadialGradient). New `crates/wisp/tests/vector_render.rs` (4 cases). New `crates/wisp-storybook/src/stories/s_vector_render.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/vector-render.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/vector-render.png`.
+- **Verified:** 4 vector-render tests pass; storybook smoke + fingerprint green; PNG visually checked (teal rect / amber rounded / gradient circle / green-stroke ellipse / 40%-opacity white rounded-rect).
+- **No new pipeline.** The existing graphics rasterizer already handles rect / rounded-rect / ellipse — `Vector::to_graphics()` is a match-arms walker that picks the right `Graphics::draw_*` call. Circle is `Ellipse(half = (r, r))`, same trick as M-MASK.8 used for `MaskShape::Circle`.
+- **Opacity folded into paint at conversion time.** The renderer has no per-node opacity channel; multiplying the alpha component of fill + stroke colors at conversion is the practical equivalent. Matches PixiJS semantics ("opacity on the graphics primitive").
+- **Path rendering deferred.** `VectorShape::Path` returns `None` from `to_graphics()` — the graphics rasterizer has no draw_path primitive. M-VEC.10 (AUT-62) adds path stroke + fill commands; until then, paths drive masks only.
+- **Borrow gotcha** (test code): `v.add_to_stage(&mut stage, stage.root())` doesn't compile — `stage.root()` borrows `stage` immutably while `&mut stage` is held. Bind `let root = stage.root();` first. Same pattern existing M-MASK tests already use; just had to remember to apply it to the new `add_to_stage` API.
+
+---
+
+## M-VEC.1 — Vector shape primitive model in wisp (AUT-53)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — data-only chunk; rendering layers on in M-VEC.2/.3.
+- **Linear:** [AUT-53](https://linear.app/harwood/issue/AUT-53).
+- **Files:** new `crates/wisp/src/scene/vector.rs` (`VectorShape` enum with Rect/RoundedRect/Circle/Ellipse/Path variants, `VectorStroke` struct, `Vector` struct with shape/fill/stroke/opacity/transform + builder methods); `crates/wisp/src/scene.rs` exposes the new module + re-exports; `crates/wisp/src/lib.rs` re-exports `Vector` / `VectorShape` / `VectorStroke`. New `_docs/book/src/wisp/chunks/vector-model.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 9 unit tests cover constructors, bounds (including empty path → zero rect), `as_mask_shape` round-trip, default opacity = 1.0, and builder chaining. `just gate` green at 221 tests (+9 from M-DYN.2's 212).
+- **Bridges to existing mask machinery via `as_mask_shape()`.** Analytic-SDF variants (Rect / RoundedRect / Circle / Ellipse) convert to `MaskShape` cleanly; Path returns `None`. This is what M-VEC.4..6 will use to refactor `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` onto vector data without rewriting the SDF shader. Path uses the parallel `as_path_points()` accessor instead.
+- **`Clone`, not `Copy`.** The `Path { points: Vec<Vec2> }` variant carries owned data, so the enum can't be `Copy`. That's the same reason `MaskShape::Path` was never added — documented in the chapter and in M-MASK.10's progress entry. Existing `MaskShape` stays `Copy` (no path variant); `VectorShape` is `Clone`.
+- **`#[non_exhaustive]` future-proofs the catalog.** M-VEC.10 (path stroke commands), M-VEC.13 (SVG import subset), M-VEC.16 (feathered edges) will extend `VectorShape` without breaking callers.
+- **No story for the data layer.** Per the project convention, non-render chunks are exempt. M-VEC.2 (the rasterizer) and M-VEC.3 (the alpha-mask bridge) will both ship stories.
+
+---
+
+## M-DYN.2 — Mask texture cache in wisp (AUT-44)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — performance guardrail on top of M-DYN.1. Identical mask inputs across frames reuse the GPU texture instead of regenerating.
+- **Linear:** [AUT-44](https://linear.app/harwood/issue/AUT-44).
+- **Files:** new `crates/wisp/src/render/mask_cache.rs` (`MaskKey` with bit-cast `f32` hashing, `MaskCache` with FIFO eviction, `MAX_ENTRIES = 64`, hits/misses stats); `crates/wisp/src/render.rs` adds `mask_cache: RefCell<MaskCache>` field plus four new public methods (`cached_mask_texture`, `cached_mask_texture_inverted`, `mask_cache_stats`, `clear_mask_cache`); new `crates/wisp/tests/mask_cache.rs` (5 cases); new `_docs/book/src/wisp/chunks/mask-cache.md`; `_docs/book/src/SUMMARY.md`.
+- **Verified:** 5 cache tests pass; full `just gate` green.
+- **Bit-cast `f32` for hashing.** `MaskShape` has `f32` fields, which aren't `Eq` / `Hash` directly. The cache key bit-casts each `f32` to `u32` via `to_bits()`, hashes the resulting integer representation. Same canonical NaN bits hash identically — fine for our use case where callers re-pass the same shape value across frames; we explicitly want exact-bit equality, not NaN-aware floating-point equality.
+- **Returns `Arc<RenderTexture>`, not `&RenderTexture`.** The cache outlives any single render-stage call, so consumers need shared ownership rather than a reference tied to the cache's lifetime. `Arc` (not `Rc`) keeps the `Renderer` `Send`-compatible.
+- **FIFO over LRU for V1.** LRU would need access-order bookkeeping on every cache hit; FIFO needs nothing. With a 64-entry cap and typical usage (small set of recurring masks per recording), FIFO behaves close to LRU in practice. Easy to upgrade later if profiling shows churn.
+- **No story for the cache.** Caching is invisible — output bytes are identical to non-cached. The existing `mask-texture` story (M-DYN.1) implicitly demonstrates correctness regardless of which path produced the texture. Per the project convention, non-render features are exempt from the story-per-chunk rule.
+- **Path masks intentionally excluded.** Hashing a `Vec<glam::Vec2>` is non-trivial and most freehand-polygon use cases mutate between frames. Documented in the chapter as a V1 limitation; callers needing path caching manage it externally.
+
+---
+
+## M-DYN.1 — Dynamic alpha-mask texture primitive in wisp (AUT-43)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first chunk of the dynamic-textures phase. Coverage is now a separate primitive from composition; everything that follows in M-DYN / M-VEC builds on this.
+- **Linear:** [AUT-43](https://linear.app/harwood/issue/AUT-43).
+- **Files:** new `crates/wisp/shaders/mask_texture.wgsl` (SDF coverage to alpha RT, supports Rect/RoundedRect/Circle/Ellipse via `shape_kind` flag, with `invert` flag); new `crates/wisp/shaders/path_mask_texture.wgsl` (uniform-buffered point-in-polygon coverage); new `crates/wisp/src/render/mask_texture.rs` (`MaskTexturePipeline`); new `crates/wisp/src/render/path_mask_texture.rs` (`PathMaskTexturePipeline`); `crates/wisp/src/render.rs` adds three public methods (`generate_mask_texture`, `generate_mask_texture_inverted`, `generate_path_mask_texture`); new `crates/wisp/tests/mask_texture.rs` (6 cases); new `crates/wisp-storybook/src/stories/s_mask_texture.rs` + writeup; `crates/wisp-storybook/src/stories/mod.rs`; `_docs/book/src/wisp/chunks/mask-texture.md`; `_docs/book/src/SUMMARY.md`; `_docs/book/src/assets/wisp/mask-texture.png`; story-fingerprint snapshot updated.
+- **Verified:** 6 mask-texture tests pass on Metal; storybook smoke + fingerprint green.
+- **Architectural pivot — coverage is now its own primitive.** The existing `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_path_clip` keep working as before (combined SDF + foreground sample in one shader). M-DYN.1 introduces the *separated* path: shape-data → alpha RT, no foreground involvement. M-DYN.2 (cache), M-VEC.3 (vector → mask bridge), and M-VEC.4..6 (refactor existing primitives onto the new model) all build on this foundation. Pure addition; no existing code was changed.
+- **Output format choice — `(m, m, m, m)`:** writing the same value to RGB and alpha means consumers can sample either way. Composition shaders use `.a` for alpha-multiplication; the storybook tile renders the texture as a grayscale silhouette via `Texture::from_rgba` + `Sprite`, which "just works" without a separate display path.
+- **Two pipelines, not one.** `MaskTexturePipeline` handles SDF shapes (Rect/RoundedRect/Circle/Ellipse degenerate cases of one rounded-rect SDF, plus the ellipse SDF branch via `shape_kind`). `PathMaskTexturePipeline` handles polygons via the same crossings-test as `path_clip.wgsl`. Symmetry with the existing clip/path-clip split keeps each path single-purpose. Future cleanup may unify them once the AUT-58 vector refactor settles.
+- **Gate-loop lesson — pipelines batch by type, not insertion order.** First version of the storybook story added a full-canvas `Graphics` backdrop BEFORE the mask sprites. Storybook smoke passed (backdrop alone exceeded the visibility threshold), but the exported PNG showed only the backdrop. Root cause: `render_stage` batches draws by pipeline type — all sprites first, then all graphics — so a backdrop graphics paints OVER the sprites regardless of insertion order. **Fix:** rely on the renderer's clear color for backdrops; reserve `Graphics` for foreground decoration. Captured in CLAUDE.md "Renderer batching / draw order".
+
+---
+
 ## M-MASK.10 — Freehand path mask in wisp (AUT-35) — series complete
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the 10-issue mask suite (AUT-31 / AUT-20 / AUT-21 / AUT-22 / AUT-23 / AUT-28 / AUT-29 / AUT-30 / AUT-34 / AUT-35).

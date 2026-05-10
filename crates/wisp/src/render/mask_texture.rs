@@ -1,17 +1,16 @@
-//! Clip pipeline — apply a [`MaskShape`] to a foreground
-//! `RenderTexture` and write the masked result.
+//! Generate an alpha-mask `RenderTexture` from a [`MaskShape`]
+//! (M-DYN.1 / AUT-43).
 //!
-//! Used by the auto-dispatch path in
-//! [`Renderer::render_stage`](crate::render::Renderer::render_stage)
-//! when a container has a
-//! [`Container::clip`](crate::scene::container::Container::clip) set:
-//! the subtree is rendered into a foreground RT, this pipeline samples
-//! the foreground and multiplies in the SDF-based mask alpha, and the
-//! result is composited back onto the parent's destination.
+//! The output texture stores coverage as `(m, m, m, m)`: same value
+//! in RGB and alpha so consumers can either alpha-multiply (sample
+//! `.a`) or display as a grayscale silhouette. The mask is decoupled
+//! from foreground sampling — composition happens in a downstream
+//! pipeline.
 //!
-//! Today: only [`MaskShape::RoundedRect`]. Later issues add more shape
-//! variants; the same pipeline (uniform-driven SDF) handles them by
-//! switching the SDF function in the WGSL.
+//! Architectural rationale (`AUT-43`): this primitive owns *only*
+//! coverage. Privacy blur, redaction, and spotlight will compose with
+//! these textures via separate paths. The cache (`AUT-44`) layers on
+//! top to avoid regenerating identical masks every frame.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -22,7 +21,7 @@ use crate::texture::render_texture::RenderTexture;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct ClipUniforms {
+struct MaskTextureUniforms {
     center: [f32; 2],
     half_extents: [f32; 2],
     radius: f32,
@@ -31,61 +30,44 @@ struct ClipUniforms {
     shape_kind: f32,
 }
 
-pub(crate) struct ClipPipeline {
+pub(crate) struct MaskTexturePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
 }
 
-impl ClipPipeline {
+impl MaskTexturePipeline {
     pub(crate) fn new(app: &Application, output_format: wgpu::TextureFormat) -> Self {
         let device = app.device();
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("wisp::clip bg layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
+            label: Some("wisp::mask_texture bg layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("wisp::clip pipeline layout"),
+            label: Some("wisp::mask_texture pipeline layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("wisp::clip shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/clip.wgsl").into()),
+            label: Some("wisp::mask_texture shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../../shaders/mask_texture.wgsl").into(),
+            ),
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::clip pipeline"),
+            label: Some("wisp::mask_texture pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -110,44 +92,34 @@ impl ClipPipeline {
             cache: None,
         });
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("wisp::clip sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
         Self {
             pipeline,
             bind_group_layout,
-            sampler,
         }
     }
 
-    /// Sample `foreground` and write the masked result into `output`.
-    /// `output_dims` lets us compute a 1-pixel anti-alias band in the
-    /// shader (`aa = 2/min(w, h)` in NDC units).
-    pub(crate) fn apply(
+    /// Generate a mask texture for `shape` at `(w, h)` and return it.
+    pub(crate) fn generate(
         &self,
         app: &Application,
         shape: MaskShape,
-        foreground: &RenderTexture,
-        output: &RenderTexture,
-    ) {
-        self.apply_with_invert(app, shape, foreground, output, false);
+        w: u32,
+        h: u32,
+        output_format: wgpu::TextureFormat,
+    ) -> RenderTexture {
+        let rt = RenderTexture::with_format(app, w, h, output_format);
+        self.render_into(app, shape, false, &rt);
+        rt
     }
 
-    fn apply_with_invert(
+    /// Same as [`Self::generate`] but writes into a caller-owned RT
+    /// (used by the cache so it can recycle textures).
+    pub(crate) fn render_into(
         &self,
         app: &Application,
         shape: MaskShape,
-        foreground: &RenderTexture,
-        output: &RenderTexture,
         invert: bool,
+        output: &RenderTexture,
     ) {
         let (cx, cy, hx, hy, radius, shape_kind) = match shape {
             MaskShape::Rect { rect } => {
@@ -166,9 +138,6 @@ impl ClipPipeline {
                 (cx, cy, hx, hy, r, 0.0)
             }
             MaskShape::Circle { center, radius } => {
-                // Rounded-rect SDF degenerates to circle when
-                // half_extents == radius == r. (The shader formula
-                // becomes length(max(|p|, 0)) - r = length(p) - r.)
                 let r = radius.max(0.0);
                 (center.x, center.y, r, r, r, 0.0)
             }
@@ -178,7 +147,6 @@ impl ClipPipeline {
             } => {
                 let hx = half_extents.x.max(0.0);
                 let hy = half_extents.y.max(0.0);
-                // Radius is unused by the ellipse SDF branch; pass 0.
                 (center.x, center.y, hx, hy, 0.0, 1.0)
             }
         };
@@ -187,7 +155,7 @@ impl ClipPipeline {
         let h_f = f32::from(u16::try_from(output.height().min(u32::from(u16::MAX))).unwrap_or(1));
         let aa = 2.0 / w_f.min(h_f).max(1.0);
 
-        let uniforms = ClipUniforms {
+        let uniforms = MaskTextureUniforms {
             center: [cx, cy],
             half_extents: [hx, hy],
             radius,
@@ -198,38 +166,28 @@ impl ClipPipeline {
         let buffer = app
             .device()
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wisp::clip uniforms"),
+                label: Some("wisp::mask_texture uniforms"),
                 contents: bytemuck::bytes_of(&uniforms),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
 
         let bg = app.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("wisp::clip bg"),
+            label: Some("wisp::mask_texture bg"),
             layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(foreground.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
         });
 
         let mut encoder = app
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("wisp::clip encoder"),
+                label: Some("wisp::mask_texture encoder"),
             });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("wisp::clip pass"),
+                label: Some("wisp::mask_texture pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: output.view(),
                     resolve_target: None,

@@ -45,6 +45,20 @@
   - [Webcam shapes — M-MASK.8](./wisp/chunks/webcam-shapes.md)
   - [Ellipse mask — M-MASK.9](./wisp/chunks/ellipse-mask.md)
   - [Freehand path mask — M-MASK.10](./wisp/chunks/path-mask.md)
+  - [Dynamic mask textures — M-DYN.1](./wisp/chunks/mask-texture.md)
+  - [Mask texture cache — M-DYN.2](./wisp/chunks/mask-cache.md)
+  - [Vector shape model — M-VEC.1](./wisp/chunks/vector-model.md)
+  - [Render vector primitives — M-VEC.2](./wisp/chunks/vector-render.md)
+  - [Vector → mask texture bridge — M-VEC.3](./wisp/chunks/vector-mask-bridge.md)
+  - [Privacy blur on vector masks — M-VEC.4](./wisp/chunks/vector-privacy-blur.md)
+  - [Solid redaction on vector masks — M-VEC.5](./wisp/chunks/vector-solid-redaction.md)
+  - [Clip + spotlight on vector masks — M-VEC.6](./wisp/chunks/vector-clip-spotlight.md)
+  - [Export & copy-frame mask parity — AUT-27/-33](./wisp/chunks/export-mask-parity.md)
+  - [Compose through explicit mask — M-DYN.3..6](./wisp/chunks/compose-through-mask.md)
+  - [Vector spotlight + dim — M-VEC.7](./wisp/chunks/vector-spotlight-dim.md)
+  - [Vector highlight + callout — M-VEC.8 + M-VEC.9](./wisp/chunks/vector-highlight-callout.md)
+  - [Path stroke + mask boolean ops — M-VEC.10 + M-VEC.11](./wisp/chunks/vector-path-stroke.md)
+  - [Vector primitive gallery — M-VEC.12](./wisp/chunks/vector-gallery.md)
 
 # `decode` — video decode
 

@@ -11,9 +11,12 @@ mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
+mod s_mask_combine;
+mod s_mask_texture;
 mod s_mesh_perspective;
 mod s_motion_blur;
 mod s_path_mask;
+mod s_path_stroke;
 mod s_privacy_blur_rect;
 mod s_privacy_blur_rounded;
 mod s_privacy_blur_strength;
@@ -22,6 +25,9 @@ mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
+mod s_vector_gallery;
+mod s_vector_overlays;
+mod s_vector_render;
 mod s_webcam_shapes;
 
 use crate::story::Story;
@@ -52,5 +58,11 @@ pub fn all_stories() -> Vec<Story> {
         s_webcam_shapes::story(),
         s_ellipse::story(),
         s_path_mask::story(),
+        s_mask_texture::story(),
+        s_vector_render::story(),
+        s_vector_overlays::story(),
+        s_path_stroke::story(),
+        s_mask_combine::story(),
+        s_vector_gallery::story(),
     ]
 }

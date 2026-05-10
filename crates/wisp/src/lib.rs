@@ -33,9 +33,11 @@ pub use filter::{
     BlurFilter, ColorMatrixFilter, DropShadowFilter, Filter, FilterContext, MotionBlurFilter,
 };
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
+pub use render::mask_combine::MaskCombineOp;
 pub use scene::{
-    BlurStrength, Container, DimOutside, DimStrength, Fill, Font, Graphics, MaskShape, Mesh, Node,
-    NodeId, PrivacyBlur, Sprite, Stage, Stroke, Text, Transform,
+    BlurStrength, Callout, Container, DimOutside, DimStrength, Fill, Font, Graphics, Highlight,
+    MaskShape, Mesh, Node, NodeId, Path, PathBuilder, PathCommand, PrivacyBlur, Sprite, Stage,
+    Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;
