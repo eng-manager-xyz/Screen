@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.3 — Render vectors to alpha-mask textures (AUT-55)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — bridge between `Vector` (M-VEC.1) and `MaskTexturePipeline` (M-DYN.1). Unblocks the M-VEC.4..6 refactor of existing mask primitives.
+- **Linear:** [AUT-55](https://linear.app/harwood/issue/AUT-55).
+- **Files:** `crates/wisp/src/render.rs` adds `Renderer::generate_vector_mask_texture(vector, w, h)` and `cached_vector_mask_texture(...)`. New `crates/wisp/tests/vector_mask_bridge.rs` (4 cases). New `_docs/book/src/wisp/chunks/vector-mask-bridge.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 bridge tests pass; full `just gate` green.
+- **Pure routing — no new pipelines or shaders.** The bridge dispatches on `VectorShape` and forwards to either `generate_mask_texture` (SDF path) or `generate_path_mask_texture` (path). Output is byte-equivalent to the direct primitive call.
+- **Cached variant respects existing semantics.** Analytic shapes go through the M-DYN.2 cache (counted in `mask_cache_stats()`); path shapes bypass and wrap in `Arc` per call. `cached_path_vector_does_not_use_cache` test locks in the V1 limitation.
+- **No story.** This is dispatch infrastructure; the renderable output is identical to what the existing `mask-texture` story already shows. M-VEC.4 (privacy blur refactor) will be the first user-facing demonstration.
+
+---
+
 ## M-VEC.2 — Render vector primitives to scene geometry (AUT-54)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — thin layer on top of the existing graphics rasterizer; Vector primitives now appear in `render_stage` output.

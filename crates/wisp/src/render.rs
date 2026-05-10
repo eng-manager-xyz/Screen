@@ -373,6 +373,60 @@ impl Renderer {
             .generate(app, shape, w, h, self.output_format)
     }
 
+    /// Generate an alpha-mask `RenderTexture` for a [`Vector`]
+    /// primitive (M-VEC.3 / AUT-55). Routes to the analytic-SDF or
+    /// path-mask path depending on the underlying [`VectorShape`].
+    ///
+    /// Only [`Vector::shape`] is consulted — `fill` / `stroke` /
+    /// `opacity` / `transform` don't affect mask coverage.
+    /// `transform` *does* shift the SDF center / path points if
+    /// honored; for V1 we ignore it (the mask is always evaluated in
+    /// NDC against the raw shape data).
+    ///
+    /// This is the bridge used by M-VEC.4..6: any caller that wants
+    /// to drive a mask from vector data uses this entry point, and
+    /// the underlying primitive (privacy blur, redaction, spotlight)
+    /// gets the same alpha texture regardless of which `VectorShape`
+    /// variant produced it.
+    #[must_use]
+    pub fn generate_vector_mask_texture(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            self.generate_mask_texture(app, mask_shape, w, h)
+        } else if let Some(points) = vector.shape.as_path_points() {
+            self.generate_path_mask_texture(app, points, w, h)
+        } else {
+            debug_assert!(false, "VectorShape variant not handled by mask bridge");
+            RenderTexture::with_format(app, w, h, self.output_format)
+        }
+    }
+
+    /// Cached variant of [`Self::generate_vector_mask_texture`].
+    /// Analytic shapes go through the M-DYN.2 cache; path shapes
+    /// bypass (V1: paths not cached — see M-DYN.2's chapter).
+    #[must_use]
+    pub fn cached_vector_mask_texture(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            self.cached_mask_texture(app, mask_shape, w, h)
+        } else if let Some(points) = vector.shape.as_path_points() {
+            std::sync::Arc::new(self.generate_path_mask_texture(app, points, w, h))
+        } else {
+            debug_assert!(false, "VectorShape variant not handled by mask bridge");
+            std::sync::Arc::new(RenderTexture::with_format(app, w, h, self.output_format))
+        }
+    }
+
     /// Cached variant of [`Self::generate_mask_texture`] (M-DYN.2 /
     /// AUT-44). Returns an `Arc<RenderTexture>` that may be shared
     /// across the cache and other call sites; identical (shape, w,
