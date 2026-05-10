@@ -6,6 +6,168 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.10 — Freehand path mask in wisp (AUT-35) — series complete
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the 10-issue mask suite (AUT-31 / AUT-20 / AUT-21 / AUT-22 / AUT-23 / AUT-28 / AUT-29 / AUT-30 / AUT-34 / AUT-35).
+- **Linear:** [AUT-35](https://linear.app/harwood/issue/AUT-35).
+- **Files:** new `crates/wisp/shaders/path_clip.wgsl` (point-in-polygon via crossings test). New `crates/wisp/src/render/path_clip.rs` (`PathClipPipeline`, uniform-buffered point list, `MAX_PATH_POINTS=32`). `crates/wisp/src/render.rs` adds `path_clip` field, `Renderer::apply_path_clip(points, foreground, output)` and `Renderer::apply_solid_redaction_path(points, color, base, output)`. New `crates/wisp/tests/path_clip.rs` (3 cases: star center pass-through, concave-gap cutout, path solid redaction). New `crates/wisp-storybook/src/stories/s_path_mask.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/path-mask.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/path-mask.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (201 tests, +3 from M-MASK.9's 198).
+- **First shape that doesn't fit any SDF.** A free polygon can't be expressed as a closed-form distance function (no analytic SDF for an arbitrary polygon). Two design options were evaluated: (1) tessellate to a triangle fan + draw to a mask RT, (2) point-in-polygon test in the fragment shader against a uniform-buffered point list. Picked (2): no tessellation needed, handles concave shapes for free, single render pass, no scratch RT, and the implementation is ~80 lines of WGSL vs. ~200 lines of CPU triangulation. Trade-off: capped at 32 vertices (uniform buffer size) and hard-edge for V1 (no AA).
+- **Why no `MaskShape::Path` variant.** `MaskShape` is `Copy` — every variant holds POD so the enum stays cheap to pass by value through the auto-dispatch path. A path needs `Vec<Vec2>` or `Arc<[Vec2]>` to own the points; that forces `MaskShape` to drop `Copy` and adopt `Clone`, rippling through `PrivacyBlur`/`DimOutside`/all clip call sites. Not worth it for a "premium expansion." Path-clip lives next to the SDF clip with its own dedicated public methods (`apply_path_clip`, `apply_solid_redaction_path`).
+- **Star-polygon contract test.** Tested with a 10-vertex five-pointed star — concave with gaps between the arms. The crossings test correctly classifies a pixel in one of the gaps (NDC -0.65, +0.55) as outside. Self-intersecting paths aren't on the freehand-mask UX path; this primitive doesn't promise sensible results for them.
+- **`u32::from(bool)` for the invert flag.** The shader takes a `u32` invert flag; `u32::from(true) = 1`, `u32::from(false) = 0`. Cleaner than the cast-precision-loss-prone `if invert { 1 } else { 0 }` and survives clippy without a reason allow.
+
+### Series summary
+
+10 mask primitives shipped on `mvp/masks` in one continuous loop:
+
+| Chunk | Issue | Primitive | Tests | Story |
+| --- | --- | --- | --- | --- |
+| M-MASK.1 | AUT-31 | Rounded crop foundation | 4 | clip-rounded |
+| M-MASK.2 | AUT-20 | Rectangle privacy blur | 3 | privacy-blur-rect |
+| M-MASK.3 | AUT-21 | Rounded privacy blur | 3 | privacy-blur-rounded |
+| M-MASK.4 | AUT-22 | Configurable blur strength | 3 | privacy-blur-strength |
+| M-MASK.5 | AUT-23 | Solid redaction | 4 | solid-redaction |
+| M-MASK.6 | AUT-28 | Spotlight / highlight | 3 | spotlight |
+| M-MASK.7 | AUT-29 | Dim-outside | 3 | dim-outside |
+| M-MASK.8 | AUT-30 | Webcam circle | 3 | webcam-shapes |
+| M-MASK.9 | AUT-34 | Ellipse | 3 | ellipse-mask |
+| M-MASK.10 | AUT-35 | Freehand path | 3 | path-mask |
+
+Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, started at 173 and finished at 201 tests on `just gate`. Single shader (`clip.wgsl`) plus one new pipeline (`path_clip.wgsl`) cover everything. The five composition primitives (`apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_path_clip`) plus three data wrappers (`PrivacyBlur` / `DimOutside` and their strength enums) form the renderer-data API the editor inspector will eventually drive.
+
+---
+
+## M-MASK.9 — Ellipse / oval mask in wisp (AUT-34)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `MaskShape::Ellipse` adds anisotropic SDF support; first shape that needs a real new SDF (vs. degenerating to rounded-rect).
+- **Linear:** [AUT-34](https://linear.app/harwood/issue/AUT-34).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Ellipse { center, half_extents }` + `ellipse()` ctor + `bounds()` arm. `crates/wisp/shaders/clip.wgsl` adds `shape_kind: f32` uniform + `sdf_ellipse` helper + branching fragment dispatch. `crates/wisp/src/render/clip.rs` `ClipUniforms` carries `shape_kind`; `apply_with_invert` sets `shape_kind = 1.0` for `Ellipse`. New `crates/wisp/tests/clip_ellipse.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_ellipse.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/ellipse-mask.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/ellipse-mask.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (198 tests, +3 from M-MASK.8's 195).
+- **Pseudo-SDF over closed-form.** Closed-form ellipse SDF requires solving a quartic — expensive every fragment. The scaled-quadratic `(x/a)^2 + (y/b)^2 - 1` shares the same zero level set; multiplying by `min(a, b)` puts the result in roughly NDC units so the existing AA-band code (`smoothstep` over `aa = 2/min(w, h)`) still produces a ~1-pixel edge. Visually indistinguishable from the exact SDF for masking; orders of magnitude cheaper.
+- **`shape_kind: f32` flag handles dispatch.** Same uniform buffer as the rest of the clip shader; one extra `if` in WGSL picks the SDF formula. All four primitives (`apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data`) gain the variant for free.
+- **Cache-poisoning replay:** ran into the same nextest+check race documented in M-MASK.8's lesson. `cargo clean -p wisp` + retry was the fix. CLAUDE.md already covers this; reinforced the workflow ordering.
+
+---
+
+## M-MASK.8 — Webcam circle mask shape in wisp (AUT-30)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — adds `MaskShape::Circle` to the catalog. Webcam overlay now has cinematic circle + rounded-rect options out of the box, both reusing the existing rounded-rect SDF.
+- **Linear:** [AUT-30](https://linear.app/harwood/issue/AUT-30).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Circle { center, radius }` variant, `circle()` ctor, and `bounds()` arm. `crates/wisp/src/render/clip.rs` `apply_with_invert` translates `Circle` to the rounded-rect SDF parameters (`half_extents = (r, r)`, `corner_radius = r`). New `crates/wisp/tests/clip_circle.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_webcam_shapes.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/webcam-shapes.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/webcam-shapes.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (195 tests, +3 from M-MASK.7's 192). Story renders both shapes side-by-side over a dark gradient backdrop.
+- **One shader, three shapes.** The rounded-rect SDF (`length(max(|p|-half+r, 0)) + min(max(qx,qy), 0) - r`) degenerates exactly to `length(p) - r` (the circle SDF) when `half = (r, r)` and the corner radius is `r`. So `MaskShape::Circle` plugs into the existing pipeline by translating to those parameters at uniform-build time. No new pipeline, no new shader, no new bind-group — just two `f32` math ops in `apply_with_invert`. Pattern parallels how `MaskShape::Rect` was implemented (RoundedRect with radius=0).
+- **All four primitives gain the new shape automatically.** `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data` all accept `MaskShape::Circle` without any per-primitive code changes — that's the dividend of routing every shape through one `ClipPipeline::apply_with_invert`.
+- **Cache-poisoning gate-loop lesson (CLAUDE.md updated):** `cargo nextest run -p wisp --test X` followed by `just gate` (which runs `cargo check --workspace --all-targets --all-features`) hit a stale-cache E0599 saying `MaskShape::circle` was missing even though it was in the source. `cargo clean -p wisp` + re-run cleared it. The root cause: nextest builds the test target before the workspace check has seen the latest source, and the dependency-graph hash gets mis-cached. Documented in CLAUDE.md "Build hygiene".
+
+---
+
+## M-MASK.7 — Dim-outside renderer-data wrapper in wisp (AUT-29)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `DimOutside` + `DimStrength` data API on top of M-MASK.6's `apply_spotlight`. No new shader, no new pipeline; just a thin data shell so the editor inspector can persist symbolic strength names.
+- **Linear:** [AUT-29](https://linear.app/harwood/issue/AUT-29).
+- **Files:** new `crates/wisp/src/scene/dim_outside.rs` (`DimStrength` enum: Light / Medium (default) / Heavy / Custom(f32) clamped `[0,1]`; `DimOutside` struct with `rect`/`rounded_rect`/`with_strength` constructors). `crates/wisp/src/scene.rs` exposes the new module + re-exports. `crates/wisp/src/lib.rs` re-exports `DimOutside`/`DimStrength`. `crates/wisp/src/render.rs` adds `Renderer::apply_dim_outside_data(dim, base, output)` (one-line wrapper that calls `apply_spotlight` with `Color::rgba(0,0,0,strength.alpha())`). New `crates/wisp/tests/dim_outside.rs` (3 cases: monotonic presets, Custom clamping, end-to-end strength → outside-darkness). New `crates/wisp-storybook/src/stories/s_dim_outside.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/dim-outside.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/dim-outside.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (192 tests, +3 from M-MASK.6's 189).
+- **AUT-29 = data wrapper, not new pipeline.** All the rendering work happened in M-MASK.6 (the `invert: f32` flag in clip.wgsl, the `apply_spotlight` primitive, the inverse-clip composition). AUT-29 just bundles `MaskShape` + `DimStrength` into a struct the editor can persist — same pattern as `PrivacyBlur`/`BlurStrength` from AUT-22.
+- **Symmetric design with `PrivacyBlur`.** Identical shape: `DimOutside { shape, strength }` where strength is a symbolic enum with a `Custom(f32)` escape hatch. Editor projects persist the symbolic name (`Heavy`); retuning the alpha mapping later doesn't break files. Story shows three named-strength variants side-by-side, exactly mirroring `s_privacy_blur_strength`.
+
+---
+
+## M-MASK.6 — Spotlight / highlight mask in wisp (AUT-28)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — attention-guiding primitive. Inside `shape`: base unchanged. Outside: blended toward `dim_color`. Foundation for AUT-29 dim-outside.
+- **Linear:** [AUT-28](https://linear.app/harwood/issue/AUT-28).
+- **Files:** `crates/wisp/shaders/clip.wgsl` adds `invert: f32` uniform that flips the SDF mask. `crates/wisp/src/render/clip.rs` exposes `apply_inverted` + private `apply_with_invert`. `crates/wisp/src/render.rs` adds `Renderer::apply_spotlight(shape, dim_color, base, output)`. New `crates/wisp/tests/spotlight.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_spotlight.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/spotlight.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/spotlight.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (189 tests, +3 from M-MASK.5's 186).
+- **One shader, one bit flipped.** Adding `invert: f32` to the existing clip uniforms (with a 0.5 threshold check) keeps a single pipeline / bind-group layout / shader module. The dispatcher's `apply_clip` keeps its previous `invert=false` behavior; the new spotlight + future AUT-29 dim-outside reuse the same pipeline. AUT-29 will be a thin `apply_spotlight` wrapper with stronger dim alpha.
+- **`bytemuck::Pod` requires fixed-size struct fields.** Adding `invert: f32` plus `_pad: f32` to `ClipUniforms` keeps the alignment to 16 bytes. WGSL `vec2<f32>` wants 8-byte alignment so the layout `[center: vec2, half_extents: vec2, radius: f32, aa: f32, invert: f32, _pad: f32]` matches std140 / std430-shared rules.
+- **Three contract pixels:**
+  - Inside the shape — base bit-exact (255 R, 0 G, 0 B over an all-red base).
+  - Outside the shape — blended toward `dim_color`. R goes from 255 to ~76 with `dim_color = (0,0,0,0.7)` (alpha-over: `out = src.rgb*src.a + dst.rgb*(1-src.a) = 0 + 255*0.3 = 76.5`).
+  - Rounded-corner cutout — *darkened* (treated as outside the focus shape, since the SDF carved that corner away).
+
+---
+
+## M-MASK.5 — Solid-color redaction in wisp (AUT-23)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — *trust* counterpart to privacy blur. Reuses the same `MaskShape` enum so rect / rounded-rect / circle / ellipse / freehand-path all work identically.
+- **Linear:** [AUT-23](https://linear.app/harwood/issue/AUT-23).
+- **Files:** `crates/wisp/src/render.rs` adds `Renderer::apply_solid_redaction(shape, color, base, output)`. New `crates/wisp/tests/solid_redaction.rs` (4 cases). New `crates/wisp-storybook/src/stories/s_solid_redaction.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/solid-redaction.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/solid-redaction.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (186 tests, +4 from M-MASK.4's 182).
+- **Composition:** four-stage, three RTs — (1) clear `fill_rt` to redaction `color` via `LoadOp::Clear` (no draws, no shaders, just a clear), (2) `ClipPipeline::apply(shape)` over `fill_rt` → `masked_rt`, (3) blit `base → output` (REPLACE), (4) `compose_over(masked_rt onto output)` (ALPHA_BLENDING). Same shape as `apply_privacy_blur` — only step 1 differs (clear-pass vs blur-filter).
+- **Contract tests:**
+  - `rect_redaction_outside_matches_base` — bit-exact base outside.
+  - `rect_redaction_inside_is_exactly_color` — pixel inside is `(R, G, B, 255)` byte-for-byte equal to the redaction color (no blending, no AA distortion at center sample). Used `Rgba8Unorm` (linear) for byte-exact reads.
+  - `rounded_redaction_corner_carved_away` — pixel inside the bounding rect but outside the rounded corner stays as `base`. Re-uses AUT-21's coord (36, 36 in 128² with radius 0.3 → distance 0.42 > radius).
+  - `rounded_redaction_center_is_color` — center pixel inside the rounded shape is exactly the redaction color.
+- **Color → wgpu::Color is `f64::from`** for each channel. No gamma curve to worry about because the renderer's RT format is `Rgba8Unorm` (linear); display targets that use `Rgba8UnormSrgb` get the gamma applied by wgpu itself.
+- **One gate-loop lesson:** `cargo fmt --all --check` flagged a long-line method call that fmt collapses to a single-line signature when small enough. Already documented in CLAUDE.md ("`just fmt-fix` before every commit"); reinforced again as the cheapest safeguard against burning a CI gate cycle on cosmetic format diffs.
+
+---
+
+## M-MASK.4 — Configurable blur strength in wisp (AUT-22)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — strength is renderer-data, persistable as a symbolic enum, mapped to a clamped numeric radius at render time. Story shows Soft/Medium/Strong side by side.
+- **Linear:** [AUT-22](https://linear.app/harwood/issue/AUT-22).
+- **Files:** new `crates/wisp/src/scene/privacy_blur.rs` (`BlurStrength` enum: Soft / Medium (default) / Strong / Custom(f32); `PrivacyBlur` struct bundling a `MaskShape` + `BlurStrength` with `rect`/`rounded_rect`/`with_strength` constructors). `crates/wisp/src/scene.rs` exposes the new module + re-exports. `crates/wisp/src/lib.rs` re-exports `BlurStrength`/`PrivacyBlur`. `crates/wisp/src/render.rs` adds `Renderer::apply_privacy_blur_data(blur, base, output)` (one-line wrapper that pulls `radius_px()`). New `crates/wisp/tests/privacy_blur_strength.rs` (3 cases: monotonic presets, Custom clamping, end-to-end strength → blur evidence). New `crates/wisp-storybook/src/stories/s_privacy_blur_strength.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/privacy-blur-strength.md` chapter; `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-strength.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (182 tests, +3 from M-MASK.3's 179). Story renders three side-by-side blur variants with color-coded labels under each.
+- **Symbolic vs numeric strength:** the symbolic enum is what the *editor* persists ("Strong" stays meaningful even if we retune Strong from 24px to 32px later); the numeric radius is what the *renderer* needs. `radius_px()` is the single point of mapping. `Custom(f32)` stays available for stories and tests that need exact pixel determinism.
+- **Pixel test pattern for "more blur":** sample on the *red side* of a sharp red/blue split, *far* from the seam (NDC -0.3, ~38 pixels from seam in a 128-wide image). Soft (radius 6) can't reach that far; Medium (12) reaches a touch; Strong (24) pulls in real blue. Reading the B channel and asserting `soft < medium < strong` is the cleanest "more blur = more evidence" assertion. First attempt sampled too close to the seam (NDC -0.05) where even Soft saturated; the lesson: if testing strength gradients, sample far enough that the smaller kernel can't reach.
+- **Gate-loop lessons:**
+  - **`#[derive(Default)] + #[default]` for unit-variant enums.** clippy's `derivable_impls` lint fires when a manual `impl Default for E { fn default() -> Self { Self::X } }` could just be `#[derive(Default)]` on the enum + `#[default]` on the variant. Already documented in CLAUDE.md ("Cast hygiene") generically; reinforced here for enum case.
+  - **`f32` test assertions need a tolerance.** clippy `float_cmp` rejects `assert_eq!(some_f32, 64.0)`; use `(a - b).abs() < 1e-6` for clamp-comparison tests. Adding to CLAUDE.md.
+  - **`(W as f32) * 0.35` triggers `cast_precision_loss` + sign-loss + truncation in tests.** Avoid casting through float for an integer-pixel calculation: `(W as usize * 35) / 100` gives the same answer with no float involved. Adding to CLAUDE.md.
+
+---
+
+## M-MASK.3 — Rounded-rectangle privacy blur in wisp (AUT-21)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — generalizes M-MASK.2 from `Rect` to any `MaskShape`. The privacy redaction primitive is now shape-agnostic; future shapes (circle, ellipse, freehand path) plug in for free.
+- **Linear:** [AUT-21](https://linear.app/harwood/issue/AUT-21).
+- **Files:** `crates/wisp/src/render.rs` — `apply_privacy_blur` second argument changed from `region: Rect` to `shape: MaskShape`; pipeline body unchanged. `crates/wisp/tests/privacy_blur_rect.rs` updated call sites to `MaskShape::rect(region)`. `crates/wisp-storybook/src/stories/s_privacy_blur_rect.rs` same. New `crates/wisp/tests/privacy_blur_rounded.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_privacy_blur_rounded.rs` + `writeups/privacy_blur_rounded.md`. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/privacy-blur-rounded.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-rounded.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (179 tests, +3 from M-MASK.2's 176).
+- **API breaking change:** `apply_privacy_blur` second positional arg flipped from `Rect` → `MaskShape`. Acceptable because:
+  - The method only landed yesterday in M-MASK.2; no downstream callers outside the test/story we own.
+  - Conversion is one-line (`MaskShape::rect(region)`), still NDC-coordinate-system-identical.
+  - Required to absorb AUT-22/-23/-28/-29/-30/-34/-35 without method-explosion.
+- **Bounding-rect-but-corner contract:** the new test pixel that lives inside the bounding rect but outside the rounded corner must still equal `base` exactly — proves the SDF actually carved the corner away, vs. just attenuating it. Sample at NDC ≈ (-0.42, +0.42) when the rounded shape has center (0, 0), half-extent 0.5, corner radius 0.3: corner-of-bounding-rect's distance to round-corner-center (-0.2, +0.2) is sqrt(0.18) ≈ 0.42 > 0.3, so the SDF is strictly outside.
+- **One AA-band lesson reaffirmed:** sample a few pixels in from the carved-corner edge (used row/col 36 of 128) to escape the SDF AA band; otherwise the assertion catches partial alpha and fails. Already documented under "Coordinate / pixel-readback" in CLAUDE.md.
+
+---
+
+## M-MASK.2 — Rectangle privacy blur in wisp (AUT-20)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — second mask primitive. First *masked-filter composition* (blur + clip + alpha-compose) end-to-end in the renderer.
+- **Linear:** [AUT-20](https://linear.app/harwood/issue/AUT-20).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Rect { rect }` variant + `MaskShape::rect()` ctor (radius=0 routes through the same SDF pipeline). `crates/wisp/src/render/clip.rs` `apply()` matches both `Rect` and `RoundedRect`. `crates/wisp/src/render.rs` adds `Renderer::apply_privacy_blur(region, radius, base, output)`. New `crates/wisp/tests/privacy_blur_rect.rs` (3 pixel-readback cases). New `crates/wisp-storybook/src/stories/s_privacy_blur_rect.rs` + `writeups/privacy_blur_rect.md`. `crates/wisp-storybook/src/stories/mod.rs` registers it. `_docs/book/src/wisp/chunks/privacy-blur-rect.md` chapter; `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-rect.png` regenerated. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap` updated for the new story.
+- **Verified:** `just gate` green (176 tests, +3 from M-MASK.1's 173); `just snapshots-wisp` regenerates the gallery including `privacy-blur-rect.png`.
+- **Composition primitive:** `apply_privacy_blur` is a three-stage pipeline reusing existing primitives — (1) `BlurFilter::new(radius)` over `base` → `blur_rt`, (2) `ClipPipeline::apply(MaskShape::Rect{region})` over `blur_rt` → `masked_rt`, (3) `BlitPipeline::blit(base → output)` then `compose_over(masked_rt onto output)` (alpha blending). Outside the region: bit-exact base. Inside: blurred copy fully replaces base. Three RTs total (base + blur + masked); could be fused into a single shader later but the per-primitive separation keeps each pipeline single-purpose and testable.
+- **`MaskShape::Rect` is `RoundedRect(radius=0)` in the renderer:** added the `Rect` variant for API ergonomics (callers don't need to pass a magic 0.0), but `ClipPipeline::apply` routes both through the same SDF path (`Rect` → `r=0`). One enum, one shader, two ergonomic constructors.
+- **Test strategy:** three pixel-readback assertions lock in the *contract*, not the implementation:
+  - **outside-region pixels match base bit-exactly** (red half stays pure 255 R, 0 B) — proves the mask is honored;
+  - **near-seam pixels mix both colors** (red AND blue components > 20) — proves the blur is actually running inside the region (not a no-op);
+  - **deep-inside pixels still favor the side they're on** — proves blur falloff is bounded (this is privacy *blur*, not privacy *fill*).
+- **Gate-loop lessons:**
+  - `for i in -4..=4` defaults `i` to `i32`; `f32::from(i32)` doesn't exist (precision loss). Workaround: type-suffix the literal — `for i in -4i16..=4` — so `f32::from(i)` resolves to the `f32: From<i16>` impl. Keeps the cast-hygiene rule applied without an `as` cast or explicit clippy allow.
+  - Adding a story bumps the `story_fingerprints` insta snapshot to `*.snap.new`; force-overwrite before the gate goes green. (Already documented in CLAUDE.md.)
+  - `cargo doc` (the lenient gate) flagged a few existing intra-doc links that broke once `Renderer::apply_privacy_blur` brought new types into scope (`Application::width/height`, `BlendMode` resolved from `crate::scene::container::*` instead of `crate::blend::*`). Cleaned the immediate ones; one pre-existing `apply` link in `advanced_blend.rs` remains and is queued.
+
+---
+
+## M-MASK.1 — Rounded crop / mask foundation in wisp (AUT-31)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first mask primitive. Foundation for AUT-20 through AUT-35.
+- **Linear:** [AUT-31](https://linear.app/harwood/issue/AUT-31/m-mask1-add-rounded-crop-foundation-in-wisp).
+- **Files:** `crates/wisp/src/scene/clip.rs` (new `MaskShape` enum, `RoundedRect` variant); `crates/wisp/src/scene/container.rs` (new `clip: Option<MaskShape>` field); `crates/wisp/src/scene.rs` + `lib.rs` re-exports `MaskShape`; new `crates/wisp/shaders/clip.wgsl` (rounded-rect SDF fragment shader); new `crates/wisp/src/render/clip.rs` (`ClipPipeline`); `crates/wisp/src/render.rs` slow-path dispatcher reshaped (collector → `collect_dispatched_nodes` returning advanced-blend OR clipped nodes; phase 2 conditionally applies `clip` then advanced-blend or compose-over); `crates/wisp/src/render/blit.rs` extended with a parallel `pipeline_over` (ALPHA_BLENDING) + `compose_over` method for layering masked RTs onto in-progress dest; `crates/wisp-storybook/src/stories/s_clip_rounded.rs` new story; new `_docs/book/src/wisp/chunks/clip-rounded.md` chapter; `_docs/book/src/assets/wisp/clip-rounded.png` regenerated; SUMMARY.md; `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap` updated for the new story; `crates/wisp/tests/clip_rounded_rect.rs` (4 pixel-readback cases).
+- **Verified:** `just gate` green (173 tests, +4 from M-BLEND.2's 169); storybook gallery regenerated via `just snapshots-wisp` includes the new `clip-rounded.png`.
+- **Architecture — clip plugs into M-BLEND.2's dispatch:** a node is "dispatched" if it has an advanced blend mode OR a clip set. The slow-path renderer (`render_stage_with_advanced_dispatch`) handles both: phase 1 renders the scene minus dispatched subtrees, phase 2 walks them in pre-order, optionally clips the foreground, then composites onto the in-progress dest (advanced blends use `apply_advanced_blend` with ping-pong; clip-only nodes use `BlitPipeline::compose_over`'s ALPHA_BLENDING path). A node with both clip AND advanced blend applies the clip first, then the advanced math.
+- **Coordinate system trade-off:** `MaskShape::RoundedRect` is in NDC `[-1, +1]²` — screen space, not container-local. Driven by the recording-quad use case (cinematic crop on a fixed-position surface). Transform-aware clipping is queued.
+- **SDF anti-aliasing:** standard rounded-rect SDF (`length(max(q, 0)) + min(max(q.x, q.y), 0) - r`); AA band width is `2 / min(w, h)` so it spans roughly one output pixel without per-call scaling. Tests assert center=opaque, far-corner=transparent, and an inside-rect-but-outside-rounded-corner pixel reads as the clear color.
+- **`BlitPipeline` extension:** added a second pipeline (ALPHA_BLENDING) alongside the existing REPLACE one. `blit()` keeps REPLACE for the final RT→view flush; new `compose_over()` uses ALPHA_BLENDING for layering masked content onto an in-progress RT. Shared `run()` helper takes the pipeline + a `clear: bool` flag controlling `LoadOp::Clear` vs `LoadOp::Load`.
+- **One lesson during the gate loop:** adding a new storybook story bumps the `story_fingerprints` insta snapshot. First `just gate` run after adding `s_clip_rounded.rs` produced `*.snap.new`; the `.snap` baseline must be replaced before the gate goes green. Documented under "Story testing pattern" in CLAUDE.md (lesson already captured for first-run UX).
+
+---
+
 ## CI fix — gstreamer skip guards on integration tests
 - **Date:** 2026-05-10
 - **Status:** ✅ done — unblocks PR #4 merge.

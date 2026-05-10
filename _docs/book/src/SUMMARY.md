@@ -35,6 +35,16 @@
   - [Recorder mock — M0.21](./wisp/chunks/example-recorder-mock.md)
   - [Headless export — M0.21](./wisp/chunks/example-headless-export.md)
   - [Blend modes — M-BLEND.1](./wisp/chunks/blend-modes.md)
+  - [Rounded crop foundation — M-MASK.1](./wisp/chunks/clip-rounded.md)
+  - [Rectangle privacy blur — M-MASK.2](./wisp/chunks/privacy-blur-rect.md)
+  - [Rounded privacy blur — M-MASK.3](./wisp/chunks/privacy-blur-rounded.md)
+  - [Privacy blur strengths — M-MASK.4](./wisp/chunks/privacy-blur-strength.md)
+  - [Solid redaction — M-MASK.5](./wisp/chunks/solid-redaction.md)
+  - [Spotlight / highlight — M-MASK.6](./wisp/chunks/spotlight.md)
+  - [Dim outside — M-MASK.7](./wisp/chunks/dim-outside.md)
+  - [Webcam shapes — M-MASK.8](./wisp/chunks/webcam-shapes.md)
+  - [Ellipse mask — M-MASK.9](./wisp/chunks/ellipse-mask.md)
+  - [Freehand path mask — M-MASK.10](./wisp/chunks/path-mask.md)
 
 # `decode` — video decode
 

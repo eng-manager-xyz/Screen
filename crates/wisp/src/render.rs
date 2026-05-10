@@ -13,8 +13,10 @@ pub mod pipeline;
 mod advanced_blend;
 mod blend_pipeline;
 mod blit;
+mod clip;
 mod graphics_pipeline;
 mod mesh_pipeline;
+mod path_clip;
 mod quad_pipeline;
 mod sprite_pipeline;
 mod text_pipeline;
@@ -32,6 +34,7 @@ use crate::color::Color;
 use crate::error::Error;
 use crate::filter::{Filter, FilterContext};
 use crate::scene::Stage;
+use crate::scene::clip::MaskShape;
 use crate::texture::Texture;
 use crate::texture::render_texture::RenderTexture;
 
@@ -63,6 +66,8 @@ pub struct Renderer {
     mesh: MeshPipeline,
     advanced_blend: advanced_blend::AdvancedBlendPipelines,
     blit: blit::BlitPipeline,
+    clip: clip::ClipPipeline,
+    path_clip: path_clip::PathClipPipeline,
     output_format: wgpu::TextureFormat,
 }
 
@@ -81,6 +86,8 @@ impl Renderer {
         let mesh = MeshPipeline::new(app, output_format);
         let advanced_blend = advanced_blend::AdvancedBlendPipelines::new(app, output_format);
         let blit_pipeline = blit::BlitPipeline::new(app, output_format);
+        let clip_pipeline = clip::ClipPipeline::new(app, output_format);
+        let path_clip_pipeline = path_clip::PathClipPipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -90,6 +97,8 @@ impl Renderer {
             mesh,
             advanced_blend,
             blit: blit_pipeline,
+            clip: clip_pipeline,
+            path_clip: path_clip_pipeline,
             output_format,
         })
     }
@@ -143,17 +152,22 @@ impl Renderer {
     ///
     /// Two paths internally:
     ///
-    /// - **Fast path** (no advanced blend modes in the stage): one
-    ///   render pass directly into `view`, batching by pipeline + blend
-    ///   mode. Identical behavior to pre-M-BLEND.2.
-    /// - **Slow path** (any node uses an advanced blend mode): allocate
-    ///   internal `RenderTexture`s at `app.config()` dims, render the
-    ///   scene minus the advanced subtrees, then for each advanced node
-    ///   sample the in-progress destination as backdrop and composite
-    ///   that subtree via [`apply_advanced_blend`](Self::apply_advanced_blend).
-    ///   Final blit to `view`.
+    /// - **Fast path** (no advanced blend modes AND no clipped
+    ///   containers): one render pass directly into `view`, batching by
+    ///   pipeline + blend mode.
+    /// - **Slow path** (any node uses an advanced blend mode OR has a
+    ///   clip mask set): allocate internal `RenderTexture`s at
+    ///   [`app.width()`/`app.height()`](Application::width), render the
+    ///   scene minus the affected subtrees, then for each affected node
+    ///   render its subtree into a foreground RT, optionally
+    ///   [`apply_clip`](Self::apply_clip) it, and composite onto the
+    ///   in-progress destination (advanced blend modes use
+    ///   [`apply_advanced_blend`](Self::apply_advanced_blend); clipped
+    ///   containers use source-over via the blit pipeline). Final blit
+    ///   to `view`.
     ///
-    /// Slow-path RT dimensions track [`AppConfig::width`/`height`](crate::application::AppConfig);
+    /// Slow-path RT dimensions track `Application::width()` /
+    /// `Application::height()`;
     /// for views whose dims diverge from the app config, use a matching
     /// `AppConfig` or pre-render into a fixed-size `RenderTexture`.
     ///
@@ -166,11 +180,362 @@ impl Renderer {
         clear: Color,
         stage: &Stage,
     ) -> RenderStats {
-        let advanced = collect_advanced_blend_nodes(stage);
-        if advanced.is_empty() {
+        let dispatched = collect_dispatched_nodes(stage);
+        if dispatched.is_empty() {
             return self.render_stage_fast(app, view, clear, stage);
         }
-        self.render_stage_with_advanced_dispatch(app, view, clear, stage, &advanced)
+        self.render_stage_with_advanced_dispatch(app, view, clear, stage, &dispatched)
+    }
+
+    /// Apply a [`MaskShape`] clip to `foreground`, writing the masked
+    /// result to `output`. Pixels outside the mask have their alpha
+    /// zeroed.
+    ///
+    /// Auto-dispatched by `render_stage` when a container's
+    /// [`Container::clip`](crate::scene::Container) is set; this method
+    /// is also exposed for callers who pre-render a foreground RT
+    /// manually and want to mask it without going through the full
+    /// scene-graph path.
+    pub fn apply_clip(
+        &self,
+        app: &Application,
+        shape: crate::scene::clip::MaskShape,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.clip.apply(app, shape, foreground, output);
+    }
+
+    /// Composition primitive — render `base`, blurred only inside
+    /// `shape`, into `output`. Outside the shape the pixels are
+    /// preserved as-is.
+    ///
+    /// Started life as the AUT-20 rectangle privacy blur; AUT-21
+    /// generalized it to any [`MaskShape`] (rounded rect today;
+    /// ellipse / circle / freehand path follow in AUT-30/-34/-35).
+    /// Calling with `MaskShape::Rect` reproduces the AUT-20 behavior;
+    /// `MaskShape::RoundedRect` redacts with cinematic rounded corners
+    /// matching modern app surfaces.
+    ///
+    /// Pipeline (all RTs match `base`'s dimensions at the renderer's
+    /// output format):
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ─►  blur_rt
+    ///                                   │
+    ///                                   ├─ ClipPipeline(shape) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    ///
+    /// `shape` is in NDC `[-1, +1]²` (screen space). `radius` is the
+    /// Gaussian blur radius in pixels; AUT-22 will expose this as a
+    /// scene-data parameter rather than just a method argument.
+    ///
+    /// Use this when you've pre-rendered a frame into `base` (e.g.
+    /// the recording surface) and want to redact a known region.
+    /// Future enhancement: a [`Container`](crate::scene::Container)
+    /// node type that triggers this automatically during scene
+    /// traversal.
+    pub fn apply_privacy_blur(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        radius: f32,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let blur_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Blur the whole frame.
+        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
+
+        // 2. Mask the blur to the shape.
+        self.clip.apply(app, shape, &blur_rt, &masked_rt);
+
+        // 3. Copy base → output (replaces output's prior contents).
+        self.blit.blit(app, base, output.view());
+
+        // 4. Composite the masked blur over the base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Composition primitive — render `base`, with `shape` filled by
+    /// a flat `color` (M-MASK / AUT-23 solid redaction). Outside the
+    /// shape the pixels are preserved as-is.
+    ///
+    /// The companion to [`Self::apply_privacy_blur`]. Privacy blur is
+    /// *polish* (the redacted region still has texture); solid
+    /// redaction is *trust* (the region is replaced with an opaque
+    /// fill). Use this for content where partial reconstruction must
+    /// be impossible — API keys, passwords, secrets.
+    ///
+    /// Pipeline:
+    ///
+    /// ```text
+    ///   fill_rt    ← cleared to `color` (RP LoadOp::Clear)
+    ///                                   │
+    ///                                   ├─ ClipPipeline(shape) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    ///
+    /// Tip: use a fully-opaque `color` (alpha 1.0) for true redaction;
+    /// a partial alpha will let `base` show through proportionally,
+    /// which defeats the "trust" use case.
+    pub fn apply_solid_redaction(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to `color` — no draws, just LoadOp::Clear.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::redaction fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::redaction fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Mask the fill to the shape.
+        self.clip.apply(app, shape, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose the masked redaction over base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Apply a freehand polygon mask to `foreground`, writing the
+    /// masked result to `output` (M-MASK / AUT-35).
+    ///
+    /// `points` is a closed polygon in NDC `[-1, +1]²`. Up to
+    /// `MAX_PATH_POINTS` (32) vertices are honored; the rest are
+    /// silently ignored. Pixels inside the polygon pass through
+    /// `foreground` unchanged; pixels outside drop to alpha 0.
+    ///
+    /// Implementation note: the WGSL fragment shader runs a
+    /// crossings-test point-in-polygon at every pixel — no
+    /// tessellation, no SDF. AA is hard-edge for V1; the rasterized
+    /// output is integer-pixel accurate (Jordan curve theorem).
+    pub fn apply_path_clip(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.path_clip.apply(app, points, false, foreground, output);
+    }
+
+    /// Composition primitive — render `base`, with `points` (a closed
+    /// polygon in NDC) filled by `color` (M-MASK / AUT-35 freehand
+    /// solid redaction). Outside the polygon: base preserved.
+    ///
+    /// Sister to [`Self::apply_solid_redaction`] but with a freehand
+    /// polygon instead of a `MaskShape`. Same four-stage composition
+    /// (clear fill / mask / blit base / compose over) — the only
+    /// difference is the masking pass uses [`Self::apply_path_clip`]
+    /// instead of the SDF clip.
+    pub fn apply_solid_redaction_path(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to color.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::path_redaction fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::path_redaction fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Path-mask the fill.
+        self.path_clip
+            .apply(app, points, false, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose masked redaction over base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Composition primitive — render `base`, dimmed everywhere
+    /// *outside* `shape` (M-MASK / AUT-28 spotlight, AUT-29 dim
+    /// outside). Inside the shape, pixels are preserved as-is.
+    ///
+    /// `dim_color` is the overlay shade applied outside the shape;
+    /// its alpha controls the dim strength (0 = no effect, 1 = fully
+    /// replaces the surrounding content). For "spotlight a button"
+    /// effects `dim_color = Color::rgba(0.0, 0.0, 0.0, 0.65)` is a
+    /// good cinematic default.
+    ///
+    /// Pipeline (mirrors solid redaction with an *inverted* clip):
+    ///
+    /// ```text
+    ///   fill_rt    ← cleared to `dim_color`
+    ///                                   │
+    ///                                   ├─ ClipPipeline(shape, invert=true) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    pub fn apply_spotlight(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        dim_color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to dim_color.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::spotlight fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::spotlight fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(dim_color.r),
+                            g: f64::from(dim_color.g),
+                            b: f64::from(dim_color.b),
+                            a: f64::from(dim_color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Inverse-clip the dim fill — opaque OUTSIDE the shape.
+        self.clip.apply_inverted(app, shape, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose dim overlay over the area outside the shape.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Convenience wrapper over [`Self::apply_spotlight`] that
+    /// consumes a [`DimOutside`](crate::scene::DimOutside) data value
+    /// (M-MASK / AUT-29).
+    ///
+    /// Editor inspector controls and persisted documents work with
+    /// `DimOutside` directly; this method exists so the app side
+    /// never needs to convert a `DimStrength` enum back to an alpha
+    /// itself.
+    pub fn apply_dim_outside_data(
+        &self,
+        app: &Application,
+        dim: &crate::scene::DimOutside,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let alpha = dim.strength.alpha();
+        self.apply_spotlight(
+            app,
+            dim.shape,
+            Color::rgba(0.0, 0.0, 0.0, alpha),
+            base,
+            output,
+        );
+    }
+
+    /// Convenience wrapper over [`Self::apply_privacy_blur`] that
+    /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
+    /// value (M-MASK / AUT-22).
+    ///
+    /// Editor inspector controls and persisted documents work with
+    /// `PrivacyBlur` structs directly; this method exists so the app
+    /// side never needs to convert a `BlurStrength` enum back to a raw
+    /// `f32` itself.
+    pub fn apply_privacy_blur_data(
+        &self,
+        app: &Application,
+        blur: &crate::scene::PrivacyBlur,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.apply_privacy_blur(app, blur.shape, blur.strength.radius_px(), base, output);
     }
 
     /// Fast path: one render pass, no offscreen indirection.
@@ -203,33 +568,38 @@ impl Renderer {
         view: &wgpu::TextureView,
         clear: Color,
         stage: &Stage,
-        advanced: &[crate::scene::NodeId],
+        dispatched: &[crate::scene::NodeId],
     ) -> RenderStats {
         let (w, h) = (app.width(), app.height());
         let format = self.output_format;
         let mut dest_a = RenderTexture::with_format(app, w, h, format);
         let mut dest_b = RenderTexture::with_format(app, w, h, format);
 
-        // Build the exclude set: each advanced node's subtree is handled
-        // separately, so the main pass skips them.
+        // Build the exclude set: each dispatched node's subtree is
+        // handled separately, so the main pass skips them.
         let exclude: std::collections::HashSet<crate::scene::NodeId> =
-            advanced.iter().copied().collect();
+            dispatched.iter().copied().collect();
 
-        // Phase 1: render the scene, minus the advanced subtrees, into
-        // `dest_a`.
+        // Phase 1: render the scene, minus the dispatched subtrees,
+        // into `dest_a`.
         let mut stats = self.draw_subtree_to_rt(app, &dest_a, clear, stage, stage.root(), &exclude);
 
-        // Phase 2: for each advanced node in pre-order, render its
-        // subtree into a fresh foreground RT, then advanced-blend with
-        // the in-progress dest as backdrop. Ping-pong dest_a ↔ dest_b
-        // so we don't read+write the same RT in one pass.
+        // Phase 2: for each dispatched node in pre-order, render its
+        // subtree into a fresh foreground RT, optionally apply the
+        // container's clip, then composite onto the in-progress dest.
+        // Ping-pong dest_a ↔ dest_b so we don't read+write the same RT
+        // in one pass.
         let foreground = RenderTexture::with_format(app, w, h, format);
+        let masked = RenderTexture::with_format(app, w, h, format);
         let empty_exclude = std::collections::HashSet::new();
-        for &node_id in advanced {
+        for &node_id in dispatched {
             let Some(node) = stage.get(node_id) else {
                 continue;
             };
-            let mode = node.container().blend_mode;
+            let container = node.container();
+            let mode = container.blend_mode;
+            let clip_shape = container.clip;
+
             let sub_stats = self.draw_subtree_to_rt(
                 app,
                 &foreground,
@@ -244,9 +614,25 @@ impl Renderer {
             stats.glyphs_drawn += sub_stats.glyphs_drawn;
             stats.meshes_drawn += sub_stats.meshes_drawn;
 
-            self.advanced_blend
-                .apply(app, mode, &dest_a, &foreground, &dest_b);
-            std::mem::swap(&mut dest_a, &mut dest_b);
+            // If a clip is set, apply it: foreground → masked. Otherwise
+            // the foreground is the source as-is.
+            let composite_src = if let Some(shape) = clip_shape {
+                self.clip.apply(app, shape, &foreground, &masked);
+                &masked
+            } else {
+                &foreground
+            };
+
+            if mode.is_advanced() {
+                // Advanced blend writes the composite into dest_b, swap.
+                self.advanced_blend
+                    .apply(app, mode, &dest_a, composite_src, &dest_b);
+                std::mem::swap(&mut dest_a, &mut dest_b);
+            } else {
+                // Native blend (typically Normal for clip-only nodes):
+                // source-over composite onto dest_a in place.
+                self.blit.compose_over(app, composite_src, &dest_a);
+            }
         }
 
         // Phase 3: blit final composited RT to the user-supplied view.
@@ -366,15 +752,19 @@ impl Renderer {
     }
 }
 
-/// Pre-order walk that returns every visible node whose container's
-/// `blend_mode` is advanced (Tier C). Used by [`Renderer::render_stage`]
-/// to decide between the fast and slow paths and to drive the
-/// per-subtree advanced-blend dispatch.
+/// Pre-order walk that returns every visible node which needs the
+/// slow-path dispatch — either:
+///
+/// - the container has an advanced
+///   [`BlendMode`](crate::blend::BlendMode) (Tier C — Overlay,
+///   `ColorBurn`, …) requiring an offscreen backdrop sample, or
+/// - the container has a [`MaskShape`] set in `Container::clip`,
+///   requiring an offscreen mask pass.
 ///
 /// Order is pre-order so the auto-dispatch composites in z-order: a
-/// later advanced-blend node sees its earlier siblings (and their
+/// later dispatched node sees its earlier siblings (and their
 /// composited results) as the backdrop.
-fn collect_advanced_blend_nodes(stage: &Stage) -> Vec<crate::scene::NodeId> {
+fn collect_dispatched_nodes(stage: &Stage) -> Vec<crate::scene::NodeId> {
     let mut out = Vec::new();
     let mut stack: Vec<crate::scene::NodeId> = vec![stage.root()];
     while let Some(id) = stack.pop() {
@@ -383,10 +773,11 @@ fn collect_advanced_blend_nodes(stage: &Stage) -> Vec<crate::scene::NodeId> {
         if !container.visible {
             continue;
         }
-        if container.blend_mode.is_advanced() {
+        let needs_dispatch = container.blend_mode.is_advanced() || container.clip.is_some();
+        if needs_dispatch {
             out.push(id);
             // Don't recurse — the subtree is rendered separately by the
-            // dispatcher with the parent's mode applied at composition.
+            // dispatcher with the parent's mode/clip applied at composition.
             continue;
         }
         for child in container.children().rev().collect::<Vec<_>>() {

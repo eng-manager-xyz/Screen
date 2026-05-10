@@ -10,7 +10,13 @@ use crate::application::Application;
 use crate::texture::render_texture::RenderTexture;
 
 pub(crate) struct BlitPipeline {
+    /// `BlendState::REPLACE` — copies source pixels exactly. Used for
+    /// the final `dest_rt` → view flush at end of slow-path render.
     pipeline: wgpu::RenderPipeline,
+    /// `BlendState::ALPHA_BLENDING` — source-over composite. Used by
+    /// the clip dispatch path to layer a masked RT on top of the
+    /// in-progress destination.
+    pipeline_over: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
@@ -52,31 +58,38 @@ impl BlitPipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/blit.wgsl").into()),
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::blit pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("main_vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("main_fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        let make_pipeline = |label: &str, blend: wgpu::BlendState| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let pipeline = make_pipeline("wisp::blit pipeline", wgpu::BlendState::REPLACE);
+        let pipeline_over = make_pipeline(
+            "wisp::blit pipeline (over)",
+            wgpu::BlendState::ALPHA_BLENDING,
+        );
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("wisp::blit sampler"),
@@ -91,19 +104,49 @@ impl BlitPipeline {
 
         Self {
             pipeline,
+            pipeline_over,
             bind_group_layout,
             sampler,
         }
     }
 
-    /// Sample `src` and write it onto `target_view`. The view must be
-    /// `RENDER_ATTACHMENT`-compatible with the renderer's
-    /// `output_format`.
+    /// Sample `src` and write it onto `target_view`, replacing the
+    /// destination pixels. Used for the final `dest_rt` → view flush.
     pub(crate) fn blit(
         &self,
         app: &Application,
         src: &RenderTexture,
         target_view: &wgpu::TextureView,
+    ) {
+        self.run(app, src, target_view, &self.pipeline, /*clear=*/ true);
+    }
+
+    /// Sample `src` and source-over composite onto `target_rt`,
+    /// preserving the destination's existing content under transparent
+    /// regions of `src`. Used by the clip dispatcher to layer a masked
+    /// RT on top of the in-progress destination.
+    pub(crate) fn compose_over(
+        &self,
+        app: &Application,
+        src: &RenderTexture,
+        target_rt: &RenderTexture,
+    ) {
+        self.run(
+            app,
+            src,
+            target_rt.view(),
+            &self.pipeline_over,
+            /*clear=*/ false,
+        );
+    }
+
+    fn run(
+        &self,
+        app: &Application,
+        src: &RenderTexture,
+        target_view: &wgpu::TextureView,
+        pipeline: &wgpu::RenderPipeline,
+        clear: bool,
     ) {
         let bg = app.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("wisp::blit bg"),
@@ -126,13 +169,18 @@ impl BlitPipeline {
                 label: Some("wisp::blit encoder"),
             });
         {
+            let load = if clear {
+                wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+            } else {
+                wgpu::LoadOp::Load
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("wisp::blit pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: target_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -140,7 +188,7 @@ impl BlitPipeline {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bg, &[]);
             pass.draw(0..3, 0..1);
         }

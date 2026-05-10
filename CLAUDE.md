@@ -76,6 +76,10 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 ### Cast hygiene (Rust idioms / clippy)
 
 - **`f32::from(x)` for `u8`/`u16` → `f32`**, never `x as f32` (clippy::cast_precision_loss).
+- **`f32: From<i32>` does not exist.** Loop counters like `for i in -4..=4 { f32::from(i) }` won't compile. Either type-suffix the literal (`-4i16..=4`) so it resolves to `From<i16>`, or compute the loop value as `i16` from the start.
+- **`f32` equality assertions need a tolerance.** clippy `float_cmp` rejects `assert_eq!(x, 64.0)`. Use `(a - b).abs() < 1e-6` for "exact" comparisons. Even the *clamp endpoints* of a `clamp(0.0, 64.0)` need tolerance because the lint doesn't know the value came from a clamp.
+- **`(W as f32) * 0.35) as usize` is a triple-clippy fail** (`cast_precision_loss`, `cast_possible_truncation`, `cast_sign_loss`) for an integer-percent index calculation. Stay in integer arithmetic: `(W as usize * 35) / 100`. Same answer, no float involved.
+- **Use `#[derive(Default)] + #[default]` on enums** instead of `impl Default for E { fn default() -> Self { Self::X } }` for unit-variant enums. clippy `derivable_impls` flags the manual impl.
 - **`u32::try_from(x).expect(...)` for `usize` → `u32`**, never `x as u32` (clippy::cast_possible_truncation).
 - **`f32 as u32` requires `#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "...")]`** even after `clamp` + `round` — the clamp bound isn't visible to clippy.
 - **`iter.next_back()`**, never `iter.rev().next()` (clippy::manual_next_back).
@@ -204,6 +208,24 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
   workflow's `$GITHUB_ENV`. Local dev and real-hardware CI leave the
   env var unset and run the tests normally — gate stays green without
   losing the assertion on real GPUs.
+  **Audit the call graph, not just direct usage.** The blur pipeline
+  is reached transitively by every `Renderer` method that wraps
+  `apply_filter` with a `BlurFilter` — currently `apply_privacy_blur`,
+  `apply_privacy_blur_data`, and any future wrapper. Whenever a new
+  test/story calls one of those, you must:
+    1. Add the guard to **the test** (`if skip_on_software_adapter() { return; }`).
+    2. Add the **story id** to `LAVAPIPE_INCOMPATIBLE` in
+       `crates/wisp-storybook/tests/story_smoke.rs` if a story uses
+       it during `build()`.
+  The non-blur mask primitives (`apply_clip` / `apply_solid_redaction` /
+  `apply_spotlight` / `apply_dim_outside_data` / `apply_path_clip`) use
+  single-bind-group pipelines and run fine on lavapipe — don't guard
+  them. **Verification:** locally run
+  `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp --test <new>`
+  and confirm the GPU-using tests early-return in <50ms; without the
+  env var, confirm they still actually exercise the pipeline (~1s+).
+  M-MASK.2/.3/.4 burned a CI cycle on this — every wrapper around
+  `apply_filter` carries the same lavapipe risk as the filter itself.
 - **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
   `cargo check` time, not just at link time.** `glib-sys`'s build script
   invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
@@ -320,6 +342,7 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
 - **`#[allow(clippy::*)]` requires `reason = "..."`** — no exceptions.
+- **Cargo cache can lie when nextest + workspace-check race.** Symptom: `cargo check --workspace --all-targets --all-features` reports `E0599 no variant, associated function, or constant named X` for a method/variant that *is* in the source file (and a per-crate `cargo check -p X` succeeds on the same source). Cause: `cargo nextest run -p crate --test foo` builds the test crate against an older dep snapshot and leaves a stale dep hash; the next workspace check picks up that snapshot. **Fix:** `cargo clean -p <crate>` and rerun. Add a renderer / library new-API change in one stable order: edit source → `cargo check -p <crate>` → run tests → run gate. Don't interleave nextest of an in-flight test against the new API with workspace checks.
 
 ### When you hit a NEW mistake
 

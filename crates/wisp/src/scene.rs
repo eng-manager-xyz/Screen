@@ -5,19 +5,24 @@
 
 pub mod clip;
 pub mod container;
+pub mod dim_outside;
 pub mod graphics;
 pub mod mesh;
 pub mod node;
+pub mod privacy_blur;
 pub mod sprite;
 pub mod text;
 pub mod transform;
 
 use slotmap::SlotMap;
 
+pub use clip::MaskShape;
 pub use container::Container;
+pub use dim_outside::{DimOutside, DimStrength};
 pub use graphics::{Fill, Graphics, Stroke};
 pub use mesh::Mesh;
 pub use node::{Node, NodeId};
+pub use privacy_blur::{BlurStrength, PrivacyBlur};
 pub use sprite::Sprite;
 pub use text::{Font, Text};
 pub use transform::Transform;
