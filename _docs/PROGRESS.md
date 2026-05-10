@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.2 — Cosmic Text layout backend (AUT-76)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `FlexibleTextEngine` (Cosmic Text) lands behind the M-TEXT.1 trait surface. Layout half only; rasterization is M-TEXT.3 (`glyphon`).
+- **Linear:** [AUT-76](https://linear.app/harwood/issue/AUT-76).
+- **Files:** `crates/wisp/Cargo.toml` adds `cosmic-text = "0.12"` (default-features = false, std + swash). `deny.toml` adds `NCSA` to allowed licenses. New `crates/wisp/src/text/flexible.rs` with `FlexibleTextEngine { font_system: Mutex<FontSystem> }` (impl `WispTextEngine`) + `FlexibleTextLayout` (impl `WispTextLayout`) carrying a private `cosmic_text::Buffer`. `crates/wisp/src/text/mod.rs` + `crates/wisp/src/lib.rs` re-export. New `_docs/book/src/wisp/text/flexible-cosmic.md` chapter.
+- **Verified:** 6 unit tests cover empty content, single-line metrics, multi-line via `\n`, word-wrap behavior at tight widths, weight/italic attrs passthrough, and engine `Send + Sync` contract. `just gate` green at 289 tests (283 + 6 new).
+- **NDC ↔ pixel basis — `REFERENCE_PX = 1000`.** Cosmic Text is pixel-based; wisp is NDC-based. The engine multiplies `style.size_ndc` by 1000 to get cosmic-text font size and divides glyph positions back by 1000. Picked because (a) numbers stay within f32 precision, (b) sub-pixel headroom for size_ndc=0.06 (60 px caption), (c) matches glyphon's atlas-cache assumptions. Renderer rescales to actual target at draw time — same `FlexibleTextLayout` can be drawn into any-size target without re-shaping.
+- **`cosmic_text::*` does not leak.** `FlexibleTextLayout::buffer` is `pub(crate)` only; the public surface is `WispTextLayout::metrics()` plus `Debug` (which omits the buffer). Glyphon renderer (M-TEXT.3) reads the buffer through the crate-private accessor.
+- **`FontSystem` is `!Sync`** — wrapped in a `Mutex` so the engine can satisfy `Send + Sync`. The `engine_is_send_and_sync` test locks this contract at compile time.
+- **`set_text` API surprise:** cosmic-text 0.12 takes `Attrs<'_>` by value, not `&Attrs<'_>`. Trip cost: one recursive-fix iteration. Lesson added to CLAUDE.md.
+
+---
+
 ## M-TEXT.4 — Atlas text backend formalized (AUT-78)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — formalizes the M0.15 bitmap path as `AtlasText` behind the M-TEXT.1 trait surface. The existing `scene::Text` node + `text_pipeline` keep driving on-GPU draws; this chunk lands the *layout half* (`AtlasTextEngine` + `AtlasTextLayout`) so M-TEXT.5 can route the same data through render-to-texture for masks / filters / blends.

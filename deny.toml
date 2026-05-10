@@ -52,6 +52,11 @@ allow = [
     # Fonts in the egui ecosystem (epaint_default_fonts → Open Sans, Hack, etc.)
     "OFL-1.1",
     "Ubuntu-font-1.0",
+    # University of Illinois/NCSA Open Source License — permissive (MIT-like).
+    # Pulled in via image → ravif → rav1e → libfuzzer-sys under --all-features.
+    # Pre-existing in the tree; surfaced when expanding the dep graph for
+    # cosmic-text (M-TEXT.2 / AUT-76).
+    "NCSA",
 ]
 confidence-threshold = 0.8
 

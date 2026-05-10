@@ -16,6 +16,10 @@ bytemuck = { version = "1", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 slotmap = "1"
 font8x8 = { version = "0.3", default-features = false, features = ["unicode"] }
+# Cosmic Text — layout backend for `FlexibleText` (M-TEXT.2 / AUT-76).
+# `default-features = false` skips the swash shaper bundle so we can ship
+# without bundled fonts; we add `std` + `swash` for FontSystem support.
+cosmic-text = { version = "0.12", default-features = false, features = ["std", "swash"] }
 thiserror = "2"
 tracing = "0.1"
 
