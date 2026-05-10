@@ -73,6 +73,7 @@
 # `media` — capture + playback + timing
 
 - [Architecture — M-MEDIA.0](./media/architecture.md)
+  - [Clock + timestamp model — M-MEDIA.2](./media/clock.md)
 
 # `playback` — player state machine
 

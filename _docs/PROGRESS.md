@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.2 — Timestamp + clock model (AUT-98)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `MediaTime`, `MediaDuration`, `MediaClock`, `Timestamped<T>` ship as the shared timeline vocabulary. Every M-MEDIA chunk after this stamps its chunks/frames against a `MediaClock`.
+- **Linear:** [AUT-98](https://linear.app/harwood/issue/AUT-98).
+- **Files:** filled in `crates/media/src/clock.rs` (was scaffolded by M-MEDIA.0). `crates/media/src/lib.rs` re-exports the four types. New `_docs/book/src/media/clock.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 13 unit tests cover frame-90@30fps == 3s, sample-48000@48kHz == 1s exactly, sample round-trip at 44.1/48 kHz, frame round-trip at 24/30/60 fps, duration arithmetic (`MediaTime ± MediaDuration` and `MediaTime - MediaTime`), monotonic ordering + sort, manual-clock advance, wall-clock non-decreasing, `Timestamped<T>::assign`, `MediaDuration::abs` (drift), `from_millis` exactness, `Send + Sync`. Full `just gate` green at 326 tests (313 + 13 new).
+- **i64 nanoseconds internal.** ≈ 292 years of headroom, exact integer arithmetic, signed for pre-origin offsets. `f64` seconds is exposed for user-facing labels but the math runs in i128 to avoid mid-computation overflow.
+- **Round-half-up in `to_sample` / `to_frame`.** Without rounding, 44.1 kHz drifts -1 sample per conversion (the original `from_sample(1, 44100)` produced 22 675 ns, `to_sample(22 675, 44100)` gave back 0). Round-trip now exact for every sample rate that doesn't divide 10⁹ evenly.
+- **Two clock modes — `wall_clock` vs `manual`.** Production uses wall-clock; tests + the synthetic A/V sync harness (M-MEDIA.7) use manual mode for byte-exact reproducibility. `MediaClock::is_manual()` exposes the mode for assertions.
+
+---
+
 ## M-MEDIA.1 — Shared structured GStreamer probe (AUT-97)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `media::gstreamer::probe()` returns a structured `GStreamerProbe` (per-binary version, requested-plugin map, `PATH` snapshot) instead of a bare `bool`. CI failure logs now show *why* GStreamer is unavailable, not just "false."
