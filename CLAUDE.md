@@ -270,6 +270,30 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Drop-kill the child.** Implementing `Drop` for the stream struct with
   `child.kill()` + `child.wait()` matters: `gst-launch-1.0` will keep
   decoding into a dropped pipe and burn CPU otherwise.
+- **Tests that spawn external CLIs MUST have a runtime skip guard.**
+  Pattern in `crates/decode/tests/gstreamer_integration.rs` —
+  `gstreamer_available()` does a `--version` spawn check and returns
+  `bool`; tests early-return with `eprintln!` when false. Apply to
+  every integration test that calls `Command::new("...")` with a
+  binary-name (vs absolute path), even when CI is supposed to apt-install
+  it. Reason: on GitHub Actions Ubuntu runners we've observed the
+  `gstreamer1.0-tools` package install successfully (`Setting up
+  gstreamer1.0-tools` shows up in apt log) but later `cargo nextest`
+  test processes still get `ENOENT` on `gst-discoverer-1.0` spawn — root
+  cause unclear (possibly nextest process-isolation, possibly a CI
+  runner image quirk), but the skip guard makes it a non-issue. The
+  decode integration tests at positions 12-14 of the same nextest run
+  successfully spawn gstreamer; the preview/screen-app tests at 23+
+  fail with `ENOENT`. Same PATH inheritance, different outcome.
+- **Production gstreamer errors should dump `PATH` for diagnosis.**
+  `Error::Spawn` in `decode::gstreamer_pipe` includes the snapshot
+  `PATH=...` so when this CI mystery recurs the log surfaces the exact
+  lookup state. Modeled on the same approach the `Tauri 2 macOS dragdrop`
+  diagnostics took.
+- **Public `gstreamer_available()` helper** lives at
+  `decode::gstreamer_pipe::gstreamer_available`. Reused by tests in
+  `preview` and `screen-app` so the skip guard is a one-line check in
+  every gstreamer-using integration test.
 
 ### mdBook / engineering site
 

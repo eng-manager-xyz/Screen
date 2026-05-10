@@ -5,7 +5,7 @@
 //! unit-quad in `[0, 1]²`; the vertex shader subtracts `anchor` then applies
 //! the model.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec4};
@@ -14,7 +14,8 @@ use wgpu::util::DeviceExt;
 use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::color::Color;
-use crate::scene::{Node, Sprite, Stage};
+use crate::render::blend_pipeline::BlendPipelineMap;
+use crate::scene::{Node, NodeId, Sprite, Stage};
 use crate::texture::Texture;
 
 #[repr(C)]
@@ -36,7 +37,7 @@ const ATTR_LAYOUT: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
 ];
 
 pub(crate) struct SpritePipeline {
-    pipeline: wgpu::RenderPipeline,
+    pipelines: BlendPipelineMap,
     texture_layout: wgpu::BindGroupLayout,
 }
 
@@ -76,38 +77,43 @@ impl SpritePipeline {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::sprite pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("main_vs"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &ATTR_LAYOUT,
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("main_fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
+        // Build one pipeline per native blend mode — eight in total.
+        // The vertex/fragment/layout setup is shared; only the
+        // `BlendState` differs.
+        let pipelines = BlendPipelineMap::new(|blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("wisp::sprite pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &ATTR_LAYOUT,
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
         });
 
         Self {
-            pipeline,
+            pipelines,
             texture_layout,
         }
     }
@@ -122,7 +128,22 @@ impl SpritePipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let batches = collect_batches(stage);
+        self.draw_subtree(app, pass, stage, stage.root(), &HashSet::new())
+    }
+
+    /// Render only the subtree rooted at `start`. Nodes whose IDs are
+    /// in `exclude` (and their descendants) are skipped — used by the
+    /// auto-dispatch advanced-blend renderer to walk the scene "minus"
+    /// the advanced-blend subtrees.
+    pub(crate) fn draw_subtree(
+        &self,
+        app: &Application,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: &Stage,
+        start: NodeId,
+        exclude: &HashSet<NodeId>,
+    ) -> (u32, u32) {
+        let batches = collect_batches(stage, start, exclude);
         let mut draw_calls = 0u32;
         let mut sprites_drawn = 0u32;
 
@@ -152,7 +173,7 @@ impl SpritePipeline {
                 ],
             });
 
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(self.pipelines.get(batch.blend_mode));
             pass.set_bind_group(0, &bg, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             pass.draw(0..6, 0..count);
@@ -165,21 +186,20 @@ impl SpritePipeline {
 
 struct Batch {
     texture: Texture,
-    #[allow(
-        dead_code,
-        reason = "blend variants beyond Normal are wired up post-M0.9"
-    )]
     blend_mode: BlendMode,
     instances: Vec<SpriteInstance>,
 }
 
-fn collect_batches(stage: &Stage) -> Vec<Batch> {
-    type Key = (usize, u8);
+fn collect_batches(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> Vec<Batch> {
+    type Key = (usize, BlendMode);
     let mut grouped: HashMap<Key, (Texture, BlendMode, Vec<SpriteInstance>)> = HashMap::new();
     let mut order: Vec<Key> = Vec::new();
 
-    let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
+    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
+        if exclude.contains(&id) {
+            continue;
+        }
         let Some(node) = stage.get(id) else {
             continue;
         };
@@ -216,11 +236,10 @@ fn collect_batches(stage: &Stage) -> Vec<Batch> {
 fn push_sprite_instance(
     sprite: &Sprite,
     world: Mat4,
-    grouped: &mut HashMap<(usize, u8), (Texture, BlendMode, Vec<SpriteInstance>)>,
-    order: &mut Vec<(usize, u8)>,
+    grouped: &mut HashMap<(usize, BlendMode), (Texture, BlendMode, Vec<SpriteInstance>)>,
+    order: &mut Vec<(usize, BlendMode)>,
 ) {
-    let blend_disc = blend_discriminant(sprite.container.blend_mode);
-    let key = (sprite.texture.id(), blend_disc);
+    let key = (sprite.texture.id(), sprite.container.blend_mode);
     let alpha_tint = with_premultiplied_alpha(sprite.tint, sprite.container.alpha);
     let entry = grouped.entry(key).or_insert_with(|| {
         order.push(key);
@@ -244,15 +263,6 @@ fn with_premultiplied_alpha(tint: Color, alpha: f32) -> Color {
         g: tint.g,
         b: tint.b,
         a: tint.a * alpha,
-    }
-}
-
-const fn blend_discriminant(b: BlendMode) -> u8 {
-    match b {
-        BlendMode::Normal => 0,
-        BlendMode::Multiply => 1,
-        BlendMode::Add => 2,
-        BlendMode::Screen => 3,
     }
 }
 

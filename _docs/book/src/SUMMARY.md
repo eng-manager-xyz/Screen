@@ -31,6 +31,10 @@
   - [Motion blur — M0.18](./wisp/chunks/filter-motion-blur.md)
   - [Color matrix — M0.18](./wisp/chunks/filter-color-matrix.md)
   - [Perspective rotation — M0.19](./wisp/chunks/mesh-perspective.md)
+  - [Filter chain — M0.20](./wisp/chunks/example-filter-chain.md)
+  - [Recorder mock — M0.21](./wisp/chunks/example-recorder-mock.md)
+  - [Headless export — M0.21](./wisp/chunks/example-headless-export.md)
+  - [Blend modes — M-BLEND.1](./wisp/chunks/blend-modes.md)
 
 # `decode` — video decode
 
