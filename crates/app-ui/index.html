@@ -10,9 +10,71 @@
     <link rel="stylesheet" href="/assets/style.css" />
     <link rel="stylesheet" href="/shell.css" />
     <link data-trunk rel="copy-file" href="shell.css" />
+
+    <!-- Tauri ↔ Leptos bridge.
+
+         Inbound (Tauri → Leptos): Tauri 2's `window.__TAURI__.event`
+         dispatches custom events from Rust. We re-emit each as a browser
+         `CustomEvent` so Leptos can listen via `web_sys` without pulling
+         a `tauri-sys` dependency. Two events today:
+           - `file-dropped` (M-INT.2): payload is the dropped file path.
+           - `player-status` (M-PLAY.2): payload is a `PlayerStatus` object
+             (state / elapsed_ms / duration_ms / width / height / fps /
+             frame_count). The browser CustomEvent's `.detail` is the
+             same object — Leptos parses it via `serde_wasm_bindgen`.
+
+         Outbound (Leptos → Tauri): three top-level helpers wrap
+         `__TAURI__.core.invoke`. Leptos calls them via `extern "C"`
+         declarations. Returning the underlying Promise is intentional —
+         callers who want it can chain; callers who don't can ignore. -->
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        if (window.__TAURI__ && window.__TAURI__.event) {
+          console.log("[screen bridge] __TAURI__.event found — registering listeners");
+          window.__TAURI__.event.listen("file-dropped", (event) => {
+            console.log("[screen bridge] file-dropped:", event.payload);
+            window.dispatchEvent(new CustomEvent("file-dropped", {
+              detail: event.payload
+            }));
+          });
+          window.__TAURI__.event.listen("player-status", (event) => {
+            window.dispatchEvent(new CustomEvent("player-status", {
+              detail: event.payload
+            }));
+          });
+          // Drag-state events (M-POLISH.1). Payload-less — the visual
+          // toggle lives entirely in Leptos signal-land.
+          window.__TAURI__.event.listen("file-drag-enter", () => {
+            console.log("[screen bridge] file-drag-enter");
+            window.dispatchEvent(new CustomEvent("file-drag-enter"));
+          });
+          window.__TAURI__.event.listen("file-drag-leave", () => {
+            console.log("[screen bridge] file-drag-leave");
+            window.dispatchEvent(new CustomEvent("file-drag-leave"));
+          });
+        } else {
+          console.warn("[screen bridge] __TAURI__.event NOT found — running outside Tauri?");
+        }
+      });
+
+      window.__screenOpen = (path) =>
+        window.__TAURI__?.core?.invoke("player_open", { path });
+      window.__screenPlay = () =>
+        window.__TAURI__?.core?.invoke("player_play");
+      window.__screenPause = () =>
+        window.__TAURI__?.core?.invoke("player_pause");
+
+      // Synchronous helper: turn a local file path into an asset:// URL
+      // the webview's <video> element can load. Tauri 2 exposes this via
+      // `__TAURI__.core.convertFileSrc`. Returns undefined when running
+      // outside Tauri (so the Rust side can fall through to its own
+      // fallback for the `trunk serve` standalone path).
+      window.__screenConvertFileSrc = (path) =>
+        window.__TAURI__?.core?.convertFileSrc?.(path);
+    </script>
   </head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
-      `crates/app-ui/`.</noscript>
+      `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>
   </body>
 </html>

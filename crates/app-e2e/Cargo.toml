@@ -1,0 +1,25 @@
+[package]
+name = "app-e2e"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Tier-2 WebDriver e2e tests for screen-app via tauri-driver + fantoccini. Linux-only in CI; opt-in via `just e2e`."
+
+[lints]
+workspace = true
+
+[lib]
+name = "app_e2e"
+path = "src/lib.rs"
+
+[dependencies]
+fantoccini = "0.21"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "sync"] }
+anyhow = "1"
+serde_json = "1"
+
+[dev-dependencies]
+# Path-dep on screen-app so cargo builds the binary before running e2e
+# tests (and so cargo metadata resolves the workspace target dir).
+screen-app = { path = "../app" }

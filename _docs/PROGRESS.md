@@ -6,6 +6,121 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-POLISH.1 — Drag-over visual feedback
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first polish chunk on the milestone-1 Phase 4 list (M4.1).
+- **Files:** `crates/app/src/main.rs` (extended `on_window_event` to match all `DragDropEvent` variants — `Enter`/`Drop`/`Leave` emit corresponding Tauri events; `Over` and future variants are no-ops since the enum is `non_exhaustive`); `crates/app/src/commands.rs` (two new debug-only commands `__test_drag_enter`/`__test_drag_leave`); `crates/app/src/main.rs` registers them conditionally; `crates/app-ui/index.html` (JS bridge re-emits `file-drag-enter`/`file-drag-leave` as browser CustomEvents); `crates/app-ui/src/app.rs` (`is_dragging` signal + `install_drag_state_listeners` + reactive `DropZoneState::{Idle | Active}` binding via a closure inside the `<Show>` fallback); `crates/app-e2e/tests/golden_path.rs` (new `drag_enter_leave_toggles_active_class` test); `_docs/book/src/app-ui/integration.md` extended with the M-POLISH.1 section.
+- **Verified:** `just gate` green; `trunk build` clean WASM bundle; `cargo check -p app-e2e --tests` green so the new e2e test compiles for the next Linux CI run.
+- **Architecture lock:** drag-state lives entirely in Tauri-event-land. We deliberately don't use HTML5 `dragenter`/`dragleave` because Tauri 2 with `dragDropEnabled: true` captures OS-level drags before they bubble into the webview. Re-emitting Tauri's variants through the existing JS bridge keeps the drag-state path symmetric with `file-dropped` and `player-status` — same shape, three times now. Future events (drag-position for cursor crosshairs, etc.) follow the same pattern.
+- **Reset-on-drop is intentional:** Tauri's `Leave` event fires *only* when the drag exits the window, not after a drop. So `Drop` also emits `file-drag-leave` to reset the visual, otherwise the active class would stick after a successful drop until the next `Enter`/`Leave` cycle.
+- **e2e UPDATED** (per the testing strategy's tier-2 obligation): new test calls `__test_drag_enter` → asserts `.drop-zone-active` appears → calls `__test_drag_leave` → asserts `.drop-zone-idle` returns. Two-test golden suite now: `golden_path_drop_play_pause` (file → play → pause) and `drag_enter_leave_toggles_active_class` (drag visual).
+- **DropZone component reuse:** the `Active` variant the storybook shipped in M-UI.1 already had thicker border + accent tint + `Release to import` headline. M-POLISH.1 is purely the *wiring* — no new CSS, no component changes. That's the point of the storybook discipline: components ship complete, integration just connects them.
+- **No new clippy lessons:** the auto-fixable patterns from M-PLAY.3 (doc-markdown, format args) didn't recur. Pure composition.
+
+---
+
+## M-PLAY.3 — `<video>` preview bound to convertFileSrc + e2e coverage
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first user-visible video playback in the recorder. Maps to milestone-1 chunks M3.1 (path → asset URL) + M3.2 (VideoPlayer component); M3.3 (view switching) was already in place via `<Show>`.
+- **Files:** `crates/app-ui/index.html` (new `__screenConvertFileSrc` JS bridge); `crates/app-ui/src/player_ipc.rs` (`screen_convert_file_src_js` extern + safe `convert_file_src` wrapper that returns `None` outside Tauri); `crates/app-ui/src/app.rs` (PlayerView replaces placeholder div with `<video>` element using NodeRef + sync click handler + catch-up Effect); `crates/app-ui/Cargo.toml` (`HtmlVideoElement` + `HtmlMediaElement` web-sys features); `crates/app-ui/shell.css` (`.player-video` + repositioned `.player-surface-label` as overlay); `crates/app-e2e/tests/golden_path.rs` (asserts video element exists, src is asset-protocol-shaped, `.paused` flips on toggle clicks); `_docs/book/src/app-ui/player-ipc.md` extended with the M-PLAY.3 video-element section.
+- **Verified:** `just gate` green; `trunk build` clean WASM bundle; `cargo check -p app-e2e --tests` green so the new e2e assertions compile (full e2e run on the next push to Linux CI).
+- **Architecture lock — two paths to the `<video>` element, by necessity:**
+  - **Click handler** drives `<video>` synchronously within the user gesture. WebKit blocks programmatic `.play()` outside a user-initiated event, so the catch-up Effect alone wouldn't be enough.
+  - **`Effect::new`** over `player_status` is the catch-up path for non-click state changes (EOF transition to Ended, future seek commands). Idempotent — only acts when `video.paused()` doesn't already match.
+- **Two-source-of-truth, deliberate:** Tauri's `PlayerSession` keeps running alongside the visible HTML5 video. It owns the gstreamer-decoded `VideoTexture` that future wisp-rendered surfaces (winit child window for the editor preview) will read. This chunk doesn't fold the two together — the video element is the MVP playback surface; the wisp render path is queued for a later milestone.
+- **e2e UPDATED** (per the testing strategy's tier-2 obligation when adding a user-visible feature):
+  - Asserts `<video class="player-video">` exists after drop.
+  - Reads `src` attribute, asserts non-empty + contains `"asset"` (matches both macOS `asset://` and Linux/Windows `http://asset.localhost`).
+  - New `wait_video_paused(driver, want_paused)` helper polls `document.querySelector('video.player-video').paused` via `driver.execute()` because WebKit's `.play()` is async and the property doesn't flip exactly on click.
+- **No new lessons during the gate loop** — the feature dropped in cleanly because the JS bridge / extern / NodeRef / Effect patterns were all established in M-PLAY.2 and M-TEST.2. Pure composition.
+
+---
+
+## M-TEST.2 — Tier-2 WebDriver e2e via tauri-driver + fantoccini
+- **Date:** 2026-05-09
+- **Status:** ✅ done — completes the three-tier test strategy. Linux-CI-gated; macOS skips with a clear message.
+- **Files:** new `crates/app-e2e/` (Cargo.toml + src/lib.rs harness + tests/golden_path.rs); `crates/app/src/commands.rs` adds `#[cfg(debug_assertions)] __test_drop_file` (debug-only Tauri command that emits the same `file-dropped` event the OS drag-drop handler emits — WebDriver can't synthesize OS drops); `crates/app/src/main.rs` registers it conditionally in `generate_handler!`; `justfile` adds `just e2e` recipe with platform branching (Linux uses xvfb-run, macOS prints skip); `justfile`'s `test` recipe excludes `app-e2e` (gate doesn't require tauri-driver); `.github/workflows/gate.yml` adds Ubuntu-only steps to apt-install `webkit2gtk-driver`+`xvfb`, `cargo install tauri-driver` (via `taiki-e/install-action`), and run `just e2e`; testing chapter expanded.
+- **Verified:** `just gate` green (132 tests on macOS dev; app-e2e compiles + lints + skips at runtime); `just e2e` on macOS prints the skip message and exits 0 cleanly; the harness is structured so cargo nextest registers it when invoked but the workspace gate excludes it.
+- **Architecture lock — `E2eApp` lifecycle:**
+  - `start()`: `cargo build -p screen-app` (idempotent) → spawn `tauri-driver` on port 4444 → `wait_for_port` (15s budget) → connect fantoccini Client with `tauri:options.application = <bin path>` → tauri-driver spawns the app, fantoccini drives it.
+  - `Drop`: best-effort `client.close().await` (asks tauri-driver to shut the app cleanly), then `tauri_driver.kill()` outright. Drop runs in a separate thread because tokio runtimes can't be dropped from inside a running runtime.
+- **Golden-path scenario:** invoke `__test_drop_file` (synthesizes the file-dropped event) → wait for `.player-controls` to appear → click `.player-toggle` → wait for `.player-toggle-playing` class → click again → wait for `.player-toggle-paused`. End-to-end: real WebView, real Leptos hydration, real JS bridge, real Tauri IPC, real Rust state machine.
+- **Why `__test_drop_file` is debug-only:** WebDriver can't synthesize OS-level drag-drop events. Production users get drag-drop via `WindowEvent::DragDrop` (the real handler in main.rs); tests get the `__test_drop_file` parallel entry point. Gated on `#[cfg(debug_assertions)]` for both the command definition and the `generate_handler!` registration so release builds strip it entirely.
+- **CI strategy:** `gate.yml` matrix runs the gate on macos-latest + ubuntu-latest; e2e runs only on the Ubuntu arm via `just e2e`. macOS keeps Tier-0 + Tier-1 coverage; the manual smoke procedure for Tier-2 on mac is documented in the testing chapter.
+- **5 lessons captured during the gate loop** (small, all auto-fixable by `cargo clippy --fix`):
+  - `clippy::doc_markdown` flags every `WebDriver`/`WebView`/`WebKitGTK` reference in docstrings; CI doesn't tolerate them and `--fix` adds backticks reliably.
+  - `clippy::map_err` over `inspect_err` — when the closure doesn't transform the error, `inspect_err` is the right idiom.
+  - `clippy::uninlined_format_args` prefers `{var:?}` over `"{:?}", var` — `--fix` rewrites cleanly.
+  - `clippy::needless_raw_strings` flags `r#"…"#` when no embedded `"` justifies the `#`. `--fix` strips the hashes.
+  - `taiki-e/install-action` supports `tauri-driver` directly — saves the 5-minute `cargo install` cycle on every CI run.
+
+---
+
+## M-TEST.1 — Tier-1 IPC harness for Tauri commands
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first half of the e2e testing strategy. M-TEST.2 (WebDriver) follows.
+- **Files:** `crates/app/Cargo.toml` (dev-dep `tauri = { features = ["test"] }` + `serde_json`); new `crates/app/tests/commands.rs` (4 cases: empty status, full open→play→pause IPC round-trip, lowercase serde wire-shape regression guard, invalid-path error path); `Deserialize` derive added to `PlayerStatus` + `SessionState` (was Serialize-only) so tests can round-trip; `_docs/book/src/app-ui/testing.md` documents the three-tier strategy; `SUMMARY.md`.
+- **Verified:** `just gate` green (132 tests, +4 from M-PLAY.2's 128); 4 IPC harness cases run in ~1.5s under nextest.
+- **What this catches that direct PlayerSession tests miss:**
+  - Misregistration in `tauri::generate_handler!` (typo → silently missing command at runtime, no compile error).
+  - serde wire-shape drift: e.g. accidentally dropping `#[serde(rename_all = "lowercase")]` from `SessionState`. Caught by an explicit `state_str == "empty"` assertion.
+  - `State<PlayerSession>` plumbing — forgetting `.manage(...)` in main.rs would still compile but fail at runtime. The harness builds via `mock_builder().manage(...).build(...)` so a missed `.manage` would surface here.
+- **Test-tier hierarchy now documented in `_docs/book/src/app-ui/testing.md`** — Tier 0 (chunk-level), Tier 1 (this chunk), Tier 2 (WebDriver, M-TEST.2 next). Each tier overlaps deliberately; no tier replaces another.
+- **3 clippy refactors during the gate loop:**
+  - `Default::default()` for `HeaderMap` and `WebviewUrl` → typed forms (`HeaderMap::default()`, `WebviewUrl::default()`) per `default_trait_access`. New mini-lesson: clippy pedantic prefers explicit type names over `Default::default()` ambiguity.
+  - `tauri::webview::WebviewUrl` is `pub(crate)`; the public path is `tauri::WebviewUrl` (re-exported from `config`). Found via `grep` in the registry source.
+  - `tauri::test::INVOKE_KEY` is the magic constant the IPC dispatcher checks; tests would silently get rejected without it.
+- **Cargo wart noted (acceptance, not a fix):** `[dev-dependencies] tauri = { features = ["test"] }` unifies into the release binary's feature set because cargo doesn't separate dep + dev-dep features per profile. The `test` module is small; accepted.
+
+---
+
+## M-PLAY.2 — Tauri ↔ player IPC for transport controls
+- **Date:** 2026-05-09
+- **Status:** ✅ done — last chunk on the path to first MP4 playback. **Path complete: M-DEC.1 → M-PLAY.1 → M-DEC.2 → M-INT.1 → M-INT.2 → M-PREVIEW.1 → M-PLAY.2.**
+- **Files:** `crates/app/Cargo.toml` (deps: playback/decode/wisp/serde/pollster/tracing); new `crates/app/src/{lib.rs, player_session.rs, commands.rs}`; `crates/app/src/main.rs` rewritten with `.manage(PlayerSession)` + invoke_handler + tick thread; `crates/app/tests/player_session.rs` (6 lifecycle tests); `crates/app-ui/Cargo.toml` (+ serde, serde-wasm-bindgen); new `crates/app-ui/src/player_ipc.rs`; updated `crates/app-ui/src/{lib.rs, app.rs}`; updated `crates/app-ui/index.html` (outbound `__screen{Open,Play,Pause}` helpers + `player-status` listener bridge); `crates/ui-storybook/src/components/player_controls.rs` (optional `on_toggle: Option<Callback<()>>` prop, non-breaking); `_docs/book/src/app-ui/player-ipc.md`; `SUMMARY.md`; `ISSUES.md` ISS-03 marked resolved.
+- **Verified:** `just gate` green (128 tests, +6 from M-PREVIEW.1's 122); `just site` renders the new chapter; trunk WASM build passes; SSR snapshot for the storybook unchanged (the optional prop emits no HTML attribute).
+- **IPC contract — four commands, one event:**
+  - `player_open(path: String) -> Result<PlayerStatus, String>`
+  - `player_play()` / `player_pause()`
+  - `player_status() -> PlayerStatus`
+  - `player-status` event (Tauri → webview), throttled to state-change + 10 Hz elapsed updates.
+- **Architecture lock:** `PlayerSession` is pure Rust (no Tauri types) so its lifecycle is testable end-to-end without booting Tauri. The four `#[tauri::command]` wrappers are one-liners over the session. The Application is built once at session boot (~200 ms) and shared by every subsequent `open` — no device-init latency on file open.
+- **Tick thread:** plain `std::thread::spawn` + `std::thread::sleep(33 ms)` rather than `tokio::time::interval` — avoids the tokio-features dep dance, and the tick is sync work. Status emits are throttled to lifecycle changes + 100 ms-of-elapsed boundaries while playing (so the timer ticks at ~10 Hz, not 30 Hz).
+- **JS bridge symmetry with M-INT.2:** outbound is three `__TAURI__.core.invoke` wrappers (`__screenOpen`/`__screenPlay`/`__screenPause`); inbound is a `player-status` Tauri-event → browser-`CustomEvent` re-emit. No `tauri-sys`. Bridge degrades to no-ops when `__TAURI__` is absent (so `trunk serve` standalone still flips the drop-zone-to-player view via the demo affordance).
+- **Component evolution:** `PlayerControls` gains an optional `on_toggle: Option<Callback<()>>` prop. Existing storybook stories pass nothing → SSR HTML output is unchanged → snapshot test passes unchanged. The recorder shell wraps `<PlayerControls>` in a reactive closure that re-renders on `player_status` changes.
+- **6 lessons captured during the gate loop** (no `#[allow]` shortcuts where avoidable):
+  - Tauri's `generate_handler!` requires fully-qualified paths (`commands::player_play`) so its companion `__cmd__name` macro is in scope — using `use commands::*;` doesn't work.
+  - Tauri's `#[tauri::command]` requires `State<T>` by value, not `&State<T>` — clippy's `needless_pass_by_value` fires on every command. Suppressed with a module-level `#![allow]` + reason in `commands.rs`.
+  - Leptos 0.7 typed-builder cache can desync after editing a `#[component]` that gains a new prop — `cargo clean -p <crate>` invalidates and the prop reappears. Burned one cycle on this.
+  - `--all-features` in workspace check unifies `csr + ssr` features for `ui-storybook`, but the `#[component]` macro itself is feature-agnostic; the cache desync (above) was the real culprit.
+  - `usize as u32` and `f32 == 0.0` are still the most common gate trippers — both have CLAUDE.md lessons; applied the documented fixes (`u32::try_from(...).expect(...)`, `f32::abs() < f32::EPSILON`).
+  - rustdoc broken-intra-doc-links across crate boundaries (e.g. `[`screen_app::player_session::PlayerStatus`]` from `app-ui`) — when the dep edge isn't there *and shouldn't be there* (WASM ↔ Tauri-native split), the right answer is plain-text references with a comment explaining why. Resolved ISS-03 with that pattern.
+
+---
+
+## M-PREVIEW.1 — Native winit window with a wgpu surface that wisp renders into
+- **Date:** 2026-05-09
+- **Status:** ✅ done — fifth-and-a-half chunk on the path to first MP4 playback. **1 chunk remains** (M-PLAY.2 Tauri↔player IPC).
+- **Files:** new `crates/preview/` (Cargo.toml, src/lib.rs with `aspect_fit_scale` + 4 unit tests, src/main.rs with the winit `ApplicationHandler`); `crates/preview/examples/render_offscreen.rs` (asset generator — same render path against an offscreen `RenderTexture`); `crates/preview/tests/render_smoke.rs` (CI-safe smoke test for the `from_wgpu` codepath); 5 PNG assets at `_docs/book/src/assets/preview/preview_NN.png`; `_docs/book/src/preview/{overview,chunks/preview-window}.md`; `SUMMARY.md`; `ISSUES.md` adds ISS-03 (pre-existing rustdoc warning in `app-ui` spotted during `just site`).
+- **Verified:** `just gate` green (122 tests, 0 skipped); `just site` renders both new chapters with embedded asset PNGs; `cargo run -p preview` opens a real winit window and plays the fixture (manual verify).
+- **Architecture lock:** `wisp::Application::from_wgpu` is the embedding-host seam. `preview` calls it with the host-built `Instance`/`Adapter`/`Device`/`Queue` (surface-aware in the binary, surfaceless in the example). When M-PLAY.2 wires a winit child of Tauri, the same constructor handles it — no library-side change.
+- **Sprite math:** `aspect_fit_scale(surface_w, surface_h, video_w, video_h) -> Vec2` letterboxes/pillarboxes the source into the surface. The bound axis takes 2.0 (full NDC `[-1, +1]`); the loose axis shrinks proportionally. Zero dims fall back to `Vec2::splat(1.0)` to avoid `NaN`.
+- **Why a `[lib]` *and* a `[[bin]]`:** the example and integration test need `aspect_fit_scale` and the API stability of the same shape that `main.rs` uses. Cargo handles a dual-target crate cleanly; rustdoc gets the `preview` crate page automatically.
+- **One clippy refactor during the gate loop** (no `#[allow]`):
+  - `bytes.len() as u32` → `u32::try_from(bytes.len()).expect(...)` (the documented CLAUDE.md cast-hygiene rule, applied prophylactically — caught here on first attempt because the lesson was already in the rules file).
+
+---
+
+## M-INT.2 — Tauri serves Trunk bundle + OS file-drop wiring
+- **Date:** 2026-05-10
+- **Status:** ✅ done — fifth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1, M-PLAY.2).
+- **Files:** `crates/app/tauri.conf.json` (`frontendDist` → `../app-ui/dist` + `beforeDevCommand`/`beforeBuildCommand` running Trunk + `devUrl`); `crates/app/src/main.rs` (`on_window_event` → `WindowEvent::DragDrop` emits `file-dropped` Tauri event); `crates/app-ui/index.html` (JS bridge re-emits as browser `CustomEvent`); `crates/app-ui/src/app.rs` (`install_file_drop_listener` adds web-sys listener that flips `loaded` signal); `crates/app-ui/Cargo.toml` (web-sys with CustomEvent/Window/EventTarget/Event features); deleted `crates/app/dist/` (vanilla HTML M1 frontend, replaced).
+- **Verified:** `just gate` green; `trunk build` produces fresh dist; cargo check on screen-app passes after the new event handler.
+- **Architecture:** four hops, each one-liner — Tauri `on_window_event` → `window.emit("file-dropped")` → JS bridge `CustomEvent` → web-sys `addEventListener`. No `tauri-sys` crate, no JS-side state. Bridge degrades to no-op when `window.__TAURI__` absent (so `trunk serve` standalone still works for component review).
+- **Notes:** `Closure::forget()` on the file-drop listener is intentional — app-lifetime, never removed. Clippy's `collapsible_if` caught the new event handler; fixed via Rust 2024 `if let && let` chains (already a CLAUDE.md lesson — non-duplicative, no new entry).
+
+---
+
 ## M-INT.1 — Trunk + Leptos CSR app (`crates/app-ui/`)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — fourth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1 native winit, M-PLAY.2 Tauri↔player IPC; M-INT.2 Tauri-frontendDist swap is a small follow-on).

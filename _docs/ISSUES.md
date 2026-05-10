@@ -25,6 +25,26 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-03: `app-ui` rustdoc has an unresolved intra-doc link to `playback::Player`
+- **Filed:** 2026-05-09
+- **By:** M-PREVIEW.1 (spotted during `just site`)
+- **Severity:** tech-debt
+- **Affects:** `app-ui` (`crates/app-ui/src/lib.rs:16` — `//! [`playback::Player`]`)
+- **Status:** ✅ resolved 2026-05-09 by M-PLAY.2
+- **Description:**
+  The crate-level docstring references `[`playback::Player`]`, but `app-ui`
+  doesn't depend on the `playback` crate so rustdoc can't resolve the path.
+- **Resolution:**
+  M-PLAY.2 rewrote the lib.rs docstring to describe the actual IPC wiring
+  and replaced the `playback::Player` reference with a `[`player_ipc`]`
+  link to the new in-crate module. Cross-crate references in
+  `player_ipc.rs` to `screen_app::player_session` types are intentionally
+  plain text (with a comment explaining why) — `app-ui` is a WASM crate
+  that can't depend on `screen-app` (Tauri-native). Verified by `just gate`
+  (no remaining rustdoc warnings).
+
+---
+
 ## ISS-02: Tauri 2 Linux backend pulls gtk-rs unmaintained crates
 - **Filed:** 2026-05-09
 - **By:** M1.1 (Tauri foundation setup)

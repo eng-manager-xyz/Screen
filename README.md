@@ -66,34 +66,51 @@ auto-install it on first build.
 
 #### Required
 
+> All commands below install **global** tools (cargo / rustup / brew /
+> apt). They can be run from any directory — **except** `rustup target
+> add`, which attaches the target to the *active* toolchain and so
+> should be run from inside the repo (where `rust-toolchain.toml` pins
+> nightly). Once installed, every tool is on `$PATH`.
+
 ```bash
-# Rust toolchain (nightly + wasm32 target)
+# from: inside the repo (anywhere under the cloned `Screen/` tree)
+# Adds wasm32 to the nightly toolchain pinned by rust-toolchain.toml.
 rustup target add wasm32-unknown-unknown
-
-# Task runner — one place for every QA recipe.
-brew install just                # macOS
-# or: cargo install --locked just
-
-# QA tools used by `just gate`
-cargo install --locked cargo-nextest cargo-deny cargo-audit cargo-machete
-
-# Documentation site builder
-cargo install --locked mdbook
-
-# WASM bundler for the Leptos shell
-cargo install --locked trunk
-
-# Video decode backend
-brew install gstreamer           # macOS — the cask name is just `gstreamer`
-# or: apt install gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-libav
 ```
 
-`just bootstrap` automates the Rust-side tools once Homebrew + Rust are
-present.
+```bash
+# from: anywhere
+# Tauri 2 CLI — drives `cargo tauri dev` / `tauri build`.
+cargo install --locked tauri-cli --version "^2.0"
+
+# WASM bundler for the Leptos shell.
+cargo install --locked trunk
+
+# Documentation site builder.
+cargo install --locked mdbook
+
+# QA tools used by `just gate`.
+cargo install --locked cargo-nextest cargo-deny cargo-audit cargo-machete
+```
+
+```bash
+# from: anywhere — system package managers
+# Video decode backend.
+brew install gstreamer           # macOS — the cask name is just `gstreamer`
+# or: apt install gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-libav
+
+# Task runner — one place for every QA recipe (optional but used everywhere).
+brew install just                # macOS
+# or: cargo install --locked just
+```
+
+`just bootstrap` (run **from the repo root**) automates the Rust-side
+tools once Homebrew + Rust are present.
 
 #### Optional / on demand
 
 ```bash
+# from: anywhere
 cargo install --locked cargo-llvm-cov   # coverage
 cargo install --locked cargo-semver-checks
 cargo install --locked cargo-public-api
@@ -105,35 +122,75 @@ rustup component add miri --toolchain nightly
 rustup component add llvm-tools-preview
 ```
 
-### Build & run
+### Run the Tauri app (drop-zone → MP4)
+
+The minimum path from a fresh checkout to a native window with a working
+drop-zone:
 
 ```bash
+# 1. Clone and enter the repo. (from: anywhere)
 git clone https://github.com/eng-manager-xyz/Screen.git
 cd Screen
 
-# Verify the gate is green from a fresh checkout (~1–2 min on first build).
-just gate
-
-# Build everything once.
-cargo build --workspace
+# 2. Launch the app. `cargo tauri dev` starts the Leptos frontend
+#    (`trunk serve` on port 1420) and compiles + runs the native Tauri
+#    binary. First build is ~2–5 min; subsequent runs are incremental.
+#    (from: crates/app/ — `cargo tauri dev` reads tauri.conf.json from cwd)
+cd crates/app
+cargo tauri dev
 ```
 
-### Try it now (deepest demo currently shippable)
+> **Heads-up on `beforeDevCommand`:** Tauri 2.x spawns the
+> `beforeDevCommand` hook from the **parent of the tauri dir** (i.e.,
+> `crates/`), *not* from the dir holding `tauri.conf.json`. So our
+> `beforeDevCommand` is `cd app-ui && trunk serve …`, not
+> `cd ../app-ui && …`. If you're upgrading an old checkout and see
+> `sh: cd: ../app-ui: No such file or directory`, pull the latest
+> `crates/app/tauri.conf.json` (or change `cd ../app-ui` → `cd app-ui`).
+
+A native window titled **Screen** opens (1280×800, drag-drop enabled).
+Drop any `.mp4` file onto the drop-zone:
+
+1. Tauri's `WindowEvent::DragDrop` fires
+   ([`crates/app/src/main.rs:39-48`](./crates/app/src/main.rs)).
+2. The shell emits a `file-dropped` Tauri event carrying the file path.
+3. The JS bridge in [`crates/app-ui/index.html`](./crates/app-ui/index.html)
+   re-emits it as a browser `CustomEvent`.
+4. The Leptos `App` listens, sets the `loaded` signal, and swaps the
+   drop-zone view for the player surface
+   ([`crates/app-ui/src/app.rs`](./crates/app-ui/src/app.rs)).
+
+> **Current behaviour:** the player surface displays the dropped file's
+> path as a placeholder label. Full wisp-rendered playback inside that
+> surface lands in **M-PLAY.2** (see Status table above) — the dropped
+> path will then drive the native `Player` via the `player_open` /
+> `player_play` IPC commands already exposed in
+> [`crates/app/src/commands.rs`](./crates/app/src/commands.rs).
+
+### See real wisp video playback today
+
+The decode → upload → render pipeline works end-to-end as a headless
+example (no Tauri shell yet — that's M-PLAY.2):
 
 ```bash
-# End-to-end: decode an MP4 → upload to GPU → render through wisp.
-# Output: 7 PNGs at _docs/book/src/assets/playback/playfile_NN.png
+# Decode an MP4 → upload to GPU → render through wisp → 7 PNGs out.
 cargo run -p playback --example play_file
+# Output: _docs/book/src/assets/playback/playfile_NN.png
 ```
 
 The committed test fixture (`crates/decode/tests/fixtures/sample.mp4`,
 11 KB) is opened via GStreamer, streamed frame-by-frame as BGRA bytes,
-uploaded to a `wisp::VideoTexture`, rendered through the same `Sprite`
-pipeline the live recorder will use, and written to disk.
+uploaded to a `wisp::VideoTexture`, and rendered through the same
+`Sprite` pipeline the live recorder will use.
+
+### Other entry points
 
 ```bash
-# Browse the recorder shell (Leptos CSR app).
-just app-ui          # localhost:8080 — the Leptos CSR shell
+# Verify the workspace builds clean (~1–2 min on first run).
+just gate
+
+# Browse the recorder shell standalone in a browser (no Tauri).
+just app-ui          # localhost:8080
 
 # Browse the wgpu story gallery (native eframe window).
 just storybook
