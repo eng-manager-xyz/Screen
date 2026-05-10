@@ -208,6 +208,24 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
   workflow's `$GITHUB_ENV`. Local dev and real-hardware CI leave the
   env var unset and run the tests normally — gate stays green without
   losing the assertion on real GPUs.
+  **Audit the call graph, not just direct usage.** The blur pipeline
+  is reached transitively by every `Renderer` method that wraps
+  `apply_filter` with a `BlurFilter` — currently `apply_privacy_blur`,
+  `apply_privacy_blur_data`, and any future wrapper. Whenever a new
+  test/story calls one of those, you must:
+    1. Add the guard to **the test** (`if skip_on_software_adapter() { return; }`).
+    2. Add the **story id** to `LAVAPIPE_INCOMPATIBLE` in
+       `crates/wisp-storybook/tests/story_smoke.rs` if a story uses
+       it during `build()`.
+  The non-blur mask primitives (`apply_clip` / `apply_solid_redaction` /
+  `apply_spotlight` / `apply_dim_outside_data` / `apply_path_clip`) use
+  single-bind-group pipelines and run fine on lavapipe — don't guard
+  them. **Verification:** locally run
+  `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp --test <new>`
+  and confirm the GPU-using tests early-return in <50ms; without the
+  env var, confirm they still actually exercise the pipeline (~1s+).
+  M-MASK.2/.3/.4 burned a CI cycle on this — every wrapper around
+  `apply_filter` carries the same lavapipe risk as the filter itself.
 - **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
   `cargo check` time, not just at link time.** `glib-sys`'s build script
   invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev

@@ -23,6 +23,20 @@ use wisp::{Color, Fill, Graphics, MaskShape, RenderTexture, Stage};
 const W: u32 = 128;
 const H: u32 = 128;
 
+/// Skip on lavapipe (CI Linux). `apply_privacy_blur` reaches the
+/// multi-bind-group `BlurFilter` pipeline that lavapipe loses the
+/// device on. See CLAUDE.md "wgpu API specifics".
+fn skip_on_software_adapter() -> bool {
+    if std::env::var_os("WISP_SKIP_GPU_FILTER_TESTS").is_some() {
+        eprintln!(
+            "WISP_SKIP_GPU_FILTER_TESTS set — skipping rounded-privacy-blur test \
+             (lavapipe loses the device on multi-bind-group filter pipelines)"
+        );
+        return true;
+    }
+    false
+}
+
 fn boot() -> (Application, Renderer) {
     let app = block_on(Application::new(AppConfig {
         width: W,
@@ -63,6 +77,9 @@ fn render_base(app: &Application, renderer: &Renderer) -> RenderTexture {
 
 #[test]
 fn rounded_outside_bounding_rect_matches_base() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let (app, renderer) = boot();
     let base = render_base(&app, &renderer);
 
@@ -86,6 +103,9 @@ fn rounded_outside_bounding_rect_matches_base() {
 
 #[test]
 fn rounded_corner_carved_away_matches_base() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let (app, renderer) = boot();
     let base = render_base(&app, &renderer);
 
@@ -124,6 +144,9 @@ fn rounded_corner_carved_away_matches_base() {
 
 #[test]
 fn rounded_center_seam_picks_up_neighbor_via_blur() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let (app, renderer) = boot();
     let base = render_base(&app, &renderer);
 

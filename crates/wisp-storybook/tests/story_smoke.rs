@@ -34,7 +34,20 @@ fn clear_color() -> Color {
 /// macos-latest CI) build them fine. The CI workflow sets
 /// `WISP_SKIP_GPU_FILTER_TESTS=1` on the Linux job; this filter
 /// transparently drops those stories so the remaining 9 can still run.
-const LAVAPIPE_INCOMPATIBLE: &[&str] = &["filter-blur", "filter-drop-shadow", "filter-motion-blur"];
+const LAVAPIPE_INCOMPATIBLE: &[&str] = &[
+    "filter-blur",
+    "filter-drop-shadow",
+    "filter-motion-blur",
+    // M-MASK.2..4 stories build their preview RTs via `apply_privacy_blur`
+    // / `apply_privacy_blur_data`, which run a `BlurFilter` pass under the
+    // hood — same multi-bind-group pipeline that lavapipe loses the device
+    // on. The non-blur mask stories (solid-redaction, spotlight,
+    // dim-outside, webcam-shapes, ellipse-mask, path-mask, clip-rounded)
+    // stay in the smoke set and run on Linux just fine.
+    "privacy-blur-rect",
+    "privacy-blur-rounded",
+    "privacy-blur-strength",
+];
 
 fn stories_for_env() -> Vec<wisp_storybook::story::Story> {
     let all = wisp_storybook::stories::all_stories();

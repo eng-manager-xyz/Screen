@@ -19,6 +19,21 @@ use wisp::{BlurStrength, Color, Fill, Graphics, PrivacyBlur, RenderTexture, Stag
 const W: u32 = 128;
 const H: u32 = 128;
 
+/// Skip on lavapipe (CI Linux). The GPU-using strength test reaches
+/// `apply_privacy_blur_data` → `apply_privacy_blur` → multi-bind-group
+/// `BlurFilter` pipeline that lavapipe loses the device on. The two
+/// pure-data tests above don't touch the GPU and run unguarded.
+fn skip_on_software_adapter() -> bool {
+    if std::env::var_os("WISP_SKIP_GPU_FILTER_TESTS").is_some() {
+        eprintln!(
+            "WISP_SKIP_GPU_FILTER_TESTS set — skipping strength GPU test \
+             (lavapipe loses the device on multi-bind-group filter pipelines)"
+        );
+        return true;
+    }
+    false
+}
+
 fn boot() -> (Application, Renderer) {
     let app = block_on(Application::new(AppConfig {
         width: W,
@@ -87,6 +102,9 @@ fn custom_strength_is_clamped() {
 
 #[test]
 fn higher_strength_produces_more_blur_evidence() {
+    if skip_on_software_adapter() {
+        return;
+    }
     let (app, renderer) = boot();
     let base = render_base(&app, &renderer);
     let format = wgpu::TextureFormat::Rgba8Unorm;
