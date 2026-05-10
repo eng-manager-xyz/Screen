@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.8 + M-VEC.9 — Highlight + callout primitives (AUT-60 + AUT-61)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — preset constructors for the most common attention-guiding overlays. Outputs are plain `Vector`s so they chain through every existing builder. Two issues, one chunk because they share the architectural pattern (preset → `Vector`).
+- **Linear:** [AUT-60](https://linear.app/harwood/issue/AUT-60), [AUT-61](https://linear.app/harwood/issue/AUT-61).
+- **Files:** new `crates/wisp/src/scene/highlight.rs` (`Highlight::outline / filled / pill / glow`); new `crates/wisp/src/scene/callout.rs` (`Callout::label_box / badge / caption_pill`); `crates/wisp/src/scene.rs` and `lib.rs` re-exports. New `crates/wisp-storybook/src/stories/s_vector_overlays.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. New `_docs/book/src/wisp/chunks/vector-highlight-callout.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/vector-overlays.png`.
+- **Verified:** 8 unit tests (4 highlight + 4 callout) cover constructor invariants; storybook smoke + fingerprint green; PNG visually checked (yellow outline ring, cyan pill, amber label, red badge, dark caption pill).
+- **Known gaps documented in chapter:**
+  - Arrow / pointer-line callouts need M-VEC.10 stroke-along-path commands. Once landed, an `arrow_to` constructor joins `Callout` without breaking changes.
+  - True Gaussian glow depends on M-DYN.7 (P2) feathering. `Highlight::glow` is a wider-stroke / lower-alpha approximation in V1.
+
+---
+
 ## M-VEC.7 — Vector spotlight + inverse-dim effects (AUT-59)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the path-accepting gap. `apply_dim_outside_data` was already shipped (M-MASK.7) but only accepted analytic SDF shapes; this chunk adds `apply_dim_outside_vector` for path support, and a chapter that ties M-VEC.7 to the existing `apply_spotlight_vector` (M-VEC.6) + `compose_dim_through_inverted_mask` (M-DYN.5).

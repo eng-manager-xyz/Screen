@@ -23,6 +23,7 @@ mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
+mod s_vector_overlays;
 mod s_vector_render;
 mod s_webcam_shapes;
 
@@ -56,5 +57,6 @@ pub fn all_stories() -> Vec<Story> {
         s_path_mask::story(),
         s_mask_texture::story(),
         s_vector_render::story(),
+        s_vector_overlays::story(),
     ]
 }

@@ -3,10 +3,12 @@
 //! M0.8 introduces the `Stage` root and the `Node`/`NodeId` storage. Submodules
 //! host the concrete node types as they land.
 
+pub mod callout;
 pub mod clip;
 pub mod container;
 pub mod dim_outside;
 pub mod graphics;
+pub mod highlight;
 pub mod mesh;
 pub mod node;
 pub mod privacy_blur;
@@ -17,10 +19,12 @@ pub mod vector;
 
 use slotmap::SlotMap;
 
+pub use callout::Callout;
 pub use clip::MaskShape;
 pub use container::Container;
 pub use dim_outside::{DimOutside, DimStrength};
 pub use graphics::{Fill, Graphics, Stroke};
+pub use highlight::Highlight;
 pub use mesh::Mesh;
 pub use node::{Node, NodeId};
 pub use privacy_blur::{BlurStrength, PrivacyBlur};
