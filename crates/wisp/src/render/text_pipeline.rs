@@ -11,6 +11,8 @@ use glam::{Mat3, Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
 use crate::application::Application;
+use crate::blend::BlendMode;
+use crate::render::blend_pipeline::BlendPipelineMap;
 use crate::scene::text::{Font, Text};
 use crate::scene::{Node, Stage};
 
@@ -32,7 +34,7 @@ const ATTR_LAYOUT: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
 ];
 
 pub(crate) struct TextPipeline {
-    pipeline: wgpu::RenderPipeline,
+    pipelines: BlendPipelineMap,
     texture_layout: wgpu::BindGroupLayout,
 }
 
@@ -72,38 +74,40 @@ impl TextPipeline {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::text pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("main_vs"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<TextInstance>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &ATTR_LAYOUT,
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("main_fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
+        let pipelines = BlendPipelineMap::new(|blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("wisp::text pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<TextInstance>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &ATTR_LAYOUT,
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
         });
 
         Self {
-            pipeline,
+            pipelines,
             texture_layout,
         }
     }
@@ -149,7 +153,7 @@ impl TextPipeline {
                 ],
             });
 
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(self.pipelines.get(batch.blend_mode));
             pass.set_bind_group(0, &bg, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             pass.draw(0..6, 0..count);
@@ -162,12 +166,15 @@ impl TextPipeline {
 
 struct Batch {
     atlas: crate::texture::Texture,
+    blend_mode: BlendMode,
     instances: Vec<TextInstance>,
 }
 
 fn collect_batches(stage: &Stage) -> Vec<Batch> {
-    let mut grouped: HashMap<usize, (crate::texture::Texture, Vec<TextInstance>)> = HashMap::new();
-    let mut order: Vec<usize> = Vec::new();
+    type Key = (usize, BlendMode);
+    let mut grouped: HashMap<Key, (crate::texture::Texture, BlendMode, Vec<TextInstance>)> =
+        HashMap::new();
+    let mut order: Vec<Key> = Vec::new();
 
     let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
@@ -182,7 +189,14 @@ fn collect_batches(stage: &Stage) -> Vec<Batch> {
         let world = parent_world * local;
 
         if let Node::Text(text) = node {
-            push_text_glyphs(text, world, container.alpha, &mut grouped, &mut order);
+            push_text_glyphs(
+                text,
+                container.blend_mode,
+                world,
+                container.alpha,
+                &mut grouped,
+                &mut order,
+            );
         }
 
         for child in container.children().rev().collect::<Vec<_>>() {
@@ -195,23 +209,31 @@ fn collect_batches(stage: &Stage) -> Vec<Batch> {
         .filter_map(|key| {
             grouped
                 .remove(&key)
-                .map(|(atlas, instances)| Batch { atlas, instances })
+                .map(|(atlas, blend_mode, instances)| Batch {
+                    atlas,
+                    blend_mode,
+                    instances,
+                })
         })
         .collect()
 }
 
 fn push_text_glyphs(
     text: &Text,
+    blend_mode: BlendMode,
     world: Mat4,
     parent_alpha: f32,
-    grouped: &mut HashMap<usize, (crate::texture::Texture, Vec<TextInstance>)>,
-    order: &mut Vec<usize>,
+    grouped: &mut HashMap<
+        (usize, BlendMode),
+        (crate::texture::Texture, BlendMode, Vec<TextInstance>),
+    >,
+    order: &mut Vec<(usize, BlendMode)>,
 ) {
-    let key = text.font.atlas().id();
+    let key = (text.font.atlas().id(), blend_mode);
     let atlas = text.font.atlas().clone();
     let entry = grouped.entry(key).or_insert_with(|| {
         order.push(key);
-        (atlas, Vec::new())
+        (atlas, blend_mode, Vec::new())
     });
 
     let cell_pixels = f32_from_u32(text.font.cell_pixels());
@@ -241,7 +263,7 @@ fn push_text_glyphs(
             * Mat4::from_translation(Vec3::new(center_x, center_y, 0.0))
             * Mat4::from_scale(Vec3::new(glyph_size * 0.5, glyph_size * 0.5, 1.0));
 
-        entry.1.push(TextInstance {
+        entry.2.push(TextInstance {
             model: model.to_cols_array_2d(),
             color: [
                 text.color.r,

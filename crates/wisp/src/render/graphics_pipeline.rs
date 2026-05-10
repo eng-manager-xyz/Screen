@@ -7,12 +7,16 @@
 //! draw call. Stroked primitives emit a second outline instance. Lines are
 //! rendered as rotated thin rects.
 
+use std::collections::HashMap;
+
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec2, Vec4};
 use wgpu::util::DeviceExt;
 
 use crate::application::Application;
+use crate::blend::BlendMode;
 use crate::color::Color;
+use crate::render::blend_pipeline::BlendPipelineMap;
 use crate::scene::graphics::{Fill, Primitive, Stroke};
 use crate::scene::{Node, Stage};
 
@@ -59,7 +63,7 @@ const ATTR_LAYOUT: [wgpu::VertexAttribute; 14] = wgpu::vertex_attr_array![
 ];
 
 pub(crate) struct GraphicsPipeline {
-    pipeline: wgpu::RenderPipeline,
+    pipelines: BlendPipelineMap,
 }
 
 impl GraphicsPipeline {
@@ -78,37 +82,40 @@ impl GraphicsPipeline {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::graphics pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("main_vs"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<GraphicsInstance>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &ATTR_LAYOUT,
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("main_fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
+        let pipelines = BlendPipelineMap::new(|blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("wisp::graphics pipeline"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<GraphicsInstance>()
+                            as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &ATTR_LAYOUT,
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
         });
 
-        Self { pipeline }
+        Self { pipelines }
     }
 
     pub(crate) fn draw_stage(
@@ -117,28 +124,35 @@ impl GraphicsPipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let (instances, logical_count) = collect_instances(stage);
-        if instances.is_empty() {
-            return (0, 0);
-        }
-        let count = u32::try_from(instances.len()).expect("instance count fits in u32");
-        let buffer = app
-            .device()
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wisp::graphics instances"),
-                contents: bytemuck::cast_slice(&instances),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        let (groups, logical_count) = collect_instance_groups(stage);
+        let mut draw_calls = 0u32;
+        for (mode, instances) in groups {
+            if instances.is_empty() {
+                continue;
+            }
+            let count = u32::try_from(instances.len()).expect("instance count fits in u32");
+            let buffer = app
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("wisp::graphics instances"),
+                    contents: bytemuck::cast_slice(&instances),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
 
-        pass.set_pipeline(&self.pipeline);
-        pass.set_vertex_buffer(0, buffer.slice(..));
-        pass.draw(0..6, 0..count);
-        (1, logical_count)
+            pass.set_pipeline(self.pipelines.get(mode));
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..6, 0..count);
+            draw_calls += 1;
+        }
+        (draw_calls, logical_count)
     }
 }
 
-fn collect_instances(stage: &Stage) -> (Vec<GraphicsInstance>, u32) {
-    let mut out = Vec::new();
+/// Group emitted [`GraphicsInstance`]s by [`BlendMode`] in encounter
+/// order so each batch can bind its own pipeline.
+fn collect_instance_groups(stage: &Stage) -> (Vec<(BlendMode, Vec<GraphicsInstance>)>, u32) {
+    let mut grouped: HashMap<BlendMode, Vec<GraphicsInstance>> = HashMap::new();
+    let mut order: Vec<BlendMode> = Vec::new();
     let mut logical = 0u32;
     let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
@@ -153,9 +167,14 @@ fn collect_instances(stage: &Stage) -> (Vec<GraphicsInstance>, u32) {
         let world = parent_world * local;
 
         if let Node::Graphics(graphics) = node {
+            let mode = container.blend_mode;
+            let bucket = grouped.entry(mode).or_insert_with(|| {
+                order.push(mode);
+                Vec::new()
+            });
             for primitive in &graphics.primitives {
                 logical = logical.saturating_add(1);
-                emit_primitive(primitive, world, container.alpha, &mut out);
+                emit_primitive(primitive, world, container.alpha, bucket);
             }
         }
 
@@ -163,7 +182,11 @@ fn collect_instances(stage: &Stage) -> (Vec<GraphicsInstance>, u32) {
             stack.push((child, world));
         }
     }
-    (out, logical)
+    let groups = order
+        .into_iter()
+        .filter_map(|m| grouped.remove(&m).map(|v| (m, v)))
+        .collect();
+    (groups, logical)
 }
 
 fn emit_primitive(p: &Primitive, world: Mat4, parent_alpha: f32, out: &mut Vec<GraphicsInstance>) {

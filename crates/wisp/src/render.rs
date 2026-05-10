@@ -10,6 +10,8 @@ pub mod batcher;
 pub mod pass;
 pub mod pipeline;
 
+mod advanced_blend;
+mod blend_pipeline;
 mod graphics_pipeline;
 mod mesh_pipeline;
 mod quad_pipeline;
@@ -58,6 +60,7 @@ pub struct Renderer {
     graphics: GraphicsPipeline,
     text: TextPipeline,
     mesh: MeshPipeline,
+    advanced_blend: advanced_blend::AdvancedBlendPipelines,
 }
 
 impl Renderer {
@@ -73,6 +76,7 @@ impl Renderer {
         let graphics = GraphicsPipeline::new(app, output_format);
         let text = TextPipeline::new(app, output_format);
         let mesh = MeshPipeline::new(app, output_format);
+        let advanced_blend = advanced_blend::AdvancedBlendPipelines::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -80,7 +84,33 @@ impl Renderer {
             graphics,
             text,
             mesh,
+            advanced_blend,
         })
+    }
+
+    /// Compose two render-textures via an advanced (Tier C) blend mode.
+    ///
+    /// `backdrop` is the previously-rendered destination, `foreground`
+    /// is this node's contribution rendered into its own RT, and the
+    /// composite lands in `output`. All three must share dimensions
+    /// and the format the renderer was constructed against.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mode` is a *standard* (GPU-native) blend mode — those
+    /// don't have a per-mode pipeline registered. Use the standard
+    /// pipelines (via `render_stage` + `Container::blend_mode`) for
+    /// those.
+    pub fn apply_advanced_blend(
+        &self,
+        app: &Application,
+        mode: crate::blend::BlendMode,
+        backdrop: &RenderTexture,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.advanced_blend
+            .apply(app, mode, backdrop, foreground, output);
     }
 
     /// Clear the target with `clear`, then draw the M0.5 hardcoded triangle.

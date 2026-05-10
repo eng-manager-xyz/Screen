@@ -6,6 +6,26 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-BLEND.1 — Full PixiJS v8 blend mode catalog (28 modes, 3 tiers)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the blend-mode gap surfaced during the PixiJS deep-research turn.
+- **Files:** `crates/wisp/src/blend.rs` rewritten (4 → 28 variants, `is_advanced` / `native_blend_state` / `css_name` / `all` API); `crates/wisp/src/render/blend_pipeline.rs` (new shared `BlendPipelineMap`); `crates/wisp/src/render/advanced_blend.rs` (new — 20 advanced shaders + `AdvancedBlendPipelines`); `crates/wisp/shaders/advanced_blend.wgsl` (new shared template); 4 pipelines refactored (sprite, graphics, text, mesh) to use per-mode pipeline cache; `crates/wisp/src/render.rs` exposes `Renderer::apply_advanced_blend`; `crates/wisp/tests/blend_modes_standard.rs` (8 tests) + `crates/wisp/tests/blend_modes_advanced.rs` (20 tests); `crates/wisp/examples/blend_modes_gallery.rs` (28-tile contact sheet generator); `_docs/book/src/wisp/chunks/blend-modes.md` chapter; `_docs/book/src/assets/wisp/blend-modes.png` (1400×560 contact sheet); SUMMARY.md.
+- **Verified:** `just gate` green (165 tests, +33 from M0-close); contact-sheet example runs; all 28 modes produce expected output within 2-LSB tolerance.
+- **Architecture:** Three tiers, per the user's deep-research framing.
+  - **Tier A** (4 modes wired up): `Normal`, `Multiply`, `Add`, `Screen`. Were declared in the enum but the pipeline ignored them — the doc comment literally said *"Only `BlendMode::Normal` is wired up; other variants are declared so the public API doesn't churn"*. M-BLEND.1 makes them real.
+  - **Tier B** (4 new GPU-native modes): `Subtract`, `Min`, `Max`, `Erase`. Single-pass GPU blend equations via `wgpu::BlendOperation::{ReverseSubtract, Min, Max}`.
+  - **Tier C** (20 advanced modes): all of PixiJS's `advanced-blend-modes` set — `Overlay`, `HardLight`, `SoftLight`, `PinLight`, `HardMix`, `VividLight`, `LinearLight`, `ColorBurn`, `ColorDodge`, `LinearBurn`, `LinearDodge`, `Darken`, `Lighten`, `Difference`, `Exclusion`, `Negation`, `Divide`, `Saturation`, `Color`, `Luminosity`. Implemented as offscreen filter passes that sample backdrop + foreground and run a per-mode WGSL `blend_fn`.
+- **Pipeline refactor:** new shared `BlendPipelineMap` helper builds one [`wgpu::RenderPipeline`] per native [`BlendMode`] at construction time (8 pipelines × 4 affected pipeline types = 32 pipelines, ~ms each). Sprite/Graphics/Text/Mesh pipelines now batch nodes by `(texture, blend_mode)` and bind the right pipeline per batch. Quad and Triangle pipelines stay single-blend (they're internal blits). Advanced modes fall back to Normal in `render_stage` with a `tracing::warn!` once per mode.
+- **Shared shader template** at `shaders/advanced_blend.wgsl` includes vertex shader + HSL helpers (`lum`, `clip_color`, `set_lum`, `sat`, `set_sat`) + a `// __BLEND_FN_PLACEHOLDER__` marker that the Rust resolver substitutes per mode. 20 distinct WGSL programs from one source file.
+- **Test discipline:** 8 standard tests use direct `render_stage` with backdrop + foreground graphics nodes, asserting the GPU blend equation produces the expected output (2-LSB tolerance for Apple Silicon Metal rounding). 20 advanced tests use `apply_advanced_blend` with separate backdrop/foreground RTs. Per-mode input colors are picked to yield deterministic, human-checkable expected outputs (e.g. `Overlay(0.25, 0.6) = 0.3`, `LinearBurn(0.7, 0.6) = 0.3`).
+- **Manual dispatch (deferred):** `render_stage` doesn't *automatically* route advanced-blend nodes through the offscreen path — it falls back to Normal with a warning. Auto-dispatch (PixiJS-style) requires reshaping the renderer so each scene-graph traversal can write into an internal RT first (so subsequent advanced-blend nodes can sample it as backdrop). Tracked as future work in the chapter.
+- **3 lessons captured during the gate loop:**
+  - **WGSL template substitution:** the placeholder string can't appear in the template's own docstring or `replace` will substitute there too (caught when WGSL parser flagged "let dark" at line 10 — turned out the docstring contained `// __BLEND_FN_PLACEHOLDER__` which got replaced inline). Fixed by rewording the docstring.
+  - **`HashMap<K, ()>` triggers `clippy::zero_sized_map_values`** — should be `HashSet<K>`. Renamed `SEEN: HashMap<BlendMode, ()>` to `SEEN: HashSet<BlendMode>` for the warn-once dedupe.
+  - **`clippy::too_many_lines` ignores `-D warnings`** (per its own message — there's a meta-lint hierarchy quirk) but still trips the gate. Suppressed with `#[allow(clippy::too_many_lines, reason = ...)]` on the 140-line `blend_fn_body` match (20 modes × multi-line WGSL bodies; splitting into 20 helper fns would obscure the table-of-formulas structure).
+
+---
+
 ## M0-close — `headless_export` 60-frame loop, `filter_chain` example, milestone closure
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes M0 cleanly. All 21 chunks now have ✅ ticks in `_docs/milestone-0-renderer.md`'s new Status table.

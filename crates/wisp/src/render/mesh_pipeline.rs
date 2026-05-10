@@ -7,6 +7,8 @@ use glam::{Mat3, Mat4, Vec4};
 use wgpu::util::DeviceExt;
 
 use crate::application::Application;
+use crate::blend::BlendMode;
+use crate::render::blend_pipeline::BlendPipelineMap;
 use crate::scene::{Node, Stage};
 use crate::texture::Texture;
 
@@ -31,7 +33,7 @@ const ATTR_LAYOUT: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
 ];
 
 pub(crate) struct MeshPipeline {
-    pipeline: wgpu::RenderPipeline,
+    pipelines: BlendPipelineMap,
     texture_layout: wgpu::BindGroupLayout,
 }
 
@@ -73,38 +75,40 @@ impl MeshPipeline {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wisp::mesh pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("main_vs"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<MeshInstance>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &ATTR_LAYOUT,
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("main_fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
+        let pipelines = BlendPipelineMap::new(|blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("wisp::mesh pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshInstance>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &ATTR_LAYOUT,
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
         });
 
         Self {
-            pipeline,
+            pipelines,
             texture_layout,
         }
     }
@@ -149,7 +153,7 @@ impl MeshPipeline {
                 ],
             });
 
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(self.pipelines.get(batch.blend_mode));
             pass.set_bind_group(0, &bg, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             pass.draw(0..6, 0..count);
@@ -162,12 +166,14 @@ impl MeshPipeline {
 
 struct Batch {
     texture: Texture,
+    blend_mode: BlendMode,
     instances: Vec<MeshInstance>,
 }
 
 fn collect_batches(stage: &Stage) -> Vec<Batch> {
-    let mut grouped: HashMap<usize, (Texture, Vec<MeshInstance>)> = HashMap::new();
-    let mut order: Vec<usize> = Vec::new();
+    type Key = (usize, BlendMode);
+    let mut grouped: HashMap<Key, (Texture, BlendMode, Vec<MeshInstance>)> = HashMap::new();
+    let mut order: Vec<Key> = Vec::new();
 
     let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
@@ -182,12 +188,13 @@ fn collect_batches(stage: &Stage) -> Vec<Batch> {
         let world = parent_world * local;
 
         if let Node::Mesh(mesh) = node {
-            let key = mesh.texture.id();
+            let mode = container.blend_mode;
+            let key = (mesh.texture.id(), mode);
             let entry = grouped.entry(key).or_insert_with(|| {
                 order.push(key);
-                (mesh.texture.clone(), Vec::new())
+                (mesh.texture.clone(), mode, Vec::new())
             });
-            entry.1.push(MeshInstance {
+            entry.2.push(MeshInstance {
                 model: world.to_cols_array_2d(),
                 tint: [
                     mesh.tint.r,
@@ -211,7 +218,11 @@ fn collect_batches(stage: &Stage) -> Vec<Batch> {
         .filter_map(|key| {
             grouped
                 .remove(&key)
-                .map(|(texture, instances)| Batch { texture, instances })
+                .map(|(texture, blend_mode, instances)| Batch {
+                    texture,
+                    blend_mode,
+                    instances,
+                })
         })
         .collect()
 }
