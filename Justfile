@@ -71,6 +71,13 @@ snapshots-wisp:
     cargo run -p wisp-storybook --bin wisp-export-stories
     cargo run -p wisp-storybook --bin wisp-export-text-screenshots
 
+# Render animated stories to MP4 via gstreamer. Local-only —
+# gstreamer must be installed (`brew install gstreamer`). Not chained
+# into `just snapshots-wisp` because it depends on a non-Rust runtime
+# tool; run explicitly when an animated story's tick changes.
+snapshots-wisp-animated:
+    cargo run -p wisp-storybook --bin wisp-export-animated
+
 snapshots-ui:
     cargo run -p ui-storybook --bin ui-export-stories
 
@@ -95,7 +102,7 @@ snapshots-check:
     import re, sys, os
     chapter, chapter_dir = sys.argv[1], sys.argv[2]
     text = open(chapter).read()
-    refs = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|src="([^"]+\.html)"', text)
+    refs = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"', text)
     flat = [a or b for a, b in refs]
     missing = []
     for ref in flat:

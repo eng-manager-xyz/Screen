@@ -1,9 +1,14 @@
 # Perspective rotation — M0.19
 
-![perspective](../../assets/wisp/mesh-perspective.png)
+<video controls autoplay muted loop playsinline width="320" src="../../assets/wisp/mesh-perspective.mp4">
+  Your browser doesn't support inline video; see
+  <a href="../../assets/wisp/mesh-perspective.mp4">mesh-perspective.mp4</a>.
+</video>
 
 A textured quad rotating around the Y axis with perspective foreshortening —
-the M0.19 `Mesh` node + custom WGSL shader.
+the M0.19 `Mesh` node + custom WGSL shader. The animation above is the
+storybook's `tick` running for 3 seconds at 30 fps, captured to MP4 via
+`just snapshots-wisp-animated` (gstreamer-backed).
 
 The shader rotates the quad's vertex positions in 3D (`x` and `z` change
 with `cos`/`sin`, `y` stays fixed), then projects with

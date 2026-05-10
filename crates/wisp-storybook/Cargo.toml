@@ -32,6 +32,15 @@ path = "src/bin/export_stories.rs"
 name = "wisp-export-text-screenshots"
 path = "src/bin/export_text_screenshots.rs"
 
+# Animated-story video exporter. Renders animated stories (those
+# with `tick: Some(...)`) to MP4 by piping raw RGBA frames into
+# gst-launch-1.0. Local-only — gstreamer must be on PATH. CI doesn't
+# run this binary; the committed .mp4 is the source of truth for the
+# mdBook chapters' <video> tags.
+[[bin]]
+name = "wisp-export-animated"
+path = "src/bin/export_animated.rs"
+
 [dependencies]
 wisp = { workspace = true }
 glam = { workspace = true }
