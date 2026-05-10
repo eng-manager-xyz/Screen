@@ -42,3 +42,26 @@ pub fn player_pause(state: State<'_, PlayerSession>) {
 pub fn player_status(state: State<'_, PlayerSession>) -> PlayerStatus {
     state.status()
 }
+
+/// Test-only entry point for `WebDriver` e2e suites. Emits a
+/// `file-dropped` event with the same shape as the real OS drag-drop
+/// handler in `main.rs`. Gated on `debug_assertions` so it's stripped
+/// from release builds; `main.rs` likewise registers it conditionally
+/// in `generate_handler!`.
+///
+/// Why this exists: `WebDriver` clients can't synthesize OS-level
+/// drag-drop events. Without this command, the e2e tests would have
+/// to use platform-specific tools (`xdotool` on Linux, etc.) which are
+/// fragile and don't help the rest of the test suite.
+///
+/// # Errors
+///
+/// Returns the underlying [`tauri::Error`] message string if the event
+/// emit fails (no listeners is not an error — `Emitter::emit` returns
+/// `Ok(())` regardless).
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn __test_drop_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri::Emitter;
+    app.emit("file-dropped", path).map_err(|e| e.to_string())
+}

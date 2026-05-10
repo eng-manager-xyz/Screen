@@ -6,6 +6,26 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEST.2 — Tier-2 WebDriver e2e via tauri-driver + fantoccini
+- **Date:** 2026-05-09
+- **Status:** ✅ done — completes the three-tier test strategy. Linux-CI-gated; macOS skips with a clear message.
+- **Files:** new `crates/app-e2e/` (Cargo.toml + src/lib.rs harness + tests/golden_path.rs); `crates/app/src/commands.rs` adds `#[cfg(debug_assertions)] __test_drop_file` (debug-only Tauri command that emits the same `file-dropped` event the OS drag-drop handler emits — WebDriver can't synthesize OS drops); `crates/app/src/main.rs` registers it conditionally in `generate_handler!`; `justfile` adds `just e2e` recipe with platform branching (Linux uses xvfb-run, macOS prints skip); `justfile`'s `test` recipe excludes `app-e2e` (gate doesn't require tauri-driver); `.github/workflows/gate.yml` adds Ubuntu-only steps to apt-install `webkit2gtk-driver`+`xvfb`, `cargo install tauri-driver` (via `taiki-e/install-action`), and run `just e2e`; testing chapter expanded.
+- **Verified:** `just gate` green (132 tests on macOS dev; app-e2e compiles + lints + skips at runtime); `just e2e` on macOS prints the skip message and exits 0 cleanly; the harness is structured so cargo nextest registers it when invoked but the workspace gate excludes it.
+- **Architecture lock — `E2eApp` lifecycle:**
+  - `start()`: `cargo build -p screen-app` (idempotent) → spawn `tauri-driver` on port 4444 → `wait_for_port` (15s budget) → connect fantoccini Client with `tauri:options.application = <bin path>` → tauri-driver spawns the app, fantoccini drives it.
+  - `Drop`: best-effort `client.close().await` (asks tauri-driver to shut the app cleanly), then `tauri_driver.kill()` outright. Drop runs in a separate thread because tokio runtimes can't be dropped from inside a running runtime.
+- **Golden-path scenario:** invoke `__test_drop_file` (synthesizes the file-dropped event) → wait for `.player-controls` to appear → click `.player-toggle` → wait for `.player-toggle-playing` class → click again → wait for `.player-toggle-paused`. End-to-end: real WebView, real Leptos hydration, real JS bridge, real Tauri IPC, real Rust state machine.
+- **Why `__test_drop_file` is debug-only:** WebDriver can't synthesize OS-level drag-drop events. Production users get drag-drop via `WindowEvent::DragDrop` (the real handler in main.rs); tests get the `__test_drop_file` parallel entry point. Gated on `#[cfg(debug_assertions)]` for both the command definition and the `generate_handler!` registration so release builds strip it entirely.
+- **CI strategy:** `gate.yml` matrix runs the gate on macos-latest + ubuntu-latest; e2e runs only on the Ubuntu arm via `just e2e`. macOS keeps Tier-0 + Tier-1 coverage; the manual smoke procedure for Tier-2 on mac is documented in the testing chapter.
+- **5 lessons captured during the gate loop** (small, all auto-fixable by `cargo clippy --fix`):
+  - `clippy::doc_markdown` flags every `WebDriver`/`WebView`/`WebKitGTK` reference in docstrings; CI doesn't tolerate them and `--fix` adds backticks reliably.
+  - `clippy::map_err` over `inspect_err` — when the closure doesn't transform the error, `inspect_err` is the right idiom.
+  - `clippy::uninlined_format_args` prefers `{var:?}` over `"{:?}", var` — `--fix` rewrites cleanly.
+  - `clippy::needless_raw_strings` flags `r#"…"#` when no embedded `"` justifies the `#`. `--fix` strips the hashes.
+  - `taiki-e/install-action` supports `tauri-driver` directly — saves the 5-minute `cargo install` cycle on every CI run.
+
+---
+
 ## M-TEST.1 — Tier-1 IPC harness for Tauri commands
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first half of the e2e testing strategy. M-TEST.2 (WebDriver) follows.

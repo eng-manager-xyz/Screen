@@ -30,12 +30,31 @@ const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 fn main() {
     tauri::Builder::default()
         .manage(PlayerSession::new())
-        .invoke_handler(tauri::generate_handler![
-            commands::player_open,
-            commands::player_play,
-            commands::player_pause,
-            commands::player_status,
-        ])
+        .invoke_handler({
+            // Debug builds expose `__test_drop_file` for WebDriver e2e
+            // tests (M-TEST.2). Release builds omit it entirely — the
+            // command is `#[cfg(debug_assertions)]` and so is its
+            // registration here.
+            #[cfg(debug_assertions)]
+            {
+                tauri::generate_handler![
+                    commands::player_open,
+                    commands::player_play,
+                    commands::player_pause,
+                    commands::player_status,
+                    commands::__test_drop_file,
+                ]
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                tauri::generate_handler![
+                    commands::player_open,
+                    commands::player_play,
+                    commands::player_pause,
+                    commands::player_status,
+                ]
+            }
+        })
         .on_window_event(|window, event| {
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
                 && let Some(path) = paths.first()

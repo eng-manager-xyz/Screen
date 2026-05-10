@@ -31,9 +31,11 @@ check:
 lint:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# Tests via nextest.
+# Tests via nextest. Excludes `app-e2e` because Tier-2 e2e tests require
+# `tauri-driver` + `webkit2gtk-driver` that aren't on the default `gate`
+# host. Run e2e separately via `just e2e`.
 test:
-    cargo nextest run --workspace --all-features
+    cargo nextest run --workspace --exclude app-e2e --all-features
 
 # Doc tests (nextest doesn't run them).
 doctest:
@@ -73,6 +75,39 @@ snapshots-ui:
 
 # Per-task gate. Run before marking any task done.
 gate: fmt check lint test doctest docs
+
+# Tier-2 e2e tests. Requires `tauri-driver` and (on Linux) `webkit2gtk-driver`
+# + `xvfb`. Linux runs the suite under `xvfb-run` for headless display;
+# macOS prints a clear skip message because `tauri-driver`'s WKWebView
+# support is incomplete upstream (see _docs/book/src/app-ui/testing.md).
+e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -s)" in
+      Linux*)
+        if ! command -v tauri-driver >/dev/null 2>&1; then
+          echo "ERROR: tauri-driver not on PATH"
+          echo "  install: cargo install --locked tauri-driver"
+          exit 1
+        fi
+        if ! command -v xvfb-run >/dev/null 2>&1; then
+          echo "ERROR: xvfb-run not on PATH"
+          echo "  install: sudo apt-get install -y xvfb"
+          exit 1
+        fi
+        echo "→ running Tier-2 e2e under xvfb-run …"
+        xvfb-run --auto-servernum cargo nextest run -p app-e2e
+        ;;
+      Darwin*)
+        echo "⚠ macOS Tier-2 e2e skipped — tauri-driver doesn't reliably"
+        echo "  drive WKWebView. Use Linux CI for the gate; mac uses"
+        echo "  manual smoke before tagging. Tier-1 (\`just gate\`) still"
+        echo "  runs the IPC harness cross-platform."
+        ;;
+      *)
+        echo "⚠ Tier-2 e2e: unrecognized platform $(uname -s); skipping."
+        ;;
+    esac
 
 # Run the wisp-storybook GUI — one window with every shipped feature.
 storybook:
