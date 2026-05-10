@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-DYN.1 — Dynamic alpha-mask texture primitive in wisp (AUT-43)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first chunk of the dynamic-textures phase. Coverage is now a separate primitive from composition; everything that follows in M-DYN / M-VEC builds on this.
+- **Linear:** [AUT-43](https://linear.app/harwood/issue/AUT-43).
+- **Files:** new `crates/wisp/shaders/mask_texture.wgsl` (SDF coverage to alpha RT, supports Rect/RoundedRect/Circle/Ellipse via `shape_kind` flag, with `invert` flag); new `crates/wisp/shaders/path_mask_texture.wgsl` (uniform-buffered point-in-polygon coverage); new `crates/wisp/src/render/mask_texture.rs` (`MaskTexturePipeline`); new `crates/wisp/src/render/path_mask_texture.rs` (`PathMaskTexturePipeline`); `crates/wisp/src/render.rs` adds three public methods (`generate_mask_texture`, `generate_mask_texture_inverted`, `generate_path_mask_texture`); new `crates/wisp/tests/mask_texture.rs` (6 cases); new `crates/wisp-storybook/src/stories/s_mask_texture.rs` + writeup; `crates/wisp-storybook/src/stories/mod.rs`; `_docs/book/src/wisp/chunks/mask-texture.md`; `_docs/book/src/SUMMARY.md`; `_docs/book/src/assets/wisp/mask-texture.png`; story-fingerprint snapshot updated.
+- **Verified:** 6 mask-texture tests pass on Metal; storybook smoke + fingerprint green.
+- **Architectural pivot — coverage is now its own primitive.** The existing `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_path_clip` keep working as before (combined SDF + foreground sample in one shader). M-DYN.1 introduces the *separated* path: shape-data → alpha RT, no foreground involvement. M-DYN.2 (cache), M-VEC.3 (vector → mask bridge), and M-VEC.4..6 (refactor existing primitives onto the new model) all build on this foundation. Pure addition; no existing code was changed.
+- **Output format choice — `(m, m, m, m)`:** writing the same value to RGB and alpha means consumers can sample either way. Composition shaders use `.a` for alpha-multiplication; the storybook tile renders the texture as a grayscale silhouette via `Texture::from_rgba` + `Sprite`, which "just works" without a separate display path.
+- **Two pipelines, not one.** `MaskTexturePipeline` handles SDF shapes (Rect/RoundedRect/Circle/Ellipse degenerate cases of one rounded-rect SDF, plus the ellipse SDF branch via `shape_kind`). `PathMaskTexturePipeline` handles polygons via the same crossings-test as `path_clip.wgsl`. Symmetry with the existing clip/path-clip split keeps each path single-purpose. Future cleanup may unify them once the AUT-58 vector refactor settles.
+- **Gate-loop lesson — pipelines batch by type, not insertion order.** First version of the storybook story added a full-canvas `Graphics` backdrop BEFORE the mask sprites. Storybook smoke passed (backdrop alone exceeded the visibility threshold), but the exported PNG showed only the backdrop. Root cause: `render_stage` batches draws by pipeline type — all sprites first, then all graphics — so a backdrop graphics paints OVER the sprites regardless of insertion order. **Fix:** rely on the renderer's clear color for backdrops; reserve `Graphics` for foreground decoration. Captured in CLAUDE.md "Renderer batching / draw order".
+
+---
+
 ## M-MASK.10 — Freehand path mask in wisp (AUT-35) — series complete
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the 10-issue mask suite (AUT-31 / AUT-20 / AUT-21 / AUT-22 / AUT-23 / AUT-28 / AUT-29 / AUT-30 / AUT-34 / AUT-35).

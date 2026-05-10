@@ -90,6 +90,21 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **`#[derive(Default)]` if the manual impl matches** (clippy::derivable_impls).
 - **Iterator returns: declare `impl DoubleEndedIterator + ExactSizeIterator`** when callers need `.rev()` / `.len()` — bare `impl Iterator` drops those.
 
+### Renderer batching / draw order
+
+- **Pipelines batch by type, not by scene-graph insertion order.**
+  `render_stage` collects all sprites, all graphics, all text, etc.,
+  and submits them in pipeline-bucket order. Consequence: a
+  full-canvas `Graphics` "backdrop" added BEFORE sprites in the scene
+  tree is still drawn AFTER the sprites and will paint over them.
+  **Pattern:** rely on the renderer's clear color for backdrops in
+  stories and tests; reserve `Graphics` for foreground decoration. If
+  you genuinely need a graphics-pipeline backdrop, it has to use a
+  blend mode that doesn't replace the destination, or you have to
+  accept the layering. This bit M-DYN.1's mask-texture story —
+  storybook smoke passed because the backdrop alone exceeded the
+  divergence threshold; the rendered PNG was clear-color + nothing.
+
 ### Foreign-type wrappers
 
 - **Public structs containing wgpu / winit types need manual `impl Debug`** — those crates don't all derive Debug.

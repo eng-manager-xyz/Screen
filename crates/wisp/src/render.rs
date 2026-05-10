@@ -15,8 +15,10 @@ mod blend_pipeline;
 mod blit;
 mod clip;
 mod graphics_pipeline;
+mod mask_texture;
 mod mesh_pipeline;
 mod path_clip;
+mod path_mask_texture;
 mod quad_pipeline;
 mod sprite_pipeline;
 mod text_pipeline;
@@ -68,6 +70,8 @@ pub struct Renderer {
     blit: blit::BlitPipeline,
     clip: clip::ClipPipeline,
     path_clip: path_clip::PathClipPipeline,
+    mask_texture: mask_texture::MaskTexturePipeline,
+    path_mask_texture: path_mask_texture::PathMaskTexturePipeline,
     output_format: wgpu::TextureFormat,
 }
 
@@ -88,6 +92,9 @@ impl Renderer {
         let blit_pipeline = blit::BlitPipeline::new(app, output_format);
         let clip_pipeline = clip::ClipPipeline::new(app, output_format);
         let path_clip_pipeline = path_clip::PathClipPipeline::new(app, output_format);
+        let mask_texture_pipeline = mask_texture::MaskTexturePipeline::new(app, output_format);
+        let path_mask_texture_pipeline =
+            path_mask_texture::PathMaskTexturePipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -99,6 +106,8 @@ impl Renderer {
             blit: blit_pipeline,
             clip: clip_pipeline,
             path_clip: path_clip_pipeline,
+            mask_texture: mask_texture_pipeline,
+            path_mask_texture: path_mask_texture_pipeline,
             output_format,
         })
     }
@@ -338,6 +347,58 @@ impl Renderer {
 
         // 4. Compose the masked redaction over base inside output.
         self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Generate an alpha-mask `RenderTexture` for `shape` at
+    /// `(w, h)` (M-DYN.1 / AUT-43). The texture stores coverage as
+    /// `(m, m, m, m)` so consumers can either alpha-multiply (sample
+    /// `.a`) or display as a grayscale silhouette.
+    ///
+    /// This primitive owns *only* coverage. Privacy blur, redaction,
+    /// and spotlight composition layers (M-DYN.3+, M-VEC.4+) consume
+    /// these textures separately. The cache (`AUT-44`) layers on top
+    /// to avoid regenerating identical masks every frame.
+    #[must_use]
+    pub fn generate_mask_texture(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        self.mask_texture
+            .generate(app, shape, w, h, self.output_format)
+    }
+
+    /// Inverse variant of [`Self::generate_mask_texture`]: pixels
+    /// outside the shape are opaque, inside are transparent. Used by
+    /// spotlight / dim-outside composition (M-DYN.5).
+    #[must_use]
+    pub fn generate_mask_texture_inverted(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        let rt = RenderTexture::with_format(app, w, h, self.output_format);
+        self.mask_texture.render_into(app, shape, true, &rt);
+        rt
+    }
+
+    /// Generate an alpha-mask `RenderTexture` for a freehand polygon
+    /// (M-DYN.1 / AUT-43, path variant). Up to 32 vertices honored
+    /// (uniform-buffer cap; same as `apply_path_clip`).
+    #[must_use]
+    pub fn generate_path_mask_texture(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        w: u32,
+        h: u32,
+    ) -> RenderTexture {
+        self.path_mask_texture
+            .generate(app, points, w, h, self.output_format)
     }
 
     /// Apply a freehand polygon mask to `foreground`, writing the

@@ -45,6 +45,7 @@
   - [Webcam shapes — M-MASK.8](./wisp/chunks/webcam-shapes.md)
   - [Ellipse mask — M-MASK.9](./wisp/chunks/ellipse-mask.md)
   - [Freehand path mask — M-MASK.10](./wisp/chunks/path-mask.md)
+  - [Dynamic mask textures — M-DYN.1](./wisp/chunks/mask-texture.md)
 
 # `decode` — video decode
 

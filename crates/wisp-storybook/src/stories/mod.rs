@@ -11,6 +11,7 @@ mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
+mod s_mask_texture;
 mod s_mesh_perspective;
 mod s_motion_blur;
 mod s_path_mask;
@@ -52,5 +53,6 @@ pub fn all_stories() -> Vec<Story> {
         s_webcam_shapes::story(),
         s_ellipse::story(),
         s_path_mask::story(),
+        s_mask_texture::story(),
     ]
 }
