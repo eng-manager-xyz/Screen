@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.6 — Text composes through mask / filter / blend / export (AUT-80)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — with M-TEXT.5's `TextTexturePipeline` in hand, text becomes a `RenderTexture`, and the existing renderer plumbs that through every composition surface (render_stage, non-Normal blend, filter chain, headless export, mask clipping).
+- **Linear:** [AUT-80](https://linear.app/harwood/issue/AUT-80).
+- **Files:** new `crates/wisp/tests/text_composition.rs` (4 integration tests). New `crates/wisp-storybook/src/stories/s_text_composition.rs` + `writeups/text_composition.md` + `mod.rs` + `all_stories()` entry. New `_docs/book/src/wisp/text/composition.md` chapter. `_docs/book/src/SUMMARY.md`. Regenerated `_docs/book/src/assets/wisp/text-composition.png` via the story exporter.
+- **Verified:** 4 new integration tests cover (1) render_stage participation with bright-pixel check, (2) blend mode visual difference (Normal vs Subtract sum |Δ| > 1000), (3) grayscale filter via `Renderer::apply_filter` produces R≈G≈B on the top-50 brightest pixels, (4) headless export pixel readback contains the text. Full `just gate` green at 309 tests (305 + 4 new). `just snapshots-check` passes.
+- **Subtract vs Multiply for the visual demo.** Multiply with white text against a warm-red backdrop multiplies the backdrop into itself — the text becomes invisible. Subtract (`dst - src` clamped) punches the backdrop out toward black where the glyph alpha is high — visible and clearly different from Normal. Documented in the chapter and writeup.
+- **No new renderer code.** Every acceptance surface was already exposed; this chunk wires existing primitives + writes tests + writes the chapter. The architectural work was M-TEXT.5's `RenderTexture::as_texture()`.
+- **Mask clipping participation.** Mask APIs (`apply_clip`, `compose_through_*`) already accept `RenderTexture`. The text RT plugs in unchanged — covered transitively by the existing M-MASK test suite. Listed in the chapter's compatibility matrix; not re-tested per-mask-flavor (would duplicate the M-MASK coverage).
+
+---
+
 ## M-TEXT.5 — Text render-to-texture path + cache (AUT-79)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `TextTexturePipeline` packages engine + renderer + FIFO cache; `WispText` renders into a `RenderTexture` and `RenderTexture::as_texture()` exposes it as a sprite-friendly `Texture` without GPU copy. With this, text inherits transform / alpha / blend / render-pass participation for free via the existing sprite pipeline — the gaps that M-TEXT.3 deferred.
