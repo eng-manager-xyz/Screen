@@ -6,9 +6,9 @@
     <title>screen</title>
 
     
-<script type="module" nonce="7zpallErxnJWELT1pDpLeg==">
-import init, * as bindings from '/app-ui-ce39700c603dc973.js';
-const wasm = await init('/app-ui-ce39700c603dc973_bg.wasm');
+<script type="module" nonce="CXP8Sw242zd2NpJtZ9UrPg==">
+import init, * as bindings from '/app-ui-f43343b3f0d3c6b2.js';
+const wasm = await init('/app-ui-f43343b3f0d3c6b2_bg.wasm');
 
 
 window.wasmBindings = bindings;
@@ -23,11 +23,21 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     
 
     <!-- Tauri ↔ Leptos bridge.
-         Tauri 2's JS API (window.__TAURI__.event) dispatches `file-dropped`
-         when the OS drops a file on the window. We re-emit that as a
-         browser `CustomEvent("file-dropped")` so Leptos can listen via
-         `web_sys::EventTarget::add_event_listener_with_callback` without
-         pulling in any tauri-sys dependency. -->
+
+         Inbound (Tauri → Leptos): Tauri 2's `window.__TAURI__.event`
+         dispatches custom events from Rust. We re-emit each as a browser
+         `CustomEvent` so Leptos can listen via `web_sys` without pulling
+         a `tauri-sys` dependency. Two events today:
+           - `file-dropped` (M-INT.2): payload is the dropped file path.
+           - `player-status` (M-PLAY.2): payload is a `PlayerStatus` object
+             (state / elapsed_ms / duration_ms / width / height / fps /
+             frame_count). The browser CustomEvent's `.detail` is the
+             same object — Leptos parses it via `serde_wasm_bindgen`.
+
+         Outbound (Leptos → Tauri): three top-level helpers wrap
+         `__TAURI__.core.invoke`. Leptos calls them via `extern "C"`
+         declarations. Returning the underlying Promise is intentional —
+         callers who want it can chain; callers who don't can ignore. -->
     <script>
       window.addEventListener("DOMContentLoaded", () => {
         if (window.__TAURI__ && window.__TAURI__.event) {
@@ -36,10 +46,22 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
               detail: event.payload
             }));
           });
+          window.__TAURI__.event.listen("player-status", (event) => {
+            window.dispatchEvent(new CustomEvent("player-status", {
+              detail: event.payload
+            }));
+          });
         }
       });
+
+      window.__screenOpen = (path) =>
+        window.__TAURI__?.core?.invoke("player_open", { path });
+      window.__screenPlay = () =>
+        window.__TAURI__?.core?.invoke("player_play");
+      window.__screenPause = () =>
+        window.__TAURI__?.core?.invoke("player_pause");
     </script>
-  <link rel="modulepreload" href="/app-ui-ce39700c603dc973.js" crossorigin=anonymous integrity="sha384-fjpgOWkE37nV9ryXazZcxvaGczjO1DZUF4alGX/QgVFryRrAPfxRRWzELfraZ3he"><link rel="preload" href="/app-ui-ce39700c603dc973_bg.wasm" crossorigin=anonymous integrity="sha384-S0v3KaNgOwMDkb7PwOrI5hokKNCSvV6NQ5PpmItT/fArudzkCldixhBFTvXU7wYh" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/app-ui-f43343b3f0d3c6b2.js" crossorigin=anonymous integrity="sha384-Qucqe4shyxohRkmwshm5L2+JZMIit5WIYPneGT8PxwKZ9WT1w7Mp+JLrQcksfnOt"><link rel="preload" href="/app-ui-f43343b3f0d3c6b2_bg.wasm" crossorigin=anonymous integrity="sha384-d++X/5rbwj0vip9bcG2LBUuYf0UkTLJ+FCMm7FVtY8waSWP98dqUpaCcDh7FIjaf" as="fetch" type="application/wasm"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
       `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>

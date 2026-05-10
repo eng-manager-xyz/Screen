@@ -30,17 +30,18 @@ Copy and fill when filing a new issue.
 - **By:** M-PREVIEW.1 (spotted during `just site`)
 - **Severity:** tech-debt
 - **Affects:** `app-ui` (`crates/app-ui/src/lib.rs:16` — `//! [`playback::Player`]`)
-- **Status:** open
+- **Status:** ✅ resolved 2026-05-09 by M-PLAY.2
 - **Description:**
   The crate-level docstring references `[`playback::Player`]`, but `app-ui`
   doesn't depend on the `playback` crate so rustdoc can't resolve the path.
-  `just gate` is lenient (warn-level intra-doc links), so this isn't blocking,
-  but `just docs-strict` (used at milestone close) will fail until either:
-  (a) `playback` is added as a dep + the link is fully qualified, or
-  (b) the link is downgraded to plain text (`playback::Player` without the
-  `[..]` braces). Likely (b) is correct since `app-ui` doesn't actually
-  call into `playback` yet — that wiring lands in M-PLAY.2.
-- **Resolution:** (fill in when closed)
+- **Resolution:**
+  M-PLAY.2 rewrote the lib.rs docstring to describe the actual IPC wiring
+  and replaced the `playback::Player` reference with a `[`player_ipc`]`
+  link to the new in-crate module. Cross-crate references in
+  `player_ipc.rs` to `screen_app::player_session` types are intentionally
+  plain text (with a comment explaining why) — `app-ui` is a WASM crate
+  that can't depend on `screen-app` (Tauri-native). Verified by `just gate`
+  (no remaining rustdoc warnings).
 
 ---
 

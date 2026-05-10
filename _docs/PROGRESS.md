@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-PLAY.2 — Tauri ↔ player IPC for transport controls
+- **Date:** 2026-05-09
+- **Status:** ✅ done — last chunk on the path to first MP4 playback. **Path complete: M-DEC.1 → M-PLAY.1 → M-DEC.2 → M-INT.1 → M-INT.2 → M-PREVIEW.1 → M-PLAY.2.**
+- **Files:** `crates/app/Cargo.toml` (deps: playback/decode/wisp/serde/pollster/tracing); new `crates/app/src/{lib.rs, player_session.rs, commands.rs}`; `crates/app/src/main.rs` rewritten with `.manage(PlayerSession)` + invoke_handler + tick thread; `crates/app/tests/player_session.rs` (6 lifecycle tests); `crates/app-ui/Cargo.toml` (+ serde, serde-wasm-bindgen); new `crates/app-ui/src/player_ipc.rs`; updated `crates/app-ui/src/{lib.rs, app.rs}`; updated `crates/app-ui/index.html` (outbound `__screen{Open,Play,Pause}` helpers + `player-status` listener bridge); `crates/ui-storybook/src/components/player_controls.rs` (optional `on_toggle: Option<Callback<()>>` prop, non-breaking); `_docs/book/src/app-ui/player-ipc.md`; `SUMMARY.md`; `ISSUES.md` ISS-03 marked resolved.
+- **Verified:** `just gate` green (128 tests, +6 from M-PREVIEW.1's 122); `just site` renders the new chapter; trunk WASM build passes; SSR snapshot for the storybook unchanged (the optional prop emits no HTML attribute).
+- **IPC contract — four commands, one event:**
+  - `player_open(path: String) -> Result<PlayerStatus, String>`
+  - `player_play()` / `player_pause()`
+  - `player_status() -> PlayerStatus`
+  - `player-status` event (Tauri → webview), throttled to state-change + 10 Hz elapsed updates.
+- **Architecture lock:** `PlayerSession` is pure Rust (no Tauri types) so its lifecycle is testable end-to-end without booting Tauri. The four `#[tauri::command]` wrappers are one-liners over the session. The Application is built once at session boot (~200 ms) and shared by every subsequent `open` — no device-init latency on file open.
+- **Tick thread:** plain `std::thread::spawn` + `std::thread::sleep(33 ms)` rather than `tokio::time::interval` — avoids the tokio-features dep dance, and the tick is sync work. Status emits are throttled to lifecycle changes + 100 ms-of-elapsed boundaries while playing (so the timer ticks at ~10 Hz, not 30 Hz).
+- **JS bridge symmetry with M-INT.2:** outbound is three `__TAURI__.core.invoke` wrappers (`__screenOpen`/`__screenPlay`/`__screenPause`); inbound is a `player-status` Tauri-event → browser-`CustomEvent` re-emit. No `tauri-sys`. Bridge degrades to no-ops when `__TAURI__` is absent (so `trunk serve` standalone still flips the drop-zone-to-player view via the demo affordance).
+- **Component evolution:** `PlayerControls` gains an optional `on_toggle: Option<Callback<()>>` prop. Existing storybook stories pass nothing → SSR HTML output is unchanged → snapshot test passes unchanged. The recorder shell wraps `<PlayerControls>` in a reactive closure that re-renders on `player_status` changes.
+- **6 lessons captured during the gate loop** (no `#[allow]` shortcuts where avoidable):
+  - Tauri's `generate_handler!` requires fully-qualified paths (`commands::player_play`) so its companion `__cmd__name` macro is in scope — using `use commands::*;` doesn't work.
+  - Tauri's `#[tauri::command]` requires `State<T>` by value, not `&State<T>` — clippy's `needless_pass_by_value` fires on every command. Suppressed with a module-level `#![allow]` + reason in `commands.rs`.
+  - Leptos 0.7 typed-builder cache can desync after editing a `#[component]` that gains a new prop — `cargo clean -p <crate>` invalidates and the prop reappears. Burned one cycle on this.
+  - `--all-features` in workspace check unifies `csr + ssr` features for `ui-storybook`, but the `#[component]` macro itself is feature-agnostic; the cache desync (above) was the real culprit.
+  - `usize as u32` and `f32 == 0.0` are still the most common gate trippers — both have CLAUDE.md lessons; applied the documented fixes (`u32::try_from(...).expect(...)`, `f32::abs() < f32::EPSILON`).
+  - rustdoc broken-intra-doc-links across crate boundaries (e.g. `[`screen_app::player_session::PlayerStatus`]` from `app-ui`) — when the dep edge isn't there *and shouldn't be there* (WASM ↔ Tauri-native split), the right answer is plain-text references with a comment explaining why. Resolved ISS-03 with that pattern.
+
+---
+
 ## M-PREVIEW.1 — Native winit window with a wgpu surface that wisp renders into
 - **Date:** 2026-05-09
 - **Status:** ✅ done — fifth-and-a-half chunk on the path to first MP4 playback. **1 chunk remains** (M-PLAY.2 Tauri↔player IPC).

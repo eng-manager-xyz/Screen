@@ -24,6 +24,12 @@ pub fn PlayerControls(
     /// Total duration in seconds (used for the right-hand label).
     #[prop(optional)]
     duration_seconds: f32,
+    /// Optional click handler for the play/pause toggle. Pure-presentation
+    /// stories leave this `None` (default); the recorder shell (`app-ui`)
+    /// passes a callback that invokes the Tauri `player_play` /
+    /// `player_pause` commands.
+    #[prop(optional, into)]
+    on_toggle: Option<Callback<()>>,
 ) -> impl IntoView {
     let position = position.clamp(0.0, 1.0);
     let duration = if duration_seconds <= 0.0 {
@@ -42,9 +48,15 @@ pub fn PlayerControls(
         PlayState::Playing => ("❚❚", "Pause", "player-toggle player-toggle-playing"),
     };
 
+    let toggle_click = move |_| {
+        if let Some(cb) = on_toggle {
+            cb.run(());
+        }
+    };
+
     view! {
         <div class="player-controls" role="group" aria-label="Player transport">
-            <button class=toggle_class type="button" aria-label=toggle_label>
+            <button class=toggle_class type="button" aria-label=toggle_label on:click=toggle_click>
                 <span class="player-toggle-glyph">{toggle_glyph}</span>
             </button>
 

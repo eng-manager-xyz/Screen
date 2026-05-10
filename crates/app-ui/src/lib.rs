@@ -10,10 +10,11 @@
 //!   placeholder preview when a recording is loaded.
 //! - [`StatusBar`](ui_storybook::components::StatusBar) at the bottom.
 //!
-//! The shell stays purely presentational in this chunk — no Tauri IPC, no
-//! actual file ingestion. M-INT.2 wires the file-drop event to a signal
-//! that flips us into the loaded view; M-PLAY.2 wires the transport
-//! buttons to the [`playback::Player`].
+//! As of M-PLAY.2, the shell drives the screen-app player via Tauri IPC:
+//! the file-drop event opens the file, the transport buttons toggle
+//! play/pause, and a pushed `player-status` event keeps the UI in sync
+//! with the Rust-side player. See [`player_ipc`] for the JS-bridge
+//! `extern` declarations and the [`player_ipc::PlayerStatus`] mirror.
 
 #![allow(
     clippy::must_use_candidate,
@@ -22,6 +23,7 @@
 )]
 
 pub mod app;
+pub mod player_ipc;
 
 use wasm_bindgen::prelude::*;
 

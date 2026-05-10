@@ -14,6 +14,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
+playback = { path = "../playback" }
+decode = { path = "../decode" }
+wisp = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+pollster = { workspace = true }
+tracing = { workspace = true }
 
 [package.metadata.cargo-machete]
 # `tauri::generate_context!()` uses the dep at macro-expansion time;

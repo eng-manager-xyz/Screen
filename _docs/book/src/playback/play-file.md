@@ -83,7 +83,7 @@ With this chunk landed, the recorder has 4 of 6 stages on the path to
 - ✅ M-INT.1 — Trunk + Leptos in Tauri (replace the vanilla JS frontend)
 - ✅ M-INT.2 — Tauri serves Trunk bundle + OS file-drop wiring
 - ✅ M-PREVIEW.1 — Native winit sibling window with the wisp surface
-- ⏳ M-PLAY.2 — Tauri↔player IPC for transport controls
+- ✅ M-PLAY.2 — Tauri↔player IPC for transport controls
 
 [`GstreamerPipeStream`](../api/decode/gstreamer_pipe/struct.GstreamerPipeStream.html) ·
 [`Player`](../api/playback/struct.Player.html) ·

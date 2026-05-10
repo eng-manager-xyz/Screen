@@ -12,11 +12,21 @@
     <link data-trunk rel="copy-file" href="shell.css" />
 
     <!-- Tauri ↔ Leptos bridge.
-         Tauri 2's JS API (window.__TAURI__.event) dispatches `file-dropped`
-         when the OS drops a file on the window. We re-emit that as a
-         browser `CustomEvent("file-dropped")` so Leptos can listen via
-         `web_sys::EventTarget::add_event_listener_with_callback` without
-         pulling in any tauri-sys dependency. -->
+
+         Inbound (Tauri → Leptos): Tauri 2's `window.__TAURI__.event`
+         dispatches custom events from Rust. We re-emit each as a browser
+         `CustomEvent` so Leptos can listen via `web_sys` without pulling
+         a `tauri-sys` dependency. Two events today:
+           - `file-dropped` (M-INT.2): payload is the dropped file path.
+           - `player-status` (M-PLAY.2): payload is a `PlayerStatus` object
+             (state / elapsed_ms / duration_ms / width / height / fps /
+             frame_count). The browser CustomEvent's `.detail` is the
+             same object — Leptos parses it via `serde_wasm_bindgen`.
+
+         Outbound (Leptos → Tauri): three top-level helpers wrap
+         `__TAURI__.core.invoke`. Leptos calls them via `extern "C"`
+         declarations. Returning the underlying Promise is intentional —
+         callers who want it can chain; callers who don't can ignore. -->
     <script>
       window.addEventListener("DOMContentLoaded", () => {
         if (window.__TAURI__ && window.__TAURI__.event) {
@@ -25,8 +35,20 @@
               detail: event.payload
             }));
           });
+          window.__TAURI__.event.listen("player-status", (event) => {
+            window.dispatchEvent(new CustomEvent("player-status", {
+              detail: event.payload
+            }));
+          });
         }
       });
+
+      window.__screenOpen = (path) =>
+        window.__TAURI__?.core?.invoke("player_open", { path });
+      window.__screenPlay = () =>
+        window.__TAURI__?.core?.invoke("player_play");
+      window.__screenPause = () =>
+        window.__TAURI__?.core?.invoke("player_pause");
     </script>
   </head>
   <body>
