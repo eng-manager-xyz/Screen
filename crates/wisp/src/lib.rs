@@ -42,8 +42,8 @@ pub use scene::{
 };
 pub use text::{
     AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout, FlexibleTextEngine, FlexibleTextLayout,
-    WispFontHandle, WispFontStyle, WispFontWeight, WispText, WispTextAlign, WispTextEngine,
-    WispTextLayout, WispTextMetrics, WispTextRenderer, WispTextStyle,
+    FlexibleTextRenderer, WispFontHandle, WispFontStyle, WispFontWeight, WispText, WispTextAlign,
+    WispTextEngine, WispTextLayout, WispTextMetrics, WispTextRenderer, WispTextStyle,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;

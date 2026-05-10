@@ -31,7 +31,7 @@
 //! 0.06` (= 60 px ≈ caption-y), and matches what glyphon's atlas
 //! cache expects for typical desktop UIs.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, Wrap};
 
@@ -47,13 +47,9 @@ pub const REFERENCE_PX: f32 = 1000.0;
 /// cosmic-text API through this struct. The renderer (M-TEXT.3) uses
 /// the crate-private `buffer()` accessor.
 pub struct FlexibleTextLayout {
-    /// Underlying cosmic-text buffer. Crate-public so the M-TEXT.3
-    /// glyphon renderer can read it without a downcast; not exposed
-    /// outside the crate.
-    #[expect(
-        dead_code,
-        reason = "consumed by glyphon renderer in M-TEXT.3 / AUT-77"
-    )]
+    /// Underlying cosmic-text buffer. Crate-public so the
+    /// `FlexibleTextRenderer` (glyphon) can read it without a
+    /// downcast; not exposed outside the crate.
     pub(crate) buffer: Buffer,
     metrics: WispTextMetrics,
 }
@@ -79,7 +75,7 @@ impl WispTextLayout for FlexibleTextLayout {
 /// so the engine can be shared across threads — necessary for caches
 /// (M-DYN.2-style) and the renderer's `&self` access pattern.
 pub struct FlexibleTextEngine {
-    font_system: Mutex<FontSystem>,
+    font_system: Arc<Mutex<FontSystem>>,
 }
 
 impl std::fmt::Debug for FlexibleTextEngine {
@@ -99,7 +95,7 @@ impl FlexibleTextEngine {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            font_system: Mutex::new(FontSystem::new()),
+            font_system: Arc::new(Mutex::new(FontSystem::new())),
         }
     }
 
@@ -111,8 +107,17 @@ impl FlexibleTextEngine {
     #[must_use]
     pub fn with_font_system(font_system: FontSystem) -> Self {
         Self {
-            font_system: Mutex::new(font_system),
+            font_system: Arc::new(Mutex::new(font_system)),
         }
+    }
+
+    /// Borrow the shared `FontSystem` handle. The
+    /// [`FlexibleTextRenderer`](super::FlexibleTextRenderer) constructor
+    /// uses this to wire layout + rasterization to the same font
+    /// database (so glyph metrics agree).
+    #[must_use]
+    pub fn font_system_handle(&self) -> Arc<Mutex<FontSystem>> {
+        Arc::clone(&self.font_system)
     }
 
     /// Concrete-typed layout entrypoint — preserves the

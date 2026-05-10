@@ -40,9 +40,11 @@ use crate::color::Color;
 
 pub mod atlas;
 pub mod flexible;
+pub mod flexible_renderer;
 
 pub use atlas::{AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout};
 pub use flexible::{FlexibleTextEngine, FlexibleTextLayout};
+pub use flexible_renderer::FlexibleTextRenderer;
 
 /// Font weight on a 100..=900 scale matching CSS / OpenType.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

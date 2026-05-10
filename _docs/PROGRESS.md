@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.3 — Glyphon WGPU rasterizer for FlexibleText (AUT-77)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `FlexibleTextRenderer` pairs the cosmic-text layout from M-TEXT.2 with glyphon's wgpu pipeline. Layouts produced by `FlexibleTextEngine` now paint into any `wgpu::TextureView`.
+- **Linear:** [AUT-77](https://linear.app/harwood/issue/AUT-77).
+- **Files:** `crates/wisp/Cargo.toml` adds `glyphon = "=0.8.0"` (pinned, matches wgpu 24 + cosmic-text 0.12). New `crates/wisp/src/text/flexible_renderer.rs` with `FlexibleTextRenderer` owning `TextAtlas`, `Viewport`, `TextRenderer`, `SwashCache`, `Device`, `Queue`, and `Resolution`. `FlexibleTextEngine` gains `font_system_handle() -> Arc<Mutex<FontSystem>>` and now holds the `FontSystem` inside an `Arc<Mutex<…>>` so engine + renderer share the same font database. `crates/wisp/src/text/mod.rs` + `crates/wisp/src/lib.rs` re-export. New `_docs/book/src/wisp/text/glyphon-backend.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 3 new GPU-using unit tests (`renderer_constructs_against_default_app`, `empty_draw_does_not_panic`, `draw_hello_paints_some_non_zero_pixels`). Full `just gate` green at 292 tests (289 + 3 new). `just site` builds cleanly and renders the new chapter at `target/book/wisp/text/glyphon-backend.html`.
+- **Sibling-of-Renderer, not method-on-Renderer.** Glyphon owns ~few MB of GPU state (atlas + pipeline) that shouldn't be paid by callers who never render flexible text. The renderer is constructed explicitly by the caller and given an `Arc<Mutex<FontSystem>>` handle from the engine. Documented in the new chapter's "Shape" section.
+- **Pixel test, not snapshot test.** System fonts vary by host (Liberation Sans / DejaVu / Helvetica depending on platform); a byte-exact snapshot would churn on CI bumps. "At least one non-zero alpha pixel" is the genuine regression surface (glyphon broken, atlas allocation failed, font system empty) without false positives on cosmetic font swaps.
+- **NDC → pixel + REFERENCE_PX rescale at draw time.** Layouts are shaped at `REFERENCE_PX = 1000` (set in M-TEXT.2). The renderer computes `scale = target_height_px / REFERENCE_PX` per draw, so the same `FlexibleTextLayout` can be drawn into any target without re-shaping.
+- **Glyphon `=0.8.0` pin.** Glyphon's wgpu version is exact, not semver-driven — patch bumps can break against wgpu 24. Pinned with `=` to match cosmic-text 0.12 + wgpu 24 at the API level; reconsider when wgpu bumps.
+- **Known gaps deferred to M-TEXT.5.** "Container transform + alpha" and "`render_stage` participation" from AUT-77's acceptance criteria are deferred — they fall out naturally once `FlexibleTextRenderer` writes into an intermediate `RenderTexture` and that texture composes through the existing sprite pipeline (M-TEXT.5's RT cache work). Documented in the chapter's "Known gaps (intentional)" section.
+
+---
+
 ## M-TEXT.2 — Cosmic Text layout backend (AUT-76)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `FlexibleTextEngine` (Cosmic Text) lands behind the M-TEXT.1 trait surface. Layout half only; rasterization is M-TEXT.3 (`glyphon`).
