@@ -33,6 +33,7 @@ use crate::color::Color;
 use crate::error::Error;
 use crate::filter::{Filter, FilterContext};
 use crate::scene::Stage;
+use crate::scene::clip::MaskShape;
 use crate::texture::Texture;
 use crate::texture::render_texture::RenderTexture;
 
@@ -161,7 +162,8 @@ impl Renderer {
     ///   containers use source-over via the blit pipeline). Final blit
     ///   to `view`.
     ///
-    /// Slow-path RT dimensions track [`Application::width`/`height`];
+    /// Slow-path RT dimensions track `Application::width()` /
+    /// `Application::height()`;
     /// for views whose dims diverge from the app config, use a matching
     /// `AppConfig` or pre-render into a fixed-size `RenderTexture`.
     ///
@@ -198,6 +200,58 @@ impl Renderer {
         output: &RenderTexture,
     ) {
         self.clip.apply(app, shape, foreground, output);
+    }
+
+    /// Composition primitive — render `base`, blurred only inside the
+    /// `region`, into `output`. Outside the region the pixels are
+    /// preserved as-is (M-MASK / AUT-20: rectangle privacy blur).
+    ///
+    /// Pipeline (all RTs `app.width()`/`app.height()` at the renderer's
+    /// output format):
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ─►  blur_rt
+    ///                                   │
+    ///                                   ├─ ClipPipeline(MaskShape::Rect{region}) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    ///
+    /// `region` is in NDC `[-1, +1]²` (screen space). `radius` is the
+    /// Gaussian blur radius in pixels; AUT-22 will expose this as a
+    /// scene-data parameter rather than just a method argument.
+    ///
+    /// Use this when you've pre-rendered a frame into `base` (e.g.
+    /// the recording surface) and want to redact a known-rect region.
+    /// Future enhancement: a [`Container`](crate::scene::Container)
+    /// node type that triggers this automatically during scene
+    /// traversal.
+    pub fn apply_privacy_blur(
+        &self,
+        app: &Application,
+        region: crate::math::Rect,
+        radius: f32,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let blur_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Blur the whole frame.
+        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
+
+        // 2. Mask the blur to the region.
+        self.clip
+            .apply(app, MaskShape::Rect { rect: region }, &blur_rt, &masked_rt);
+
+        // 3. Copy base → output (replaces output's prior contents).
+        self.blit.blit(app, base, output.view());
+
+        // 4. Composite the masked blur over the base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
     }
 
     /// Fast path: one render pass, no offscreen indirection.
@@ -417,11 +471,11 @@ impl Renderer {
 /// Pre-order walk that returns every visible node which needs the
 /// slow-path dispatch — either:
 ///
-/// - the container has an advanced [`BlendMode`] (Tier C — Overlay,
+/// - the container has an advanced
+///   [`BlendMode`](crate::blend::BlendMode) (Tier C — Overlay,
 ///   `ColorBurn`, …) requiring an offscreen backdrop sample, or
-/// - the container has a [`MaskShape`](crate::scene::clip::MaskShape)
-///   set in [`Container::clip`](crate::scene::Container) requiring an
-///   offscreen mask pass.
+/// - the container has a [`MaskShape`] set in `Container::clip`,
+///   requiring an offscreen mask pass.
 ///
 /// Order is pre-order so the auto-dispatch composites in z-order: a
 /// later dispatched node sees its earlier siblings (and their

@@ -11,6 +11,7 @@ mod s_graphics_rounded;
 mod s_hello_quad;
 mod s_mesh_perspective;
 mod s_motion_blur;
+mod s_privacy_blur_rect;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
@@ -34,5 +35,6 @@ pub fn all_stories() -> Vec<Story> {
         s_color_matrix::story(),
         s_mesh_perspective::story(),
         s_clip_rounded::story(),
+        s_privacy_blur_rect::story(),
     ]
 }

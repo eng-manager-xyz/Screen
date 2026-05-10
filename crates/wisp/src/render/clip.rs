@@ -1,11 +1,13 @@
 //! Clip pipeline — apply a [`MaskShape`] to a foreground
 //! `RenderTexture` and write the masked result.
 //!
-//! Used by the auto-dispatch path in [`Renderer::render_stage`] when a
-//! container has a [`Container::clip`] set: the subtree is rendered
-//! into a foreground RT, this pipeline samples the foreground and
-//! multiplies in the SDF-based mask alpha, and the result is composited
-//! back onto the parent's destination.
+//! Used by the auto-dispatch path in
+//! [`Renderer::render_stage`](crate::render::Renderer::render_stage)
+//! when a container has a
+//! [`Container::clip`](crate::scene::container::Container::clip) set:
+//! the subtree is rendered into a foreground RT, this pipeline samples
+//! the foreground and multiplies in the SDF-based mask alpha, and the
+//! result is composited back onto the parent's destination.
 //!
 //! Today: only [`MaskShape::RoundedRect`]. Later issues add more shape
 //! variants; the same pipeline (uniform-driven SDF) handles them by
@@ -136,6 +138,13 @@ impl ClipPipeline {
         output: &RenderTexture,
     ) {
         let (cx, cy, hx, hy, radius) = match shape {
+            MaskShape::Rect { rect } => {
+                let cx = rect.min.x + rect.size.x * 0.5;
+                let cy = rect.min.y + rect.size.y * 0.5;
+                let hx = (rect.size.x * 0.5).max(0.0);
+                let hy = (rect.size.y * 0.5).max(0.0);
+                (cx, cy, hx, hy, 0.0)
+            }
             MaskShape::RoundedRect { rect, radius } => {
                 let cx = rect.min.x + rect.size.x * 0.5;
                 let cy = rect.min.y + rect.size.y * 0.5;

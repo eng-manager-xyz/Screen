@@ -36,6 +36,7 @@
   - [Headless export — M0.21](./wisp/chunks/example-headless-export.md)
   - [Blend modes — M-BLEND.1](./wisp/chunks/blend-modes.md)
   - [Rounded crop foundation — M-MASK.1](./wisp/chunks/clip-rounded.md)
+  - [Rectangle privacy blur — M-MASK.2](./wisp/chunks/privacy-blur-rect.md)
 
 # `decode` — video decode
 

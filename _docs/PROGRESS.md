@@ -6,6 +6,25 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.2 — Rectangle privacy blur in wisp (AUT-20)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — second mask primitive. First *masked-filter composition* (blur + clip + alpha-compose) end-to-end in the renderer.
+- **Linear:** [AUT-20](https://linear.app/harwood/issue/AUT-20).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Rect { rect }` variant + `MaskShape::rect()` ctor (radius=0 routes through the same SDF pipeline). `crates/wisp/src/render/clip.rs` `apply()` matches both `Rect` and `RoundedRect`. `crates/wisp/src/render.rs` adds `Renderer::apply_privacy_blur(region, radius, base, output)`. New `crates/wisp/tests/privacy_blur_rect.rs` (3 pixel-readback cases). New `crates/wisp-storybook/src/stories/s_privacy_blur_rect.rs` + `writeups/privacy_blur_rect.md`. `crates/wisp-storybook/src/stories/mod.rs` registers it. `_docs/book/src/wisp/chunks/privacy-blur-rect.md` chapter; `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-rect.png` regenerated. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap` updated for the new story.
+- **Verified:** `just gate` green (176 tests, +3 from M-MASK.1's 173); `just snapshots-wisp` regenerates the gallery including `privacy-blur-rect.png`.
+- **Composition primitive:** `apply_privacy_blur` is a three-stage pipeline reusing existing primitives — (1) `BlurFilter::new(radius)` over `base` → `blur_rt`, (2) `ClipPipeline::apply(MaskShape::Rect{region})` over `blur_rt` → `masked_rt`, (3) `BlitPipeline::blit(base → output)` then `compose_over(masked_rt onto output)` (alpha blending). Outside the region: bit-exact base. Inside: blurred copy fully replaces base. Three RTs total (base + blur + masked); could be fused into a single shader later but the per-primitive separation keeps each pipeline single-purpose and testable.
+- **`MaskShape::Rect` is `RoundedRect(radius=0)` in the renderer:** added the `Rect` variant for API ergonomics (callers don't need to pass a magic 0.0), but `ClipPipeline::apply` routes both through the same SDF path (`Rect` → `r=0`). One enum, one shader, two ergonomic constructors.
+- **Test strategy:** three pixel-readback assertions lock in the *contract*, not the implementation:
+  - **outside-region pixels match base bit-exactly** (red half stays pure 255 R, 0 B) — proves the mask is honored;
+  - **near-seam pixels mix both colors** (red AND blue components > 20) — proves the blur is actually running inside the region (not a no-op);
+  - **deep-inside pixels still favor the side they're on** — proves blur falloff is bounded (this is privacy *blur*, not privacy *fill*).
+- **Gate-loop lessons:**
+  - `for i in -4..=4` defaults `i` to `i32`; `f32::from(i32)` doesn't exist (precision loss). Workaround: type-suffix the literal — `for i in -4i16..=4` — so `f32::from(i)` resolves to the `f32: From<i16>` impl. Keeps the cast-hygiene rule applied without an `as` cast or explicit clippy allow.
+  - Adding a story bumps the `story_fingerprints` insta snapshot to `*.snap.new`; force-overwrite before the gate goes green. (Already documented in CLAUDE.md.)
+  - `cargo doc` (the lenient gate) flagged a few existing intra-doc links that broke once `Renderer::apply_privacy_blur` brought new types into scope (`Application::width/height`, `BlendMode` resolved from `crate::scene::container::*` instead of `crate::blend::*`). Cleaned the immediate ones; one pre-existing `apply` link in `advanced_blend.rs` remains and is queued.
+
+---
+
 ## M-MASK.1 — Rounded crop / mask foundation in wisp (AUT-31)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — first mask primitive. Foundation for AUT-20 through AUT-35.

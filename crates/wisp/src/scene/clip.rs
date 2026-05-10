@@ -17,12 +17,23 @@ use crate::math::Rect;
 
 /// Shape of a clip / mask region.
 ///
-/// AUT-31 ships only [`MaskShape::RoundedRect`]. Later issues
-/// (`AUT-30` circle, `AUT-34` ellipse, `AUT-35` freehand path) extend
-/// this enum.
+/// Variants land issue-by-issue:
+///
+/// - [`MaskShape::Rect`] — AUT-20 rectangle privacy mask.
+/// - [`MaskShape::RoundedRect`] — AUT-31 rounded crop foundation.
+///
+/// Later issues (`AUT-30` circle, `AUT-34` ellipse, `AUT-35` freehand
+/// path) extend this enum further.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum MaskShape {
+    /// Sharp-corner rectangle in NDC. The renderer treats this as a
+    /// `RoundedRect` with `radius = 0` and routes through the same
+    /// SDF pipeline.
+    Rect {
+        /// Axis-aligned bounding rect, NDC coords.
+        rect: Rect,
+    },
     /// Rounded rectangle in NDC. `rect` is the axis-aligned bounding
     /// box, `radius` is the corner radius in NDC units (clamped at
     /// render-time to half the smaller side).
@@ -35,6 +46,12 @@ pub enum MaskShape {
 }
 
 impl MaskShape {
+    /// Convenience constructor for a sharp-corner rectangle.
+    #[must_use]
+    pub fn rect(rect: Rect) -> Self {
+        Self::Rect { rect }
+    }
+
     /// Convenience constructor for a rounded rectangle.
     #[must_use]
     pub fn rounded_rect(rect: Rect, radius: f32) -> Self {
@@ -45,7 +62,7 @@ impl MaskShape {
     #[must_use]
     pub fn bounds(self) -> Rect {
         match self {
-            Self::RoundedRect { rect, .. } => rect,
+            Self::Rect { rect } | Self::RoundedRect { rect, .. } => rect,
         }
     }
 }
