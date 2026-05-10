@@ -13,6 +13,7 @@ pub mod privacy_blur;
 pub mod sprite;
 pub mod text;
 pub mod transform;
+pub mod vector;
 
 use slotmap::SlotMap;
 
@@ -26,6 +27,7 @@ pub use privacy_blur::{BlurStrength, PrivacyBlur};
 pub use sprite::Sprite;
 pub use text::{Font, Text};
 pub use transform::Transform;
+pub use vector::{Vector, VectorShape, VectorStroke};
 
 /// Scene graph root.
 ///

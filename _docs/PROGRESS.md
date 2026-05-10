@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.1 — Vector shape primitive model in wisp (AUT-53)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — data-only chunk; rendering layers on in M-VEC.2/.3.
+- **Linear:** [AUT-53](https://linear.app/harwood/issue/AUT-53).
+- **Files:** new `crates/wisp/src/scene/vector.rs` (`VectorShape` enum with Rect/RoundedRect/Circle/Ellipse/Path variants, `VectorStroke` struct, `Vector` struct with shape/fill/stroke/opacity/transform + builder methods); `crates/wisp/src/scene.rs` exposes the new module + re-exports; `crates/wisp/src/lib.rs` re-exports `Vector` / `VectorShape` / `VectorStroke`. New `_docs/book/src/wisp/chunks/vector-model.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 9 unit tests cover constructors, bounds (including empty path → zero rect), `as_mask_shape` round-trip, default opacity = 1.0, and builder chaining. `just gate` green at 221 tests (+9 from M-DYN.2's 212).
+- **Bridges to existing mask machinery via `as_mask_shape()`.** Analytic-SDF variants (Rect / RoundedRect / Circle / Ellipse) convert to `MaskShape` cleanly; Path returns `None`. This is what M-VEC.4..6 will use to refactor `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` onto vector data without rewriting the SDF shader. Path uses the parallel `as_path_points()` accessor instead.
+- **`Clone`, not `Copy`.** The `Path { points: Vec<Vec2> }` variant carries owned data, so the enum can't be `Copy`. That's the same reason `MaskShape::Path` was never added — documented in the chapter and in M-MASK.10's progress entry. Existing `MaskShape` stays `Copy` (no path variant); `VectorShape` is `Clone`.
+- **`#[non_exhaustive]` future-proofs the catalog.** M-VEC.10 (path stroke commands), M-VEC.13 (SVG import subset), M-VEC.16 (feathered edges) will extend `VectorShape` without breaking callers.
+- **No story for the data layer.** Per the project convention, non-render chunks are exempt. M-VEC.2 (the rasterizer) and M-VEC.3 (the alpha-mask bridge) will both ship stories.
+
+---
+
 ## M-DYN.2 — Mask texture cache in wisp (AUT-44)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — performance guardrail on top of M-DYN.1. Identical mask inputs across frames reuse the GPU texture instead of regenerating.

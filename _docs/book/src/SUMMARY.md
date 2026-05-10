@@ -47,6 +47,7 @@
   - [Freehand path mask — M-MASK.10](./wisp/chunks/path-mask.md)
   - [Dynamic mask textures — M-DYN.1](./wisp/chunks/mask-texture.md)
   - [Mask texture cache — M-DYN.2](./wisp/chunks/mask-cache.md)
+  - [Vector shape model — M-VEC.1](./wisp/chunks/vector-model.md)
 
 # `decode` — video decode
 

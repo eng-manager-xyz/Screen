@@ -35,7 +35,7 @@ pub use filter::{
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
 pub use scene::{
     BlurStrength, Container, DimOutside, DimStrength, Fill, Font, Graphics, MaskShape, Mesh, Node,
-    NodeId, PrivacyBlur, Sprite, Stage, Stroke, Text, Transform,
+    NodeId, PrivacyBlur, Sprite, Stage, Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;
