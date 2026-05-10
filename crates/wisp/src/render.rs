@@ -1016,6 +1016,22 @@ impl Renderer {
         );
     }
 
+    /// Vector-driven variant of [`Self::apply_dim_outside_data`]
+    /// (M-VEC.7 / AUT-59). Same composition as `apply_spotlight_vector`
+    /// but the dim color is derived from a [`DimStrength`] preset
+    /// (`Light` / `Medium` / `Heavy` / `Custom(alpha)`). Accepts paths.
+    pub fn apply_dim_outside_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        strength: crate::scene::DimStrength,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let dim_color = Color::rgba(0.0, 0.0, 0.0, strength.alpha());
+        self.apply_spotlight_vector(app, vector, dim_color, base, output);
+    }
+
     /// Convenience wrapper over [`Self::apply_privacy_blur`] that
     /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
     /// value (M-MASK / AUT-22).

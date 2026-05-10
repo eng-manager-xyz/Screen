@@ -6,6 +6,15 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.7 — Vector spotlight + inverse-dim effects (AUT-59)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the path-accepting gap. `apply_dim_outside_data` was already shipped (M-MASK.7) but only accepted analytic SDF shapes; this chunk adds `apply_dim_outside_vector` for path support, and a chapter that ties M-VEC.7 to the existing `apply_spotlight_vector` (M-VEC.6) + `compose_dim_through_inverted_mask` (M-DYN.5).
+- **Linear:** [AUT-59](https://linear.app/harwood/issue/AUT-59).
+- **Files:** `crates/wisp/src/render.rs` adds `apply_dim_outside_vector(vector, strength, base, output)`. New `crates/wisp/tests/dim_outside_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-spotlight-dim.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** byte-equivalence with `apply_dim_outside_data` for analytic shapes; path variant dims correctly around a diamond polygon. `just gate` green.
+
+---
+
 ## M-DYN.3..6 — Explicit-mask composition primitives (AUT-45 / -46 / -47 / -48)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes four P1 mask-followup tickets in one chunk. Lower-level companion primitives that take the mask texture as an explicit parameter, allowing one mask to be shared across multiple effects in the same frame.

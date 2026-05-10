@@ -55,6 +55,7 @@
   - [Clip + spotlight on vector masks — M-VEC.6](./wisp/chunks/vector-clip-spotlight.md)
   - [Export & copy-frame mask parity — AUT-27/-33](./wisp/chunks/export-mask-parity.md)
   - [Compose through explicit mask — M-DYN.3..6](./wisp/chunks/compose-through-mask.md)
+  - [Vector spotlight + dim — M-VEC.7](./wisp/chunks/vector-spotlight-dim.md)
 
 # `decode` — video decode
 
