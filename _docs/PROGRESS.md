@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.4 — Privacy blur on vector masks (AUT-56)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first refactor of an existing M-MASK primitive onto the M-VEC pipeline. `apply_privacy_blur(shape: MaskShape, ...)` now routes through the separated mask-texture path internally; output is byte-equivalent to the previous inline-clip implementation.
+- **Linear:** [AUT-56](https://linear.app/harwood/issue/AUT-56).
+- **Files:** new `crates/wisp/shaders/mask_compose.wgsl` (samples foreground RT × mask RT → `(fg.rgb, fg.a * mask.a)`); new `crates/wisp/src/render/mask_compose.rs` (`MaskComposePipeline`); `crates/wisp/src/render.rs` adds `apply_mask_to_texture(foreground, mask, output)` public primitive plus `apply_privacy_blur_vector(vector, radius, base, output)`. `apply_privacy_blur` itself was rewritten to wrap its `MaskShape` in a `VectorShape` and forward — same external API, new internals. New `crates/wisp/tests/privacy_blur_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-privacy-blur.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 9 existing M-MASK.2/.3/.4 privacy-blur tests still pass unchanged (proves the refactor is byte-equivalent); 2 new vector-driven tests pass; full `just gate` green.
+- **Architectural pivot — separated mask + composition.** The old pipeline ran `ClipPipeline` to compute mask + sample foreground in one shader. The new pipeline runs `MaskTexturePipeline` (mask only) then `MaskComposePipeline` (multiply foreground × mask). One extra render pass per call, offset by mask-cache hits — static masks across frames now regenerate exactly once.
+- **Path support unlocked.** Privacy blur can now use `VectorShape::Path` — previously impossible because `apply_privacy_blur(shape: MaskShape, ...)` had no Path variant in the enum. Test `path_vector_blurs_inside_polygon` covers a diamond polygon over a red/blue split: center mixes both colors, far corner stays as base red.
+- **Old API preserved.** `apply_privacy_blur` still takes a `MaskShape` and produces the same bytes. Existing M-MASK.2/.3/.4 stories, tests, and chapters keep working without modification. The chapter notes the previous inline-clip pipeline description in those chapters is now historical.
+- **`apply_mask_to_texture` is now public.** Made it part of the `Renderer` public surface so AUT-57 (solid redaction) and AUT-58 (rounded crops) can reuse the same intermediate primitive — and eventually any app-level code that wants direct control over mask × foreground composition.
+
+---
+
 ## M-VEC.3 — Render vectors to alpha-mask textures (AUT-55)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — bridge between `Vector` (M-VEC.1) and `MaskTexturePipeline` (M-DYN.1). Unblocks the M-VEC.4..6 refactor of existing mask primitives.

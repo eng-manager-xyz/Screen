@@ -16,6 +16,7 @@ mod blit;
 mod clip;
 mod graphics_pipeline;
 mod mask_cache;
+mod mask_compose;
 mod mask_texture;
 mod mesh_pipeline;
 mod path_clip;
@@ -73,6 +74,7 @@ pub struct Renderer {
     path_clip: path_clip::PathClipPipeline,
     mask_texture: mask_texture::MaskTexturePipeline,
     path_mask_texture: path_mask_texture::PathMaskTexturePipeline,
+    mask_compose: mask_compose::MaskComposePipeline,
     mask_cache: mask_cache::MaskCacheCell,
     output_format: wgpu::TextureFormat,
 }
@@ -97,6 +99,7 @@ impl Renderer {
         let mask_texture_pipeline = mask_texture::MaskTexturePipeline::new(app, output_format);
         let path_mask_texture_pipeline =
             path_mask_texture::PathMaskTexturePipeline::new(app, output_format);
+        let mask_compose_pipeline = mask_compose::MaskComposePipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -110,6 +113,7 @@ impl Renderer {
             path_clip: path_clip_pipeline,
             mask_texture: mask_texture_pipeline,
             path_mask_texture: path_mask_texture_pipeline,
+            mask_compose: mask_compose_pipeline,
             mask_cache: std::cell::RefCell::new(mask_cache::MaskCache::new()),
             output_format,
         })
@@ -259,20 +263,78 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
+        // M-VEC.4 refactor: route through the shared vector-mask path
+        // by wrapping the `MaskShape` in a `VectorShape`. Output is
+        // byte-equivalent to the previous inline-clip implementation.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_privacy_blur_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            radius,
+            base,
+            output,
+        );
+    }
+
+    /// Vector-driven variant of [`Self::apply_privacy_blur`] (M-VEC.4
+    /// / AUT-56). Same composition shape but the mask is produced
+    /// from a [`Vector`](crate::scene::Vector) instead of a
+    /// [`MaskShape`], unlocking path support and the M-DYN.2 cache
+    /// for repeated regions across frames.
+    ///
+    /// Pipeline:
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ──────────► blur_rt
+    ///                                              │
+    ///   vector ─ generate_vector_mask_texture ─► mask_rt
+    ///                                              │
+    ///                          (blur_rt × mask_rt) ► masked_rt
+    ///                                              │
+    ///   base ───────────────────────────────────► output  (REPLACE)
+    ///   masked_rt ──────────────────────────────► output  (compose_over)
+    /// ```
+    pub fn apply_privacy_blur_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        radius: f32,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
         let format = self.output_format;
-        let blur_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let w = base.width();
+        let h = base.height();
+        let blur_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
 
         // 1. Blur the whole frame.
         self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
 
-        // 2. Mask the blur to the shape.
-        self.clip.apply(app, shape, &blur_rt, &masked_rt);
+        // 2. Generate / fetch the mask texture from the vector shape.
+        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
 
-        // 3. Copy base → output (replaces output's prior contents).
+        // 3. Compose blur × mask into masked_rt.
+        self.mask_compose
+            .apply(app, &blur_rt, &mask_arc, &masked_rt);
+
+        // 4. Copy base → output, then composite the masked blur over.
         self.blit.blit(app, base, output.view());
-
-        // 4. Composite the masked blur over the base inside output.
         self.blit.compose_over(app, &masked_rt, output);
     }
 
@@ -350,6 +412,26 @@ impl Renderer {
 
         // 4. Compose the masked redaction over base inside output.
         self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose `foreground × mask.alpha` into `output` (M-VEC.4..6 /
+    /// AUT-56..58 building block). The mask texture must store
+    /// coverage in alpha (the format produced by
+    /// [`Self::generate_mask_texture`] et al).
+    ///
+    /// All three RTs must share dimensions and format. This is the
+    /// primitive that the vector-driven privacy blur / redaction /
+    /// spotlight refactor uses internally; expose it as part of the
+    /// public surface so app-level code (when it lands) can drive
+    /// composition through the same path.
+    pub fn apply_mask_to_texture(
+        &self,
+        app: &Application,
+        foreground: &RenderTexture,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.mask_compose.apply(app, foreground, mask, output);
     }
 
     /// Generate an alpha-mask `RenderTexture` for `shape` at

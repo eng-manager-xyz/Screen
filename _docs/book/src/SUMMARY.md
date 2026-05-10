@@ -50,6 +50,7 @@
   - [Vector shape model — M-VEC.1](./wisp/chunks/vector-model.md)
   - [Render vector primitives — M-VEC.2](./wisp/chunks/vector-render.md)
   - [Vector → mask texture bridge — M-VEC.3](./wisp/chunks/vector-mask-bridge.md)
+  - [Privacy blur on vector masks — M-VEC.4](./wisp/chunks/vector-privacy-blur.md)
 
 # `decode` — video decode
 
