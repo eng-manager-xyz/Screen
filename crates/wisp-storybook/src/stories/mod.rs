@@ -14,6 +14,7 @@ mod s_motion_blur;
 mod s_privacy_blur_rect;
 mod s_privacy_blur_rounded;
 mod s_privacy_blur_strength;
+mod s_solid_redaction;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
@@ -40,5 +41,6 @@ pub fn all_stories() -> Vec<Story> {
         s_privacy_blur_rect::story(),
         s_privacy_blur_rounded::story(),
         s_privacy_blur_strength::story(),
+        s_solid_redaction::story(),
     ]
 }

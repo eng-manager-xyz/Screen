@@ -260,6 +260,82 @@ impl Renderer {
         self.blit.compose_over(app, &masked_rt, output);
     }
 
+    /// Composition primitive — render `base`, with `shape` filled by
+    /// a flat `color` (M-MASK / AUT-23 solid redaction). Outside the
+    /// shape the pixels are preserved as-is.
+    ///
+    /// The companion to [`Self::apply_privacy_blur`]. Privacy blur is
+    /// *polish* (the redacted region still has texture); solid
+    /// redaction is *trust* (the region is replaced with an opaque
+    /// fill). Use this for content where partial reconstruction must
+    /// be impossible — API keys, passwords, secrets.
+    ///
+    /// Pipeline:
+    ///
+    /// ```text
+    ///   fill_rt    ← cleared to `color` (RP LoadOp::Clear)
+    ///                                   │
+    ///                                   ├─ ClipPipeline(shape) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    ///
+    /// Tip: use a fully-opaque `color` (alpha 1.0) for true redaction;
+    /// a partial alpha will let `base` show through proportionally,
+    /// which defeats the "trust" use case.
+    pub fn apply_solid_redaction(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to `color` — no draws, just LoadOp::Clear.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::redaction fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::redaction fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Mask the fill to the shape.
+        self.clip.apply(app, shape, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose the masked redaction over base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
     /// Convenience wrapper over [`Self::apply_privacy_blur`] that
     /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
     /// value (M-MASK / AUT-22).

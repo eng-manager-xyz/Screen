@@ -39,6 +39,7 @@
   - [Rectangle privacy blur — M-MASK.2](./wisp/chunks/privacy-blur-rect.md)
   - [Rounded privacy blur — M-MASK.3](./wisp/chunks/privacy-blur-rounded.md)
   - [Privacy blur strengths — M-MASK.4](./wisp/chunks/privacy-blur-strength.md)
+  - [Solid redaction — M-MASK.5](./wisp/chunks/solid-redaction.md)
 
 # `decode` — video decode
 

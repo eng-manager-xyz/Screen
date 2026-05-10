@@ -6,6 +6,23 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.5 — Solid-color redaction in wisp (AUT-23)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — *trust* counterpart to privacy blur. Reuses the same `MaskShape` enum so rect / rounded-rect / circle / ellipse / freehand-path all work identically.
+- **Linear:** [AUT-23](https://linear.app/harwood/issue/AUT-23).
+- **Files:** `crates/wisp/src/render.rs` adds `Renderer::apply_solid_redaction(shape, color, base, output)`. New `crates/wisp/tests/solid_redaction.rs` (4 cases). New `crates/wisp-storybook/src/stories/s_solid_redaction.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/solid-redaction.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/solid-redaction.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (186 tests, +4 from M-MASK.4's 182).
+- **Composition:** four-stage, three RTs — (1) clear `fill_rt` to redaction `color` via `LoadOp::Clear` (no draws, no shaders, just a clear), (2) `ClipPipeline::apply(shape)` over `fill_rt` → `masked_rt`, (3) blit `base → output` (REPLACE), (4) `compose_over(masked_rt onto output)` (ALPHA_BLENDING). Same shape as `apply_privacy_blur` — only step 1 differs (clear-pass vs blur-filter).
+- **Contract tests:**
+  - `rect_redaction_outside_matches_base` — bit-exact base outside.
+  - `rect_redaction_inside_is_exactly_color` — pixel inside is `(R, G, B, 255)` byte-for-byte equal to the redaction color (no blending, no AA distortion at center sample). Used `Rgba8Unorm` (linear) for byte-exact reads.
+  - `rounded_redaction_corner_carved_away` — pixel inside the bounding rect but outside the rounded corner stays as `base`. Re-uses AUT-21's coord (36, 36 in 128² with radius 0.3 → distance 0.42 > radius).
+  - `rounded_redaction_center_is_color` — center pixel inside the rounded shape is exactly the redaction color.
+- **Color → wgpu::Color is `f64::from`** for each channel. No gamma curve to worry about because the renderer's RT format is `Rgba8Unorm` (linear); display targets that use `Rgba8UnormSrgb` get the gamma applied by wgpu itself.
+- **One gate-loop lesson:** `cargo fmt --all --check` flagged a long-line method call that fmt collapses to a single-line signature when small enough. Already documented in CLAUDE.md ("`just fmt-fix` before every commit"); reinforced again as the cheapest safeguard against burning a CI gate cycle on cosmetic format diffs.
+
+---
+
 ## M-MASK.4 — Configurable blur strength in wisp (AUT-22)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — strength is renderer-data, persistable as a symbolic enum, mapped to a clamped numeric radius at render time. Story shows Soft/Medium/Strong side by side.
