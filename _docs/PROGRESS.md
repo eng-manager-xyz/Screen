@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-DYN.2 — Mask texture cache in wisp (AUT-44)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — performance guardrail on top of M-DYN.1. Identical mask inputs across frames reuse the GPU texture instead of regenerating.
+- **Linear:** [AUT-44](https://linear.app/harwood/issue/AUT-44).
+- **Files:** new `crates/wisp/src/render/mask_cache.rs` (`MaskKey` with bit-cast `f32` hashing, `MaskCache` with FIFO eviction, `MAX_ENTRIES = 64`, hits/misses stats); `crates/wisp/src/render.rs` adds `mask_cache: RefCell<MaskCache>` field plus four new public methods (`cached_mask_texture`, `cached_mask_texture_inverted`, `mask_cache_stats`, `clear_mask_cache`); new `crates/wisp/tests/mask_cache.rs` (5 cases); new `_docs/book/src/wisp/chunks/mask-cache.md`; `_docs/book/src/SUMMARY.md`.
+- **Verified:** 5 cache tests pass; full `just gate` green.
+- **Bit-cast `f32` for hashing.** `MaskShape` has `f32` fields, which aren't `Eq` / `Hash` directly. The cache key bit-casts each `f32` to `u32` via `to_bits()`, hashes the resulting integer representation. Same canonical NaN bits hash identically — fine for our use case where callers re-pass the same shape value across frames; we explicitly want exact-bit equality, not NaN-aware floating-point equality.
+- **Returns `Arc<RenderTexture>`, not `&RenderTexture`.** The cache outlives any single render-stage call, so consumers need shared ownership rather than a reference tied to the cache's lifetime. `Arc` (not `Rc`) keeps the `Renderer` `Send`-compatible.
+- **FIFO over LRU for V1.** LRU would need access-order bookkeeping on every cache hit; FIFO needs nothing. With a 64-entry cap and typical usage (small set of recurring masks per recording), FIFO behaves close to LRU in practice. Easy to upgrade later if profiling shows churn.
+- **No story for the cache.** Caching is invisible — output bytes are identical to non-cached. The existing `mask-texture` story (M-DYN.1) implicitly demonstrates correctness regardless of which path produced the texture. Per the project convention, non-render features are exempt from the story-per-chunk rule.
+- **Path masks intentionally excluded.** Hashing a `Vec<glam::Vec2>` is non-trivial and most freehand-polygon use cases mutate between frames. Documented in the chapter as a V1 limitation; callers needing path caching manage it externally.
+
+---
+
 ## M-DYN.1 — Dynamic alpha-mask texture primitive in wisp (AUT-43)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — first chunk of the dynamic-textures phase. Coverage is now a separate primitive from composition; everything that follows in M-DYN / M-VEC builds on this.

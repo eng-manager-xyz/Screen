@@ -15,6 +15,7 @@ mod blend_pipeline;
 mod blit;
 mod clip;
 mod graphics_pipeline;
+mod mask_cache;
 mod mask_texture;
 mod mesh_pipeline;
 mod path_clip;
@@ -72,6 +73,7 @@ pub struct Renderer {
     path_clip: path_clip::PathClipPipeline,
     mask_texture: mask_texture::MaskTexturePipeline,
     path_mask_texture: path_mask_texture::PathMaskTexturePipeline,
+    mask_cache: mask_cache::MaskCacheCell,
     output_format: wgpu::TextureFormat,
 }
 
@@ -108,6 +110,7 @@ impl Renderer {
             path_clip: path_clip_pipeline,
             mask_texture: mask_texture_pipeline,
             path_mask_texture: path_mask_texture_pipeline,
+            mask_cache: std::cell::RefCell::new(mask_cache::MaskCache::new()),
             output_format,
         })
     }
@@ -368,6 +371,63 @@ impl Renderer {
     ) -> RenderTexture {
         self.mask_texture
             .generate(app, shape, w, h, self.output_format)
+    }
+
+    /// Cached variant of [`Self::generate_mask_texture`] (M-DYN.2 /
+    /// AUT-44). Returns an `Arc<RenderTexture>` that may be shared
+    /// across the cache and other call sites; identical (shape, w,
+    /// h) inputs reuse the same GPU texture across frames instead of
+    /// regenerating.
+    ///
+    /// Cache eviction is FIFO at 64 entries — see
+    /// [`mask_cache::MAX_ENTRIES`]. `f32` fields hash by exact bits,
+    /// so callers re-passing the same shape value Just Work.
+    #[must_use]
+    pub fn cached_mask_texture(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        let key = mask_cache::MaskKey::new(shape, w, h, false);
+        let mut cache = self.mask_cache.borrow_mut();
+        cache.get_or_insert(key, || {
+            self.mask_texture
+                .generate(app, shape, w, h, self.output_format)
+        })
+    }
+
+    /// Cached + inverted variant.
+    #[must_use]
+    pub fn cached_mask_texture_inverted(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        w: u32,
+        h: u32,
+    ) -> std::sync::Arc<RenderTexture> {
+        let key = mask_cache::MaskKey::new(shape, w, h, true);
+        let mut cache = self.mask_cache.borrow_mut();
+        cache.get_or_insert(key, || {
+            let rt = RenderTexture::with_format(app, w, h, self.output_format);
+            self.mask_texture.render_into(app, shape, true, &rt);
+            rt
+        })
+    }
+
+    /// Returns `(hits, misses)` for the mask texture cache. Useful
+    /// for tests and observability.
+    #[must_use]
+    pub fn mask_cache_stats(&self) -> (u64, u64) {
+        self.mask_cache.borrow().stats()
+    }
+
+    /// Drop every entry in the mask texture cache. Call when the
+    /// renderer's underlying resources change (e.g., format swap) or
+    /// in tests that want to start from a clean slate.
+    pub fn clear_mask_cache(&self) {
+        self.mask_cache.borrow_mut().clear();
     }
 
     /// Inverse variant of [`Self::generate_mask_texture`]: pixels
