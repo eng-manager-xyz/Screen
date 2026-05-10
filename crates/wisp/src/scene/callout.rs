@@ -50,6 +50,42 @@ impl Callout {
         let radius = (rect.size.y * 0.5).abs();
         Vector::new(VectorShape::rounded_rect(rect, radius)).with_fill(Fill::Solid(fill))
     }
+
+    /// Arrow from `from` to `to` (M-VEC.10 / AUT-62). Returns a
+    /// stroked [`Graphics`](crate::scene::Graphics) — arrows are
+    /// multi-segment and don't fit the single-`Vector` shape that
+    /// other callouts use. Caller adds it to the stage like any
+    /// other Graphics node.
+    ///
+    /// Arrowhead size auto-scales to ~18% of the stem length.
+    #[must_use]
+    pub fn arrow_to(
+        from: glam::Vec2,
+        to: glam::Vec2,
+        width: f32,
+        color: Color,
+    ) -> crate::scene::Graphics {
+        use crate::scene::path::PathBuilder;
+        let stem = to - from;
+        let stem_len = stem.length();
+        if stem_len < 1e-6 {
+            return crate::scene::Graphics::new();
+        }
+        let head = stem_len * 0.18;
+        let dir = stem / stem_len;
+        let perp = glam::Vec2::new(-dir.y, dir.x);
+        let back = to - dir * head;
+        let left = back + perp * head * 0.5;
+        let right = back - perp * head * 0.5;
+        PathBuilder::new()
+            .move_to(from)
+            .line_to(to)
+            .move_to(left)
+            .line_to(to)
+            .line_to(right)
+            .build()
+            .stroke_to_graphics(width, color, 0.005)
+    }
 }
 
 #[cfg(test)]

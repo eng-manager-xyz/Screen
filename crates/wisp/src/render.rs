@@ -16,6 +16,7 @@ mod blit;
 mod clip;
 mod graphics_pipeline;
 mod mask_cache;
+pub mod mask_combine;
 mod mask_compose;
 mod mask_texture;
 mod mesh_pipeline;
@@ -75,6 +76,7 @@ pub struct Renderer {
     mask_texture: mask_texture::MaskTexturePipeline,
     path_mask_texture: path_mask_texture::PathMaskTexturePipeline,
     mask_compose: mask_compose::MaskComposePipeline,
+    mask_combine: mask_combine::MaskCombinePipeline,
     mask_cache: mask_cache::MaskCacheCell,
     output_format: wgpu::TextureFormat,
 }
@@ -100,6 +102,7 @@ impl Renderer {
         let path_mask_texture_pipeline =
             path_mask_texture::PathMaskTexturePipeline::new(app, output_format);
         let mask_compose_pipeline = mask_compose::MaskComposePipeline::new(app, output_format);
+        let mask_combine_pipeline = mask_combine::MaskCombinePipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -114,6 +117,7 @@ impl Renderer {
             mask_texture: mask_texture_pipeline,
             path_mask_texture: path_mask_texture_pipeline,
             mask_compose: mask_compose_pipeline,
+            mask_combine: mask_combine_pipeline,
             mask_cache: std::cell::RefCell::new(mask_cache::MaskCache::new()),
             output_format,
         })
@@ -482,6 +486,22 @@ impl Renderer {
         // 4. Copy base → output, then composite masked redaction over.
         self.blit.blit(app, base, output.view());
         self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Combine two alpha-mask textures via a boolean operation
+    /// (M-VEC.11 / AUT-63). The resulting mask is itself a regular
+    /// alpha-mask `RenderTexture` and can drive any downstream
+    /// composition primitive (`apply_mask_to_texture`,
+    /// `compose_blur_through_mask`, etc.).
+    pub fn combine_masks(
+        &self,
+        app: &Application,
+        a: &RenderTexture,
+        b: &RenderTexture,
+        op: mask_combine::MaskCombineOp,
+        output: &RenderTexture,
+    ) {
+        self.mask_combine.apply(app, a, b, op, output);
     }
 
     /// Compose privacy blur through an explicit alpha-mask texture

@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.10 + M-VEC.11 — Path stroke + mask boolean ops (AUT-62 + AUT-63)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — two chunks shipped together. Path stroke unblocks `Callout::arrow_to`; mask boolean ops let masks combine via union / intersect / subtract.
+- **Linear:** [AUT-62](https://linear.app/harwood/issue/AUT-62), [AUT-63](https://linear.app/harwood/issue/AUT-63).
+- **Files:** new `crates/wisp/src/scene/path.rs` (`PathBuilder`, `Path`, adaptive Bezier flattening); new `crates/wisp/shaders/mask_combine.wgsl` and `crates/wisp/src/render/mask_combine.rs` (`MaskCombineOp`, `MaskCombinePipeline`). `crates/wisp/src/scene/callout.rs` adds `Callout::arrow_to` using the new path stroke. `crates/wisp/src/render.rs` adds `Renderer::combine_masks`. `lib.rs` re-exports `Path`, `PathBuilder`, `PathCommand`, `MaskCombineOp`. New `crates/wisp/tests/mask_combine.rs` (3 cases). Two new stories: `path-stroke`, `mask-combine`. New `_docs/book/src/wisp/chunks/vector-path-stroke.md`. CLAUDE.md gains a new lesson under "WGSL ↔ Rust uniform layout."
+- **Verified:** 6 path unit tests + 3 mask-combine integration tests pass. Full `just gate` green.
+- **`vec3<u32>` alignment gotcha** (caught during M-VEC.11 first run): WGSL `vec3<u32>` is 16-byte aligned, so a struct `{ op: u32, _pad: vec3<u32> }` is 32 bytes, not 16. The matching Rust struct must pad to the same size or wgpu rejects the bind group with "Buffer is bound with size N where the shader expects M." Validation error is silent at compile time and only surfaces at run time. Documented in CLAUDE.md "WGSL ↔ Rust uniform layout."
+- **`draw_line` colors via `current_fill`, not stroke** — caught during M-VEC.10 story rendering. The first version of `Path::stroke_to_graphics` set `Stroke` but `draw_line` ignores stroke (the docstring explicitly says "Strokes do not apply to lines"). Fixed by setting `Fill::Solid(color)` before emitting segments. Small lesson; not adding to CLAUDE.md — the docstring is clear and the fix is local.
+- **Adaptive Bezier flattening via perpendicular-distance test:** for a curve to subdivide, the max perpendicular distance from a control point to the chord must exceed `tolerance`. Quadratic checks one control point; cubic checks both. Standard de Casteljau subdivision when triggered. NDC tolerance of 0.005 produces visually smooth curves at 256px output.
+
+---
+
 ## M-VEC.8 + M-VEC.9 — Highlight + callout primitives (AUT-60 + AUT-61)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — preset constructors for the most common attention-guiding overlays. Outputs are plain `Vector`s so they chain through every existing builder. Two issues, one chunk because they share the architectural pattern (preset → `Vector`).

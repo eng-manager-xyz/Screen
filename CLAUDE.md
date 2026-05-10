@@ -128,6 +128,20 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **Embedding-host wgpu version match first.** When adding an embedding host (`eframe`, `iced`, etc.), bump it to whichever major aligns with our wgpu *before* any integration. egui 0.29 = wgpu 22; egui 0.31 = wgpu 24 — we burned a build cycle on this.
 - **GUI deps bring font licenses.** Expect new entries in `deny.toml` (`OFL-1.1`, `Ubuntu-font-1.0`) when adding eframe / similar. These are routine, not red flags.
 
+### WGSL ↔ Rust uniform layout
+
+- **`vec3<u32>` and `vec3<f32>` are 16-byte aligned in WGSL,** so a
+  WGSL struct `{ x: u32, pad: vec3<u32> }` is 32 bytes, not 16. The
+  matching `#[repr(C)]` Rust struct needs the equivalent trailing
+  padding (`[u32; 7]` after the leading `u32`) or wgpu will reject
+  the bind group with `Buffer is bound with size N where the shader
+  expects M`. Caught M-VEC.11 / AUT-63 — the validation error is
+  silent in `cargo check`, only appears when the pipeline runs. **Fix:**
+  add `#[repr(C, align(16))]` and pad the Rust struct to match
+  WGSL's alignment math, or use `vec4<u32>` / `vec2<u32>` if you
+  don't actually need vec3 — the smaller alignment options
+  avoid the surprise.
+
 ### wgpu API specifics
 
 - **wgpu names shift between majors** — `ImageCopyTexture` → `TexelCopyTextureInfo`, `ImageDataLayout` → `TexelCopyBufferLayout` (renamed in 24). `request_adapter` returns `Option`, not `Result`. `request_device` takes `(descriptor, trace_path)`. Iterate via cargo errors when bumping.

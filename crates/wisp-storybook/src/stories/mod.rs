@@ -11,10 +11,12 @@ mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
 mod s_hello_quad;
+mod s_mask_combine;
 mod s_mask_texture;
 mod s_mesh_perspective;
 mod s_motion_blur;
 mod s_path_mask;
+mod s_path_stroke;
 mod s_privacy_blur_rect;
 mod s_privacy_blur_rounded;
 mod s_privacy_blur_strength;
@@ -58,5 +60,7 @@ pub fn all_stories() -> Vec<Story> {
         s_mask_texture::story(),
         s_vector_render::story(),
         s_vector_overlays::story(),
+        s_path_stroke::story(),
+        s_mask_combine::story(),
     ]
 }
