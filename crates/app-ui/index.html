@@ -30,7 +30,9 @@
     <script>
       window.addEventListener("DOMContentLoaded", () => {
         if (window.__TAURI__ && window.__TAURI__.event) {
+          console.log("[screen bridge] __TAURI__.event found — registering listeners");
           window.__TAURI__.event.listen("file-dropped", (event) => {
+            console.log("[screen bridge] file-dropped:", event.payload);
             window.dispatchEvent(new CustomEvent("file-dropped", {
               detail: event.payload
             }));
@@ -43,11 +45,15 @@
           // Drag-state events (M-POLISH.1). Payload-less — the visual
           // toggle lives entirely in Leptos signal-land.
           window.__TAURI__.event.listen("file-drag-enter", () => {
+            console.log("[screen bridge] file-drag-enter");
             window.dispatchEvent(new CustomEvent("file-drag-enter"));
           });
           window.__TAURI__.event.listen("file-drag-leave", () => {
+            console.log("[screen bridge] file-drag-leave");
             window.dispatchEvent(new CustomEvent("file-drag-leave"));
           });
+        } else {
+          console.warn("[screen bridge] __TAURI__.event NOT found — running outside Tauri?");
         }
       });
 

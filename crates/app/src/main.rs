@@ -63,21 +63,33 @@ fn main() {
             //   - file-drag-leave: drop-zone reverts. Also emitted after
             //     a successful drop so the active visual doesn't stick.
             //   - file-dropped:    payload is the dropped path.
+            //
+            // Diagnostic eprintln on every drag-related event so a
+            // misbehaving dev environment shows up in stderr — once
+            // the chain is verified end-to-end the prints can drop to
+            // `tracing::trace!` (or come out entirely).
             if let WindowEvent::DragDrop(drag) = event {
                 match drag {
-                    DragDropEvent::Enter { .. } => {
+                    DragDropEvent::Enter { paths, .. } => {
+                        eprintln!(
+                            "tauri: DragDropEvent::Enter ({} path(s)) — emitting file-drag-enter",
+                            paths.len()
+                        );
                         if let Err(err) = window.emit("file-drag-enter", ()) {
                             eprintln!("failed to emit file-drag-enter event: {err}");
                         }
                     }
                     DragDropEvent::Leave => {
+                        eprintln!("tauri: DragDropEvent::Leave — emitting file-drag-leave");
                         if let Err(err) = window.emit("file-drag-leave", ()) {
                             eprintln!("failed to emit file-drag-leave event: {err}");
                         }
                     }
                     DragDropEvent::Drop { paths, .. } => {
+                        eprintln!("tauri: DragDropEvent::Drop ({} path(s))", paths.len());
                         if let Some(path) = paths.first() {
                             let payload = path.to_string_lossy().into_owned();
+                            eprintln!("tauri: emitting file-dropped → {payload}");
                             if let Err(err) = window.emit("file-dropped", payload) {
                                 eprintln!("failed to emit file-dropped event: {err}");
                             }
