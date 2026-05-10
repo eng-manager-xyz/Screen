@@ -360,25 +360,8 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
-        let format = self.output_format;
-        let w = base.width();
-        let h = base.height();
-        let blur_rt = RenderTexture::with_format(app, w, h, format);
-        let masked_rt = RenderTexture::with_format(app, w, h, format);
-
-        // 1. Blur the whole frame.
-        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
-
-        // 2. Generate / fetch the mask texture from the vector shape.
-        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
-
-        // 3. Compose blur × mask into masked_rt.
-        self.mask_compose
-            .apply(app, &blur_rt, &mask_arc, &masked_rt);
-
-        // 4. Copy base → output, then composite the masked blur over.
-        self.blit.blit(app, base, output.view());
-        self.blit.compose_over(app, &masked_rt, output);
+        let mask_arc = self.cached_vector_mask_texture(app, vector, base.width(), base.height());
+        self.compose_blur_through_mask(app, base, radius, &mask_arc, output);
     }
 
     /// Composition primitive — render `base`, with `shape` filled by
@@ -499,6 +482,116 @@ impl Renderer {
         // 4. Copy base → output, then composite masked redaction over.
         self.blit.blit(app, base, output.view());
         self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose privacy blur through an explicit alpha-mask texture
+    /// (M-DYN.3 / AUT-45). Lower-level than [`Self::apply_privacy_blur`]:
+    /// the caller supplies the mask texture, which lets multiple
+    /// effects share one mask without regenerating it. Same composition
+    /// shape as the high-level method:
+    ///
+    /// ```text
+    ///   base ─ BlurFilter(radius) ──► blur_rt
+    ///                                    │
+    ///                  blur_rt × mask  ── masked_rt   ← apply_mask_to_texture
+    ///                                    │
+    ///   base ─────────────────────────► output  (REPLACE)
+    ///   masked_rt ─────────────────────► output  (compose_over)
+    /// ```
+    ///
+    /// Use case: when a region is being privacy-blurred *and*
+    /// solid-redacted *and* spotlighted on the same frame, generate
+    /// the mask once via
+    /// [`Self::cached_vector_mask_texture`](Self::cached_vector_mask_texture)
+    /// and pass the result to all three composition primitives.
+    pub fn compose_blur_through_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        radius: f32,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let blur_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
+        self.mask_compose.apply(app, &blur_rt, mask, &masked_rt);
+        self.blit.blit(app, base, output.view());
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose solid-color redaction through an explicit alpha-mask
+    /// texture (M-DYN.4 / AUT-46). Sister of
+    /// [`Self::compose_blur_through_mask`] — same shape, but the
+    /// "what's inside" is a solid color instead of a blur.
+    pub fn compose_solid_through_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        color: Color,
+        mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::compose_solid fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::compose_solid fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        self.mask_compose.apply(app, &fill_rt, mask, &masked_rt);
+        self.blit.blit(app, base, output.view());
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Compose dim-outside (spotlight) through an explicit *inverted*
+    /// alpha-mask texture (M-DYN.5 / AUT-47). The mask should already
+    /// be inverted (e.g., from
+    /// [`Self::cached_mask_texture_inverted`]); this primitive just
+    /// composes a constant `dim_color` through it.
+    pub fn compose_dim_through_inverted_mask(
+        &self,
+        app: &Application,
+        base: &RenderTexture,
+        dim_color: Color,
+        inverted_mask: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        // Same as compose_solid_through_mask — the "inverted" part
+        // is purely about how the mask was generated upstream. The
+        // composition itself just multiplies fill × mask.alpha.
+        self.compose_solid_through_mask(app, base, dim_color, inverted_mask, output);
     }
 
     /// Compose `foreground × mask.alpha` into `output` (M-VEC.4..6 /

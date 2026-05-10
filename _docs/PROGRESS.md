@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-DYN.3..6 — Explicit-mask composition primitives (AUT-45 / -46 / -47 / -48)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes four P1 mask-followup tickets in one chunk. Lower-level companion primitives that take the mask texture as an explicit parameter, allowing one mask to be shared across multiple effects in the same frame.
+- **Linear:** [AUT-45](https://linear.app/harwood/issue/AUT-45), [AUT-46](https://linear.app/harwood/issue/AUT-46), [AUT-47](https://linear.app/harwood/issue/AUT-47), [AUT-48](https://linear.app/harwood/issue/AUT-48).
+- **Files:** `crates/wisp/src/render.rs` adds `compose_blur_through_mask` (M-DYN.3), `compose_solid_through_mask` (M-DYN.4), `compose_dim_through_inverted_mask` (M-DYN.5). M-DYN.6 (webcam crop dynamic texture) is satisfied by the existing `apply_clip_vector` with `VectorShape::Circle` / `RoundedRect` — pure documentation. Refactored `apply_privacy_blur_vector` to delegate to `compose_blur_through_mask`. New `crates/wisp/tests/blur_mask_reuse.rs` (2 cases). New `crates/wisp/tests/compose_through_mask.rs` (2 cases). New `_docs/book/src/wisp/chunks/compose-through-mask.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 19 existing privacy-blur tests still pass; 4 new tests pass; full `just gate` green.
+- **Why batch four issues into one chunk?** They're all the same architectural pattern — "expose the mask texture as an explicit parameter to the composition primitive." Shipping them separately would have meant 4 PROGRESS entries / 4 chapters / 4 commits for what is one coherent design decision. Linked them in a single chapter that covers all four.
+- **M-DYN.6 needed no new code.** Spec said "webcam overlays should crop through the dynamic mask path." `apply_clip_vector(vec_circle_or_rounded_rect, foreground, output)` already does exactly that — generates mask via `MaskTexturePipeline`, composes via `MaskComposePipeline`. Documented the connection explicitly so M-DYN.6 isn't lost.
+- **High-level methods now route through the explicit primitives.** `apply_privacy_blur_vector` is a one-liner that calls `compose_blur_through_mask` with the cached mask. The high-level path stays ergonomic; the low-level path stays composable.
+
+---
+
 ## Export + copy-frame mask parity (AUT-27 + AUT-33)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — both P0 mask-followups closed in one chunk. Five export-parity tests + three copy-frame tests lock in: every mask primitive produces identical bytes whether you render to a preview view or to an export RT, and `read_pixels` returns the masked content (not the base).
