@@ -23,6 +23,7 @@ mod mesh_pipeline;
 mod path_clip;
 mod path_mask_texture;
 mod quad_pipeline;
+mod scene_walk;
 mod sprite_pipeline;
 mod text_pipeline;
 mod triangle_pipeline;

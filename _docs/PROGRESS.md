@@ -6,6 +6,53 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.2 — Cosmic Text layout backend (AUT-76)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `FlexibleTextEngine` (Cosmic Text) lands behind the M-TEXT.1 trait surface. Layout half only; rasterization is M-TEXT.3 (`glyphon`).
+- **Linear:** [AUT-76](https://linear.app/harwood/issue/AUT-76).
+- **Files:** `crates/wisp/Cargo.toml` adds `cosmic-text = "0.12"` (default-features = false, std + swash). `deny.toml` adds `NCSA` to allowed licenses. New `crates/wisp/src/text/flexible.rs` with `FlexibleTextEngine { font_system: Mutex<FontSystem> }` (impl `WispTextEngine`) + `FlexibleTextLayout` (impl `WispTextLayout`) carrying a private `cosmic_text::Buffer`. `crates/wisp/src/text/mod.rs` + `crates/wisp/src/lib.rs` re-export. New `_docs/book/src/wisp/text/flexible-cosmic.md` chapter.
+- **Verified:** 6 unit tests cover empty content, single-line metrics, multi-line via `\n`, word-wrap behavior at tight widths, weight/italic attrs passthrough, and engine `Send + Sync` contract. `just gate` green at 289 tests (283 + 6 new).
+- **NDC ↔ pixel basis — `REFERENCE_PX = 1000`.** Cosmic Text is pixel-based; wisp is NDC-based. The engine multiplies `style.size_ndc` by 1000 to get cosmic-text font size and divides glyph positions back by 1000. Picked because (a) numbers stay within f32 precision, (b) sub-pixel headroom for size_ndc=0.06 (60 px caption), (c) matches glyphon's atlas-cache assumptions. Renderer rescales to actual target at draw time — same `FlexibleTextLayout` can be drawn into any-size target without re-shaping.
+- **`cosmic_text::*` does not leak.** `FlexibleTextLayout::buffer` is `pub(crate)` only; the public surface is `WispTextLayout::metrics()` plus `Debug` (which omits the buffer). Glyphon renderer (M-TEXT.3) reads the buffer through the crate-private accessor.
+- **`FontSystem` is `!Sync`** — wrapped in a `Mutex` so the engine can satisfy `Send + Sync`. The `engine_is_send_and_sync` test locks this contract at compile time.
+- **`set_text` API surprise:** cosmic-text 0.12 takes `Attrs<'_>` by value, not `&Attrs<'_>`. Trip cost: one recursive-fix iteration. Lesson added to CLAUDE.md.
+
+---
+
+## M-TEXT.4 — Atlas text backend formalized (AUT-78)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — formalizes the M0.15 bitmap path as `AtlasText` behind the M-TEXT.1 trait surface. The existing `scene::Text` node + `text_pipeline` keep driving on-GPU draws; this chunk lands the *layout half* (`AtlasTextEngine` + `AtlasTextLayout`) so M-TEXT.5 can route the same data through render-to-texture for masks / filters / blends.
+- **Linear:** [AUT-78](https://linear.app/harwood/issue/AUT-78).
+- **Files:** converted `crates/wisp/src/text.rs` → `crates/wisp/src/text/mod.rs`. New `crates/wisp/src/text/atlas.rs` with `AtlasGlyphInstance`, `AtlasTextLayout` (impl `WispTextLayout`), `AtlasTextEngine` (impl `WispTextEngine`). Added `PartialEq` to `scene::text::GlyphMetrics` so glyph instances can be compared in tests. `crates/wisp/src/lib.rs` re-exports the new types. New `_docs/book/src/wisp/text/atlas-vs-flexible.md` chapter with the `AtlasText` vs `FlexibleText` comparison table. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 7 unit tests cover empty-text, single-line glyph emission, newline/y-advance, non-ASCII drop, center-align line shift, weight/italic-no-op (atlas contract), and total-height metric. Full `just gate` green at 283 tests (276 + 7 new atlas tests). The M0.15 `scene::Text` + `text_pipeline` path is unchanged — no behavior regression.
+- **Layout semantics — `style.size_ndc` is the cell side length.** font8x8 cells are square so width = height = `size_ndc`. Advance = `size_ndc + style.letter_spacing_ndc`. Line step = `size_ndc * style.line_height`. `text.max_width_ndc` is **ignored** by `AtlasText` (no soft wrap; `\n` only). Codepoints ≥ 128 are silently dropped — matches existing M0.15 behavior.
+- **Weight + italic are no-ops at the atlas layer.** Bitmap atlases have one rasterization. The fields are accepted so a single `WispTextStyle` survives a backend swap. `FlexibleText` (M-TEXT.3) honors them. Test `weight_and_italic_do_not_change_atlas_layout` locks this contract.
+- **`AtlasTextEngine::layout_concrete`** preserves the concrete `AtlasTextLayout` return type for the renderer side. `<Self as WispTextEngine>::layout` boxes for dyn dispatch.
+
+---
+
+## M-TEXT.1 — Wisp text abstraction + backend boundary (AUT-75)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — data layer + trait surface for the M-TEXT track. Backends plug in behind `WispTextEngine` / `WispTextRenderer`; the project format and inspector controls stay backend-stable across upgrades.
+- **Linear:** [AUT-75](https://linear.app/harwood/issue/AUT-75).
+- **Files:** new `crates/wisp/src/text.rs` (since M-TEXT.4 promoted to `text/mod.rs`) defining `WispText`, `WispTextStyle`, `WispTextMetrics`, `WispFontHandle`, `WispFontWeight`, `WispFontStyle`, `WispTextAlign`, plus `WispTextLayout` / `WispTextEngine` / `WispTextRenderer` traits. `crates/wisp/src/lib.rs` re-exports the surface. New `_docs/book/src/wisp/text/architecture.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 5 unit tests cover weight clamping, named-weight CSS values, `WispTextStyle` defaults, builder chains, and `WispText` builder semantics. `just gate` green at 276 tests.
+- **API design — `WispFontHandle(u32)`.** Opaque numeric handle. Atlas backend treats it as a slot id; Cosmic Text backend will treat it as a `Family + Weight + Style` query result. Keeps the project format stable across backend swaps.
+- **`WispTextLayout: Send + Sync`** so caches (M-DYN.2-style for text layouts) can hold them across frames. Engines + renderers may be `&self` so the `Renderer` struct holds them without interior mutability contention.
+
+---
+
+## M-TEXT.0 — Shared scene traversal + transform helpers (AUT-74)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — pure refactor. Foundation chunk for the M-TEXT track.
+- **Linear:** [AUT-74](https://linear.app/harwood/issue/AUT-74).
+- **Files:** new `crates/wisp/src/render/scene_walk.rs` with `walk_visible_subtree(stage, start, exclude, |id, node, world|)` + `mat3_to_mat4(Mat3) -> Mat4` helpers. Refactored `crates/wisp/src/render/sprite_pipeline.rs`, `graphics_pipeline.rs`, `mesh_pipeline.rs`, and `text_pipeline.rs` to use the helpers — removed 4× duplicated traversal-stack loops and 4× duplicated `mat3_to_mat4` definitions. `crates/wisp/src/render.rs` adds the new mod declaration.
+- **Verified:** 5 unit tests cover preorder traversal, exclude-set filtering, invisible-node skipping (self + descendants), parent-world transform accumulation, and `mat3_to_mat4` correctness. Full `just gate` green at 271 tests (266 + 5 new scene_walk tests). All existing renderer tests pass byte-equivalent — no behavior change.
+- **Why this first.** The next chunk (M-TEXT.1) introduces a `WispText*` trait boundary and two new backends (`AtlasText` + `FlexibleText`). Each backend will need scene traversal; extracting it once keeps the new code from duplicating what the existing pipelines already had.
+- **Lesson reinforced:** clippy `field_reassign_with_default` rejects `let mut x = X::default(); x.field = ...`. Use `X { field: ..., ..X::default() }` literal-form instead. Already documented under "Cast hygiene" pattern; tripped me again here.
+
+---
+
 ## M-VEC.12 — Vector primitive examples gallery (AUT-64) — phase complete
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the M-VEC track. Single-canvas storybook entry tying together the entire vector catalog plus an mdBook chapter that indexes every M-DYN / M-VEC chunk.

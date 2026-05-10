@@ -8,13 +8,14 @@
 use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat3, Mat4, Vec4};
+use glam::Mat4;
 use wgpu::util::DeviceExt;
 
 use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::color::Color;
 use crate::render::blend_pipeline::BlendPipelineMap;
+use crate::render::scene_walk::walk_visible_subtree;
 use crate::scene::{Node, NodeId, Sprite, Stage};
 use crate::texture::Texture;
 
@@ -195,29 +196,11 @@ fn collect_batches(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> V
     let mut grouped: HashMap<Key, (Texture, BlendMode, Vec<SpriteInstance>)> = HashMap::new();
     let mut order: Vec<Key> = Vec::new();
 
-    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
-    while let Some((id, parent_world)) = stack.pop() {
-        if exclude.contains(&id) {
-            continue;
-        }
-        let Some(node) = stage.get(id) else {
-            continue;
-        };
-        let container = node.container();
-        if !container.visible {
-            continue;
-        }
-        let local = mat3_to_mat4(container.transform.to_mat3());
-        let world = parent_world * local;
-
+    walk_visible_subtree(stage, start, exclude, |_id, node, world| {
         if let Node::Sprite(sprite) = node {
             push_sprite_instance(sprite, world, &mut grouped, &mut order);
         }
-
-        for child in container.children().rev().collect::<Vec<_>>() {
-            stack.push((child, world));
-        }
-    }
+    });
 
     order
         .into_iter()
@@ -264,13 +247,4 @@ fn with_premultiplied_alpha(tint: Color, alpha: f32) -> Color {
         b: tint.b,
         a: tint.a * alpha,
     }
-}
-
-fn mat3_to_mat4(m: Mat3) -> Mat4 {
-    Mat4::from_cols(
-        Vec4::new(m.x_axis.x, m.x_axis.y, 0.0, 0.0),
-        Vec4::new(m.y_axis.x, m.y_axis.y, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 1.0, 0.0),
-        Vec4::new(m.z_axis.x, m.z_axis.y, 0.0, 1.0),
-    )
 }
