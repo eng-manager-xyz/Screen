@@ -91,10 +91,12 @@ pub mod clock;
 pub mod gstreamer;
 pub mod histogram;
 pub mod manifest;
+pub mod mock_audio;
 pub mod video;
 
 pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
+pub use mock_audio::{SilenceSource, SineWaveSource, StepPulseSource};
 pub use video::{VideoFrame, VideoStream};
 
 #[cfg(test)]

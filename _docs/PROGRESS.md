@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.4 — Deterministic mock audio sources (AUT-100)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `SineWaveSource`, `SilenceSource`, `StepPulseSource` ship as the byte-exact reproducible audio inputs every M-MEDIA test consumes. No microphone, no GStreamer.
+- **Linear:** [AUT-100](https://linear.app/harwood/issue/AUT-100).
+- **Files:** new `crates/media/src/mock_audio.rs`. `crates/media/src/lib.rs` registers + re-exports the three sources. New `_docs/book/src/media/mock-sources.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover sample counts, stereo interleave, peak ≈ amplitude, RMS ≈ A/√2 (the canonical sinusoid identity), PTS-advance across calls, silence → zeros, spike at expected frame, spike outside window (cross-chunk boundary), stereo spike fills both channels, no-GStreamer-or-device-dep contract, `Send + Sync`. Full `just gate` green at 348 tests (337 + 11 new).
+- **Three shapes match M-MEDIA.8's three assertions.** Silence → zero bars. Sine → stable RMS. Pulse → expected peak. The same sources used to test the histogram quantizer (M-MEDIA.8) will be used to test the histogram→Wisp render path (M-MEDIA.10) and the GStreamer-audio→histogram example (M-MEDIA.11). One reference, three layers of consumers.
+- **PTS comes from `MediaTime::from_sample`.** Two successive `next_chunk(48_000)` calls on a 48 kHz source produce chunks with `pts = 0 s` and `pts = 1 s` exactly — no rounding drift across long sessions thanks to the round-half-up in M-MEDIA.2's clock.
+
+---
+
 ## M-MEDIA.3 — Audio sample + chunk data model (AUT-99)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `AudioFormat` + `AudioChunk` ship as the single shared audio data model. Every M-MEDIA chunk that touches audio (capture, mock sources, histogram, mic) flows through this type.
