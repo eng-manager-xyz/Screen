@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.2 — Render vector primitives to scene geometry (AUT-54)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — thin layer on top of the existing graphics rasterizer; Vector primitives now appear in `render_stage` output.
+- **Linear:** [AUT-54](https://linear.app/harwood/issue/AUT-54).
+- **Files:** `crates/wisp/src/scene/vector.rs` adds `Vector::to_graphics()` (analytic shapes → `Graphics`; path returns `None`) and `Vector::add_to_stage()` convenience wrapper. `crates/wisp/src/scene/vector.rs` includes a `scale_fill_alpha` helper that folds opacity into all three `Fill` variants (Solid / LinearGradient / RadialGradient). New `crates/wisp/tests/vector_render.rs` (4 cases). New `crates/wisp-storybook/src/stories/s_vector_render.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/vector-render.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/vector-render.png`.
+- **Verified:** 4 vector-render tests pass; storybook smoke + fingerprint green; PNG visually checked (teal rect / amber rounded / gradient circle / green-stroke ellipse / 40%-opacity white rounded-rect).
+- **No new pipeline.** The existing graphics rasterizer already handles rect / rounded-rect / ellipse — `Vector::to_graphics()` is a match-arms walker that picks the right `Graphics::draw_*` call. Circle is `Ellipse(half = (r, r))`, same trick as M-MASK.8 used for `MaskShape::Circle`.
+- **Opacity folded into paint at conversion time.** The renderer has no per-node opacity channel; multiplying the alpha component of fill + stroke colors at conversion is the practical equivalent. Matches PixiJS semantics ("opacity on the graphics primitive").
+- **Path rendering deferred.** `VectorShape::Path` returns `None` from `to_graphics()` — the graphics rasterizer has no draw_path primitive. M-VEC.10 (AUT-62) adds path stroke + fill commands; until then, paths drive masks only.
+- **Borrow gotcha** (test code): `v.add_to_stage(&mut stage, stage.root())` doesn't compile — `stage.root()` borrows `stage` immutably while `&mut stage` is held. Bind `let root = stage.root();` first. Same pattern existing M-MASK tests already use; just had to remember to apply it to the new `add_to_stage` API.
+
+---
+
 ## M-VEC.1 — Vector shape primitive model in wisp (AUT-53)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — data-only chunk; rendering layers on in M-VEC.2/.3.

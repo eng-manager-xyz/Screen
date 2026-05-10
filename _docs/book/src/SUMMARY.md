@@ -48,6 +48,7 @@
   - [Dynamic mask textures — M-DYN.1](./wisp/chunks/mask-texture.md)
   - [Mask texture cache — M-DYN.2](./wisp/chunks/mask-cache.md)
   - [Vector shape model — M-VEC.1](./wisp/chunks/vector-model.md)
+  - [Render vector primitives — M-VEC.2](./wisp/chunks/vector-render.md)
 
 # `decode` — video decode
 

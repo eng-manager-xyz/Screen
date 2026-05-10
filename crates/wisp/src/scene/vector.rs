@@ -271,6 +271,91 @@ impl Vector {
         self.transform = transform;
         self
     }
+
+    /// Convert this vector primitive to a [`Graphics`](crate::scene::Graphics)
+    /// node ready to add to the stage. Honors `fill` / `stroke` /
+    /// `opacity` / `transform`. Returns `None` for [`VectorShape::Path`]
+    /// — visible path rendering is deferred to **M-VEC.10 / AUT-62**;
+    /// today, paths can only drive masks via the path-clip primitives.
+    ///
+    /// `opacity` is folded into the fill + stroke colors as an alpha
+    /// multiplier (the renderer doesn't yet have a per-node opacity
+    /// channel; this is the practical equivalent for V1).
+    #[must_use]
+    pub fn to_graphics(&self) -> Option<crate::scene::Graphics> {
+        use crate::scene::Graphics;
+        let opacity = self.opacity.clamp(0.0, 1.0);
+        let mut g = Graphics::new();
+        g.container.transform = self.transform;
+        if let Some(fill) = self.fill {
+            g.fill(scale_fill_alpha(fill, opacity));
+        }
+        if let Some(stroke) = self.stroke {
+            g.stroke(Some(crate::scene::Stroke {
+                width: stroke.width,
+                color: stroke.color.with_alpha(stroke.color.a * opacity),
+            }));
+        }
+        match &self.shape {
+            VectorShape::Rect { rect } => {
+                g.draw_rect(*rect);
+            }
+            VectorShape::RoundedRect { rect, radius } => {
+                g.draw_rounded_rect(*rect, *radius);
+            }
+            VectorShape::Circle { center, radius } => {
+                g.draw_ellipse(*center, Vec2::splat(*radius));
+            }
+            VectorShape::Ellipse {
+                center,
+                half_extents,
+            } => {
+                g.draw_ellipse(*center, *half_extents);
+            }
+            VectorShape::Path { .. } => return None,
+        }
+        Some(g)
+    }
+
+    /// Add this vector primitive to `stage` under `parent`, honoring
+    /// fill / stroke / opacity / transform. Returns the new node ID,
+    /// or `None` if the shape is a path (deferred to M-VEC.10).
+    pub fn add_to_stage(
+        &self,
+        stage: &mut crate::scene::Stage,
+        parent: crate::scene::NodeId,
+    ) -> Option<crate::scene::NodeId> {
+        let g = self.to_graphics()?;
+        stage.add_child(parent, g)
+    }
+}
+
+fn scale_fill_alpha(fill: Fill, opacity: f32) -> Fill {
+    match fill {
+        Fill::Solid(c) => Fill::Solid(c.with_alpha(c.a * opacity)),
+        Fill::LinearGradient {
+            start,
+            end,
+            color_a,
+            color_b,
+        } => Fill::LinearGradient {
+            start,
+            end,
+            color_a: color_a.with_alpha(color_a.a * opacity),
+            color_b: color_b.with_alpha(color_b.a * opacity),
+        },
+        Fill::RadialGradient {
+            center,
+            radius,
+            color_a,
+            color_b,
+        } => Fill::RadialGradient {
+            center,
+            radius,
+            color_a: color_a.with_alpha(color_a.a * opacity),
+            color_b: color_b.with_alpha(color_b.a * opacity),
+        },
+    }
 }
 
 #[cfg(test)]
