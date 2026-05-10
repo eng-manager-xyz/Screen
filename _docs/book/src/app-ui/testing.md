@@ -141,12 +141,17 @@ support is half-implemented and `tauri-driver` doesn't reliably drive
 it. The community pattern is "Linux CI gates everything; mac is manual
 smoke before tagging."
 
-This workspace runs Tier 2 on `ubuntu-latest` only. The `just e2e`
-recipe detects the host OS:
+**Tier 2 is intentionally local-only** — the `just e2e` recipe is not
+part of the CI gate. `tauri-driver` + `WebKitGTK` under `xvfb` on
+GitHub-hosted Ubuntu runners proved flaky enough that the
+skip-or-fail signal stopped being useful. Contributors run it locally
+before opening any PR that touches `crates/app/`, `crates/app-ui/`, or
+`crates/app-e2e/`. The recipe detects the host OS:
 
 - **Linux:** runs `xvfb-run cargo nextest run -p app-e2e`.
-- **macOS:** prints a clear "skipping — see [Player IPC chapter] for
-  manual smoke procedure" message and exits 0.
+- **macOS:** prints a clear "skipping — Tauri WKWebView WebDriver
+  doesn't drive reliably" message and exits 0; do a manual smoke via
+  `cargo tauri dev` instead.
 
 ### Local prerequisites (Linux)
 

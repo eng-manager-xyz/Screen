@@ -95,9 +95,7 @@ jobs:
             libxcb1-dev \
             libxcursor-dev \
             libxrandr-dev \
-            libxi-dev \
-            webkit2gtk-driver \
-            xvfb
+            libxi-dev
 
       - name: Configure wgpu for Linux headless CI
         if: matrix.os == 'ubuntu-latest'
@@ -120,17 +118,9 @@ jobs:
       - name: just gate
         run: just gate
 
-      # ─── Tier-2 e2e (Linux only) ────────────────────────────────────────
-      # macOS can't drive Tauri webviews via WebDriver reliably (Apple
-      # WKWebView's WebDriver story is incomplete); the `just e2e` recipe
-      # detects the platform and prints a clear skip message there.
-      # Ubuntu runs the full WebDriver suite under xvfb-run.
-      - name: Install tauri-driver
-        if: matrix.os == 'ubuntu-latest'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: tauri-driver
-
-      - name: just e2e
-        if: matrix.os == 'ubuntu-latest'
-        run: just e2e
+      # ─── Tier-2 e2e (local only) ────────────────────────────────────────
+      # `just e2e` is intentionally NOT run in CI. tauri-driver + WebKitGTK
+      # under xvfb on GitHub-hosted Ubuntu runners proved flaky enough that
+      # the skip-or-fail signal stopped being useful. Contributors run it
+      # locally before opening a PR that touches the Tauri shell — see
+      # `_docs/book/src/app-ui/testing.md` for the procedure.
