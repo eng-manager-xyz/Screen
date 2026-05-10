@@ -119,3 +119,52 @@ async fn wait_video_paused(driver: &Client, want_paused: bool) -> Result<()> {
         "video.paused did not reach {want_paused} within {ELEMENT_WAIT:?}"
     ))
 }
+
+#[tokio::test]
+async fn drag_enter_leave_toggles_active_class() -> Result<()> {
+    let app = E2eApp::start().await?;
+    let driver = app.client();
+
+    // Wait for the initial drop-zone (idle).
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".drop-zone-idle"))
+        .await?;
+
+    // 1. Synthesize a drag-enter via the debug command.
+    let _: serde_json::Value = driver
+        .execute_async(
+            r"
+            const [callback] = arguments;
+            window.__TAURI__.core.invoke('__test_drag_enter').then(callback);
+            ",
+            vec![],
+        )
+        .await?;
+
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".drop-zone-active"))
+        .await?;
+
+    // 2. Synthesize a drag-leave — should revert.
+    let _: serde_json::Value = driver
+        .execute_async(
+            r"
+            const [callback] = arguments;
+            window.__TAURI__.core.invoke('__test_drag_leave').then(callback);
+            ",
+            vec![],
+        )
+        .await?;
+
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".drop-zone-idle"))
+        .await?;
+
+    Ok(())
+}

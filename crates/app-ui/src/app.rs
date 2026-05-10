@@ -31,8 +31,14 @@ pub fn App() -> impl IntoView {
     // view re-renders whenever the Rust-side session state changes.
     let (player_status, set_player_status) = signal::<PlayerStatus>(PlayerStatus::default());
 
+    // Drag-over visual feedback (M-POLISH.1). Flips on `file-drag-enter`,
+    // resets on `file-drag-leave` (which Tauri fires after a successful
+    // drop too — see main.rs's `on_window_event`).
+    let (is_dragging, set_dragging) = signal::<bool>(false);
+
     install_file_drop_listener(set_loaded);
     install_player_status_listener(set_player_status);
+    install_drag_state_listeners(set_dragging);
 
     let on_demo_load = move |_| {
         set_loaded.set(Some("Recording 01.mp4 (demo)".into()));
@@ -49,13 +55,22 @@ pub fn App() -> impl IntoView {
             <main class="shell-main">
                 <Show
                     when=move || loaded.get().is_some()
-                    fallback=move || view! {
-                        <div class="shell-drop-wrap" on:click=on_demo_load>
-                            <DropZone
-                                state=DropZoneState::Idle
-                                hint="Drop an MP4 here, or click for a demo"
-                            />
-                        </div>
+                    fallback=move || {
+                        let drop_state = move || if is_dragging.get() {
+                            DropZoneState::Active
+                        } else {
+                            DropZoneState::Idle
+                        };
+                        view! {
+                            <div class="shell-drop-wrap" on:click=on_demo_load>
+                                {move || view! {
+                                    <DropZone
+                                        state=drop_state()
+                                        hint="Drop an MP4 here, or click for a demo"
+                                    />
+                                }}
+                            </div>
+                        }
                     }
                 >
                     <PlayerView loaded=loaded player_status=player_status />
@@ -197,4 +212,27 @@ fn install_file_drop_listener(set_loaded: WriteSignal<Option<String>>) {
     let _ =
         window.add_event_listener_with_callback("file-dropped", closure.as_ref().unchecked_ref());
     closure.forget();
+}
+
+/// Wire the `file-drag-enter` / `file-drag-leave` browser-event
+/// listeners that flip the `is_dragging` signal driving the
+/// `<DropZone>`'s active visual state. Both closures are leaked
+/// (app-lifetime listeners), matching the file-drop-listener pattern.
+fn install_drag_state_listeners(set_dragging: WriteSignal<bool>) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let enter = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        set_dragging.set(true);
+    }) as Box<dyn FnMut(_)>);
+    let _ =
+        window.add_event_listener_with_callback("file-drag-enter", enter.as_ref().unchecked_ref());
+    enter.forget();
+
+    let leave = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        set_dragging.set(false);
+    }) as Box<dyn FnMut(_)>);
+    let _ =
+        window.add_event_listener_with_callback("file-drag-leave", leave.as_ref().unchecked_ref());
+    leave.forget();
 }

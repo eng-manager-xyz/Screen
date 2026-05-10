@@ -133,13 +133,43 @@ cd crates/app && cargo tauri build
 Drop any file on the running window; the path appears under "Preview
 surface · " in the player view.
 
+## Drag-over visual feedback (M-POLISH.1)
+
+Tauri 2 fires four `DragDropEvent` variants — `Enter`, `Over`, `Drop`,
+`Leave`. M-INT.2 only handled `Drop`. M-POLISH.1 adds `Enter` and
+`Leave` so the drop-zone shows the user "yes, this drop will land here":
+
+```rust
+// crates/app/src/main.rs
+match drag {
+    DragDropEvent::Enter { .. } => emit("file-drag-enter"),
+    DragDropEvent::Leave => emit("file-drag-leave"),
+    DragDropEvent::Drop { paths, .. } => {
+        emit("file-dropped", path);
+        emit("file-drag-leave");  // reset visual after drop
+    }
+    _ => {}  // Over and any future variants
+}
+```
+
+The JS bridge re-emits as browser CustomEvents (parallel to
+`file-dropped` / `player-status`). Leptos installs an `is_dragging`
+signal that flips on enter/leave; the existing
+[`DropZoneState::Active`](../api/ui_storybook/components/drop_zone/enum.DropZoneState.html)
+variant the storybook already shipped (M-UI.1) provides the visual.
+
+Tier-2 e2e (`crates/app-e2e/tests/golden_path.rs`) uses
+`__test_drag_enter` and `__test_drag_leave` debug-only commands —
+parallel to `__test_drop_file` since WebDriver can't synthesize
+OS-level drag events.
+
 ## What's NOT here yet
 
 - **Filtering by extension.** Any file path is accepted today;
-  M-PLAY.2 will reject non-video paths server-side.
-- **Actual playback.** The dropped path is just shown as text. The
-  native winit preview window that consumes the path (M-PREVIEW.1)
-  and the IPC plumbing that hands it off (M-PLAY.2) come next.
+  M-POLISH.2 will reject non-video paths with an inline error message.
+- **Drop-while-loaded reset UI.** Dropping a new file while one is
+  already loaded works (the path signal flips), but there's no
+  "← Load another" affordance yet — that's M-POLISH.3.
 
 ## App-shell visual references
 

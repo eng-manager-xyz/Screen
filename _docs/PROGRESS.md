@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-POLISH.1 — Drag-over visual feedback
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first polish chunk on the milestone-1 Phase 4 list (M4.1).
+- **Files:** `crates/app/src/main.rs` (extended `on_window_event` to match all `DragDropEvent` variants — `Enter`/`Drop`/`Leave` emit corresponding Tauri events; `Over` and future variants are no-ops since the enum is `non_exhaustive`); `crates/app/src/commands.rs` (two new debug-only commands `__test_drag_enter`/`__test_drag_leave`); `crates/app/src/main.rs` registers them conditionally; `crates/app-ui/index.html` (JS bridge re-emits `file-drag-enter`/`file-drag-leave` as browser CustomEvents); `crates/app-ui/src/app.rs` (`is_dragging` signal + `install_drag_state_listeners` + reactive `DropZoneState::{Idle | Active}` binding via a closure inside the `<Show>` fallback); `crates/app-e2e/tests/golden_path.rs` (new `drag_enter_leave_toggles_active_class` test); `_docs/book/src/app-ui/integration.md` extended with the M-POLISH.1 section.
+- **Verified:** `just gate` green; `trunk build` clean WASM bundle; `cargo check -p app-e2e --tests` green so the new e2e test compiles for the next Linux CI run.
+- **Architecture lock:** drag-state lives entirely in Tauri-event-land. We deliberately don't use HTML5 `dragenter`/`dragleave` because Tauri 2 with `dragDropEnabled: true` captures OS-level drags before they bubble into the webview. Re-emitting Tauri's variants through the existing JS bridge keeps the drag-state path symmetric with `file-dropped` and `player-status` — same shape, three times now. Future events (drag-position for cursor crosshairs, etc.) follow the same pattern.
+- **Reset-on-drop is intentional:** Tauri's `Leave` event fires *only* when the drag exits the window, not after a drop. So `Drop` also emits `file-drag-leave` to reset the visual, otherwise the active class would stick after a successful drop until the next `Enter`/`Leave` cycle.
+- **e2e UPDATED** (per the testing strategy's tier-2 obligation): new test calls `__test_drag_enter` → asserts `.drop-zone-active` appears → calls `__test_drag_leave` → asserts `.drop-zone-idle` returns. Two-test golden suite now: `golden_path_drop_play_pause` (file → play → pause) and `drag_enter_leave_toggles_active_class` (drag visual).
+- **DropZone component reuse:** the `Active` variant the storybook shipped in M-UI.1 already had thicker border + accent tint + `Release to import` headline. M-POLISH.1 is purely the *wiring* — no new CSS, no component changes. That's the point of the storybook discipline: components ship complete, integration just connects them.
+- **No new clippy lessons:** the auto-fixable patterns from M-PLAY.3 (doc-markdown, format args) didn't recur. Pure composition.
+
+---
+
 ## M-PLAY.3 — `<video>` preview bound to convertFileSrc + e2e coverage
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first user-visible video playback in the recorder. Maps to milestone-1 chunks M3.1 (path → asset URL) + M3.2 (VideoPlayer component); M3.3 (view switching) was already in place via `<Show>`.

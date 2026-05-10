@@ -43,6 +43,8 @@ fn main() {
                     commands::player_pause,
                     commands::player_status,
                     commands::__test_drop_file,
+                    commands::__test_drag_enter,
+                    commands::__test_drag_leave,
                 ]
             }
             #[cfg(not(debug_assertions))]
@@ -56,12 +58,36 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event
-                && let Some(path) = paths.first()
-            {
-                let payload = path.to_string_lossy().into_owned();
-                if let Err(err) = window.emit("file-dropped", payload) {
-                    eprintln!("failed to emit file-dropped event: {err}");
+            // Three event flavors flow to the webview:
+            //   - file-drag-enter: drop-zone shows the active visual.
+            //   - file-drag-leave: drop-zone reverts. Also emitted after
+            //     a successful drop so the active visual doesn't stick.
+            //   - file-dropped:    payload is the dropped path.
+            if let WindowEvent::DragDrop(drag) = event {
+                match drag {
+                    DragDropEvent::Enter { .. } => {
+                        if let Err(err) = window.emit("file-drag-enter", ()) {
+                            eprintln!("failed to emit file-drag-enter event: {err}");
+                        }
+                    }
+                    DragDropEvent::Leave => {
+                        if let Err(err) = window.emit("file-drag-leave", ()) {
+                            eprintln!("failed to emit file-drag-leave event: {err}");
+                        }
+                    }
+                    DragDropEvent::Drop { paths, .. } => {
+                        if let Some(path) = paths.first() {
+                            let payload = path.to_string_lossy().into_owned();
+                            if let Err(err) = window.emit("file-dropped", payload) {
+                                eprintln!("failed to emit file-dropped event: {err}");
+                            }
+                        }
+                        // Reset the drag visual after a successful drop.
+                        if let Err(err) = window.emit("file-drag-leave", ()) {
+                            eprintln!("failed to emit file-drag-leave event: {err}");
+                        }
+                    }
+                    _ => {} // DragDropEvent is non_exhaustive (Over, future variants).
                 }
             }
         })

@@ -40,6 +40,14 @@
               detail: event.payload
             }));
           });
+          // Drag-state events (M-POLISH.1). Payload-less — the visual
+          // toggle lives entirely in Leptos signal-land.
+          window.__TAURI__.event.listen("file-drag-enter", () => {
+            window.dispatchEvent(new CustomEvent("file-drag-enter"));
+          });
+          window.__TAURI__.event.listen("file-drag-leave", () => {
+            window.dispatchEvent(new CustomEvent("file-drag-leave"));
+          });
         }
       });
 

@@ -65,3 +65,32 @@ pub fn __test_drop_file(app: tauri::AppHandle, path: String) -> Result<(), Strin
     use tauri::Emitter;
     app.emit("file-dropped", path).map_err(|e| e.to_string())
 }
+
+/// Test-only entry point: synthesize a `DragDropEvent::Enter` for the
+/// `WebDriver` e2e suite. Emits the same `file-drag-enter` event as the
+/// real OS drag-enter handler. Debug-only, parallel to [`__test_drop_file`].
+///
+/// # Errors
+///
+/// Returns the underlying [`tauri::Error`] message if the event emit
+/// fails.
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn __test_drag_enter(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+    app.emit("file-drag-enter", ()).map_err(|e| e.to_string())
+}
+
+/// Test-only entry point: synthesize a `DragDropEvent::Leave`.
+/// Pair with [`__test_drag_enter`].
+///
+/// # Errors
+///
+/// Returns the underlying [`tauri::Error`] message if the event emit
+/// fails.
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn __test_drag_leave(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+    app.emit("file-drag-leave", ()).map_err(|e| e.to_string())
+}
