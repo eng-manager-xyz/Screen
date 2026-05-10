@@ -52,6 +52,7 @@
   - [Vector → mask texture bridge — M-VEC.3](./wisp/chunks/vector-mask-bridge.md)
   - [Privacy blur on vector masks — M-VEC.4](./wisp/chunks/vector-privacy-blur.md)
   - [Solid redaction on vector masks — M-VEC.5](./wisp/chunks/vector-solid-redaction.md)
+  - [Clip + spotlight on vector masks — M-VEC.6](./wisp/chunks/vector-clip-spotlight.md)
 
 # `decode` — video decode
 

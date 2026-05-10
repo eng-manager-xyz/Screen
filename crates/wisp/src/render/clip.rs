@@ -141,19 +141,6 @@ impl ClipPipeline {
         self.apply_with_invert(app, shape, foreground, output, false);
     }
 
-    /// Same as [`Self::apply`] but with an inverted mask: pixels
-    /// outside the shape pass through, pixels inside get alpha 0.
-    /// Used by the spotlight / dim-outside primitives (AUT-28/-29).
-    pub(crate) fn apply_inverted(
-        &self,
-        app: &Application,
-        shape: MaskShape,
-        foreground: &RenderTexture,
-        output: &RenderTexture,
-    ) {
-        self.apply_with_invert(app, shape, foreground, output, true);
-    }
-
     fn apply_with_invert(
         &self,
         app: &Application,

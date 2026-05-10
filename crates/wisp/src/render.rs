@@ -219,7 +219,50 @@ impl Renderer {
         foreground: &RenderTexture,
         output: &RenderTexture,
     ) {
-        self.clip.apply(app, shape, foreground, output);
+        // M-VEC.6: explicit clip primitive routes through the
+        // separated mask + compose path. The auto-dispatch in
+        // `render_stage` keeps using the inline `clip` pipeline (hot
+        // path; refactoring it would add a render pass per dispatched
+        // node every frame).
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_clip_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            foreground,
+            output,
+        );
+    }
+
+    /// Vector-driven variant of [`Self::apply_clip`] (M-VEC.6 /
+    /// AUT-58). Generates the mask via the M-DYN.1 path (cached) and
+    /// composes against the foreground via [`Self::apply_mask_to_texture`].
+    /// Accepts paths.
+    pub fn apply_clip_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let w = foreground.width();
+        let h = foreground.height();
+        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
+        self.mask_compose.apply(app, foreground, &mask_arc, output);
     }
 
     /// Composition primitive — render `base`, blurred only inside
@@ -753,9 +796,48 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
+        // M-VEC.6 refactor: route through inverse-mask + compose.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_spotlight_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            dim_color,
+            base,
+            output,
+        );
+    }
+
+    /// Vector-driven variant of [`Self::apply_spotlight`] (M-VEC.6 /
+    /// AUT-58). Inverse-mask path: pixels OUTSIDE the shape are
+    /// dimmed by `dim_color`. Accepts paths.
+    pub fn apply_spotlight_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        dim_color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
         let format = self.output_format;
-        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
 
         // 1. Clear fill_rt to dim_color.
         let mut encoder = app
@@ -786,8 +868,28 @@ impl Renderer {
         }
         app.queue().submit(std::iter::once(encoder.finish()));
 
-        // 2. Inverse-clip the dim fill — opaque OUTSIDE the shape.
-        self.clip.apply_inverted(app, shape, &fill_rt, &masked_rt);
+        // 2. Generate the *inverse* mask texture (analytic shapes
+        // route through the cached inverted variant; paths are
+        // handled by the path-mask path which has no inverted form
+        // yet — fall back to applying clip-inverted on the existing
+        // pipeline for path shapes).
+        if let Some(mask_shape) = vector.shape.as_mask_shape() {
+            let mask_arc = self.cached_mask_texture_inverted(app, mask_shape, w, h);
+            self.mask_compose
+                .apply(app, &fill_rt, &mask_arc, &masked_rt);
+        } else if let Some(points) = vector.shape.as_path_points() {
+            // Path inverse: generate normal path mask, then use the
+            // existing path-clip in inverted mode by routing through
+            // a temporary "inverted-color" mask. Simpler: generate
+            // mask, then re-apply via inverted blend in mask_compose.
+            // For V1 we compose the path mask directly and rely on
+            // path_clip.wgsl's invert flag through the legacy clip.
+            // This keeps the spotlight-path case working at minimum.
+            self.path_clip
+                .apply(app, points, true, &fill_rt, &masked_rt);
+            // Suppress unused warning about points capture.
+            let _ = points;
+        }
 
         // 3. Copy base → output.
         self.blit.blit(app, base, output.view());

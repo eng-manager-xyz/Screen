@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.6 — Clip + spotlight on vector masks (AUT-58) — refactor zone closed
+- **Date:** 2026-05-10
+- **Status:** ✅ done — completes the M-VEC.4..6 refactor of existing M-MASK primitives onto the M-VEC pipeline.
+- **Linear:** [AUT-58](https://linear.app/harwood/issue/AUT-58).
+- **Files:** `crates/wisp/src/render.rs` — refactored `apply_clip` and `apply_spotlight` internals; added `apply_clip_vector` + `apply_spotlight_vector`. New `crates/wisp/tests/clip_spotlight_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-clip-spotlight.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 16 existing M-MASK clip + spotlight + dim-outside + ellipse + circle tests still pass byte-equivalent; 2 new path-driven tests pass; full `just gate` green.
+- **Auto-dispatch path NOT refactored.** `render_stage` calls `self.clip.apply(...)` directly when handling `Container::clip = Some(MaskShape)` — the hot path runs per dispatched node every frame. The new vector-mask path adds a render pass; that's fine for explicit calls (cache hits offset it) but would be a regression on auto-dispatch. Documented in the chapter.
+- **Spotlight path-inverse special case.** `cached_mask_texture_inverted` exists for SDF shapes but no equivalent for paths in V1. The path route routes through `path_clip.apply(..., invert: true, ...)` — uses the existing inline-clip pipeline directly. Future enhancement: cached path mask + an inverse-compose shader. Not blocking — path-driven spotlight works end-to-end.
+
+---
+
 ## M-VEC.5 — Solid redaction on vector masks (AUT-57)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — same refactor pattern as M-VEC.4. `apply_solid_redaction(MaskShape, ...)` keeps its API; internals route through the shared mask + compose path. Adds `apply_solid_redaction_vector` for path support.
