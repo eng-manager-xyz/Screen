@@ -28,7 +28,7 @@ struct ClipUniforms {
     radius: f32,
     aa: f32,
     invert: f32,
-    _pad: f32,
+    shape_kind: f32,
 }
 
 pub(crate) struct ClipPipeline {
@@ -162,13 +162,13 @@ impl ClipPipeline {
         output: &RenderTexture,
         invert: bool,
     ) {
-        let (cx, cy, hx, hy, radius) = match shape {
+        let (cx, cy, hx, hy, radius, shape_kind) = match shape {
             MaskShape::Rect { rect } => {
                 let cx = rect.min.x + rect.size.x * 0.5;
                 let cy = rect.min.y + rect.size.y * 0.5;
                 let hx = (rect.size.x * 0.5).max(0.0);
                 let hy = (rect.size.y * 0.5).max(0.0);
-                (cx, cy, hx, hy, 0.0)
+                (cx, cy, hx, hy, 0.0, 0.0)
             }
             MaskShape::RoundedRect { rect, radius } => {
                 let cx = rect.min.x + rect.size.x * 0.5;
@@ -176,14 +176,23 @@ impl ClipPipeline {
                 let hx = (rect.size.x * 0.5).max(0.0);
                 let hy = (rect.size.y * 0.5).max(0.0);
                 let r = radius.clamp(0.0, hx.min(hy));
-                (cx, cy, hx, hy, r)
+                (cx, cy, hx, hy, r, 0.0)
             }
             MaskShape::Circle { center, radius } => {
                 // Rounded-rect SDF degenerates to circle when
                 // half_extents == radius == r. (The shader formula
                 // becomes length(max(|p|, 0)) - r = length(p) - r.)
                 let r = radius.max(0.0);
-                (center.x, center.y, r, r, r)
+                (center.x, center.y, r, r, r, 0.0)
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => {
+                let hx = half_extents.x.max(0.0);
+                let hy = half_extents.y.max(0.0);
+                // Radius is unused by the ellipse SDF branch; pass 0.
+                (center.x, center.y, hx, hy, 0.0, 1.0)
             }
         };
 
@@ -197,7 +206,7 @@ impl ClipPipeline {
             radius,
             aa,
             invert: if invert { 1.0 } else { 0.0 },
-            _pad: 0.0,
+            shape_kind,
         };
         let buffer = app
             .device()

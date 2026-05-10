@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.9 — Ellipse / oval mask in wisp (AUT-34)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `MaskShape::Ellipse` adds anisotropic SDF support; first shape that needs a real new SDF (vs. degenerating to rounded-rect).
+- **Linear:** [AUT-34](https://linear.app/harwood/issue/AUT-34).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Ellipse { center, half_extents }` + `ellipse()` ctor + `bounds()` arm. `crates/wisp/shaders/clip.wgsl` adds `shape_kind: f32` uniform + `sdf_ellipse` helper + branching fragment dispatch. `crates/wisp/src/render/clip.rs` `ClipUniforms` carries `shape_kind`; `apply_with_invert` sets `shape_kind = 1.0` for `Ellipse`. New `crates/wisp/tests/clip_ellipse.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_ellipse.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/ellipse-mask.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/ellipse-mask.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (198 tests, +3 from M-MASK.8's 195).
+- **Pseudo-SDF over closed-form.** Closed-form ellipse SDF requires solving a quartic — expensive every fragment. The scaled-quadratic `(x/a)^2 + (y/b)^2 - 1` shares the same zero level set; multiplying by `min(a, b)` puts the result in roughly NDC units so the existing AA-band code (`smoothstep` over `aa = 2/min(w, h)`) still produces a ~1-pixel edge. Visually indistinguishable from the exact SDF for masking; orders of magnitude cheaper.
+- **`shape_kind: f32` flag handles dispatch.** Same uniform buffer as the rest of the clip shader; one extra `if` in WGSL picks the SDF formula. All four primitives (`apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data`) gain the variant for free.
+- **Cache-poisoning replay:** ran into the same nextest+check race documented in M-MASK.8's lesson. `cargo clean -p wisp` + retry was the fix. CLAUDE.md already covers this; reinforced the workflow ordering.
+
+---
+
 ## M-MASK.8 — Webcam circle mask shape in wisp (AUT-30)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — adds `MaskShape::Circle` to the catalog. Webcam overlay now has cinematic circle + rounded-rect options out of the box, both reusing the existing rounded-rect SDF.

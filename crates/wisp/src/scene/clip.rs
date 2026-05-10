@@ -22,9 +22,9 @@ use crate::math::Rect;
 /// - [`MaskShape::Rect`] — AUT-20 rectangle privacy mask.
 /// - [`MaskShape::RoundedRect`] — AUT-31 rounded crop foundation.
 /// - [`MaskShape::Circle`] — AUT-30 webcam circle mask.
+/// - [`MaskShape::Ellipse`] — AUT-34 oval / ellipse mask.
 ///
-/// Later issues (`AUT-34` ellipse, `AUT-35` freehand path) extend
-/// this enum further.
+/// Later issues (`AUT-35` freehand path) extend this enum further.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum MaskShape {
@@ -54,6 +54,17 @@ pub enum MaskShape {
         /// Radius, NDC units.
         radius: f32,
     },
+    /// Axis-aligned ellipse in NDC. `half_extents` is `(a, b)` of the
+    /// implicit equation `(x/a)^2 + (y/b)^2 = 1`. The renderer uses a
+    /// scaled-quadratic pseudo-SDF that's anisotropic-correct and
+    /// cheap (one length, one multiply); not Euclidean distance, but
+    /// accurate enough for masking and AA.
+    Ellipse {
+        /// Center, NDC coords.
+        center: glam::Vec2,
+        /// Half-extents `(a, b)`, NDC units.
+        half_extents: glam::Vec2,
+    },
 }
 
 impl MaskShape {
@@ -75,6 +86,15 @@ impl MaskShape {
         Self::Circle { center, radius }
     }
 
+    /// Convenience constructor for an axis-aligned ellipse.
+    #[must_use]
+    pub fn ellipse(center: glam::Vec2, half_extents: glam::Vec2) -> Self {
+        Self::Ellipse {
+            center,
+            half_extents,
+        }
+    }
+
     /// The axis-aligned bounding rect of the mask.
     #[must_use]
     pub fn bounds(self) -> Rect {
@@ -85,6 +105,15 @@ impl MaskShape {
                 center.y - radius,
                 radius * 2.0,
                 radius * 2.0,
+            ),
+            Self::Ellipse {
+                center,
+                half_extents,
+            } => Rect::new(
+                center.x - half_extents.x,
+                center.y - half_extents.y,
+                half_extents.x * 2.0,
+                half_extents.y * 2.0,
             ),
         }
     }

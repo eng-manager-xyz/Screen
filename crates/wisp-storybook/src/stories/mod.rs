@@ -6,6 +6,7 @@ mod s_clip_rounded;
 mod s_color_matrix;
 mod s_dim_outside;
 mod s_drop_shadow;
+mod s_ellipse;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
@@ -48,5 +49,6 @@ pub fn all_stories() -> Vec<Story> {
         s_spotlight::story(),
         s_dim_outside::story(),
         s_webcam_shapes::story(),
+        s_ellipse::story(),
     ]
 }
