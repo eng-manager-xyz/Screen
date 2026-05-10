@@ -1,6 +1,6 @@
 //! Mesh pipeline — perspective-rotated textured quad (M0.19).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec4};
@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::render::blend_pipeline::BlendPipelineMap;
-use crate::scene::{Node, Stage};
+use crate::scene::{Node, NodeId, Stage};
 use crate::texture::Texture;
 
 #[repr(C)]
@@ -120,7 +120,19 @@ impl MeshPipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let batches = collect_batches(stage);
+        self.draw_subtree(app, pass, stage, stage.root(), &HashSet::new())
+    }
+
+    /// Subtree variant — see `SpritePipeline::draw_subtree`.
+    pub(crate) fn draw_subtree(
+        &self,
+        app: &Application,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: &Stage,
+        start: NodeId,
+        exclude: &HashSet<NodeId>,
+    ) -> (u32, u32) {
+        let batches = collect_batches(stage, start, exclude);
         let mut draw_calls = 0u32;
         let mut meshes = 0u32;
 
@@ -170,13 +182,16 @@ struct Batch {
     instances: Vec<MeshInstance>,
 }
 
-fn collect_batches(stage: &Stage) -> Vec<Batch> {
+fn collect_batches(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> Vec<Batch> {
     type Key = (usize, BlendMode);
     let mut grouped: HashMap<Key, (Texture, BlendMode, Vec<MeshInstance>)> = HashMap::new();
     let mut order: Vec<Key> = Vec::new();
 
-    let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
+    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
+        if exclude.contains(&id) {
+            continue;
+        }
         let Some(node) = stage.get(id) else {
             continue;
         };

@@ -4,7 +4,7 @@
 //! atlas batch into a single draw call. (Different fonts → different atlases →
 //! one batch per font, in the order encountered during scene traversal.)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec3, Vec4};
@@ -14,7 +14,7 @@ use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::render::blend_pipeline::BlendPipelineMap;
 use crate::scene::text::{Font, Text};
-use crate::scene::{Node, Stage};
+use crate::scene::{Node, NodeId, Stage};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -121,7 +121,19 @@ impl TextPipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let batches = collect_batches(stage);
+        self.draw_subtree(app, pass, stage, stage.root(), &HashSet::new())
+    }
+
+    /// Subtree variant — see `SpritePipeline::draw_subtree`.
+    pub(crate) fn draw_subtree(
+        &self,
+        app: &Application,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: &Stage,
+        start: NodeId,
+        exclude: &HashSet<NodeId>,
+    ) -> (u32, u32) {
+        let batches = collect_batches(stage, start, exclude);
         let mut draw_calls = 0u32;
         let mut glyphs = 0u32;
 
@@ -170,14 +182,17 @@ struct Batch {
     instances: Vec<TextInstance>,
 }
 
-fn collect_batches(stage: &Stage) -> Vec<Batch> {
+fn collect_batches(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> Vec<Batch> {
     type Key = (usize, BlendMode);
     let mut grouped: HashMap<Key, (crate::texture::Texture, BlendMode, Vec<TextInstance>)> =
         HashMap::new();
     let mut order: Vec<Key> = Vec::new();
 
-    let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
+    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
+        if exclude.contains(&id) {
+            continue;
+        }
         let Some(node) = stage.get(id) else {
             continue;
         };

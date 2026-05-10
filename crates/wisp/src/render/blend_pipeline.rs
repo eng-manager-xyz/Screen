@@ -11,10 +11,15 @@
 //! Advanced modes (Tier C — Overlay, `ColorBurn`, …) aren't represented
 //! in the map — they require the offscreen filter pipeline. When a
 //! caller asks for an advanced mode via [`BlendPipelineMap::get`], we
-//! fall back to `Normal` and `tracing::warn!` once (deduped by mode).
+//! fall back to `Normal`. This fallback is INTENTIONAL when
+//! [`Renderer::render_stage`](crate::render::Renderer::render_stage)
+//! renders an advanced-blend subtree into a foreground RT — the leaf's
+//! pure colors land in the foreground, then the parent's advanced blend
+//! is applied via [`apply_advanced_blend`](crate::render::Renderer::apply_advanced_blend).
+//! No warning is emitted because auto-dispatch makes it correct by
+//! default.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::collections::HashMap;
 
 use crate::blend::BlendMode;
 
@@ -39,31 +44,17 @@ impl BlendPipelineMap {
         Self { inner }
     }
 
-    /// Look up the pipeline for `mode`. For advanced modes we fall back
-    /// to `Normal` and log a warning once per mode.
+    /// Look up the pipeline for `mode`. Advanced modes silently fall
+    /// back to `Normal` — by design, since `render_stage`'s
+    /// auto-dispatch path renders advanced-blend subtrees into a
+    /// foreground RT with Normal blending, then composites via
+    /// `apply_advanced_blend`.
     pub(crate) fn get(&self, mode: BlendMode) -> &wgpu::RenderPipeline {
         if let Some(p) = self.inner.get(&mode) {
             return p;
         }
-        warn_advanced_fallback_once(mode);
         self.inner
             .get(&BlendMode::Normal)
             .expect("BlendPipelineMap always builds Normal")
-    }
-}
-
-/// Suppress duplicate warnings for the same advanced mode — a stage
-/// with 100 sprites all using `Overlay` would otherwise spam stderr 100
-/// times per frame.
-fn warn_advanced_fallback_once(mode: BlendMode) {
-    static SEEN: Mutex<Option<HashSet<BlendMode>>> = Mutex::new(None);
-    let mut guard = SEEN.lock().expect("warn_advanced_fallback_once mutex");
-    let set = guard.get_or_insert_with(HashSet::new);
-    if set.insert(mode) {
-        tracing::warn!(
-            mode = mode.css_name(),
-            "advanced blend mode used in render_stage; falling back to Normal. \
-             Use Renderer::apply_advanced_blend for correct compositing."
-        );
     }
 }

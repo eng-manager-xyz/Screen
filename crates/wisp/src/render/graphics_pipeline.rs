@@ -7,7 +7,7 @@
 //! draw call. Stroked primitives emit a second outline instance. Lines are
 //! rendered as rotated thin rects.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec2, Vec4};
@@ -18,7 +18,7 @@ use crate::blend::BlendMode;
 use crate::color::Color;
 use crate::render::blend_pipeline::BlendPipelineMap;
 use crate::scene::graphics::{Fill, Primitive, Stroke};
-use crate::scene::{Node, Stage};
+use crate::scene::{Node, NodeId, Stage};
 
 const KIND_RECT: u32 = 0;
 const KIND_ELLIPSE: u32 = 1;
@@ -124,7 +124,19 @@ impl GraphicsPipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let (groups, logical_count) = collect_instance_groups(stage);
+        self.draw_subtree(app, pass, stage, stage.root(), &HashSet::new())
+    }
+
+    /// Subtree variant — see `SpritePipeline::draw_subtree`.
+    pub(crate) fn draw_subtree(
+        &self,
+        app: &Application,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: &Stage,
+        start: NodeId,
+        exclude: &HashSet<NodeId>,
+    ) -> (u32, u32) {
+        let (groups, logical_count) = collect_instance_groups(stage, start, exclude);
         let mut draw_calls = 0u32;
         for (mode, instances) in groups {
             if instances.is_empty() {
@@ -150,12 +162,19 @@ impl GraphicsPipeline {
 
 /// Group emitted [`GraphicsInstance`]s by [`BlendMode`] in encounter
 /// order so each batch can bind its own pipeline.
-fn collect_instance_groups(stage: &Stage) -> (Vec<(BlendMode, Vec<GraphicsInstance>)>, u32) {
+fn collect_instance_groups(
+    stage: &Stage,
+    start: NodeId,
+    exclude: &HashSet<NodeId>,
+) -> (Vec<(BlendMode, Vec<GraphicsInstance>)>, u32) {
     let mut grouped: HashMap<BlendMode, Vec<GraphicsInstance>> = HashMap::new();
     let mut order: Vec<BlendMode> = Vec::new();
     let mut logical = 0u32;
-    let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
+    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
+        if exclude.contains(&id) {
+            continue;
+        }
         let Some(node) = stage.get(id) else {
             continue;
         };

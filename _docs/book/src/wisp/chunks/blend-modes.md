@@ -65,9 +65,42 @@ pipeline for each batch.
 
 ### Advanced modes
 
-Manual two-RT compositing — `render_stage` falls back to Normal for
-advanced modes (with a `tracing::warn!` once per mode) because automatic
-backdrop sampling isn't yet wired through the renderer. The explicit API:
+**Auto-dispatched by `render_stage` since M-BLEND.2.** Just set the
+container's blend mode to an advanced variant and call `render_stage`
+the same way you would for a native mode:
+
+```rust
+let mut sprite = Sprite::from_texture(tex);
+sprite.container.blend_mode = BlendMode::Overlay;  // ← Tier C, just works
+let mut stage = Stage::new();
+let _ = stage.add_child(stage.root(), sprite);
+renderer.render_stage(&app, view, Color::BLACK, &stage);
+```
+
+Internally the renderer detects advanced-blend nodes during scene
+traversal and routes them through the offscreen pipeline:
+
+```text
+render_stage
+  ├─ collect_advanced_blend_nodes(stage) → Vec<NodeId>
+  ├─ if empty → fast path (one render pass into `view`, identical to pre-M-BLEND.2)
+  └─ else      → slow path:
+        1. Allocate dest_a, dest_b at app dims (ping-pong RTs).
+        2. Phase 1 — render scene MINUS advanced subtrees → dest_a.
+        3. Phase 2 — for each advanced node in pre-order:
+             a. Render that subtree → foreground RT.
+             b. apply_advanced_blend(mode, backdrop=dest_a, foreground, output=dest_b).
+             c. Swap dest_a ↔ dest_b.
+        4. Phase 3 — blit final dest → view via the new BlitPipeline.
+```
+
+The fast path is unchanged for native-only stages — no perf regression
+for callers who don't use advanced modes.
+
+#### Manual API
+
+The explicit per-RT API is still exposed for cases where you want to
+pre-bake compositions or feed the result to another filter:
 
 ```rust
 renderer.apply_advanced_blend(
@@ -114,18 +147,16 @@ The catalog is exhaustively tested:
 ## Pivot from PixiJS
 
 The implementation maps closely onto PixiJS's `pixi.js/advanced-blend-modes`
-sub-export. Two intentional simplifications:
+sub-export. One intentional simplification:
 
-- **No automatic dispatch in the scene-graph renderer.** Setting
-  `container.blend_mode = BlendMode::Overlay` on a sprite and calling
-  `render_stage` produces a *Normal*-blended result with a tracing
-  warning. Future work: `render_stage` walks the tree, batches
-  advanced-blend nodes into per-node offscreen RTs, and chains
-  `apply_advanced_blend` automatically.
 - **Single template, not 20 separate shader files.** PixiJS ships each
   advanced mode as its own `.ts` file with a parallel WGSL/GLSL
   fragment. We share a template and inject `blend_fn` per mode at
   pipeline construction. Smaller surface, equivalent runtime cost.
+
+Auto-dispatch (the original M-BLEND.1 deferral) shipped in M-BLEND.2 —
+behavior matches PixiJS for the common case of "set blend_mode on a
+node, render normally."
 
 ## Generate the contact sheet
 

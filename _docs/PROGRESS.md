@@ -6,6 +6,24 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-BLEND.2 — Auto-dispatch advanced blend modes through render_stage
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the M-BLEND.1 deferral. Setting `container.blend_mode = BlendMode::Overlay` on a sprite and calling `render_stage` now produces the correct advanced-blend composite automatically.
+- **Files:** `crates/wisp/src/render/blit.rs` (new — fullscreen-sampler blit pipeline) + `shaders/blit.wgsl`; `crates/wisp/src/render.rs` reshaped (new fast/slow path split, `collect_advanced_blend_nodes`, `render_stage_with_advanced_dispatch`, `draw_subtree_to_rt` helpers); 4 pipelines (sprite/graphics/text/mesh) gain `draw_subtree(stage, start, exclude)` and their `collect_*` walkers accept `start: NodeId` + `exclude: &HashSet<NodeId>`; `crates/wisp/src/render/blend_pipeline.rs` removes the `tracing::warn!` since the fallback is now intentional under auto-dispatch; new `crates/wisp/tests/blend_modes_dispatch.rs` (4 tests); `_docs/book/src/wisp/chunks/blend-modes.md` updated to remove the "deferred" caveat and document the dispatch architecture.
+- **Verified:** `just gate` green (169 tests, +4 from M-BLEND.1's 165); the auto-dispatch test asserts pixel-equivalence between `render_stage` with `container.blend_mode=Overlay` and the manual `apply_advanced_blend` path within 3-LSB tolerance.
+- **Architecture — fast/slow path split:**
+  - `collect_advanced_blend_nodes(stage)` walks the tree once, returning every visible node whose container has an advanced blend mode (pre-order so z-ordering is preserved). Cost: ~O(N) once per render call.
+  - **Fast path** (no advanced nodes): identical to pre-M-BLEND.2 behavior. One render pass directly into the caller's view, batching per-pipeline-per-mode. **Zero perf regression for native-only stages.**
+  - **Slow path** (any advanced node): allocate two `RenderTexture`s at `app.width()/height()` for ping-pong + one foreground RT. Phase 1: render the scene MINUS the advanced subtrees into `dest_a` (using the new `draw_subtree(start, exclude)` API on each pipeline). Phase 2: for each advanced node in pre-order, render its subtree to foreground, `apply_advanced_blend(mode, dest_a, foreground, dest_b)`, swap. Phase 3: `BlitPipeline::blit` from final `dest_a` to the user's view.
+- **Pipeline API extension:** each pipeline (sprite/graphics/text/mesh) now exposes `draw_subtree(app, pass, stage, start: NodeId, exclude: &HashSet<NodeId>)`. Existing `draw_stage` is a wrapper that passes `(stage.root(), &HashSet::new())`. The walker checks `exclude.contains(&id)` before descending — when an advanced-blend node is hit during the main pass, the walker skips it AND its descendants (they're handled in phase 2).
+- **`BlitPipeline`** is a small (~150 LOC + 25 LOC WGSL) pipeline that samples one render-texture and outputs it to a target view. Used only for phase 3's final flush. Took the simple fullscreen-triangle approach since the existing `QuadPipeline` requires a wisp `Texture` not a `RenderTexture` view.
+- **The `tracing::warn!` is gone:** previously fired any time a pipeline encountered an advanced blend mode (because the fallback to Normal was a known-incomplete behavior). Under M-BLEND.2 the fallback is intentional during phase-2 subtree rendering — the leaf renders with Normal blending into the foreground RT, and the actual advanced-blend math runs in `apply_advanced_blend` at composition time. Removing the warn also gets rid of the `HashSet<BlendMode>` dedupe state in `BlendPipelineMap`.
+- **Z-ordering preserved:** advanced-blend nodes composite in pre-order, so a later-in-traversal advanced node sees its earlier siblings (and their composited results) as the backdrop. Verified by the `auto_dispatch_handles_difference_with_solid_underlay` test (red bg drawn first; blue fg with `Difference` → magenta center pixel).
+- **Known limitation (documented in chapter):** slow path internal RT dimensions track `app.width()`/`app.height()`, not the caller-supplied view's dims. For the common case where the view is sized to match the app, this is invisible. For mismatched sizes, the user should construct an `AppConfig` matching the view, or pre-render into a fixed-size `RenderTexture`.
+- **No new clippy lessons** — the patterns from M-BLEND.1 carried over cleanly.
+
+---
+
 ## M-BLEND.1 — Full PixiJS v8 blend mode catalog (28 modes, 3 tiers)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the blend-mode gap surfaced during the PixiJS deep-research turn.

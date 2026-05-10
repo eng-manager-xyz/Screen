@@ -12,6 +12,7 @@ pub mod pipeline;
 
 mod advanced_blend;
 mod blend_pipeline;
+mod blit;
 mod graphics_pipeline;
 mod mesh_pipeline;
 mod quad_pipeline;
@@ -61,6 +62,8 @@ pub struct Renderer {
     text: TextPipeline,
     mesh: MeshPipeline,
     advanced_blend: advanced_blend::AdvancedBlendPipelines,
+    blit: blit::BlitPipeline,
+    output_format: wgpu::TextureFormat,
 }
 
 impl Renderer {
@@ -77,6 +80,7 @@ impl Renderer {
         let text = TextPipeline::new(app, output_format);
         let mesh = MeshPipeline::new(app, output_format);
         let advanced_blend = advanced_blend::AdvancedBlendPipelines::new(app, output_format);
+        let blit_pipeline = blit::BlitPipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -85,6 +89,8 @@ impl Renderer {
             text,
             mesh,
             advanced_blend,
+            blit: blit_pipeline,
+            output_format,
         })
     }
 
@@ -133,12 +139,42 @@ impl Renderer {
         });
     }
 
-    /// Clear the target, traverse `stage`, and draw every visible sprite,
-    /// batching sprites with the same texture and blend mode.
+    /// Clear the target, traverse `stage`, draw every visible node.
+    ///
+    /// Two paths internally:
+    ///
+    /// - **Fast path** (no advanced blend modes in the stage): one
+    ///   render pass directly into `view`, batching by pipeline + blend
+    ///   mode. Identical behavior to pre-M-BLEND.2.
+    /// - **Slow path** (any node uses an advanced blend mode): allocate
+    ///   internal `RenderTexture`s at `app.config()` dims, render the
+    ///   scene minus the advanced subtrees, then for each advanced node
+    ///   sample the in-progress destination as backdrop and composite
+    ///   that subtree via [`apply_advanced_blend`](Self::apply_advanced_blend).
+    ///   Final blit to `view`.
+    ///
+    /// Slow-path RT dimensions track [`AppConfig::width`/`height`](crate::application::AppConfig);
+    /// for views whose dims diverge from the app config, use a matching
+    /// `AppConfig` or pre-render into a fixed-size `RenderTexture`.
     ///
     /// Returns [`RenderStats`] with the resulting draw-call and sprite counts.
     #[must_use]
     pub fn render_stage(
+        &self,
+        app: &Application,
+        view: &wgpu::TextureView,
+        clear: Color,
+        stage: &Stage,
+    ) -> RenderStats {
+        let advanced = collect_advanced_blend_nodes(stage);
+        if advanced.is_empty() {
+            return self.render_stage_fast(app, view, clear, stage);
+        }
+        self.render_stage_with_advanced_dispatch(app, view, clear, stage, &advanced)
+    }
+
+    /// Fast path: one render pass, no offscreen indirection.
+    fn render_stage_fast(
         &self,
         app: &Application,
         view: &wgpu::TextureView,
@@ -156,6 +192,92 @@ impl Renderer {
             stats.graphics_drawn = graphics_drawn;
             stats.glyphs_drawn = glyphs_drawn;
             stats.meshes_drawn = meshes_drawn;
+        });
+        stats
+    }
+
+    /// Slow path with auto-dispatch — see [`render_stage`](Self::render_stage).
+    fn render_stage_with_advanced_dispatch(
+        &self,
+        app: &Application,
+        view: &wgpu::TextureView,
+        clear: Color,
+        stage: &Stage,
+        advanced: &[crate::scene::NodeId],
+    ) -> RenderStats {
+        let (w, h) = (app.width(), app.height());
+        let format = self.output_format;
+        let mut dest_a = RenderTexture::with_format(app, w, h, format);
+        let mut dest_b = RenderTexture::with_format(app, w, h, format);
+
+        // Build the exclude set: each advanced node's subtree is handled
+        // separately, so the main pass skips them.
+        let exclude: std::collections::HashSet<crate::scene::NodeId> =
+            advanced.iter().copied().collect();
+
+        // Phase 1: render the scene, minus the advanced subtrees, into
+        // `dest_a`.
+        let mut stats = self.draw_subtree_to_rt(app, &dest_a, clear, stage, stage.root(), &exclude);
+
+        // Phase 2: for each advanced node in pre-order, render its
+        // subtree into a fresh foreground RT, then advanced-blend with
+        // the in-progress dest as backdrop. Ping-pong dest_a ↔ dest_b
+        // so we don't read+write the same RT in one pass.
+        let foreground = RenderTexture::with_format(app, w, h, format);
+        let empty_exclude = std::collections::HashSet::new();
+        for &node_id in advanced {
+            let Some(node) = stage.get(node_id) else {
+                continue;
+            };
+            let mode = node.container().blend_mode;
+            let sub_stats = self.draw_subtree_to_rt(
+                app,
+                &foreground,
+                Color::rgba(0.0, 0.0, 0.0, 0.0),
+                stage,
+                node_id,
+                &empty_exclude,
+            );
+            stats.draw_calls += sub_stats.draw_calls;
+            stats.sprites_drawn += sub_stats.sprites_drawn;
+            stats.graphics_drawn += sub_stats.graphics_drawn;
+            stats.glyphs_drawn += sub_stats.glyphs_drawn;
+            stats.meshes_drawn += sub_stats.meshes_drawn;
+
+            self.advanced_blend
+                .apply(app, mode, &dest_a, &foreground, &dest_b);
+            std::mem::swap(&mut dest_a, &mut dest_b);
+        }
+
+        // Phase 3: blit final composited RT to the user-supplied view.
+        self.blit.blit(app, &dest_a, view);
+        stats
+    }
+
+    /// Draw a subtree of `stage` (rooted at `start`, skipping `exclude`)
+    /// into `dest`. Used by both phases of the advanced-dispatch path.
+    fn draw_subtree_to_rt(
+        &self,
+        app: &Application,
+        dest: &RenderTexture,
+        clear: Color,
+        stage: &Stage,
+        start: crate::scene::NodeId,
+        exclude: &std::collections::HashSet<crate::scene::NodeId>,
+    ) -> RenderStats {
+        let mut stats = RenderStats::default();
+        Self::with_clearing_pass(app, dest.view(), clear, |pass| {
+            let (sprite_calls, sprites) =
+                self.sprite.draw_subtree(app, pass, stage, start, exclude);
+            let (graphics_calls, graphics) =
+                self.graphics.draw_subtree(app, pass, stage, start, exclude);
+            let (text_calls, glyphs) = self.text.draw_subtree(app, pass, stage, start, exclude);
+            let (mesh_calls, meshes) = self.mesh.draw_subtree(app, pass, stage, start, exclude);
+            stats.draw_calls = sprite_calls + graphics_calls + text_calls + mesh_calls;
+            stats.sprites_drawn = sprites;
+            stats.graphics_drawn = graphics;
+            stats.glyphs_drawn = glyphs;
+            stats.meshes_drawn = meshes;
         });
         stats
     }
@@ -242,4 +364,34 @@ impl Renderer {
         }
         app.queue().submit(std::iter::once(encoder.finish()));
     }
+}
+
+/// Pre-order walk that returns every visible node whose container's
+/// `blend_mode` is advanced (Tier C). Used by [`Renderer::render_stage`]
+/// to decide between the fast and slow paths and to drive the
+/// per-subtree advanced-blend dispatch.
+///
+/// Order is pre-order so the auto-dispatch composites in z-order: a
+/// later advanced-blend node sees its earlier siblings (and their
+/// composited results) as the backdrop.
+fn collect_advanced_blend_nodes(stage: &Stage) -> Vec<crate::scene::NodeId> {
+    let mut out = Vec::new();
+    let mut stack: Vec<crate::scene::NodeId> = vec![stage.root()];
+    while let Some(id) = stack.pop() {
+        let Some(node) = stage.get(id) else { continue };
+        let container = node.container();
+        if !container.visible {
+            continue;
+        }
+        if container.blend_mode.is_advanced() {
+            out.push(id);
+            // Don't recurse — the subtree is rendered separately by the
+            // dispatcher with the parent's mode applied at composition.
+            continue;
+        }
+        for child in container.children().rev().collect::<Vec<_>>() {
+            stack.push(child);
+        }
+    }
+    out
 }

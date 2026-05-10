@@ -5,7 +5,7 @@
 //! unit-quad in `[0, 1]²`; the vertex shader subtracts `anchor` then applies
 //! the model.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec4};
@@ -15,7 +15,7 @@ use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::color::Color;
 use crate::render::blend_pipeline::BlendPipelineMap;
-use crate::scene::{Node, Sprite, Stage};
+use crate::scene::{Node, NodeId, Sprite, Stage};
 use crate::texture::Texture;
 
 #[repr(C)]
@@ -128,7 +128,22 @@ impl SpritePipeline {
         pass: &mut wgpu::RenderPass<'_>,
         stage: &Stage,
     ) -> (u32, u32) {
-        let batches = collect_batches(stage);
+        self.draw_subtree(app, pass, stage, stage.root(), &HashSet::new())
+    }
+
+    /// Render only the subtree rooted at `start`. Nodes whose IDs are
+    /// in `exclude` (and their descendants) are skipped — used by the
+    /// auto-dispatch advanced-blend renderer to walk the scene "minus"
+    /// the advanced-blend subtrees.
+    pub(crate) fn draw_subtree(
+        &self,
+        app: &Application,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: &Stage,
+        start: NodeId,
+        exclude: &HashSet<NodeId>,
+    ) -> (u32, u32) {
+        let batches = collect_batches(stage, start, exclude);
         let mut draw_calls = 0u32;
         let mut sprites_drawn = 0u32;
 
@@ -175,13 +190,16 @@ struct Batch {
     instances: Vec<SpriteInstance>,
 }
 
-fn collect_batches(stage: &Stage) -> Vec<Batch> {
+fn collect_batches(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> Vec<Batch> {
     type Key = (usize, BlendMode);
     let mut grouped: HashMap<Key, (Texture, BlendMode, Vec<SpriteInstance>)> = HashMap::new();
     let mut order: Vec<Key> = Vec::new();
 
-    let mut stack: Vec<(crate::scene::NodeId, Mat4)> = vec![(stage.root(), Mat4::IDENTITY)];
+    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
     while let Some((id, parent_world)) = stack.pop() {
+        if exclude.contains(&id) {
+            continue;
+        }
         let Some(node) = stage.get(id) else {
             continue;
         };
