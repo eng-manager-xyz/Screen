@@ -53,6 +53,7 @@
   - [Privacy blur on vector masks — M-VEC.4](./wisp/chunks/vector-privacy-blur.md)
   - [Solid redaction on vector masks — M-VEC.5](./wisp/chunks/vector-solid-redaction.md)
   - [Clip + spotlight on vector masks — M-VEC.6](./wisp/chunks/vector-clip-spotlight.md)
+  - [Export & copy-frame mask parity — AUT-27/-33](./wisp/chunks/export-mask-parity.md)
 
 # `decode` — video decode
 

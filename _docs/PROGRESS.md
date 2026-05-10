@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Export + copy-frame mask parity (AUT-27 + AUT-33)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — both P0 mask-followups closed in one chunk. Five export-parity tests + three copy-frame tests lock in: every mask primitive produces identical bytes whether you render to a preview view or to an export RT, and `read_pixels` returns the masked content (not the base).
+- **Linear:** [AUT-27](https://linear.app/harwood/issue/AUT-27), [AUT-33](https://linear.app/harwood/issue/AUT-33).
+- **Files:** new `crates/wisp/tests/export_mask_parity.rs` (5 cases — clip, redaction, spotlight, privacy blur, path-vector clip). New `crates/wisp/tests/copy_frame_mask_parity.rs` (3 cases — redaction, spotlight, privacy blur). New `_docs/book/src/wisp/chunks/export-mask-parity.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** all 8 new tests pass; full `just gate` green.
+- **Architecture is already export-safe — these tests just guard it.** `Renderer::render_stage` is the only code path that produces frames. `apply_*` primitives go through it identically whether the caller binds a preview surface view or an export RT view. The tests render the same scene twice to different RTs and assert byte-equality — guards against any future preview-only shortcut.
+- **Both issues in one chunk** because they share the same architectural property (single render path → identical output) and the same underlying primitives. AUT-27 is the byte-equality test; AUT-33 is the inside-vs-outside-mask test on `read_pixels`.
+
+---
+
 ## M-VEC.6 — Clip + spotlight on vector masks (AUT-58) — refactor zone closed
 - **Date:** 2026-05-10
 - **Status:** ✅ done — completes the M-VEC.4..6 refactor of existing M-MASK primitives onto the M-VEC pipeline.
