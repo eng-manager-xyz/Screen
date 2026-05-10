@@ -6,6 +6,21 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.6 — Spotlight / highlight mask in wisp (AUT-28)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — attention-guiding primitive. Inside `shape`: base unchanged. Outside: blended toward `dim_color`. Foundation for AUT-29 dim-outside.
+- **Linear:** [AUT-28](https://linear.app/harwood/issue/AUT-28).
+- **Files:** `crates/wisp/shaders/clip.wgsl` adds `invert: f32` uniform that flips the SDF mask. `crates/wisp/src/render/clip.rs` exposes `apply_inverted` + private `apply_with_invert`. `crates/wisp/src/render.rs` adds `Renderer::apply_spotlight(shape, dim_color, base, output)`. New `crates/wisp/tests/spotlight.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_spotlight.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/spotlight.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/spotlight.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (189 tests, +3 from M-MASK.5's 186).
+- **One shader, one bit flipped.** Adding `invert: f32` to the existing clip uniforms (with a 0.5 threshold check) keeps a single pipeline / bind-group layout / shader module. The dispatcher's `apply_clip` keeps its previous `invert=false` behavior; the new spotlight + future AUT-29 dim-outside reuse the same pipeline. AUT-29 will be a thin `apply_spotlight` wrapper with stronger dim alpha.
+- **`bytemuck::Pod` requires fixed-size struct fields.** Adding `invert: f32` plus `_pad: f32` to `ClipUniforms` keeps the alignment to 16 bytes. WGSL `vec2<f32>` wants 8-byte alignment so the layout `[center: vec2, half_extents: vec2, radius: f32, aa: f32, invert: f32, _pad: f32]` matches std140 / std430-shared rules.
+- **Three contract pixels:**
+  - Inside the shape — base bit-exact (255 R, 0 G, 0 B over an all-red base).
+  - Outside the shape — blended toward `dim_color`. R goes from 255 to ~76 with `dim_color = (0,0,0,0.7)` (alpha-over: `out = src.rgb*src.a + dst.rgb*(1-src.a) = 0 + 255*0.3 = 76.5`).
+  - Rounded-corner cutout — *darkened* (treated as outside the focus shape, since the SDF carved that corner away).
+
+---
+
 ## M-MASK.5 — Solid-color redaction in wisp (AUT-23)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — *trust* counterpart to privacy blur. Reuses the same `MaskShape` enum so rect / rounded-rect / circle / ellipse / freehand-path all work identically.

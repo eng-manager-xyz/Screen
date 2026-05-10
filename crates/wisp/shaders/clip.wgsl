@@ -19,6 +19,11 @@ struct Uniforms {
     /// gives a 1-px band; the renderer computes this from the output
     /// RT's dimensions.
     aa: f32,
+    /// 0.0 = mask normally (opaque inside the shape, transparent
+    /// outside). 1.0 = inverse mask (transparent inside, opaque
+    /// outside) — used by the spotlight / dim-outside primitives.
+    invert: f32,
+    _pad: f32,
 };
 @group(0) @binding(2) var<uniform> u: Uniforms;
 
@@ -53,7 +58,10 @@ fn main_fs(in: VsOut) -> @location(0) vec4<f32> {
 
     // Anti-alias: smoothstep across a `aa`-width band straddling d=0.
     // mask = 1 inside, 0 outside, blended in the band.
-    let mask = clamp(0.5 - d / max(u.aa, 1e-6), 0.0, 1.0);
+    var mask = clamp(0.5 - d / max(u.aa, 1e-6), 0.0, 1.0);
+    if (u.invert > 0.5) {
+        mask = 1.0 - mask;
+    }
 
     let fg = textureSample(t_foreground, s_sampler, in.uv);
     return vec4<f32>(fg.rgb, fg.a * mask);

@@ -27,7 +27,8 @@ struct ClipUniforms {
     half_extents: [f32; 2],
     radius: f32,
     aa: f32,
-    _pad: [f32; 2],
+    invert: f32,
+    _pad: f32,
 }
 
 pub(crate) struct ClipPipeline {
@@ -137,6 +138,30 @@ impl ClipPipeline {
         foreground: &RenderTexture,
         output: &RenderTexture,
     ) {
+        self.apply_with_invert(app, shape, foreground, output, false);
+    }
+
+    /// Same as [`Self::apply`] but with an inverted mask: pixels
+    /// outside the shape pass through, pixels inside get alpha 0.
+    /// Used by the spotlight / dim-outside primitives (AUT-28/-29).
+    pub(crate) fn apply_inverted(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.apply_with_invert(app, shape, foreground, output, true);
+    }
+
+    fn apply_with_invert(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+        invert: bool,
+    ) {
         let (cx, cy, hx, hy, radius) = match shape {
             MaskShape::Rect { rect } => {
                 let cx = rect.min.x + rect.size.x * 0.5;
@@ -164,7 +189,8 @@ impl ClipPipeline {
             half_extents: [hx, hy],
             radius,
             aa,
-            _pad: [0.0, 0.0],
+            invert: if invert { 1.0 } else { 0.0 },
+            _pad: 0.0,
         };
         let buffer = app
             .device()

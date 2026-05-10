@@ -336,6 +336,78 @@ impl Renderer {
         self.blit.compose_over(app, &masked_rt, output);
     }
 
+    /// Composition primitive — render `base`, dimmed everywhere
+    /// *outside* `shape` (M-MASK / AUT-28 spotlight, AUT-29 dim
+    /// outside). Inside the shape, pixels are preserved as-is.
+    ///
+    /// `dim_color` is the overlay shade applied outside the shape;
+    /// its alpha controls the dim strength (0 = no effect, 1 = fully
+    /// replaces the surrounding content). For "spotlight a button"
+    /// effects `dim_color = Color::rgba(0.0, 0.0, 0.0, 0.65)` is a
+    /// good cinematic default.
+    ///
+    /// Pipeline (mirrors solid redaction with an *inverted* clip):
+    ///
+    /// ```text
+    ///   fill_rt    ← cleared to `dim_color`
+    ///                                   │
+    ///                                   ├─ ClipPipeline(shape, invert=true) ─►  masked_rt
+    ///                                   │
+    ///   base ─────────────────────────► output  (Blit::REPLACE)
+    ///                                   │
+    ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+    /// ```
+    pub fn apply_spotlight(
+        &self,
+        app: &Application,
+        shape: MaskShape,
+        dim_color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to dim_color.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::spotlight fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::spotlight fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(dim_color.r),
+                            g: f64::from(dim_color.g),
+                            b: f64::from(dim_color.b),
+                            a: f64::from(dim_color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Inverse-clip the dim fill — opaque OUTSIDE the shape.
+        self.clip.apply_inverted(app, shape, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose dim overlay over the area outside the shape.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
     /// Convenience wrapper over [`Self::apply_privacy_blur`] that
     /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
     /// value (M-MASK / AUT-22).
