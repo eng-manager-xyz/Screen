@@ -5,8 +5,8 @@
   "identifier": "com.screen.app",
   "build": {
     "frontendDist": "../app-ui/dist",
-    "beforeDevCommand": "cd ../app-ui && trunk serve --port 1420",
-    "beforeBuildCommand": "cd ../app-ui && trunk build --release",
+    "beforeDevCommand": "cd app-ui && trunk serve --port 1420",
+    "beforeBuildCommand": "cd app-ui && trunk build --release",
     "devUrl": "http://localhost:1420"
   },
   "app": {
