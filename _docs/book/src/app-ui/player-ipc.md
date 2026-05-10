@@ -165,6 +165,77 @@ changed is the wiring underneath, not the rendered HTML.)
 
 <iframe src="../assets/ui/editor-mock.html" width="100%" height="540" frameborder="0"></iframe>
 
+## Visible playback — `<video>` element bound to `convertFileSrc` (M-PLAY.3)
+
+The IPC plumbing above tracks state, but on its own renders no pixels.
+M-PLAY.3 wires the user-visible playback surface: an HTML5 `<video>`
+element whose `src` is derived from the dropped path via Tauri 2's
+[`convertFileSrc`](https://docs.rs/tauri/2/tauri/webview/struct.Webview.html)
+JS helper.
+
+```text
+file dropped → loaded signal → video_src() ─┐
+                                            ▼
+                              window.__screenConvertFileSrc(path)
+                                            │  (asset:// or http://asset.localhost)
+                                            ▼
+                              <video src=... node_ref=video_ref />
+
+PlayerControls toggle click ─┬─ video.play() / video.pause() (sync, user-gesture)
+                             └─ screen_play() / screen_pause()  (Tauri state)
+
+player-status event ─→ Effect ─→ video.play()/pause() (catch-up, EOF, future seek)
+```
+
+### Why two paths to the `<video>` element
+
+WebKit blocks programmatic `.play()` outside a user gesture. So:
+
+- **Click handler** drives `<video>` synchronously inside the
+  `Callback<()>`. The browser sees this as user-initiated and allows
+  playback to start.
+- **`Effect::new` over `player_status`** is the catch-up path for
+  state changes that *aren't* user clicks — Tauri pushing `Ended` on
+  EOF, future seek commands, etc. Idempotent: it only acts when
+  `video.paused()` doesn't already match the target state, so it
+  doesn't fight the click handler.
+
+### Why HTML5 video for the playback surface (and not wisp)
+
+The recorder's *editor preview* surface will eventually be a
+winit-child window driven by wisp (so we can apply filters, transforms,
+animation). But for the MVP "user dropped a file and wants to see it",
+HTML5 `<video>` with the asset protocol is:
+
+- one element, no decoder integration,
+- hardware-accelerated by the WebView,
+- scrub-bar/seek/audio for free.
+
+The Tauri-side
+[`PlayerSession`](../api/screen_app/player_session/struct.PlayerSession.html)
+keeps running alongside — it owns the gstreamer-decoded
+[`VideoTexture`](../api/wisp/struct.VideoTexture.html) that future
+wisp-rendered surfaces will read. Two-source-of-truth is a deliberate
+trade for shipping the playback MVP today.
+
+### `tauri.conf.json` requirements
+
+The `assetProtocol.scope` must include the dropped file's path. Our
+config uses `["**"]` (any local file). For a production build we'd
+tighten to user-selected directories.
+
+```json
+"security": {
+  "assetProtocol": {
+    "enable": true,
+    "scope": ["**"]
+  }
+}
+```
+
+Without `"enable": true`, `convertFileSrc` returns the path unchanged
+and the `<video>` element fails to load with a CSP / protocol error.
+
 [`PlayerSession` API](../api/screen_app/player_session/struct.PlayerSession.html) ·
 [Tauri commands](../api/screen_app/commands/index.html) ·
 [`PlayerControls` component](../ui/chunks/player-controls-paused.md) ·

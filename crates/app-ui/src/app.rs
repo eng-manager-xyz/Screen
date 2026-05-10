@@ -1,5 +1,6 @@
 //! Top-level `App` component for the recorder shell.
 
+use leptos::html;
 use leptos::prelude::*;
 use ui_storybook::components::{
     DropZone, DropZoneState, PlayState, PlayerControls, RecordingState, RecordingToolbar,
@@ -7,11 +8,11 @@ use ui_storybook::components::{
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::CustomEvent;
+use web_sys::{CustomEvent, HtmlVideoElement};
 
 use crate::player_ipc::{
-    self, PlayerStatus, SessionState, install_player_status_listener, screen_open, screen_pause,
-    screen_play,
+    self, PlayerStatus, SessionState, convert_file_src, install_player_status_listener,
+    screen_open, screen_pause, screen_play,
 };
 
 /// The recorder shell. Composes the toolbar, the main surface (drop-zone
@@ -76,11 +77,35 @@ fn PlayerView(
     loaded: ReadSignal<Option<String>>,
     player_status: ReadSignal<PlayerStatus>,
 ) -> impl IntoView {
-    let path = move || loaded.get().unwrap_or_default();
+    let video_ref: NodeRef<html::Video> = NodeRef::new();
 
-    // The PlayerControls component is purely presentational; we wrap it
-    // in a reactive view so updates to `player_status` re-render the
-    // controls with the current state/position/duration.
+    // Resolve the dropped file path → asset:// URL for the <video> tag.
+    // `convert_file_src` returns `None` outside Tauri (browser-only
+    // `trunk serve` path) — render a plain message in that case.
+    let video_src = move || -> Option<String> {
+        let path = loaded.get()?;
+        convert_file_src(&path)
+    };
+    let path_label = move || loaded.get().unwrap_or_default();
+
+    // Catch-up effect: when Tauri's state changes for non-click reasons
+    // (Ended on EOF, future seek, ...), keep the <video> element in
+    // sync. Idempotent — won't fight the click-handler driven path.
+    Effect::new(move |_| {
+        let status = player_status.get();
+        let Some(video) = video_ref.get() else {
+            return;
+        };
+        let video: HtmlVideoElement = video;
+        let should_play = status.state == SessionState::Playing;
+        let is_paused = video.paused();
+        if should_play && is_paused {
+            let _ = video.play();
+        } else if !should_play && !is_paused {
+            let _ = video.pause();
+        }
+    });
+
     let controls = move || {
         let status = player_status.get();
         let play_state = match status.state {
@@ -90,13 +115,28 @@ fn PlayerView(
         let position = player_ipc::position(&status);
         let duration = player_ipc::duration_seconds(&status);
         let toggle = Callback::new(move |()| {
-            // Read untracked — the callback should fire commands without
-            // creating a reactive dependency on its own output.
             let cur = player_status.get_untracked();
-            let _ = if cur.state == SessionState::Playing {
-                screen_pause()
-            } else {
+            let want_playing = cur.state != SessionState::Playing;
+
+            // Drive the <video> element synchronously inside the click
+            // handler — WebKit blocks programmatic .play() outside a
+            // user gesture, so the catch-up Effect alone isn't enough.
+            if let Some(video) = video_ref.get_untracked() {
+                let video: HtmlVideoElement = video;
+                let _ = if want_playing {
+                    let _ = video.play();
+                    Ok::<(), JsValue>(())
+                } else {
+                    video.pause()
+                };
+            }
+
+            // Drive Tauri Player state in parallel — source of truth
+            // for elapsed/duration/EOF transitions.
+            let _ = if want_playing {
                 screen_play()
+            } else {
+                screen_pause()
             };
         });
         view! {
@@ -112,8 +152,16 @@ fn PlayerView(
     view! {
         <div class="player-view">
             <div class="player-surface">
+                {move || video_src().map(|src| view! {
+                    <video
+                        node_ref=video_ref
+                        class="player-video"
+                        src=src
+                        preload="auto"
+                    />
+                })}
                 <div class="player-surface-label">
-                    "Preview surface · " {path}
+                    "Preview surface · " {path_label}
                 </div>
             </div>
             {controls}

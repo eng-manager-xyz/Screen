@@ -6,6 +6,23 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-PLAY.3 — `<video>` preview bound to convertFileSrc + e2e coverage
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first user-visible video playback in the recorder. Maps to milestone-1 chunks M3.1 (path → asset URL) + M3.2 (VideoPlayer component); M3.3 (view switching) was already in place via `<Show>`.
+- **Files:** `crates/app-ui/index.html` (new `__screenConvertFileSrc` JS bridge); `crates/app-ui/src/player_ipc.rs` (`screen_convert_file_src_js` extern + safe `convert_file_src` wrapper that returns `None` outside Tauri); `crates/app-ui/src/app.rs` (PlayerView replaces placeholder div with `<video>` element using NodeRef + sync click handler + catch-up Effect); `crates/app-ui/Cargo.toml` (`HtmlVideoElement` + `HtmlMediaElement` web-sys features); `crates/app-ui/shell.css` (`.player-video` + repositioned `.player-surface-label` as overlay); `crates/app-e2e/tests/golden_path.rs` (asserts video element exists, src is asset-protocol-shaped, `.paused` flips on toggle clicks); `_docs/book/src/app-ui/player-ipc.md` extended with the M-PLAY.3 video-element section.
+- **Verified:** `just gate` green; `trunk build` clean WASM bundle; `cargo check -p app-e2e --tests` green so the new e2e assertions compile (full e2e run on the next push to Linux CI).
+- **Architecture lock — two paths to the `<video>` element, by necessity:**
+  - **Click handler** drives `<video>` synchronously within the user gesture. WebKit blocks programmatic `.play()` outside a user-initiated event, so the catch-up Effect alone wouldn't be enough.
+  - **`Effect::new`** over `player_status` is the catch-up path for non-click state changes (EOF transition to Ended, future seek commands). Idempotent — only acts when `video.paused()` doesn't already match.
+- **Two-source-of-truth, deliberate:** Tauri's `PlayerSession` keeps running alongside the visible HTML5 video. It owns the gstreamer-decoded `VideoTexture` that future wisp-rendered surfaces (winit child window for the editor preview) will read. This chunk doesn't fold the two together — the video element is the MVP playback surface; the wisp render path is queued for a later milestone.
+- **e2e UPDATED** (per the testing strategy's tier-2 obligation when adding a user-visible feature):
+  - Asserts `<video class="player-video">` exists after drop.
+  - Reads `src` attribute, asserts non-empty + contains `"asset"` (matches both macOS `asset://` and Linux/Windows `http://asset.localhost`).
+  - New `wait_video_paused(driver, want_paused)` helper polls `document.querySelector('video.player-video').paused` via `driver.execute()` because WebKit's `.play()` is async and the property doesn't flip exactly on click.
+- **No new lessons during the gate loop** — the feature dropped in cleanly because the JS bridge / extern / NodeRef / Effect patterns were all established in M-PLAY.2 and M-TEST.2. Pure composition.
+
+---
+
 ## M-TEST.2 — Tier-2 WebDriver e2e via tauri-driver + fantoccini
 - **Date:** 2026-05-09
 - **Status:** ✅ done — completes the three-tier test strategy. Linux-CI-gated; macOS skips with a clear message.

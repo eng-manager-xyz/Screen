@@ -72,6 +72,26 @@ extern "C" {
     /// Pause playback.
     #[wasm_bindgen(js_namespace = window, js_name = "__screenPause", catch)]
     pub fn screen_pause() -> Result<JsValue, JsValue>;
+
+    /// Synchronous Tauri helper: convert a local file path into the
+    /// asset-protocol URL the webview can load via `<video src>`.
+    /// Returns the converted string as a `JsValue`, or `JsValue::UNDEFINED`
+    /// when running outside Tauri.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenConvertFileSrc")]
+    pub fn screen_convert_file_src_js(path: &str) -> JsValue;
+}
+
+/// Convert a local file path to an asset-protocol URL the `<video>`
+/// element can load. Returns `None` when running outside Tauri (the
+/// standalone `trunk serve` browser-only path) — callers can render a
+/// placeholder in that case.
+#[must_use]
+pub fn convert_file_src(path: &str) -> Option<String> {
+    let value = screen_convert_file_src_js(path);
+    if value.is_undefined() || value.is_null() {
+        return None;
+    }
+    value.as_string()
 }
 
 /// Install a `player-status` browser-`CustomEvent` listener.
