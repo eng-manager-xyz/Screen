@@ -260,6 +260,24 @@ impl Renderer {
         self.blit.compose_over(app, &masked_rt, output);
     }
 
+    /// Convenience wrapper over [`Self::apply_privacy_blur`] that
+    /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
+    /// value (M-MASK / AUT-22).
+    ///
+    /// Editor inspector controls and persisted documents work with
+    /// `PrivacyBlur` structs directly; this method exists so the app
+    /// side never needs to convert a `BlurStrength` enum back to a raw
+    /// `f32` itself.
+    pub fn apply_privacy_blur_data(
+        &self,
+        app: &Application,
+        blur: &crate::scene::PrivacyBlur,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.apply_privacy_blur(app, blur.shape, blur.strength.radius_px(), base, output);
+    }
+
     /// Fast path: one render pass, no offscreen indirection.
     fn render_stage_fast(
         &self,

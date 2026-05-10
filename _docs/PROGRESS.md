@@ -6,6 +6,21 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.4 — Configurable blur strength in wisp (AUT-22)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — strength is renderer-data, persistable as a symbolic enum, mapped to a clamped numeric radius at render time. Story shows Soft/Medium/Strong side by side.
+- **Linear:** [AUT-22](https://linear.app/harwood/issue/AUT-22).
+- **Files:** new `crates/wisp/src/scene/privacy_blur.rs` (`BlurStrength` enum: Soft / Medium (default) / Strong / Custom(f32); `PrivacyBlur` struct bundling a `MaskShape` + `BlurStrength` with `rect`/`rounded_rect`/`with_strength` constructors). `crates/wisp/src/scene.rs` exposes the new module + re-exports. `crates/wisp/src/lib.rs` re-exports `BlurStrength`/`PrivacyBlur`. `crates/wisp/src/render.rs` adds `Renderer::apply_privacy_blur_data(blur, base, output)` (one-line wrapper that pulls `radius_px()`). New `crates/wisp/tests/privacy_blur_strength.rs` (3 cases: monotonic presets, Custom clamping, end-to-end strength → blur evidence). New `crates/wisp-storybook/src/stories/s_privacy_blur_strength.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/privacy-blur-strength.md` chapter; `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-strength.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (182 tests, +3 from M-MASK.3's 179). Story renders three side-by-side blur variants with color-coded labels under each.
+- **Symbolic vs numeric strength:** the symbolic enum is what the *editor* persists ("Strong" stays meaningful even if we retune Strong from 24px to 32px later); the numeric radius is what the *renderer* needs. `radius_px()` is the single point of mapping. `Custom(f32)` stays available for stories and tests that need exact pixel determinism.
+- **Pixel test pattern for "more blur":** sample on the *red side* of a sharp red/blue split, *far* from the seam (NDC -0.3, ~38 pixels from seam in a 128-wide image). Soft (radius 6) can't reach that far; Medium (12) reaches a touch; Strong (24) pulls in real blue. Reading the B channel and asserting `soft < medium < strong` is the cleanest "more blur = more evidence" assertion. First attempt sampled too close to the seam (NDC -0.05) where even Soft saturated; the lesson: if testing strength gradients, sample far enough that the smaller kernel can't reach.
+- **Gate-loop lessons:**
+  - **`#[derive(Default)] + #[default]` for unit-variant enums.** clippy's `derivable_impls` lint fires when a manual `impl Default for E { fn default() -> Self { Self::X } }` could just be `#[derive(Default)]` on the enum + `#[default]` on the variant. Already documented in CLAUDE.md ("Cast hygiene") generically; reinforced here for enum case.
+  - **`f32` test assertions need a tolerance.** clippy `float_cmp` rejects `assert_eq!(some_f32, 64.0)`; use `(a - b).abs() < 1e-6` for clamp-comparison tests. Adding to CLAUDE.md.
+  - **`(W as f32) * 0.35` triggers `cast_precision_loss` + sign-loss + truncation in tests.** Avoid casting through float for an integer-pixel calculation: `(W as usize * 35) / 100` gives the same answer with no float involved. Adding to CLAUDE.md.
+
+---
+
 ## M-MASK.3 — Rounded-rectangle privacy blur in wisp (AUT-21)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — generalizes M-MASK.2 from `Rect` to any `MaskShape`. The privacy redaction primitive is now shape-agnostic; future shapes (circle, ellipse, freehand path) plug in for free.

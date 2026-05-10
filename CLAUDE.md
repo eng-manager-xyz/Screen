@@ -77,6 +77,9 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 - **`f32::from(x)` for `u8`/`u16` → `f32`**, never `x as f32` (clippy::cast_precision_loss).
 - **`f32: From<i32>` does not exist.** Loop counters like `for i in -4..=4 { f32::from(i) }` won't compile. Either type-suffix the literal (`-4i16..=4`) so it resolves to `From<i16>`, or compute the loop value as `i16` from the start.
+- **`f32` equality assertions need a tolerance.** clippy `float_cmp` rejects `assert_eq!(x, 64.0)`. Use `(a - b).abs() < 1e-6` for "exact" comparisons. Even the *clamp endpoints* of a `clamp(0.0, 64.0)` need tolerance because the lint doesn't know the value came from a clamp.
+- **`(W as f32) * 0.35) as usize` is a triple-clippy fail** (`cast_precision_loss`, `cast_possible_truncation`, `cast_sign_loss`) for an integer-percent index calculation. Stay in integer arithmetic: `(W as usize * 35) / 100`. Same answer, no float involved.
+- **Use `#[derive(Default)] + #[default]` on enums** instead of `impl Default for E { fn default() -> Self { Self::X } }` for unit-variant enums. clippy `derivable_impls` flags the manual impl.
 - **`u32::try_from(x).expect(...)` for `usize` → `u32`**, never `x as u32` (clippy::cast_possible_truncation).
 - **`f32 as u32` requires `#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "...")]`** even after `clamp` + `round` — the clamp bound isn't visible to clippy.
 - **`iter.next_back()`**, never `iter.rev().next()` (clippy::manual_next_back).
