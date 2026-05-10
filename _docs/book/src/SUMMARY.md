@@ -41,6 +41,7 @@
   - [Privacy blur strengths — M-MASK.4](./wisp/chunks/privacy-blur-strength.md)
   - [Solid redaction — M-MASK.5](./wisp/chunks/solid-redaction.md)
   - [Spotlight / highlight — M-MASK.6](./wisp/chunks/spotlight.md)
+  - [Dim outside — M-MASK.7](./wisp/chunks/dim-outside.md)
 
 # `decode` — video decode
 

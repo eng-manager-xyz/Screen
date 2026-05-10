@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.7 — Dim-outside renderer-data wrapper in wisp (AUT-29)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `DimOutside` + `DimStrength` data API on top of M-MASK.6's `apply_spotlight`. No new shader, no new pipeline; just a thin data shell so the editor inspector can persist symbolic strength names.
+- **Linear:** [AUT-29](https://linear.app/harwood/issue/AUT-29).
+- **Files:** new `crates/wisp/src/scene/dim_outside.rs` (`DimStrength` enum: Light / Medium (default) / Heavy / Custom(f32) clamped `[0,1]`; `DimOutside` struct with `rect`/`rounded_rect`/`with_strength` constructors). `crates/wisp/src/scene.rs` exposes the new module + re-exports. `crates/wisp/src/lib.rs` re-exports `DimOutside`/`DimStrength`. `crates/wisp/src/render.rs` adds `Renderer::apply_dim_outside_data(dim, base, output)` (one-line wrapper that calls `apply_spotlight` with `Color::rgba(0,0,0,strength.alpha())`). New `crates/wisp/tests/dim_outside.rs` (3 cases: monotonic presets, Custom clamping, end-to-end strength → outside-darkness). New `crates/wisp-storybook/src/stories/s_dim_outside.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/dim-outside.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/dim-outside.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (192 tests, +3 from M-MASK.6's 189).
+- **AUT-29 = data wrapper, not new pipeline.** All the rendering work happened in M-MASK.6 (the `invert: f32` flag in clip.wgsl, the `apply_spotlight` primitive, the inverse-clip composition). AUT-29 just bundles `MaskShape` + `DimStrength` into a struct the editor can persist — same pattern as `PrivacyBlur`/`BlurStrength` from AUT-22.
+- **Symmetric design with `PrivacyBlur`.** Identical shape: `DimOutside { shape, strength }` where strength is a symbolic enum with a `Custom(f32)` escape hatch. Editor projects persist the symbolic name (`Heavy`); retuning the alpha mapping later doesn't break files. Story shows three named-strength variants side-by-side, exactly mirroring `s_privacy_blur_strength`.
+
+---
+
 ## M-MASK.6 — Spotlight / highlight mask in wisp (AUT-28)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — attention-guiding primitive. Inside `shape`: base unchanged. Outside: blended toward `dim_color`. Foundation for AUT-29 dim-outside.

@@ -4,6 +4,7 @@
 mod s_blur_filter;
 mod s_clip_rounded;
 mod s_color_matrix;
+mod s_dim_outside;
 mod s_drop_shadow;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
@@ -44,5 +45,6 @@ pub fn all_stories() -> Vec<Story> {
         s_privacy_blur_strength::story(),
         s_solid_redaction::story(),
         s_spotlight::story(),
+        s_dim_outside::story(),
     ]
 }

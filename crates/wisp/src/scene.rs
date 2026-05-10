@@ -5,6 +5,7 @@
 
 pub mod clip;
 pub mod container;
+pub mod dim_outside;
 pub mod graphics;
 pub mod mesh;
 pub mod node;
@@ -17,6 +18,7 @@ use slotmap::SlotMap;
 
 pub use clip::MaskShape;
 pub use container::Container;
+pub use dim_outside::{DimOutside, DimStrength};
 pub use graphics::{Fill, Graphics, Stroke};
 pub use mesh::Mesh;
 pub use node::{Node, NodeId};

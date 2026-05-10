@@ -408,6 +408,31 @@ impl Renderer {
         self.blit.compose_over(app, &masked_rt, output);
     }
 
+    /// Convenience wrapper over [`Self::apply_spotlight`] that
+    /// consumes a [`DimOutside`](crate::scene::DimOutside) data value
+    /// (M-MASK / AUT-29).
+    ///
+    /// Editor inspector controls and persisted documents work with
+    /// `DimOutside` directly; this method exists so the app side
+    /// never needs to convert a `DimStrength` enum back to an alpha
+    /// itself.
+    pub fn apply_dim_outside_data(
+        &self,
+        app: &Application,
+        dim: &crate::scene::DimOutside,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let alpha = dim.strength.alpha();
+        self.apply_spotlight(
+            app,
+            dim.shape,
+            Color::rgba(0.0, 0.0, 0.0, alpha),
+            base,
+            output,
+        );
+    }
+
     /// Convenience wrapper over [`Self::apply_privacy_blur`] that
     /// consumes a [`PrivacyBlur`](crate::scene::PrivacyBlur) data
     /// value (M-MASK / AUT-22).
