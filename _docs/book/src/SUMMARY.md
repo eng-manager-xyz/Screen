@@ -63,6 +63,7 @@
   - [Atlas vs Flexible text — M-TEXT.4](./wisp/text/atlas-vs-flexible.md)
   - [FlexibleText — Cosmic Text — M-TEXT.2](./wisp/text/flexible-cosmic.md)
   - [FlexibleText — Glyphon WGPU rasterizer — M-TEXT.3](./wisp/text/glyphon-backend.md)
+  - [Text render-to-texture — M-TEXT.5](./wisp/text/textures.md)
 
 # `decode` — video decode
 

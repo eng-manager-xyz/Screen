@@ -24,6 +24,7 @@ mod s_solid_redaction;
 mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
+mod s_text_texture;
 mod s_transform_nesting;
 mod s_vector_gallery;
 mod s_vector_overlays;
@@ -40,6 +41,7 @@ pub fn all_stories() -> Vec<Story> {
         s_sprite_batcher::story(),
         s_transform_nesting::story(),
         s_text::story(),
+        s_text_texture::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),

@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.5 — Text render-to-texture path + cache (AUT-79)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `TextTexturePipeline` packages engine + renderer + FIFO cache; `WispText` renders into a `RenderTexture` and `RenderTexture::as_texture()` exposes it as a sprite-friendly `Texture` without GPU copy. With this, text inherits transform / alpha / blend / render-pass participation for free via the existing sprite pipeline — the gaps that M-TEXT.3 deferred.
+- **Linear:** [AUT-79](https://linear.app/harwood/issue/AUT-79).
+- **Files:** new `crates/wisp/src/text/texture.rs` (`TextTextureKey`, `TextTextureCache`, `TextTexturePipeline`, `MAX_ENTRIES = 64`). `crates/wisp/src/text/mod.rs` and `crates/wisp/src/lib.rs` re-export the three new public types. `crates/wisp/src/texture/render_texture.rs` adds `RenderTexture::as_texture() -> Texture` (zero-copy, shares the underlying wgpu handles). `crates/wisp/src/texture.rs` adds crate-private `Texture::from_render_texture_parts(...)`. New `crates/wisp-storybook/src/stories/s_text_texture.rs` + `writeups/text_texture.md` + `mod.rs` + `all_stories()` entry. New `_docs/book/src/wisp/text/textures.md` chapter. `_docs/book/src/SUMMARY.md`. Regenerated `_docs/book/src/assets/wisp/text-texture.png` via `just snapshots-wisp`.
+- **Verified:** 11 new unit tests in `text::texture::tests` covering miss-on-first, hit-on-second (same Arc), invalidation on content / style / color / wrap / dims / font_family, FIFO eviction at MAX_ENTRIES, clear-and-refill, and a pixel smoke ("at least one non-zero alpha pixel"). Full `just gate` green at 303 tests (292 + 11 new). `just snapshots-check` confirms every chapter's referenced asset is on disk.
+- **`+y` convention diverges between glyphon and sprite UVs.** Glyphon writes textures with `+y` down (texture row 0 is the top); the sprite pipeline samples with `+y` up. The chapter documents the canonical fix — set `sprite.container.transform.scale.y` negative to display upright. The story uses this idiom.
+- **Cache invalidates on every renderable input.** `TextTextureKey` hashes content + family + style (size, color, line_height, letter_spacing, weight, italic, align) + wrap_width + (width_px, height_px). `f32` fields go through `to_bits()` so equality is exact-bit — same NaN bits hash identically (acceptable, callers re-pass the same style across frames).
+- **`Texture::from_render_texture_parts` stays `pub(crate)`.** Texture's wgpu fields are crate-private; we expose the conversion via `RenderTexture::as_texture()` (public) so the contract is "render targets can become sampleable textures," not "any wgpu::Texture can become a wisp::Texture."
+- **Pipeline is opt-in.** Glyphon + cache costs only apply when a caller constructs `TextTexturePipeline`. `Renderer` doesn't own it, mirroring the M-TEXT.3 sibling-of-Renderer pattern.
+
+---
+
 ## M-TEXT.3 follow-up — Custom-font family override + screenshot demo (AUT-77)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — extends M-TEXT.3 with per-text font family selection so FlexibleText can render through specific TTF files (Inter, JetBrains Mono, …) instead of the cosmic-text default sans-serif. Adds the bundled-font exporter that produces the hero screenshot for the chapter.
