@@ -6,6 +6,24 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEST.1 — Tier-1 IPC harness for Tauri commands
+- **Date:** 2026-05-09
+- **Status:** ✅ done — first half of the e2e testing strategy. M-TEST.2 (WebDriver) follows.
+- **Files:** `crates/app/Cargo.toml` (dev-dep `tauri = { features = ["test"] }` + `serde_json`); new `crates/app/tests/commands.rs` (4 cases: empty status, full open→play→pause IPC round-trip, lowercase serde wire-shape regression guard, invalid-path error path); `Deserialize` derive added to `PlayerStatus` + `SessionState` (was Serialize-only) so tests can round-trip; `_docs/book/src/app-ui/testing.md` documents the three-tier strategy; `SUMMARY.md`.
+- **Verified:** `just gate` green (132 tests, +4 from M-PLAY.2's 128); 4 IPC harness cases run in ~1.5s under nextest.
+- **What this catches that direct PlayerSession tests miss:**
+  - Misregistration in `tauri::generate_handler!` (typo → silently missing command at runtime, no compile error).
+  - serde wire-shape drift: e.g. accidentally dropping `#[serde(rename_all = "lowercase")]` from `SessionState`. Caught by an explicit `state_str == "empty"` assertion.
+  - `State<PlayerSession>` plumbing — forgetting `.manage(...)` in main.rs would still compile but fail at runtime. The harness builds via `mock_builder().manage(...).build(...)` so a missed `.manage` would surface here.
+- **Test-tier hierarchy now documented in `_docs/book/src/app-ui/testing.md`** — Tier 0 (chunk-level), Tier 1 (this chunk), Tier 2 (WebDriver, M-TEST.2 next). Each tier overlaps deliberately; no tier replaces another.
+- **3 clippy refactors during the gate loop:**
+  - `Default::default()` for `HeaderMap` and `WebviewUrl` → typed forms (`HeaderMap::default()`, `WebviewUrl::default()`) per `default_trait_access`. New mini-lesson: clippy pedantic prefers explicit type names over `Default::default()` ambiguity.
+  - `tauri::webview::WebviewUrl` is `pub(crate)`; the public path is `tauri::WebviewUrl` (re-exported from `config`). Found via `grep` in the registry source.
+  - `tauri::test::INVOKE_KEY` is the magic constant the IPC dispatcher checks; tests would silently get rejected without it.
+- **Cargo wart noted (acceptance, not a fix):** `[dev-dependencies] tauri = { features = ["test"] }` unifies into the release binary's feature set because cargo doesn't separate dep + dev-dep features per profile. The `test` module is small; accepted.
+
+---
+
 ## M-PLAY.2 — Tauri ↔ player IPC for transport controls
 - **Date:** 2026-05-09
 - **Status:** ✅ done — last chunk on the path to first MP4 playback. **Path complete: M-DEC.1 → M-PLAY.1 → M-DEC.2 → M-INT.1 → M-INT.2 → M-PREVIEW.1 → M-PLAY.2.**

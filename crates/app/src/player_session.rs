@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use decode::VideoStream;
 use decode::gstreamer_pipe::GstreamerPipeStream;
 use playback::{PlayState, Player};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use wisp::application::{AppConfig, Application};
 
 /// IPC-stable enum for the player's lifecycle. Mirrored on the frontend.
@@ -23,7 +23,7 @@ use wisp::application::{AppConfig, Application};
 /// Distinct from [`playback::PlayState`] in that it carries an explicit
 /// `Empty` variant for "no file loaded" — that's a Tauri-shell concern,
 /// not a player-state-machine concern.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
     /// No file is loaded. `open` transitions to `Paused`.
@@ -38,7 +38,7 @@ pub enum SessionState {
 
 /// IPC payload emitted on the `player-status` event and returned from the
 /// `player_open` / `player_status` commands.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerStatus {
     /// Lifecycle state — see [`SessionState`].
     pub state: SessionState,

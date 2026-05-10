@@ -5119,6 +5119,7 @@ dependencies = [
  "playback",
  "pollster",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tracing",

@@ -51,6 +51,7 @@
 - [Overview](./app-ui/overview.md)
   - [Tauri ↔ Leptos integration (M-INT.2)](./app-ui/integration.md)
   - [Player IPC (M-PLAY.2)](./app-ui/player-ipc.md)
+  - [Testing tiers (M-TEST.1 / .2)](./app-ui/testing.md)
 
 # `ui-storybook` — Leptos UI
 
