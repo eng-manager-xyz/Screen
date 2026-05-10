@@ -41,6 +41,11 @@
 - [Overview](./playback/overview.md)
   - [Real MP4 → wisp playback (M-DEC.2)](./playback/play-file.md)
 
+# `preview` — native window
+
+- [Overview](./preview/overview.md)
+  - [Native winit window (M-PREVIEW.1)](./preview/chunks/preview-window.md)
+
 # `app-ui` — recorder shell
 
 - [Overview](./app-ui/overview.md)

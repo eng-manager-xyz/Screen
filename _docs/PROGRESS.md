@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-PREVIEW.1 — Native winit window with a wgpu surface that wisp renders into
+- **Date:** 2026-05-09
+- **Status:** ✅ done — fifth-and-a-half chunk on the path to first MP4 playback. **1 chunk remains** (M-PLAY.2 Tauri↔player IPC).
+- **Files:** new `crates/preview/` (Cargo.toml, src/lib.rs with `aspect_fit_scale` + 4 unit tests, src/main.rs with the winit `ApplicationHandler`); `crates/preview/examples/render_offscreen.rs` (asset generator — same render path against an offscreen `RenderTexture`); `crates/preview/tests/render_smoke.rs` (CI-safe smoke test for the `from_wgpu` codepath); 5 PNG assets at `_docs/book/src/assets/preview/preview_NN.png`; `_docs/book/src/preview/{overview,chunks/preview-window}.md`; `SUMMARY.md`; `ISSUES.md` adds ISS-03 (pre-existing rustdoc warning in `app-ui` spotted during `just site`).
+- **Verified:** `just gate` green (122 tests, 0 skipped); `just site` renders both new chapters with embedded asset PNGs; `cargo run -p preview` opens a real winit window and plays the fixture (manual verify).
+- **Architecture lock:** `wisp::Application::from_wgpu` is the embedding-host seam. `preview` calls it with the host-built `Instance`/`Adapter`/`Device`/`Queue` (surface-aware in the binary, surfaceless in the example). When M-PLAY.2 wires a winit child of Tauri, the same constructor handles it — no library-side change.
+- **Sprite math:** `aspect_fit_scale(surface_w, surface_h, video_w, video_h) -> Vec2` letterboxes/pillarboxes the source into the surface. The bound axis takes 2.0 (full NDC `[-1, +1]`); the loose axis shrinks proportionally. Zero dims fall back to `Vec2::splat(1.0)` to avoid `NaN`.
+- **Why a `[lib]` *and* a `[[bin]]`:** the example and integration test need `aspect_fit_scale` and the API stability of the same shape that `main.rs` uses. Cargo handles a dual-target crate cleanly; rustdoc gets the `preview` crate page automatically.
+- **One clippy refactor during the gate loop** (no `#[allow]`):
+  - `bytes.len() as u32` → `u32::try_from(bytes.len()).expect(...)` (the documented CLAUDE.md cast-hygiene rule, applied prophylactically — caught here on first attempt because the lesson was already in the rules file).
+
+---
+
 ## M-INT.2 — Tauri serves Trunk bundle + OS file-drop wiring
 - **Date:** 2026-05-10
 - **Status:** ✅ done — fifth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1, M-PLAY.2).
