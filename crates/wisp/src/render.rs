@@ -202,36 +202,43 @@ impl Renderer {
         self.clip.apply(app, shape, foreground, output);
     }
 
-    /// Composition primitive — render `base`, blurred only inside the
-    /// `region`, into `output`. Outside the region the pixels are
-    /// preserved as-is (M-MASK / AUT-20: rectangle privacy blur).
+    /// Composition primitive — render `base`, blurred only inside
+    /// `shape`, into `output`. Outside the shape the pixels are
+    /// preserved as-is.
     ///
-    /// Pipeline (all RTs `app.width()`/`app.height()` at the renderer's
+    /// Started life as the AUT-20 rectangle privacy blur; AUT-21
+    /// generalized it to any [`MaskShape`] (rounded rect today;
+    /// ellipse / circle / freehand path follow in AUT-30/-34/-35).
+    /// Calling with `MaskShape::Rect` reproduces the AUT-20 behavior;
+    /// `MaskShape::RoundedRect` redacts with cinematic rounded corners
+    /// matching modern app surfaces.
+    ///
+    /// Pipeline (all RTs match `base`'s dimensions at the renderer's
     /// output format):
     ///
     /// ```text
     ///   base ─ BlurFilter(radius) ─►  blur_rt
     ///                                   │
-    ///                                   ├─ ClipPipeline(MaskShape::Rect{region}) ─►  masked_rt
+    ///                                   ├─ ClipPipeline(shape) ─►  masked_rt
     ///                                   │
     ///   base ─────────────────────────► output  (Blit::REPLACE)
     ///                                   │
     ///   masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
     /// ```
     ///
-    /// `region` is in NDC `[-1, +1]²` (screen space). `radius` is the
+    /// `shape` is in NDC `[-1, +1]²` (screen space). `radius` is the
     /// Gaussian blur radius in pixels; AUT-22 will expose this as a
     /// scene-data parameter rather than just a method argument.
     ///
     /// Use this when you've pre-rendered a frame into `base` (e.g.
-    /// the recording surface) and want to redact a known-rect region.
+    /// the recording surface) and want to redact a known region.
     /// Future enhancement: a [`Container`](crate::scene::Container)
     /// node type that triggers this automatically during scene
     /// traversal.
     pub fn apply_privacy_blur(
         &self,
         app: &Application,
-        region: crate::math::Rect,
+        shape: MaskShape,
         radius: f32,
         base: &RenderTexture,
         output: &RenderTexture,
@@ -243,9 +250,8 @@ impl Renderer {
         // 1. Blur the whole frame.
         self.apply_filter(app, &crate::filter::BlurFilter::new(radius), base, &blur_rt);
 
-        // 2. Mask the blur to the region.
-        self.clip
-            .apply(app, MaskShape::Rect { rect: region }, &blur_rt, &masked_rt);
+        // 2. Mask the blur to the shape.
+        self.clip.apply(app, shape, &blur_rt, &masked_rt);
 
         // 3. Copy base → output (replaces output's prior contents).
         self.blit.blit(app, base, output.view());

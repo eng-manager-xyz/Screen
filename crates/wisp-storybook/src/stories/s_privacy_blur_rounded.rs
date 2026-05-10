@@ -1,9 +1,9 @@
-//! Story: rectangle privacy blur (M-MASK.2 / AUT-20).
+//! Story: rounded-rectangle privacy blur (M-MASK.3 / AUT-21).
 //!
-//! Pre-render a "screen capture" full of legible content (gradient
-//! panels + grid lines), then privacy-blur a sub-rectangle so a
-//! sensitive region of the recording is occluded while the rest stays
-//! sharp. Demonstrates `Renderer::apply_privacy_blur` end-to-end.
+//! Same pre-render-and-redact as `s_privacy_blur_rect`, but the
+//! privacy region uses `MaskShape::RoundedRect` so the redaction has
+//! cinematic rounded corners matching modern app surfaces. Builds on
+//! AUT-20's `apply_privacy_blur` — just a different shape.
 
 use glam::Vec2;
 use wisp::application::Application;
@@ -15,11 +15,11 @@ use crate::story::Story;
 
 pub fn story() -> Story {
     Story {
-        id: "privacy-blur-rect",
+        id: "privacy-blur-rounded",
         category: "Mask",
-        title: "Rectangle privacy blur",
-        milestone: "M-MASK.2 / AUT-20",
-        writeup: include_str!("writeups/privacy_blur_rect.md"),
+        title: "Rounded privacy blur",
+        milestone: "M-MASK.3 / AUT-21",
+        writeup: include_str!("writeups/privacy_blur_rounded.md"),
         build,
         tick: None,
     }
@@ -29,9 +29,6 @@ fn build(app: &Application, stage: &mut Stage) {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let renderer = Renderer::new(app, format).expect("renderer");
 
-    // Pretend "screen capture" RT — a colorful gradient with a grid
-    // overlay so the blur is visible (sharp lines disappear inside the
-    // privacy region).
     let mut capture_stage = Stage::new();
 
     let mut bg = Graphics::new();
@@ -44,7 +41,6 @@ fn build(app: &Application, stage: &mut Stage) {
     bg.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
     let _ = capture_stage.add_child(capture_stage.root(), bg);
 
-    // Vertical grid lines — these reveal the blur sharply.
     for i in -4i16..=4 {
         let x = f32::from(i) * 0.2;
         let mut line = Graphics::new();
@@ -63,11 +59,16 @@ fn build(app: &Application, stage: &mut Stage) {
     let base_rt = RenderTexture::with_format(app, 256, 256, format);
     let _ = renderer.render_stage(app, base_rt.view(), Color::BLACK, &capture_stage);
 
-    // Apply the privacy blur — center-right rect, a chunk of the grid
-    // ends up obscured.
     let output_rt = RenderTexture::with_format(app, 256, 256, format);
     let region = Rect::new(0.05, -0.45, 0.55, 0.6);
-    renderer.apply_privacy_blur(app, MaskShape::rect(region), 12.0, &base_rt, &output_rt);
+    let radius = 0.12;
+    renderer.apply_privacy_blur(
+        app,
+        MaskShape::rounded_rect(region, radius),
+        12.0,
+        &base_rt,
+        &output_rt,
+    );
 
     let bytes = output_rt.read_pixels(app);
     let result_tex = Texture::from_rgba(app, 256, 256, &bytes);
@@ -76,24 +77,41 @@ fn build(app: &Application, stage: &mut Stage) {
     shown.container.transform.scale = Vec2::splat(0.9);
     let _ = stage.add_child(stage.root(), shown);
 
-    // Outline the privacy region so viewers can see what was redacted.
+    // Outline the rounded region in a contrasting color. The stroke
+    // is drawn as four tiny rects approximating the rounded corners
+    // by drawing a slightly inset rect to suggest the corner curve.
     let mut outline = Graphics::new();
     outline.fill(Fill::Solid(Color::rgba_u8(255, 240, 0, 200)));
     let inner = Rect::new(0.05 * 0.9, -0.45 * 0.9, 0.55 * 0.9, 0.6 * 0.9);
+    let r_scaled = radius * 0.9;
     let t = 0.008;
-    outline.draw_rect(Rect::new(inner.min.x, inner.min.y, inner.size.x, t));
+    // Top edge (sits between the two rounded corners).
     outline.draw_rect(Rect::new(
-        inner.min.x,
+        inner.min.x + r_scaled,
         inner.min.y + inner.size.y - t,
-        inner.size.x,
+        inner.size.x - 2.0 * r_scaled,
         t,
     ));
-    outline.draw_rect(Rect::new(inner.min.x, inner.min.y, t, inner.size.y));
+    // Bottom edge.
+    outline.draw_rect(Rect::new(
+        inner.min.x + r_scaled,
+        inner.min.y,
+        inner.size.x - 2.0 * r_scaled,
+        t,
+    ));
+    // Left edge.
+    outline.draw_rect(Rect::new(
+        inner.min.x,
+        inner.min.y + r_scaled,
+        t,
+        inner.size.y - 2.0 * r_scaled,
+    ));
+    // Right edge.
     outline.draw_rect(Rect::new(
         inner.min.x + inner.size.x - t,
-        inner.min.y,
+        inner.min.y + r_scaled,
         t,
-        inner.size.y,
+        inner.size.y - 2.0 * r_scaled,
     ));
     let _ = stage.add_child(stage.root(), outline);
 }

@@ -6,6 +6,21 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.3 — Rounded-rectangle privacy blur in wisp (AUT-21)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — generalizes M-MASK.2 from `Rect` to any `MaskShape`. The privacy redaction primitive is now shape-agnostic; future shapes (circle, ellipse, freehand path) plug in for free.
+- **Linear:** [AUT-21](https://linear.app/harwood/issue/AUT-21).
+- **Files:** `crates/wisp/src/render.rs` — `apply_privacy_blur` second argument changed from `region: Rect` to `shape: MaskShape`; pipeline body unchanged. `crates/wisp/tests/privacy_blur_rect.rs` updated call sites to `MaskShape::rect(region)`. `crates/wisp-storybook/src/stories/s_privacy_blur_rect.rs` same. New `crates/wisp/tests/privacy_blur_rounded.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_privacy_blur_rounded.rs` + `writeups/privacy_blur_rounded.md`. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/privacy-blur-rounded.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/privacy-blur-rounded.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (179 tests, +3 from M-MASK.2's 176).
+- **API breaking change:** `apply_privacy_blur` second positional arg flipped from `Rect` → `MaskShape`. Acceptable because:
+  - The method only landed yesterday in M-MASK.2; no downstream callers outside the test/story we own.
+  - Conversion is one-line (`MaskShape::rect(region)`), still NDC-coordinate-system-identical.
+  - Required to absorb AUT-22/-23/-28/-29/-30/-34/-35 without method-explosion.
+- **Bounding-rect-but-corner contract:** the new test pixel that lives inside the bounding rect but outside the rounded corner must still equal `base` exactly — proves the SDF actually carved the corner away, vs. just attenuating it. Sample at NDC ≈ (-0.42, +0.42) when the rounded shape has center (0, 0), half-extent 0.5, corner radius 0.3: corner-of-bounding-rect's distance to round-corner-center (-0.2, +0.2) is sqrt(0.18) ≈ 0.42 > 0.3, so the SDF is strictly outside.
+- **One AA-band lesson reaffirmed:** sample a few pixels in from the carved-corner edge (used row/col 36 of 128) to escape the SDF AA band; otherwise the assertion catches partial alpha and fails. Already documented under "Coordinate / pixel-readback" in CLAUDE.md.
+
+---
+
 ## M-MASK.2 — Rectangle privacy blur in wisp (AUT-20)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — second mask primitive. First *masked-filter composition* (blur + clip + alpha-compose) end-to-end in the renderer.

@@ -37,6 +37,7 @@
   - [Blend modes — M-BLEND.1](./wisp/chunks/blend-modes.md)
   - [Rounded crop foundation — M-MASK.1](./wisp/chunks/clip-rounded.md)
   - [Rectangle privacy blur — M-MASK.2](./wisp/chunks/privacy-blur-rect.md)
+  - [Rounded privacy blur — M-MASK.3](./wisp/chunks/privacy-blur-rounded.md)
 
 # `decode` — video decode
 

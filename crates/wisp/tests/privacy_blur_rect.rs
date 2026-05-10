@@ -16,7 +16,7 @@ use pollster::block_on;
 use wisp::application::{AppConfig, Application};
 use wisp::math::Rect;
 use wisp::render::Renderer;
-use wisp::{Color, Fill, Graphics, RenderTexture, Stage};
+use wisp::{Color, Fill, Graphics, MaskShape, RenderTexture, Stage};
 
 const W: u32 = 128;
 const H: u32 = 128;
@@ -68,7 +68,7 @@ fn outside_region_matches_base_exactly() {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let output = RenderTexture::with_format(&app, W, H, format);
     let region = Rect::new(-0.5, -0.5, 1.0, 1.0);
-    renderer.apply_privacy_blur(&app, region, 8.0, &base, &output);
+    renderer.apply_privacy_blur(&app, MaskShape::rect(region), 8.0, &base, &output);
 
     // Top-left pixel (NDC ~ -1, +1) is far outside the region — should
     // match the base's red.
@@ -85,7 +85,7 @@ fn inside_region_picks_up_neighbor_via_blur() {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let output = RenderTexture::with_format(&app, W, H, format);
     let region = Rect::new(-0.5, -0.5, 1.0, 1.0);
-    renderer.apply_privacy_blur(&app, region, 12.0, &base, &output);
+    renderer.apply_privacy_blur(&app, MaskShape::rect(region), 12.0, &base, &output);
 
     // Near the seam (NDC x ≈ 0), inside the region — should have BOTH
     // red AND blue components from the blur kernel.
@@ -104,7 +104,7 @@ fn deep_inside_region_still_shows_blur_falloff() {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let output = RenderTexture::with_format(&app, W, H, format);
     let region = Rect::new(-0.5, -0.5, 1.0, 1.0);
-    renderer.apply_privacy_blur(&app, region, 16.0, &base, &output);
+    renderer.apply_privacy_blur(&app, MaskShape::rect(region), 16.0, &base, &output);
 
     // NDC (-0.4, 0) — inside region but on the red side. Even with
     // strong blur, red should still dominate (blur is not infinite).
