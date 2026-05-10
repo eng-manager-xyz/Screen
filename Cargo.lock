@@ -138,6 +138,7 @@ dependencies = [
  "leptos",
  "ui-storybook",
  "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

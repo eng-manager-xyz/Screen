@@ -44,6 +44,7 @@
 # `app-ui` — recorder shell
 
 - [Overview](./app-ui/overview.md)
+  - [Tauri ↔ Leptos integration (M-INT.2)](./app-ui/integration.md)
 
 # `ui-storybook` — Leptos UI
 

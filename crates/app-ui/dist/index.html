@@ -6,9 +6,9 @@
     <title>screen</title>
 
     
-<script type="module" nonce="UZXwahts6lQXrvApi+5PQg==">
-import init, * as bindings from '/app-ui-9309561f67e9b8b7.js';
-const wasm = await init('/app-ui-9309561f67e9b8b7_bg.wasm');
+<script type="module" nonce="7zpallErxnJWELT1pDpLeg==">
+import init, * as bindings from '/app-ui-ce39700c603dc973.js';
+const wasm = await init('/app-ui-ce39700c603dc973_bg.wasm');
 
 
 window.wasmBindings = bindings;
@@ -21,9 +21,27 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     <link rel="stylesheet" href="/assets/style.css" />
     <link rel="stylesheet" href="/shell.css" />
     
-  <link rel="modulepreload" href="/app-ui-9309561f67e9b8b7.js" crossorigin=anonymous integrity="sha384-jlzA+a0+BxZpXwOoZIKhah8e2wvG+oNKmS+MZhW1G9M2VdfsZv3eTjBkX4aM5ASv"><link rel="preload" href="/app-ui-9309561f67e9b8b7_bg.wasm" crossorigin=anonymous integrity="sha384-VE1WrSFPm3EptcxlDlPhEF+hc8UwFJRVRPs3G2+KjfnuSFPxCZEUE5yC/w+kk9RZ" as="fetch" type="application/wasm"></head>
+
+    <!-- Tauri ↔ Leptos bridge.
+         Tauri 2's JS API (window.__TAURI__.event) dispatches `file-dropped`
+         when the OS drops a file on the window. We re-emit that as a
+         browser `CustomEvent("file-dropped")` so Leptos can listen via
+         `web_sys::EventTarget::add_event_listener_with_callback` without
+         pulling in any tauri-sys dependency. -->
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        if (window.__TAURI__ && window.__TAURI__.event) {
+          window.__TAURI__.event.listen("file-dropped", (event) => {
+            window.dispatchEvent(new CustomEvent("file-dropped", {
+              detail: event.payload
+            }));
+          });
+        }
+      });
+    </script>
+  <link rel="modulepreload" href="/app-ui-ce39700c603dc973.js" crossorigin=anonymous integrity="sha384-fjpgOWkE37nV9ryXazZcxvaGczjO1DZUF4alGX/QgVFryRrAPfxRRWzELfraZ3he"><link rel="preload" href="/app-ui-ce39700c603dc973_bg.wasm" crossorigin=anonymous integrity="sha384-S0v3KaNgOwMDkb7PwOrI5hokKNCSvV6NQ5PpmItT/fArudzkCldixhBFTvXU7wYh" as="fetch" type="application/wasm"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
-      `crates/app-ui/`.</noscript>
+      `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>
   </body>
 </html>

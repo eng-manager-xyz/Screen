@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-INT.2 — Tauri serves Trunk bundle + OS file-drop wiring
+- **Date:** 2026-05-10
+- **Status:** ✅ done — fifth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1, M-PLAY.2).
+- **Files:** `crates/app/tauri.conf.json` (`frontendDist` → `../app-ui/dist` + `beforeDevCommand`/`beforeBuildCommand` running Trunk + `devUrl`); `crates/app/src/main.rs` (`on_window_event` → `WindowEvent::DragDrop` emits `file-dropped` Tauri event); `crates/app-ui/index.html` (JS bridge re-emits as browser `CustomEvent`); `crates/app-ui/src/app.rs` (`install_file_drop_listener` adds web-sys listener that flips `loaded` signal); `crates/app-ui/Cargo.toml` (web-sys with CustomEvent/Window/EventTarget/Event features); deleted `crates/app/dist/` (vanilla HTML M1 frontend, replaced).
+- **Verified:** `just gate` green; `trunk build` produces fresh dist; cargo check on screen-app passes after the new event handler.
+- **Architecture:** four hops, each one-liner — Tauri `on_window_event` → `window.emit("file-dropped")` → JS bridge `CustomEvent` → web-sys `addEventListener`. No `tauri-sys` crate, no JS-side state. Bridge degrades to no-op when `window.__TAURI__` absent (so `trunk serve` standalone still works for component review).
+- **Notes:** `Closure::forget()` on the file-drop listener is intentional — app-lifetime, never removed. Clippy's `collapsible_if` caught the new event handler; fixed via Rust 2024 `if let && let` chains (already a CLAUDE.md lesson — non-duplicative, no new entry).
+
+---
+
 ## M-INT.1 — Trunk + Leptos CSR app (`crates/app-ui/`)
 - **Date:** 2026-05-09
 - **Status:** ✅ done — fourth chunk on the path to first MP4 playback. **2 chunks remain** (M-PREVIEW.1 native winit, M-PLAY.2 Tauri↔player IPC; M-INT.2 Tauri-frontendDist swap is a small follow-on).

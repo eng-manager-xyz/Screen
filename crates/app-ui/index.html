@@ -10,9 +10,27 @@
     <link rel="stylesheet" href="/assets/style.css" />
     <link rel="stylesheet" href="/shell.css" />
     <link data-trunk rel="copy-file" href="shell.css" />
+
+    <!-- Tauri ↔ Leptos bridge.
+         Tauri 2's JS API (window.__TAURI__.event) dispatches `file-dropped`
+         when the OS drops a file on the window. We re-emit that as a
+         browser `CustomEvent("file-dropped")` so Leptos can listen via
+         `web_sys::EventTarget::add_event_listener_with_callback` without
+         pulling in any tauri-sys dependency. -->
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        if (window.__TAURI__ && window.__TAURI__.event) {
+          window.__TAURI__.event.listen("file-dropped", (event) => {
+            window.dispatchEvent(new CustomEvent("file-dropped", {
+              detail: event.payload
+            }));
+          });
+        }
+      });
+    </script>
   </head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
-      `crates/app-ui/`.</noscript>
+      `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>
   </body>
 </html>
