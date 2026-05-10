@@ -240,6 +240,11 @@ pub struct WispText {
     pub position: Vec2,
     /// Optional wrap width (NDC). `None` = single line.
     pub max_width_ndc: Option<f32>,
+    /// Optional family-name override. `None` falls back to the
+    /// backend's default sans-serif family. Backends that match by
+    /// CSS-style family names (`FlexibleText` / cosmic-text) honor
+    /// this; `AtlasText` ignores it (single bitmap face).
+    pub font_family: Option<String>,
 }
 
 impl WispText {
@@ -251,6 +256,7 @@ impl WispText {
             style: WispTextStyle::default(),
             position: Vec2::ZERO,
             max_width_ndc: None,
+            font_family: None,
         }
     }
 
@@ -272,6 +278,17 @@ impl WispText {
     #[must_use]
     pub fn with_wrap(mut self, max_width_ndc: f32) -> Self {
         self.max_width_ndc = Some(max_width_ndc);
+        self
+    }
+
+    /// Builder — override the font family by CSS-style family name.
+    ///
+    /// Honored by `FlexibleText` (cosmic-text); ignored by
+    /// `AtlasText` (single bitmap face). `None` (the default) falls
+    /// back to the backend's default sans-serif.
+    #[must_use]
+    pub fn with_font_family(mut self, family: impl Into<String>) -> Self {
+        self.font_family = Some(family.into());
         self
     }
 }
@@ -361,5 +378,14 @@ mod tests {
         assert_eq!(t.content, "Hello world");
         assert_eq!(t.position, Vec2::new(-0.5, 0.2));
         assert_eq!(t.max_width_ndc, Some(0.8));
+        assert!(t.font_family.is_none());
+    }
+
+    #[test]
+    fn with_font_family_sets_field() {
+        let t = WispText::new("hi").with_font_family("Inter");
+        assert_eq!(t.font_family.as_deref(), Some("Inter"));
+        let t2 = WispText::new("hi").with_font_family("JetBrains Mono");
+        assert_eq!(t2.font_family.as_deref(), Some("JetBrains Mono"));
     }
 }

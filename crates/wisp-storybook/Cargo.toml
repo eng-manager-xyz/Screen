@@ -23,6 +23,15 @@ path = "src/main.rs"
 name = "wisp-export-stories"
 path = "src/bin/export_stories.rs"
 
+# FlexibleText custom-font screenshot exporter — writes
+# `_docs/book/src/assets/wisp/text-custom-fonts.png` demonstrating
+# Inter + JetBrains Mono via FlexibleTextEngine + FlexibleTextRenderer.
+# Sibling to wisp-export-stories because FlexibleTextRenderer lives
+# outside the Stage / Renderer pipeline.
+[[bin]]
+name = "wisp-export-text-screenshots"
+path = "src/bin/export_text_screenshots.rs"
+
 [dependencies]
 wisp = { workspace = true }
 glam = { workspace = true }

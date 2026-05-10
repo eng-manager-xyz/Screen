@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.3 follow-up — Custom-font family override + screenshot demo (AUT-77)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — extends M-TEXT.3 with per-text font family selection so FlexibleText can render through specific TTF files (Inter, JetBrains Mono, …) instead of the cosmic-text default sans-serif. Adds the bundled-font exporter that produces the hero screenshot for the chapter.
+- **Linear:** still rolls up under [AUT-77](https://linear.app/harwood/issue/AUT-77) — this PR also lands the Glyphon renderer commit cherry-picked from `wisp/text`.
+- **Files:** `crates/wisp/src/text/mod.rs` adds `WispText::font_family: Option<String>` + `WispText::with_font_family(...)`. `crates/wisp/src/text/flexible.rs` honors the override via `Family::Name` when set, else falls back to `Family::SansSerif`; new `FlexibleTextEngine::from_font_paths(paths) -> io::Result<Self>` loads font files into a fresh `cosmic_text::fontdb::Database` (no system fonts). New `crates/wisp-storybook/assets/fonts/` bundle (Inter Regular + Bold, JetBrains Mono Regular, both OFL-1.1) with `Inter-LICENSE.txt` + `JetBrainsMono-OFL.txt` copies. New `crates/wisp-storybook/src/bin/export_text_screenshots.rs` + `[[bin]] wisp-export-text-screenshots` in `crates/wisp-storybook/Cargo.toml`. `Justfile` `snapshots-wisp` chains the new binary. `_docs/book/src/wisp/text/glyphon-backend.md` embeds the generated PNG. `_docs/book/src/assets/wisp/text-custom-fonts.png` (1024×512 hero).
+- **Verified:** 2 new unit tests (`with_font_family_sets_field`, `custom_font_family_lays_out_without_panic`). Existing M-TEXT.3 renderer tests still pass.
+- **Family resolves at attrs time, not at engine-construct time.** Since `Family::Name(&str)` borrows, the string lives on `WispText` (`Option<String>`); the layout fn computes `Family::Name(name.as_str())` in local scope just before `set_text`. Keeps `WispTextStyle` `Copy` (which atlas.rs and flexible.rs both depend on).
+- **OFL-1.1 already allowed.** `deny.toml` carried the entry from the egui ecosystem (Open Sans / Hack). No deny.toml change needed for Inter + JetBrains Mono.
+- **No system fonts in the exporter.** `from_font_paths` constructs an empty `fontdb::Database` and loads only the supplied files — outputs reproduce byte-identically across hosts. (Cargo doc / clippy still rely on system fonts elsewhere via the default `FontSystem::new`; this helper is opt-in.)
+
+---
+
 ## M-TEXT.3 — Glyphon WGPU rasterizer for FlexibleText (AUT-77)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `FlexibleTextRenderer` pairs the cosmic-text layout from M-TEXT.2 with glyphon's wgpu pipeline. Layouts produced by `FlexibleTextEngine` now paint into any `wgpu::TextureView`.
