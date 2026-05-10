@@ -10,13 +10,14 @@
 use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat3, Mat4, Vec2, Vec4};
+use glam::{Mat4, Vec2};
 use wgpu::util::DeviceExt;
 
 use crate::application::Application;
 use crate::blend::BlendMode;
 use crate::color::Color;
 use crate::render::blend_pipeline::BlendPipelineMap;
+use crate::render::scene_walk::walk_visible_subtree;
 use crate::scene::graphics::{Fill, Primitive, Stroke};
 use crate::scene::{Node, NodeId, Stage};
 
@@ -170,21 +171,8 @@ fn collect_instance_groups(
     let mut grouped: HashMap<BlendMode, Vec<GraphicsInstance>> = HashMap::new();
     let mut order: Vec<BlendMode> = Vec::new();
     let mut logical = 0u32;
-    let mut stack: Vec<(NodeId, Mat4)> = vec![(start, Mat4::IDENTITY)];
-    while let Some((id, parent_world)) = stack.pop() {
-        if exclude.contains(&id) {
-            continue;
-        }
-        let Some(node) = stage.get(id) else {
-            continue;
-        };
+    walk_visible_subtree(stage, start, exclude, |_id, node, world| {
         let container = node.container();
-        if !container.visible {
-            continue;
-        }
-        let local = mat3_to_mat4(container.transform.to_mat3());
-        let world = parent_world * local;
-
         if let Node::Graphics(graphics) = node {
             let mode = container.blend_mode;
             let bucket = grouped.entry(mode).or_insert_with(|| {
@@ -196,11 +184,7 @@ fn collect_instance_groups(
                 emit_primitive(primitive, world, container.alpha, bucket);
             }
         }
-
-        for child in container.children().rev().collect::<Vec<_>>() {
-            stack.push((child, world));
-        }
-    }
+    });
     let groups = order
         .into_iter()
         .filter_map(|m| grouped.remove(&m).map(|v| (m, v)))
@@ -396,15 +380,6 @@ fn resolve_fill(fill: Fill, parent_alpha: f32) -> ResolvedFill {
 
 fn apply_alpha(c: Color, parent_alpha: f32) -> [f32; 4] {
     [c.r, c.g, c.b, c.a * parent_alpha]
-}
-
-fn mat3_to_mat4(m: Mat3) -> Mat4 {
-    Mat4::from_cols(
-        Vec4::new(m.x_axis.x, m.x_axis.y, 0.0, 0.0),
-        Vec4::new(m.y_axis.x, m.y_axis.y, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 1.0, 0.0),
-        Vec4::new(m.z_axis.x, m.z_axis.y, 0.0, 1.0),
-    )
 }
 
 #[allow(dead_code, reason = "re-exported to keep collect_instances readable")]

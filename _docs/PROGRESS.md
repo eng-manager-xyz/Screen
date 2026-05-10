@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.0 — Shared scene traversal + transform helpers (AUT-74)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — pure refactor. Foundation chunk for the M-TEXT track.
+- **Linear:** [AUT-74](https://linear.app/harwood/issue/AUT-74).
+- **Files:** new `crates/wisp/src/render/scene_walk.rs` with `walk_visible_subtree(stage, start, exclude, |id, node, world|)` + `mat3_to_mat4(Mat3) -> Mat4` helpers. Refactored `crates/wisp/src/render/sprite_pipeline.rs`, `graphics_pipeline.rs`, `mesh_pipeline.rs`, and `text_pipeline.rs` to use the helpers — removed 4× duplicated traversal-stack loops and 4× duplicated `mat3_to_mat4` definitions. `crates/wisp/src/render.rs` adds the new mod declaration.
+- **Verified:** 5 unit tests cover preorder traversal, exclude-set filtering, invisible-node skipping (self + descendants), parent-world transform accumulation, and `mat3_to_mat4` correctness. Full `just gate` green at 271 tests (266 + 5 new scene_walk tests). All existing renderer tests pass byte-equivalent — no behavior change.
+- **Why this first.** The next chunk (M-TEXT.1) introduces a `WispText*` trait boundary and two new backends (`AtlasText` + `FlexibleText`). Each backend will need scene traversal; extracting it once keeps the new code from duplicating what the existing pipelines already had.
+- **Lesson reinforced:** clippy `field_reassign_with_default` rejects `let mut x = X::default(); x.field = ...`. Use `X { field: ..., ..X::default() }` literal-form instead. Already documented under "Cast hygiene" pattern; tripped me again here.
+
+---
+
 ## M-VEC.12 — Vector primitive examples gallery (AUT-64) — phase complete
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes the M-VEC track. Single-canvas storybook entry tying together the entire vector catalog plus an mdBook chapter that indexes every M-DYN / M-VEC chunk.
