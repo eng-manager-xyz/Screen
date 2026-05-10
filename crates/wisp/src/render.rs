@@ -371,11 +371,53 @@ impl Renderer {
         base: &RenderTexture,
         output: &RenderTexture,
     ) {
-        let format = self.output_format;
-        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
-        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        // M-VEC.5 refactor: route through the shared vector-mask
+        // path. Output is byte-equivalent to the previous
+        // inline-clip implementation.
+        let vector_shape = match shape {
+            MaskShape::Rect { rect } => crate::scene::VectorShape::Rect { rect },
+            MaskShape::RoundedRect { rect, radius } => {
+                crate::scene::VectorShape::RoundedRect { rect, radius }
+            }
+            MaskShape::Circle { center, radius } => {
+                crate::scene::VectorShape::Circle { center, radius }
+            }
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => crate::scene::VectorShape::Ellipse {
+                center,
+                half_extents,
+            },
+        };
+        self.apply_solid_redaction_vector(
+            app,
+            &crate::scene::Vector::new(vector_shape),
+            color,
+            base,
+            output,
+        );
+    }
 
-        // 1. Clear fill_rt to `color` — no draws, just LoadOp::Clear.
+    /// Vector-driven variant of [`Self::apply_solid_redaction`]
+    /// (M-VEC.5 / AUT-57). Same composition shape, but the mask is
+    /// produced from a [`Vector`](crate::scene::Vector) — including
+    /// freehand polygons via [`VectorShape::Path`].
+    pub fn apply_solid_redaction_vector(
+        &self,
+        app: &Application,
+        vector: &crate::scene::Vector,
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let w = base.width();
+        let h = base.height();
+        let fill_rt = RenderTexture::with_format(app, w, h, format);
+        let masked_rt = RenderTexture::with_format(app, w, h, format);
+
+        // 1. Clear fill_rt to `color`.
         let mut encoder = app
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -404,13 +446,15 @@ impl Renderer {
         }
         app.queue().submit(std::iter::once(encoder.finish()));
 
-        // 2. Mask the fill to the shape.
-        self.clip.apply(app, shape, &fill_rt, &masked_rt);
+        // 2. Generate / fetch the mask texture.
+        let mask_arc = self.cached_vector_mask_texture(app, vector, w, h);
 
-        // 3. Copy base → output.
+        // 3. Compose fill × mask into masked_rt.
+        self.mask_compose
+            .apply(app, &fill_rt, &mask_arc, &masked_rt);
+
+        // 4. Copy base → output, then composite masked redaction over.
         self.blit.blit(app, base, output.view());
-
-        // 4. Compose the masked redaction over base inside output.
         self.blit.compose_over(app, &masked_rt, output);
     }
 

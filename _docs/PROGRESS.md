@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.5 — Solid redaction on vector masks (AUT-57)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — same refactor pattern as M-VEC.4. `apply_solid_redaction(MaskShape, ...)` keeps its API; internals route through the shared mask + compose path. Adds `apply_solid_redaction_vector` for path support.
+- **Linear:** [AUT-57](https://linear.app/harwood/issue/AUT-57).
+- **Files:** `crates/wisp/src/render.rs` — refactored `apply_solid_redaction` to wrap its `MaskShape` in a `Vector` and forward to new `apply_solid_redaction_vector`. New `crates/wisp/tests/solid_redaction_vector.rs` (2 cases). New `_docs/book/src/wisp/chunks/vector-solid-redaction.md`. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 existing M-MASK.5 redaction tests still pass; 2 new vector tests pass; full `just gate` green.
+- **Reuses M-VEC.4 infrastructure entirely.** No new pipelines or shaders. The `MaskComposePipeline` and `cached_vector_mask_texture` from M-VEC.4 cover this primitive too. Only the "fill source" differs (clear-to-color instead of blur).
+
+---
+
 ## M-VEC.4 — Privacy blur on vector masks (AUT-56)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — first refactor of an existing M-MASK primitive onto the M-VEC pipeline. `apply_privacy_blur(shape: MaskShape, ...)` now routes through the separated mask-texture path internally; output is byte-equivalent to the previous inline-clip implementation.
