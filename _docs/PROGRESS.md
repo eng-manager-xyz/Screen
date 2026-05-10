@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.3 — Audio sample + chunk data model (AUT-99)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `AudioFormat` + `AudioChunk` ship as the single shared audio data model. Every M-MEDIA chunk that touches audio (capture, mock sources, histogram, mic) flows through this type.
+- **Linear:** [AUT-99](https://linear.app/harwood/issue/AUT-99).
+- **Files:** filled in `crates/media/src/audio.rs` (scaffolded by M-MEDIA.0). New types: `SampleFormat`, `AudioFormat` (with `mono_f32` / `stereo_f32` presets), `AudioChunk` (validated), `AudioChunkError`. `crates/media/src/lib.rs` re-exports all four. New `_docs/book/src/media/audio.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover mono@48kHz=1s, stereo@48kHz=0.5s, unaligned-buffer rejection, zero-channels rejection, zero-rate rejection, empty buffer = zero duration, `peak()` returns max-abs, `rms()` zero for silence + unit for constant signal, preset channel counts, `Send + Sync`. Full `just gate` green at 337 tests (326 + 11 new).
+- **Normalized f32 end-to-end.** GStreamer's `audioconvert ! audio/x-raw,format=F32LE` produces it natively; cpal / coreaudio prefer it. No re-layout work at the capture seam. The `SampleFormat` enum lets capture-side code declare its *input* layout (F32 / I16 / U8) for future device backends — internally `AudioChunk::samples` is always `&[f32]`.
+- **Planar-per-frame interleave** (`[L₀, R₀, L₁, R₁, …]`). Matches GStreamer + cpal conventions.
+- **Validation covers what matters at the data layer.** `samples.len() % channels == 0`, channels > 0, rate > 0. NaN / clipping / DC-offset are visualization concerns and live in M-MEDIA.8 (histogram).
+- **Pre-computed `peak()` + `rms()`** on the chunk — they're called every bucket by the histogram quantizer; caching the result avoids re-walking the same buffer.
+
+---
+
 ## M-MEDIA.2 — Timestamp + clock model (AUT-98)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `MediaTime`, `MediaDuration`, `MediaClock`, `Timestamped<T>` ship as the shared timeline vocabulary. Every M-MEDIA chunk after this stamps its chunks/frames against a `MediaClock`.

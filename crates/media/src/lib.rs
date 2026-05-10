@@ -93,6 +93,7 @@ pub mod histogram;
 pub mod manifest;
 pub mod video;
 
+pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
 pub use video::{VideoFrame, VideoStream};
 

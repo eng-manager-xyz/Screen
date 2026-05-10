@@ -74,6 +74,7 @@
 
 - [Architecture — M-MEDIA.0](./media/architecture.md)
   - [Clock + timestamp model — M-MEDIA.2](./media/clock.md)
+  - [Audio data model — M-MEDIA.3](./media/audio.md)
 
 # `playback` — player state machine
 
