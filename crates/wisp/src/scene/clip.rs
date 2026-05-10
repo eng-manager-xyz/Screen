@@ -21,9 +21,10 @@ use crate::math::Rect;
 ///
 /// - [`MaskShape::Rect`] — AUT-20 rectangle privacy mask.
 /// - [`MaskShape::RoundedRect`] — AUT-31 rounded crop foundation.
+/// - [`MaskShape::Circle`] — AUT-30 webcam circle mask.
 ///
-/// Later issues (`AUT-30` circle, `AUT-34` ellipse, `AUT-35` freehand
-/// path) extend this enum further.
+/// Later issues (`AUT-34` ellipse, `AUT-35` freehand path) extend
+/// this enum further.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum MaskShape {
@@ -43,6 +44,16 @@ pub enum MaskShape {
         /// Corner radius in NDC units.
         radius: f32,
     },
+    /// Circle in NDC. The renderer treats this as a `RoundedRect`
+    /// with a square bounding box and a corner radius equal to the
+    /// half-extent — the rounded-rect SDF degenerates exactly to the
+    /// circle SDF in that case (`length(p) - r`).
+    Circle {
+        /// Center, NDC coords.
+        center: glam::Vec2,
+        /// Radius, NDC units.
+        radius: f32,
+    },
 }
 
 impl MaskShape {
@@ -58,11 +69,23 @@ impl MaskShape {
         Self::RoundedRect { rect, radius }
     }
 
+    /// Convenience constructor for a circle.
+    #[must_use]
+    pub fn circle(center: glam::Vec2, radius: f32) -> Self {
+        Self::Circle { center, radius }
+    }
+
     /// The axis-aligned bounding rect of the mask.
     #[must_use]
     pub fn bounds(self) -> Rect {
         match self {
             Self::Rect { rect } | Self::RoundedRect { rect, .. } => rect,
+            Self::Circle { center, radius } => Rect::new(
+                center.x - radius,
+                center.y - radius,
+                radius * 2.0,
+                radius * 2.0,
+            ),
         }
     }
 }

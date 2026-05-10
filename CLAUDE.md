@@ -324,6 +324,7 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
 - **`#[allow(clippy::*)]` requires `reason = "..."`** — no exceptions.
+- **Cargo cache can lie when nextest + workspace-check race.** Symptom: `cargo check --workspace --all-targets --all-features` reports `E0599 no variant, associated function, or constant named X` for a method/variant that *is* in the source file (and a per-crate `cargo check -p X` succeeds on the same source). Cause: `cargo nextest run -p crate --test foo` builds the test crate against an older dep snapshot and leaves a stale dep hash; the next workspace check picks up that snapshot. **Fix:** `cargo clean -p <crate>` and rerun. Add a renderer / library new-API change in one stable order: edit source → `cargo check -p <crate>` → run tests → run gate. Don't interleave nextest of an in-flight test against the new API with workspace checks.
 
 ### When you hit a NEW mistake
 

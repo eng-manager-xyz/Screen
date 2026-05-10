@@ -20,6 +20,7 @@ mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
 mod s_transform_nesting;
+mod s_webcam_shapes;
 
 use crate::story::Story;
 
@@ -46,5 +47,6 @@ pub fn all_stories() -> Vec<Story> {
         s_solid_redaction::story(),
         s_spotlight::story(),
         s_dim_outside::story(),
+        s_webcam_shapes::story(),
     ]
 }

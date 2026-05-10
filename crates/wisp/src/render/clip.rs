@@ -178,6 +178,13 @@ impl ClipPipeline {
                 let r = radius.clamp(0.0, hx.min(hy));
                 (cx, cy, hx, hy, r)
             }
+            MaskShape::Circle { center, radius } => {
+                // Rounded-rect SDF degenerates to circle when
+                // half_extents == radius == r. (The shader formula
+                // becomes length(max(|p|, 0)) - r = length(p) - r.)
+                let r = radius.max(0.0);
+                (center.x, center.y, r, r, r)
+            }
         };
 
         let w_f = f32::from(u16::try_from(output.width().min(u32::from(u16::MAX))).unwrap_or(1));

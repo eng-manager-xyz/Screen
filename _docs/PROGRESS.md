@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.8 — Webcam circle mask shape in wisp (AUT-30)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — adds `MaskShape::Circle` to the catalog. Webcam overlay now has cinematic circle + rounded-rect options out of the box, both reusing the existing rounded-rect SDF.
+- **Linear:** [AUT-30](https://linear.app/harwood/issue/AUT-30).
+- **Files:** `crates/wisp/src/scene/clip.rs` adds `MaskShape::Circle { center, radius }` variant, `circle()` ctor, and `bounds()` arm. `crates/wisp/src/render/clip.rs` `apply_with_invert` translates `Circle` to the rounded-rect SDF parameters (`half_extents = (r, r)`, `corner_radius = r`). New `crates/wisp/tests/clip_circle.rs` (3 cases). New `crates/wisp-storybook/src/stories/s_webcam_shapes.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/webcam-shapes.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/webcam-shapes.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (195 tests, +3 from M-MASK.7's 192). Story renders both shapes side-by-side over a dark gradient backdrop.
+- **One shader, three shapes.** The rounded-rect SDF (`length(max(|p|-half+r, 0)) + min(max(qx,qy), 0) - r`) degenerates exactly to `length(p) - r` (the circle SDF) when `half = (r, r)` and the corner radius is `r`. So `MaskShape::Circle` plugs into the existing pipeline by translating to those parameters at uniform-build time. No new pipeline, no new shader, no new bind-group — just two `f32` math ops in `apply_with_invert`. Pattern parallels how `MaskShape::Rect` was implemented (RoundedRect with radius=0).
+- **All four primitives gain the new shape automatically.** `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data` all accept `MaskShape::Circle` without any per-primitive code changes — that's the dividend of routing every shape through one `ClipPipeline::apply_with_invert`.
+- **Cache-poisoning gate-loop lesson (CLAUDE.md updated):** `cargo nextest run -p wisp --test X` followed by `just gate` (which runs `cargo check --workspace --all-targets --all-features`) hit a stale-cache E0599 saying `MaskShape::circle` was missing even though it was in the source. `cargo clean -p wisp` + re-run cleared it. The root cause: nextest builds the test target before the workspace check has seen the latest source, and the dependency-graph hash gets mis-cached. Documented in CLAUDE.md "Build hygiene".
+
+---
+
 ## M-MASK.7 — Dim-outside renderer-data wrapper in wisp (AUT-29)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `DimOutside` + `DimStrength` data API on top of M-MASK.6's `apply_spotlight`. No new shader, no new pipeline; just a thin data shell so the editor inspector can persist symbolic strength names.
