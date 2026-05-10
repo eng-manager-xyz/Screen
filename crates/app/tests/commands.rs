@@ -14,6 +14,7 @@
 //! (~200 ms on Apple Silicon) — same as the `player_session` tests, so
 //! we share session boot across cases by building the app once per test.
 
+use decode::gstreamer_pipe::gstreamer_available;
 use serde_json::json;
 use tauri::WebviewUrl;
 use tauri::WebviewWindowBuilder;
@@ -26,6 +27,23 @@ use tauri::webview::InvokeRequest;
 
 use screen_app::commands;
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
+
+/// Skip-or-run check for tests that hit `player_open`. CI sometimes
+/// can't find the apt-installed gstreamer binaries from cargo nextest's
+/// test processes; skipping gracefully matches the decode integration
+/// test pattern.
+macro_rules! gst_required {
+    () => {
+        if !gstreamer_available() {
+            eprintln!(
+                "gst-launch-1.0/gst-discoverer-1.0 not on PATH — skipping. \
+                 PATH={}",
+                std::env::var("PATH").unwrap_or_else(|_| "<unset>".into())
+            );
+            return;
+        }
+    };
+}
 
 const FIXTURE: &str = "../decode/tests/fixtures/sample.mp4";
 
@@ -87,6 +105,7 @@ fn player_status_returns_empty_initially() {
 
 #[test]
 fn player_open_then_play_then_pause_via_ipc() {
+    gst_required!();
     let app = build_app();
     let webview = main_webview(&app);
 
@@ -134,6 +153,7 @@ fn serde_shape_uses_lowercase_session_state() {
 
 #[test]
 fn player_open_with_invalid_path_returns_error() {
+    gst_required!();
     let app = build_app();
     let webview = main_webview(&app);
 

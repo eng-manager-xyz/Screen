@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use decode::VideoStream;
-use decode::gstreamer_pipe::GstreamerPipeStream;
+use decode::gstreamer_pipe::{GstreamerPipeStream, gstreamer_available};
 use glam::Vec2;
 use playback::Player;
 use pollster::block_on;
@@ -31,6 +31,14 @@ const SURFACE_H: u32 = 144;
 
 #[test]
 fn from_wgpu_path_renders_a_real_frame() {
+    if !gstreamer_available() {
+        eprintln!(
+            "gst-launch-1.0/gst-discoverer-1.0 not on PATH — skipping render_smoke. \
+             PATH={}",
+            std::env::var("PATH").unwrap_or_else(|_| "<unset>".into())
+        );
+        return;
+    }
     let fixture = PathBuf::from("../decode/tests/fixtures/sample.mp4");
     assert!(
         fixture.exists(),

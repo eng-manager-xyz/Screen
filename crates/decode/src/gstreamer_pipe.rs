@@ -51,13 +51,20 @@ pub struct GstreamerPipeStream {
 pub enum Error {
     /// `gst-launch-1.0` or `gst-discoverer-1.0` could not be launched.
     /// Almost always means the `GStreamer` CLI tools aren't on `PATH`.
-    #[error("failed to spawn `{cmd}`: {source} (is `GStreamer` installed and on PATH?)")]
+    /// The error message includes the current `PATH` value so CI logs
+    /// surface the exact lookup state for diagnosis.
+    #[error(
+        "failed to spawn `{cmd}`: {source} (is `GStreamer` installed and on PATH? \
+         current PATH={path})"
+    )]
     Spawn {
         /// The command we tried to spawn.
         cmd: &'static str,
         /// The OS-level reason the spawn failed.
         #[source]
         source: std::io::Error,
+        /// Snapshot of `PATH` at the moment of failure.
+        path: String,
     },
     /// `gst-discoverer-1.0` returned non-parseable output.
     #[error("gst-discoverer output unparseable: {0}")]
@@ -93,6 +100,28 @@ pub struct VideoMetadata {
     pub frame_count: Option<u64>,
 }
 
+/// Whether both `gst-launch-1.0` and `gst-discoverer-1.0` are on `PATH`
+/// and runnable. Useful as a runtime guard for tests + production code
+/// that wants to gracefully degrade when `GStreamer` isn't installed.
+///
+/// Empirically: on GitHub Actions Ubuntu runners, the
+/// `gstreamer1.0-tools` apt package installs successfully BUT the
+/// resulting binaries are sometimes not findable from later cargo
+/// nextest test processes (root cause: TBD). Tests that depend on
+/// these binaries should call this and skip if it returns `false`,
+/// matching the pattern in `crates/decode/tests/gstreamer_integration.rs`.
+#[must_use]
+pub fn gstreamer_available() -> bool {
+    Command::new("gst-launch-1.0")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success())
+        && Command::new("gst-discoverer-1.0")
+            .arg("--version")
+            .output()
+            .is_ok_and(|out| out.status.success())
+}
+
 impl GstreamerPipeStream {
     /// Probe `path` with `gst-discoverer-1.0` and return the metadata,
     /// without starting a decode.
@@ -106,6 +135,7 @@ impl GstreamerPipeStream {
             .map_err(|source| Error::Spawn {
                 cmd: "gst-discoverer-1.0",
                 source,
+                path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
             })?;
 
         if !output.status.success() {
@@ -143,6 +173,7 @@ impl GstreamerPipeStream {
             .map_err(|source| Error::Spawn {
                 cmd: "gst-launch-1.0",
                 source,
+                path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
             })?;
 
         Ok(Self {
