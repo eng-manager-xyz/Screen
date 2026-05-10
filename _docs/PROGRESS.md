@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M0-close — `headless_export` 60-frame loop, `filter_chain` example, milestone closure
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes M0 cleanly. All 21 chunks now have ✅ ticks in `_docs/milestone-0-renderer.md`'s new Status table.
+- **Files:** `crates/wisp/examples/headless_export.rs` rewritten (1 frame at 800×450 → 60 frames at 1920×1080 with per-frame animation: recording-quad rotation, cursor oscillation, text scale pulse); new `crates/wisp/examples/filter_chain.rs` (~170 lines — three-filter chain animated over 60 frames, dumps composites to `target/filter_chain/`); 3 new chunk chapters under `_docs/book/src/wisp/chunks/` (`example-filter-chain.md`, `example-recorder-mock.md`, `example-headless-export.md`); 3 new asset PNGs under `_docs/book/src/assets/wisp/` (filter-chain highlight 22 KB, recorder-mock 81 KB, headless-export highlight 110 KB); `SUMMARY.md` adds the three new chapters; `milestone-0-renderer.md` gains a "Status — ✅ closed 2026-05-10" section with all 21 chunks ticked + a note explaining the M0.21 ffmpeg-next → GStreamer pivot, and the "After M0" section is rewritten to reflect the actual M-DEC/M-PLAY/M-INT/M-PREVIEW/M-POLISH/M-TEST chunks shipped between M0 close and now.
+- **Verified:** `just gate` green (132 tests, 1 leaky-flag — same as before); `cargo run -p wisp --example headless_export` produces 60 PNGs at `target/headless_export/frame_NN.png`; `cargo run -p wisp --example filter_chain` produces 60 PNGs at `target/filter_chain/frame_NN.png`; `cargo run -p wisp --example recorder_mock` produces `target/recorder_mock.png` (copied to assets dir).
+- **Gap closed in M0.21:** the consolidated PROGRESS entry from 2026-05-09 noted "headless_export shipped" but at 1 frame at 800×450 — the spec required **60 frames at 1080p**. This chunk closes that gap properly. `filter_chain.rs` was missing entirely from the original M0.20 → also shipped this turn.
+- **Architecture lock:** wisp's `Renderer::apply_filter` chains by passing the previous filter's output `RenderTexture` as the next filter's input. `filter_chain.rs` exercises this with three filters (BlurFilter → DropShadowFilter → MotionBlurFilter) and 4 RTs (base + 3 intermediates). Multi-pass filters (Blur is 2-pass separable Gaussian) get a scratch RT inside `apply_filter` automatically.
+- **Interactive examples acknowledged:** `hello_triangle.rs` (M0.5) and `hello_sprite.rs` (M0.20a) are interactive winit demos — they don't dump PNGs, so they don't get mdBook chapters. The Status table in the milestone doc credits them as ✅ via interactive verification (Apple Silicon Metal backend).
+- **One clippy refactor during the gate loop** (no `#[allow]` shortcut): `(i32::from(u32) - 32) as f32` → `f32::from(u8) - 32.0`. The `From<u8> for f32` impl is lossless, so the precision-loss + useless-conversion lints both vanish without a reason-pragma. Documented technique already in CLAUDE.md cast-hygiene section.
+
+---
+
 ## M-POLISH.1 — Drag-over visual feedback
 - **Date:** 2026-05-09
 - **Status:** ✅ done — first polish chunk on the milestone-1 Phase 4 list (M4.1).

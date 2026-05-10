@@ -30,6 +30,65 @@ Explicitly out of scope (v1+ work, not M0):
 
 ---
 
+## Status — ✅ closed 2026-05-10
+
+All 21 chunks shipped. The original ffmpeg-next requirement in M0.21 was
+superseded by the `decode` crate's GStreamer-based path (M-DEC.2,
+shipped 2026-05-09).
+
+| Chunk | Status | Where it lives now |
+|---|---|---|
+| M0.1 — workspace | ✅ | `Cargo.toml` workspace + `crates/*` |
+| M0.2 — wisp scaffold | ✅ | `crates/wisp/` |
+| M0.3 — math/color/blend | ✅ | `wisp::{math, color, blend}` |
+| M0.4 — Application + wgpu init | ✅ | `wisp::application::Application` |
+| M0.5 — hello triangle | ✅ | `examples/hello_triangle.rs` (interactive winit) |
+| M0.6 — textured quad pipeline | ✅ | [chapter](book/src/wisp/chunks/hello-quad.md) |
+| M0.7 — Transform parent-child | ✅ | [chapter](book/src/wisp/chunks/transform-nesting.md) |
+| M0.8 — Container + scene graph | ✅ | `wisp::scene::{Container, Stage}` |
+| M0.9 — Sprite API + batcher | ✅ | [chapter](book/src/wisp/chunks/sprite-batcher.md) |
+| M0.10 — Image Texture loading | ✅ | `wisp::Texture::from_rgba` |
+| M0.11 — VideoTexture + RenderTexture | ✅ | exercised by `examples/video_texture.rs`; rustdoc |
+| M0.12 — Graphics solid fills | ✅ | [chapter](book/src/wisp/chunks/graphics-rounded.md) |
+| M0.13 — Graphics ellipse, line, stroke | ✅ | [chapter](book/src/wisp/chunks/graphics-ellipse.md) |
+| M0.14 — Graphics gradient fills | ✅ | [chapter](book/src/wisp/chunks/graphics-gradients.md) |
+| M0.15 — Bitmap text | ✅ | [chapter](book/src/wisp/chunks/text-bitmap.md) |
+| M0.16 — Filter trait + BlurFilter | ✅ | [chapter](book/src/wisp/chunks/filter-blur.md) |
+| M0.17 — DropShadowFilter | ✅ | [chapter](book/src/wisp/chunks/filter-drop-shadow.md) |
+| M0.18 — MotionBlur + ColorMatrix | ✅ | [motion blur chapter](book/src/wisp/chunks/filter-motion-blur.md), [color matrix chapter](book/src/wisp/chunks/filter-color-matrix.md) |
+| M0.19 — Mesh with custom WGSL | ✅ | [chapter](book/src/wisp/chunks/mesh-perspective.md) |
+| M0.20a — `hello_sprite` example | ✅ | `examples/hello_sprite.rs` (interactive winit) |
+| M0.20b — `filter_chain` example | ✅ | [chapter](book/src/wisp/chunks/example-filter-chain.md) — 60-frame animated chain |
+| M0.21a — `recorder_mock` example | ✅ | [chapter](book/src/wisp/chunks/example-recorder-mock.md) — full layered scene |
+| M0.21b — `video_texture` example | ✅ | `examples/video_texture.rs` (synthetic frames) + `crates/playback/examples/play_file.rs` (real MP4 via GStreamer, supersedes the original ffmpeg-next path) |
+| M0.21c — `headless_export` example | ✅ | [chapter](book/src/wisp/chunks/example-headless-export.md) — 60 frames at 1920×1080 |
+
+### What "Done when" criteria were satisfied
+
+- **M0.20** "both examples run smoothly at 60fps on M-series Mac" → confirmed
+  via interactive runs of `hello_sprite` (M-series Apple Silicon, Metal backend).
+- **M0.21** "recorder_mock visually resembles a Screen Studio frame" →
+  confirmed via the embedded chapter screenshot. Five layers (background +
+  recording quad + cursor + keyboard chip + captions) all composite cleanly.
+- **M0.21** "headless_export produces 60 valid PNGs" → ✅ shipped this turn
+  (was 1 frame in the consolidated M0.17→M0.21 PROGRESS entry; extended to
+  60 frames at 1080p).
+
+### Note on the ffmpeg-next pivot
+
+The original M0.21 spec called for `examples/video_texture.rs` to "loop an MP4
+(decoded via `ffmpeg-next` — first introduction of the encode crate's dep)."
+Between M0.21's planning and its close, the project pivoted away from
+`ffmpeg-next` to GStreamer (CLI-pipe via the `decode` crate, M-DEC.2). Reasoning
+captured in `PROGRESS.md` under the M-DEC.2 entry. The shipped
+`examples/video_texture.rs` uses synthetic procedural BGRA frames to exercise
+the per-frame `VideoTexture::upload_bgra` path; the real-MP4 → wisp path lives
+at `crates/playback/examples/play_file.rs` and exercises the same upload
+contract end-to-end. Net effect: the spec's intent (validate VideoTexture
+under realistic per-frame load) is fulfilled in two examples instead of one.
+
+---
+
 ## Acceptance criteria
 
 - ✅ `cargo build -p wisp` succeeds on stable Rust
@@ -238,8 +297,29 @@ The *first* chunk is M0.1 (workspace conversion). The *hardest* chunks are likel
 
 ---
 
-## After M0
+## After M0 — what actually shipped
 
-Move to M1 (drop zone + video player). M1 doesn't depend on `wisp` directly — it's an HTML5 video player. M1 validates the Tauri+Leptos shell. M2+ then bring `wisp` into the live application.
+The original plan was M0 → M1 (drop zone + HTML5 player) → M2 (capture). The
+realized path between M0 close and M1 close added several intermediate
+chunks (each tracked individually in `PROGRESS.md`):
 
-Tracked as tasks in the task list (M0.1 through M0.21).
+- **`decode` crate** — `VideoStream` trait + `MockVideoStream` (M-DEC.1) + `GstreamerPipeStream` (M-DEC.2).
+- **`playback` crate** — `Player` state machine + frame pump (M-PLAY.1).
+- **Recorder shell** — Trunk + Leptos CSR (M-INT.1) → Tauri ↔ Leptos drag-drop integration (M-INT.2).
+- **Native winit preview** — `wisp::Application::from_wgpu` proven via `crates/preview/` (M-PREVIEW.1).
+- **Tauri ↔ player IPC** — four `#[tauri::command]` wrappers + tick thread + `player-status` events (M-PLAY.2).
+- **HTML5 video preview** — `<video>` element bound to `convertFileSrc(path)` (M-PLAY.3).
+- **Drag-over visual feedback** — `DropZoneState::Active` wired through (M-POLISH.1).
+- **Test infrastructure** — Tier-1 IPC harness (M-TEST.1) + Tier-2 WebDriver e2e via `tauri-driver` + `fantoccini` (M-TEST.2).
+
+After this turn (M0 close + chapters), the next planned milestones are still
+M2 (capture) onward. Pending docs:
+
+- `_docs/milestone-2-capture.md` (not yet drafted) — ScreenCaptureKit on
+  macOS, source picker, cursor + click telemetry.
+- `_docs/milestone-3-recording-hud.md` — floating frameless HUD, pause/resume.
+- `_docs/milestone-4-editor.md` — replace HTML5 video with wisp-rendered
+  preview in a winit child window of Tauri.
+- `_docs/milestone-5-encode.md` — `ffmpeg-next` software H.264 path +
+  headless `screen render in.json out.mp4` (the export pipeline this M0
+  was rehearsal for).
