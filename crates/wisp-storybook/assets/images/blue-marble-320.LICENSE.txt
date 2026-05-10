@@ -1,0 +1,16 @@
+blue-marble-320.jpg
+===================
+
+Source: "The Earth seen from Apollo 17" (NASA, 1972).
+URL:    https://commons.wikimedia.org/wiki/File:The_Earth_seen_from_Apollo_17.jpg
+License: PUBLIC DOMAIN (NASA imagery is not subject to copyright in the
+         United States: https://www.nasa.gov/multimedia/guidelines/index.html).
+
+This file is the 320×320 px Wikimedia-Commons-rendered thumbnail of the
+original. Used in `crates/wisp/examples/blend_modes_gallery.rs` as the
+foreground image for the 28-tile blend-mode contact sheet, so the
+demonstration shows how each mode composites against varied
+real-world chroma and luminance rather than synthetic gradients.
+
+No attribution is legally required (PD), but NASA appreciates credit
+when their material is republished.
