@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.1 — Shared structured GStreamer probe (AUT-97)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `media::gstreamer::probe()` returns a structured `GStreamerProbe` (per-binary version, requested-plugin map, `PATH` snapshot) instead of a bare `bool`. CI failure logs now show *why* GStreamer is unavailable, not just "false."
+- **Linear:** [AUT-97](https://linear.app/harwood/issue/AUT-97).
+- **Files:** filled in `crates/media/src/gstreamer.rs` (was scaffolded by M-MEDIA.0). New: `GStreamerProbe`, `probe()`, `probe_with_plugins(&[&str])`, `is_available()`, `Display` impl that pretty-prints the diagnostic. `crates/decode/Cargo.toml` adds `media` as a dev-dep (one-way edge — `media` already depends on `decode` for `VideoFrame`, so `dev-dep` reverses safely without cycling the production build). `crates/decode/tests/gstreamer_integration.rs` migrated from a local `gstreamer_available()` to `media::gstreamer::is_available`. `crates/decode/src/gstreamer_pipe.rs::gstreamer_available()` gains a docstring pointing at the canonical helper (`preview` + `app` tests keep calling the decode helper for now — they'll cut over when M-MEDIA.5/.6 touches them).
+- **Verified:** 6 new media::gstreamer unit tests (path-snapshot non-empty, empty-plugin-map default, requested-plugin recording, `is_available` consistency, `Display` format, `Send + Sync`). All run without GStreamer installed (the deterministic `__not_a_real_plugin__` check and the synthetic `Display` test are host-independent). Full `just gate` green at 313 tests (311 + 2 new media-crate tests + 4 in `gstreamer`).
+- **Plugin checks via `gst-inspect-1.0`.** Used over parsing `gst-launch -h` output. Returns `false` for both "checked-but-missing" and "not-checked"; callers wanting to distinguish inspect `GStreamerProbe::plugins` directly.
+- **Dev-dep direction is intentional.** Adding `media` as a normal dep on `decode` would cycle the lib graph (`media` → `decode` → `media`); the test-target-only edge is safe because Cargo doesn't include dev-deps in the lib graph. M-MEDIA.5/.6 may later move `VideoFrame` into `media` and flip the dependency, but that's a later chunk.
+- **Decode's bool helper kept on purpose.** `decode::gstreamer_pipe::gstreamer_available()` continues to work as a backwards-compat shim. Its docstring now points at `media::gstreamer::is_available()` as the canonical entrypoint. Callers in `preview` + `app` tests are unchanged — chunk-bound migration avoids unrelated test churn.
+
+---
+
 ## M-MEDIA.0 — Media crate boundary + architecture docs (AUT-96)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — new `crates/media` is the home for GStreamer-backed audio + video capture, playback orchestration, and the data models that `wisp` (renderer) and `app` (Tauri+Leptos shell) consume. Scaffolded with module-level docs that lock in the three-way responsibility split before any of the subsequent 22 M-MEDIA chunks land.

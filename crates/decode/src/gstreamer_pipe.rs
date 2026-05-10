@@ -110,6 +110,12 @@ pub struct VideoMetadata {
 /// nextest test processes (root cause: TBD). Tests that depend on
 /// these binaries should call this and skip if it returns `false`,
 /// matching the pattern in `crates/decode/tests/gstreamer_integration.rs`.
+/// Note: prefer [`media::gstreamer::is_available`](https://example/) (M-MEDIA.1)
+/// for new code — it returns a structured [`media::gstreamer::GStreamerProbe`]
+/// with `PATH` snapshot + per-binary version + per-plugin presence, which
+/// is much easier to debug in CI than a bare `bool`. This helper is kept
+/// for backwards compatibility with existing decode / preview / app
+/// integration tests; cutover happens lazily as those tests are touched.
 #[must_use]
 pub fn gstreamer_available() -> bool {
     Command::new("gst-launch-1.0")
