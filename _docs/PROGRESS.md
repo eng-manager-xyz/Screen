@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.1 — Rounded crop / mask foundation in wisp (AUT-31)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — first mask primitive. Foundation for AUT-20 through AUT-35.
+- **Linear:** [AUT-31](https://linear.app/harwood/issue/AUT-31/m-mask1-add-rounded-crop-foundation-in-wisp).
+- **Files:** `crates/wisp/src/scene/clip.rs` (new `MaskShape` enum, `RoundedRect` variant); `crates/wisp/src/scene/container.rs` (new `clip: Option<MaskShape>` field); `crates/wisp/src/scene.rs` + `lib.rs` re-exports `MaskShape`; new `crates/wisp/shaders/clip.wgsl` (rounded-rect SDF fragment shader); new `crates/wisp/src/render/clip.rs` (`ClipPipeline`); `crates/wisp/src/render.rs` slow-path dispatcher reshaped (collector → `collect_dispatched_nodes` returning advanced-blend OR clipped nodes; phase 2 conditionally applies `clip` then advanced-blend or compose-over); `crates/wisp/src/render/blit.rs` extended with a parallel `pipeline_over` (ALPHA_BLENDING) + `compose_over` method for layering masked RTs onto in-progress dest; `crates/wisp-storybook/src/stories/s_clip_rounded.rs` new story; new `_docs/book/src/wisp/chunks/clip-rounded.md` chapter; `_docs/book/src/assets/wisp/clip-rounded.png` regenerated; SUMMARY.md; `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap` updated for the new story; `crates/wisp/tests/clip_rounded_rect.rs` (4 pixel-readback cases).
+- **Verified:** `just gate` green (173 tests, +4 from M-BLEND.2's 169); storybook gallery regenerated via `just snapshots-wisp` includes the new `clip-rounded.png`.
+- **Architecture — clip plugs into M-BLEND.2's dispatch:** a node is "dispatched" if it has an advanced blend mode OR a clip set. The slow-path renderer (`render_stage_with_advanced_dispatch`) handles both: phase 1 renders the scene minus dispatched subtrees, phase 2 walks them in pre-order, optionally clips the foreground, then composites onto the in-progress dest (advanced blends use `apply_advanced_blend` with ping-pong; clip-only nodes use `BlitPipeline::compose_over`'s ALPHA_BLENDING path). A node with both clip AND advanced blend applies the clip first, then the advanced math.
+- **Coordinate system trade-off:** `MaskShape::RoundedRect` is in NDC `[-1, +1]²` — screen space, not container-local. Driven by the recording-quad use case (cinematic crop on a fixed-position surface). Transform-aware clipping is queued.
+- **SDF anti-aliasing:** standard rounded-rect SDF (`length(max(q, 0)) + min(max(q.x, q.y), 0) - r`); AA band width is `2 / min(w, h)` so it spans roughly one output pixel without per-call scaling. Tests assert center=opaque, far-corner=transparent, and an inside-rect-but-outside-rounded-corner pixel reads as the clear color.
+- **`BlitPipeline` extension:** added a second pipeline (ALPHA_BLENDING) alongside the existing REPLACE one. `blit()` keeps REPLACE for the final RT→view flush; new `compose_over()` uses ALPHA_BLENDING for layering masked content onto an in-progress RT. Shared `run()` helper takes the pipeline + a `clear: bool` flag controlling `LoadOp::Clear` vs `LoadOp::Load`.
+- **One lesson during the gate loop:** adding a new storybook story bumps the `story_fingerprints` insta snapshot. First `just gate` run after adding `s_clip_rounded.rs` produced `*.snap.new`; the `.snap` baseline must be replaced before the gate goes green. Documented under "Story testing pattern" in CLAUDE.md (lesson already captured for first-run UX).
+
+---
+
 ## CI fix — gstreamer skip guards on integration tests
 - **Date:** 2026-05-10
 - **Status:** ✅ done — unblocks PR #4 merge.

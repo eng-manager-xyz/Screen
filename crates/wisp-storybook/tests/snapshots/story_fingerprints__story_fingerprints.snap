@@ -1,6 +1,6 @@
 ---
 source: crates/wisp-storybook/tests/story_fingerprints.rs
-assertion_line: 86
+assertion_line: 98
 expression: all
 ---
 Animated click ripple (M0.13):
@@ -587,6 +587,71 @@ Perspective rotation (M0.19):
   - - 16
     - 16
     - 16
+    - 248
+Rounded crop foundation (M-MASK.1 / AUT-31):
+  - - 40
+    - 48
+    - 64
+    - 248
+  - - 48
+    - 56
+    - 72
+    - 248
+  - - 56
+    - 56
+    - 72
+    - 248
+  - - 40
+    - 48
+    - 64
+    - 248
+  - - 112
+    - 112
+    - 128
+    - 248
+  - - 208
+    - 200
+    - 176
+    - 248
+  - - 224
+    - 200
+    - 144
+    - 248
+  - - 128
+    - 112
+    - 88
+    - 248
+  - - 104
+    - 112
+    - 120
+    - 248
+  - - 208
+    - 200
+    - 176
+    - 248
+  - - 224
+    - 200
+    - 144
+    - 248
+  - - 128
+    - 112
+    - 80
+    - 248
+  - - 24
+    - 32
+    - 40
+    - 248
+  - - 40
+    - 40
+    - 48
+    - 248
+  - - 40
+    - 40
+    - 48
+    - 248
+  - - 24
+    - 32
+    - 40
     - 248
 Rounded rect with stroke (M0.12 / M0.13):
   - - 16

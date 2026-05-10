@@ -1,11 +1,12 @@
 //! `Container` — scene-graph node holding children, transform, alpha, visible, blend mode.
 //!
-//! Filters (`Vec<Box<dyn Filter>>`) and clip masks (`Option<ClipMask>`) are
-//! declared in the design but land in M0.16 and M0.12 respectively, when their
-//! types exist.
+//! Filters (`Vec<Box<dyn Filter>>`) are declared in the design but land
+//! in M0.16+ when the per-container filter pipeline exists. Mask
+//! clipping ([`Container::clip`]) ships in M-MASK.1.
 
 use crate::blend::BlendMode;
 use crate::scene::Transform;
+use crate::scene::clip::MaskShape;
 use crate::scene::node::NodeId;
 
 /// Scene-graph container.
@@ -22,6 +23,12 @@ pub struct Container {
     pub visible: bool,
     /// Blend mode used when compositing this node's output over its target.
     pub blend_mode: BlendMode,
+    /// Optional mask region (M-MASK.1). When `Some`, the container's
+    /// rendered subtree is clipped to the shape: pixels outside the
+    /// mask have their alpha zeroed before being composited onto the
+    /// parent. The renderer routes clipped containers through an
+    /// offscreen pass — see `crate::render::clip`.
+    pub clip: Option<MaskShape>,
     pub(crate) children: Vec<NodeId>,
     pub(crate) parent: Option<NodeId>,
 }
@@ -59,6 +66,7 @@ impl Default for Container {
             alpha: 1.0,
             visible: true,
             blend_mode: BlendMode::Normal,
+            clip: None,
             children: Vec::new(),
             parent: None,
         }

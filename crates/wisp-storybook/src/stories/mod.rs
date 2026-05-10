@@ -2,6 +2,7 @@
 //! adds one entry here.
 
 mod s_blur_filter;
+mod s_clip_rounded;
 mod s_color_matrix;
 mod s_drop_shadow;
 mod s_graphics_ellipse;
@@ -32,5 +33,6 @@ pub fn all_stories() -> Vec<Story> {
         s_motion_blur::story(),
         s_color_matrix::story(),
         s_mesh_perspective::story(),
+        s_clip_rounded::story(),
     ]
 }

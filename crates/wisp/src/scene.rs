@@ -14,6 +14,7 @@ pub mod transform;
 
 use slotmap::SlotMap;
 
+pub use clip::MaskShape;
 pub use container::Container;
 pub use graphics::{Fill, Graphics, Stroke};
 pub use mesh::Mesh;
