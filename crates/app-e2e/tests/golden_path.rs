@@ -121,6 +121,107 @@ async fn wait_video_paused(driver: &Client, want_paused: bool) -> Result<()> {
 }
 
 #[tokio::test]
+async fn drag_then_drop_transitions_to_playback() -> Result<()> {
+    // The full happy-path the user actually performs: cursor with a
+    // file enters the window → drop-zone shows the active visual →
+    // user releases → app transitions to the player view → user
+    // clicks play → video plays.
+    //
+    // Uses the user-supplied real-MP4 fixture at
+    // `crates/app/video/sample.mp4` (a real H.264 video, not the
+    // synthetic gradient at decode/tests/fixtures). If the drag
+    // wiring landed correctly in M-POLISH.1, this scenario passes
+    // end-to-end on Linux CI.
+    let app = E2eApp::start().await?;
+    let driver = app.client();
+
+    let workspace_root = std::env::current_dir()?
+        .ancestors()
+        .find(|p| p.join("Cargo.toml").exists() && p.join("crates").is_dir())
+        .ok_or_else(|| anyhow!("could not find workspace root from cwd"))?
+        .to_path_buf();
+    let fixture = workspace_root.join("crates/app/video/sample.mp4");
+    assert!(
+        fixture.exists(),
+        "user-supplied fixture missing: {}",
+        fixture.display()
+    );
+
+    // 1. Idle drop-zone is the starting state.
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".drop-zone-idle"))
+        .await?;
+
+    // 2. Drag enters → active visual appears.
+    let _: serde_json::Value = driver
+        .execute_async(
+            r"
+            const [callback] = arguments;
+            window.__TAURI__.core.invoke('__test_drag_enter').then(callback);
+            ",
+            vec![],
+        )
+        .await?;
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".drop-zone-active"))
+        .await?;
+
+    // 3. Drop the file → transitions to player view. Tauri's Drop
+    //    handler also emits file-drag-leave so the active visual
+    //    resets — guards a regression where the active class would
+    //    stick after a successful drop.
+    let fixture_str = fixture.to_string_lossy().to_string();
+    let _: serde_json::Value = driver
+        .execute_async(
+            r"
+            const [path, callback] = arguments;
+            window.__TAURI__.core.invoke('__test_drop_file', { path })
+                .then(callback);
+            ",
+            vec![json!(fixture_str)],
+        )
+        .await?;
+
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".player-controls"))
+        .await?;
+
+    // 4. The <video> element is mounted with a Tauri-converted src.
+    let video = driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css("video.player-video"))
+        .await?;
+    let src = video
+        .attr("src")
+        .await?
+        .ok_or_else(|| anyhow!("<video> rendered but src attribute missing"))?;
+    assert!(
+        !src.is_empty() && src.contains("asset"),
+        "expected asset:// or http://asset.localhost URL, got {src:?}"
+    );
+
+    // 5. Click play → both the toggle class flips AND the video
+    //    element actually starts playing.
+    let toggle = driver.find(Locator::Css(".player-toggle")).await?;
+    toggle.click().await?;
+    driver
+        .wait()
+        .at_most(ELEMENT_WAIT)
+        .for_element(Locator::Css(".player-toggle-playing"))
+        .await?;
+    wait_video_paused(driver, false).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn drag_enter_leave_toggles_active_class() -> Result<()> {
     let app = E2eApp::start().await?;
     let driver = app.client();
