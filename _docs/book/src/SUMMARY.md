@@ -70,6 +70,10 @@
 
 - [Overview](./decode/overview.md)
 
+# `media` — capture + playback + timing
+
+- [Architecture — M-MEDIA.0](./media/architecture.md)
+
 # `playback` — player state machine
 
 - [Overview](./playback/overview.md)

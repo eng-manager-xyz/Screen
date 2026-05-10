@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.0 — Media crate boundary + architecture docs (AUT-96)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — new `crates/media` is the home for GStreamer-backed audio + video capture, playback orchestration, and the data models that `wisp` (renderer) and `app` (Tauri+Leptos shell) consume. Scaffolded with module-level docs that lock in the three-way responsibility split before any of the subsequent 22 M-MEDIA chunks land.
+- **Linear:** [AUT-96](https://linear.app/harwood/issue/AUT-96). Foundation chunk for the M-MEDIA track; the remaining P0 (AUT-97..103), P1 (AUT-104..110), P2 (AUT-111..117), and P3 (AUT-118) tickets all build on top.
+- **Files:** new `crates/media/Cargo.toml` (depends on `decode` for the `VideoFrame` re-export + `thiserror`/`tracing` workspace deps). New `crates/media/src/lib.rs` with the crate-level architecture docstring + module declarations. Six scaffolded module files (`audio.rs`, `clock.rs`, `gstreamer.rs`, `histogram.rs`, `manifest.rs`, `video.rs`), each carrying a `//!` header documenting the planned surface for its chunk. New `_docs/book/src/media/architecture.md` chapter. `_docs/book/src/SUMMARY.md` gains a new `media` section. CLAUDE.md was updated separately (commit `5e58d54`) with the asset-choice rules every M-MEDIA chunk consumes.
+- **Verified:** 2 smoke tests in `crates/media/src/lib.rs` (re-export of `VideoFrame`, trait re-export of `VideoStream`). `cargo check -p media --all-targets` green; full `just gate` green.
+- **Why this split.** The boundary is load-bearing: every wisp consumer (storybook, headless export, future plugins) would inherit GStreamer's build + license footprint if `wisp` ever depended on this crate's GStreamer integration. The split also makes the backend swappable — a future ScreenCaptureKit / Media Foundation native path slots into `media` without touching `wisp`.
+- **CLI-pipe over `gstreamer-rs`.** Documented in the architecture chapter and in CLAUDE.md's GStreamer lessons. M-MEDIA.1 will extract `decode::gstreamer_pipe::gstreamer_available()` into a shared structured-diagnostic helper.
+- **Scaffolded modules are intentional.** Each `//!` doc describes the planned surface so the very next chunk on the module reads as "convert this comment into real types + tests + an mdBook chapter of its own." The crate compiles green from day one; chunks add code, not infrastructure.
+
+---
+
 ## M-TEXT.6 — Text composes through mask / filter / blend / export (AUT-80)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — with M-TEXT.5's `TextTexturePipeline` in hand, text becomes a `RenderTexture`, and the existing renderer plumbs that through every composition surface (render_stage, non-Normal blend, filter chain, headless export, mask clipping).
