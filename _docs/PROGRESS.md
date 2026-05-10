@@ -6,6 +6,44 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-VEC.12 — Vector primitive examples gallery (AUT-64) — phase complete
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the M-VEC track. Single-canvas storybook entry tying together the entire vector catalog plus an mdBook chapter that indexes every M-DYN / M-VEC chunk.
+- **Linear:** [AUT-64](https://linear.app/harwood/issue/AUT-64).
+- **Files:** new `crates/wisp-storybook/src/stories/s_vector_gallery.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. New `_docs/book/src/wisp/chunks/vector-gallery.md` (gallery image + chunk index for both M-VEC and M-DYN tracks).
+- **Verified:** storybook fingerprint snapshot updated; PNG visually confirmed.
+
+### Next-phase summary — 20 issues, 17 commits
+
+The `mvp/next-phase` branch closes 20 issues across two milestone tracks plus two P0 mask-followups:
+
+| Track | Issues | Commits |
+|---|---|---|
+| M-DYN.1..6 (dynamic textures) | AUT-43/44/45/46/47/48 | 3 |
+| M-VEC.1..12 (vector primitives) | AUT-53..64 | 10 |
+| P0 export-parity | AUT-27, AUT-33 | 1 |
+
+**Key architectural delivery:** the *separated mask + composition* model. Coverage (M-DYN.1 `MaskTexturePipeline`) is decoupled from composition (M-VEC.4 `MaskComposePipeline`), with a cache (M-DYN.2) and a vector data model (M-VEC.1) layered in between. The five existing mask primitives (clip, privacy_blur, solid_redaction, spotlight, dim_outside) were refactored onto this path while keeping their public APIs byte-equivalent. Path-driven variants land for every primitive.
+
+**+45 tests** beyond the M-MASK baseline (201 → 266 across the branch).
+
+**Test count milestones:**
+- M-MASK baseline (start of branch): 201
+- After M-DYN.1+.2 + M-VEC.1: 221
+- After M-VEC.2+.3: 229
+- After M-VEC.4-6 refactor: 235
+- After AUT-27/-33 export parity: 243
+- After M-DYN.3-6: 247
+- After M-VEC.7-12: 266
+
+**Lessons captured in CLAUDE.md** during this phase:
+- "Renderer batching / draw order" — Graphics paints AFTER Sprites in `render_stage` regardless of scene-tree order.
+- "WGSL ↔ Rust uniform layout" — vec3 fields force 16-byte alignment; size the Rust struct to match.
+
+The architecture is now app-ready: an editor inspector can drive privacy blur, redaction, spotlight, dim-outside, crop, webcam shape, and freehand-path masks through a single `Vector` data type, with caching, export parity, and full primitive composability.
+
+---
+
 ## M-VEC.10 + M-VEC.11 — Path stroke + mask boolean ops (AUT-62 + AUT-63)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — two chunks shipped together. Path stroke unblocks `Callout::arrow_to`; mask boolean ops let masks combine via union / intersect / subtract.

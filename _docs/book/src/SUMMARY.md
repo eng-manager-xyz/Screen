@@ -58,6 +58,7 @@
   - [Vector spotlight + dim — M-VEC.7](./wisp/chunks/vector-spotlight-dim.md)
   - [Vector highlight + callout — M-VEC.8 + M-VEC.9](./wisp/chunks/vector-highlight-callout.md)
   - [Path stroke + mask boolean ops — M-VEC.10 + M-VEC.11](./wisp/chunks/vector-path-stroke.md)
+  - [Vector primitive gallery — M-VEC.12](./wisp/chunks/vector-gallery.md)
 
 # `decode` — video decode
 
