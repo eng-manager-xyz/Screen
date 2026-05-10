@@ -39,10 +39,13 @@ fn build(app: &Application, stage: &mut Stage) {
     let _ = sprite_stage.add_child(sprite_stage.root(), sprite);
     let _ = renderer.render_stage(app, input.view(), Color::BLACK, &sprite_stage);
 
+    // Dramatic kernel so the static-frame PNG shows the smear
+    // clearly. At 14 px the trail was barely visible on the 96-px
+    // dot; 60 px gives a clear comet shape.
     let filter = MotionBlurFilter {
         velocity: Vec2::new(900.0, 600.0),
-        peak_velocity_pps: 1400.0,
-        max_kernel_px: 14.0,
+        peak_velocity_pps: 1100.0,
+        max_kernel_px: 60.0,
     };
     renderer.apply_filter(app, &filter, &input, &output);
 

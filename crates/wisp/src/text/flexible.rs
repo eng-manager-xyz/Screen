@@ -31,7 +31,8 @@
 //! 0.06` (= 60 px ≈ caption-y), and matches what glyphon's atlas
 //! cache expects for typical desktop UIs.
 
-use std::sync::Mutex;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, Wrap};
 
@@ -47,13 +48,9 @@ pub const REFERENCE_PX: f32 = 1000.0;
 /// cosmic-text API through this struct. The renderer (M-TEXT.3) uses
 /// the crate-private `buffer()` accessor.
 pub struct FlexibleTextLayout {
-    /// Underlying cosmic-text buffer. Crate-public so the M-TEXT.3
-    /// glyphon renderer can read it without a downcast; not exposed
-    /// outside the crate.
-    #[expect(
-        dead_code,
-        reason = "consumed by glyphon renderer in M-TEXT.3 / AUT-77"
-    )]
+    /// Underlying cosmic-text buffer. Crate-public so the
+    /// `FlexibleTextRenderer` (glyphon) can read it without a
+    /// downcast; not exposed outside the crate.
     pub(crate) buffer: Buffer,
     metrics: WispTextMetrics,
 }
@@ -79,7 +76,7 @@ impl WispTextLayout for FlexibleTextLayout {
 /// so the engine can be shared across threads — necessary for caches
 /// (M-DYN.2-style) and the renderer's `&self` access pattern.
 pub struct FlexibleTextEngine {
-    font_system: Mutex<FontSystem>,
+    font_system: Arc<Mutex<FontSystem>>,
 }
 
 impl std::fmt::Debug for FlexibleTextEngine {
@@ -99,7 +96,7 @@ impl FlexibleTextEngine {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            font_system: Mutex::new(FontSystem::new()),
+            font_system: Arc::new(Mutex::new(FontSystem::new())),
         }
     }
 
@@ -111,8 +108,43 @@ impl FlexibleTextEngine {
     #[must_use]
     pub fn with_font_system(font_system: FontSystem) -> Self {
         Self {
-            font_system: Mutex::new(font_system),
+            font_system: Arc::new(Mutex::new(font_system)),
         }
+    }
+
+    /// Build the engine with a `FontSystem` seeded from a list of
+    /// font file paths. No system fonts are loaded — only the
+    /// supplied files are available, and family-name lookups
+    /// ([`WispText::with_font_family`](super::WispText::with_font_family))
+    /// resolve against this set.
+    ///
+    /// Used by storybook exporters and tests that want byte-identical
+    /// output across hosts (CI runners have different system fonts).
+    ///
+    /// # Errors
+    ///
+    /// Returns `io::Error` if any path can't be opened or isn't a
+    /// recognized font file.
+    pub fn from_font_paths<P: AsRef<Path>>(
+        paths: impl IntoIterator<Item = P>,
+    ) -> std::io::Result<Self> {
+        let mut db = cosmic_text::fontdb::Database::new();
+        for p in paths {
+            db.load_font_file(p.as_ref())?;
+        }
+        Ok(Self::with_font_system(FontSystem::new_with_locale_and_db(
+            "en-US".to_owned(),
+            db,
+        )))
+    }
+
+    /// Borrow the shared `FontSystem` handle. The
+    /// [`FlexibleTextRenderer`](super::FlexibleTextRenderer) constructor
+    /// uses this to wire layout + rasterization to the same font
+    /// database (so glyph metrics agree).
+    #[must_use]
+    pub fn font_system_handle(&self) -> Arc<Mutex<FontSystem>> {
+        Arc::clone(&self.font_system)
     }
 
     /// Concrete-typed layout entrypoint — preserves the
@@ -154,8 +186,12 @@ fn layout_flexible(font_system: &mut FontSystem, text: &WispText) -> FlexibleTex
     let wrap_height_px = wrap_width_px.map_or(f32::INFINITY, |_| f32::INFINITY);
     buffer.set_size(font_system, wrap_width_px, Some(wrap_height_px));
 
+    let family = text
+        .font_family
+        .as_deref()
+        .map_or(Family::SansSerif, Family::Name);
     let attrs = Attrs::new()
-        .family(Family::SansSerif)
+        .family(family)
         .weight(Weight(style.weight.value()))
         .style(match style.style {
             super::WispFontStyle::Normal => Style::Normal,
@@ -276,6 +312,18 @@ mod tests {
             .with_weight(WispFontWeight::Bold)
             .italic();
         let layout = eng.layout_concrete(&WispText::new("Bold italic").with_style(style));
+        assert_eq!(layout.metrics().line_count, 1);
+        assert!(layout.metrics().max_width_ndc > 0.0);
+    }
+
+    #[test]
+    fn custom_font_family_lays_out_without_panic() {
+        // Family name doesn't need to resolve to a loaded face for
+        // layout to succeed — cosmic-text falls back to sans-serif when
+        // the name is unknown. The contract under test is "Family::Name
+        // path doesn't crash and still produces metrics."
+        let eng = engine();
+        let layout = eng.layout_concrete(&WispText::new("hello").with_font_family("Inter"));
         assert_eq!(layout.metrics().line_count, 1);
         assert!(layout.metrics().max_width_ndc > 0.0);
     }

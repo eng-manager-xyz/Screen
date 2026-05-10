@@ -15,7 +15,7 @@ use pollster::block_on;
 use wisp::application::{AppConfig, Application};
 use wisp::math::Rect;
 use wisp::render::Renderer;
-use wisp::{BlendMode, Color, Fill, Font, Graphics, RenderTexture, Stage, Text};
+use wisp::{BlendMode, Color, Fill, Font, Graphics, RenderTexture, Sprite, Stage, Text, Texture};
 
 const TILE_W: u32 = 200;
 const TILE_H: u32 = 140;
@@ -47,8 +47,8 @@ fn main() -> wisp::Result<()> {
     let fg_rt = RenderTexture::with_format(&app, TILE_W, TILE_H, format);
     let comp_rt = RenderTexture::with_format(&app, TILE_W, TILE_H, format);
 
-    // Render the backdrop and foreground gradients ONCE — they don't
-    // change across modes.
+    // Render the warm-cool gradient backdrop ONCE — used as the bg
+    // for all 28 tiles.
     {
         let mut stage = Stage::new();
         let mut bg = Graphics::new();
@@ -62,17 +62,20 @@ fn main() -> wisp::Result<()> {
         let _ = stage.add_child(stage.root(), bg);
         let _ = renderer.render_stage(&app, bg_rt.view(), Color::BLACK, &stage);
     }
+
+    // Load the foreground image (Apollo 17 Earth photo, public
+    // domain) ONCE. Real-world chroma + luminance makes blend modes
+    // far more legible than synthetic gradients — black space punches
+    // through with multiply/min, oceans tint under hue/color, etc.
+    let earth_image = image::open("crates/wisp-storybook/assets/images/blue-marble-320.jpg")
+        .expect("blue-marble-320.jpg missing — run from workspace root or check the asset");
+    let earth_texture = Texture::from_image(&app, &earth_image);
+    // Render the Earth into fg_rt for the advanced-blend path.
     {
         let mut stage = Stage::new();
-        let mut fg = Graphics::new();
-        fg.fill(Fill::LinearGradient {
-            start: Vec2::new(0.0, 1.0),
-            end: Vec2::new(0.0, -1.0),
-            color_a: Color::rgba(1.0, 0.95, 0.3, 1.0),
-            color_b: Color::rgba(0.2, 0.85, 0.85, 1.0),
-        });
-        fg.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
-        let _ = stage.add_child(stage.root(), fg);
+        let mut earth = Sprite::from_texture(earth_texture.clone()).with_anchor(Vec2::splat(0.5));
+        earth.container.transform.scale = Vec2::splat(2.0); // fills the tile
+        let _ = stage.add_child(stage.root(), earth);
         let _ = renderer.render_stage(&app, fg_rt.view(), Color::BLACK, &stage);
     }
 
@@ -87,28 +90,22 @@ fn main() -> wisp::Result<()> {
 
         // Composite this mode into comp_rt.
         if let Some(blend_state) = mode.native_blend_state() {
-            // Standard mode — render bg then fg-with-mode into comp_rt.
+            // Standard mode: build a stage with the pre-rendered bg
+            // as a sprite, the Earth image as a sprite with the
+            // current blend mode on top. (A Graphics backdrop would
+            // paint AFTER sprites in render_stage's batched order, so
+            // we use sprite-on-sprite.)
             let mut stage = Stage::new();
-            let mut bg = Graphics::new();
-            bg.fill(Fill::LinearGradient {
-                start: Vec2::new(-1.0, 0.0),
-                end: Vec2::new(1.0, 0.0),
-                color_a: Color::rgba(0.85, 0.15, 0.25, 1.0),
-                color_b: Color::rgba(0.15, 0.25, 0.85, 1.0),
-            });
-            bg.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
-            let _ = stage.add_child(stage.root(), bg);
+            let bg_tex = bg_rt.as_texture();
+            let mut bg_sprite = Sprite::from_texture(bg_tex).with_anchor(Vec2::splat(0.5));
+            bg_sprite.container.transform.scale = Vec2::splat(2.0);
+            let _ = stage.add_child(stage.root(), bg_sprite);
 
-            let mut fg = Graphics::new();
-            fg.fill(Fill::LinearGradient {
-                start: Vec2::new(0.0, 1.0),
-                end: Vec2::new(0.0, -1.0),
-                color_a: Color::rgba(1.0, 0.95, 0.3, 1.0),
-                color_b: Color::rgba(0.2, 0.85, 0.85, 1.0),
-            });
-            fg.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
-            fg.container.blend_mode = *mode;
-            let _ = stage.add_child(stage.root(), fg);
+            let mut earth =
+                Sprite::from_texture(earth_texture.clone()).with_anchor(Vec2::splat(0.5));
+            earth.container.transform.scale = Vec2::splat(2.0);
+            earth.container.blend_mode = *mode;
+            let _ = stage.add_child(stage.root(), earth);
 
             let _ = renderer.render_stage(&app, comp_rt.view(), Color::BLACK, &stage);
             let _ = blend_state; // silence unused

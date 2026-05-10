@@ -8,6 +8,7 @@
 use std::sync::Arc;
 
 use crate::application::Application;
+use crate::texture::Texture;
 
 /// GPU texture configured for rendering into and reading back.
 ///
@@ -107,6 +108,27 @@ impl RenderTexture {
     #[must_use]
     pub fn height(&self) -> u32 {
         self.inner.height
+    }
+
+    /// Wrap this render target as a sampled [`Texture`] for use in
+    /// the sprite pipeline.
+    ///
+    /// Shares the underlying wgpu resources — no GPU copy. The render
+    /// texture's `TEXTURE_BINDING` usage flag is already set, so
+    /// sampling is well-defined.
+    ///
+    /// Useful for compositing text/mask/filter outputs into a scene:
+    /// render into a `RenderTexture`, then `as_texture()` + attach to
+    /// a [`crate::scene::Sprite`].
+    #[must_use]
+    pub fn as_texture(&self) -> Texture {
+        Texture::from_render_texture_parts(
+            self.inner.texture.clone(),
+            self.inner.view.clone(),
+            self.inner.sampler.clone(),
+            self.inner.width,
+            self.inner.height,
+        )
     }
 
     /// Read back the rendered pixels as a tightly-packed RGBA8 buffer.

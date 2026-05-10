@@ -9,6 +9,12 @@ use wisp::application::Application;
 use wisp::math::Rect;
 use wisp::render::Renderer;
 use wisp::{Color, Fill, Graphics, MaskShape, RenderTexture, Sprite, Stage, Texture};
+// Note: the storybook exporter clears to BLACK before render_stage,
+// so masked sprites pop against black. We do NOT add a Graphics
+// backdrop here — Graphics paints AFTER Sprites in `render_stage`'s
+// pipeline-batched submission order, so a full-canvas backdrop would
+// overlay the masked sprites (CLAUDE.md "Renderer batching / draw
+// order" note).
 
 use crate::story::Story;
 
@@ -27,17 +33,6 @@ pub fn story() -> Story {
 fn build(app: &Application, stage: &mut Stage) {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let renderer = Renderer::new(app, format).expect("renderer");
-
-    // Dark gradient backdrop so the masked silhouettes pop.
-    let mut bg = Graphics::new();
-    bg.fill(Fill::LinearGradient {
-        start: Vec2::new(0.0, 1.0),
-        end: Vec2::new(0.0, -1.0),
-        color_a: Color::rgba_u8(40, 50, 70, 255),
-        color_b: Color::rgba_u8(20, 25, 35, 255),
-    });
-    bg.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
-    let _ = stage.add_child(stage.root(), bg);
 
     let frame_rt = render_textured_frame(&renderer, app, format);
 

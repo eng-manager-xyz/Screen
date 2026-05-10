@@ -69,13 +69,13 @@ catches the timestamps that come due.
 |---|---|---|---|
 | ![](../assets/playback/tick_00.png) | ![](../assets/playback/tick_02.png) | ![](../assets/playback/tick_04.png) | ![](../assets/playback/tick_06.png) |
 
-| Tick 10 | Tick 20 | Tick 30 | Tick 40 |
+| Tick 11 | Tick 21 | Tick 31 | Tick 41 |
 |---|---|---|---|
-| ![](../assets/playback/tick_10.png) | ![](../assets/playback/tick_20.png) | ![](../assets/playback/tick_30.png) | ![](../assets/playback/tick_40.png) |
+| ![](../assets/playback/tick_11.png) | ![](../assets/playback/tick_21.png) | ![](../assets/playback/tick_31.png) | ![](../assets/playback/tick_41.png) |
 
-| Tick 48 | Tick 52 | Tick 56 | Tick 58 |
+| Tick 49 | Tick 53 | Tick 57 | Tick 59 |
 |---|---|---|---|
-| ![](../assets/playback/tick_48.png) | ![](../assets/playback/tick_52.png) | ![](../assets/playback/tick_56.png) | ![](../assets/playback/tick_58.png) |
+| ![](../assets/playback/tick_49.png) | ![](../assets/playback/tick_53.png) | ![](../assets/playback/tick_57.png) | ![](../assets/playback/tick_59.png) |
 
 [Player API](../api/playback/struct.Player.html) ·
 [`PlayState`](../api/playback/enum.PlayState.html)

@@ -69,12 +69,60 @@ snapshots: snapshots-wisp snapshots-ui
 
 snapshots-wisp:
     cargo run -p wisp-storybook --bin wisp-export-stories
+    cargo run -p wisp-storybook --bin wisp-export-text-screenshots
+
+# Render animated stories to MP4 via gstreamer. Local-only —
+# gstreamer must be installed (`brew install gstreamer`). Not chained
+# into `just snapshots-wisp` because it depends on a non-Rust runtime
+# tool; run explicitly when an animated story's tick changes.
+snapshots-wisp-animated:
+    cargo run -p wisp-storybook --bin wisp-export-animated
 
 snapshots-ui:
     cargo run -p ui-storybook --bin ui-export-stories
 
+# Snapshot completeness gate.
+# Every mdBook chapter that references an asset under
+# `_docs/book/src/assets/` MUST have that asset committed. Re-running the
+# storybook exporters across machines is non-deterministic (Metal vs
+# lavapipe etc.), so we don't byte-compare. We DO verify that every
+# referenced file exists — catches "added a chapter, forgot to commit the
+# PNG." Run `just snapshots` locally before committing if you changed a
+# story's rendered output.
+snapshots-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=0
+    # Find every `assets/...` reference in markdown chapters, resolve
+    # relative to the chapter's directory, and check existence.
+    while IFS= read -r chapter; do
+      chapter_dir="$(dirname "$chapter")"
+      # markdown image syntax: ![alt](path) or <iframe src="path">
+      python3 - "$chapter" "$chapter_dir" <<'PY'
+    import re, sys, os
+    chapter, chapter_dir = sys.argv[1], sys.argv[2]
+    text = open(chapter).read()
+    refs = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"', text)
+    flat = [a or b for a, b in refs]
+    missing = []
+    for ref in flat:
+        if ref.startswith(('http://', 'https://')):
+            continue
+        # Only check assets/ references — code links / api links live elsewhere.
+        if '/assets/' not in ref:
+            continue
+        path = os.path.normpath(os.path.join(chapter_dir, ref))
+        if not os.path.exists(path):
+            missing.append((chapter, ref, path))
+    for c, r, p in missing:
+        print(f"MISSING ASSET: {c} → {r} (resolved {p})", file=sys.stderr)
+    sys.exit(1 if missing else 0)
+    PY
+    done < <(find _docs/book/src -name "*.md" -type f)
+    echo "snapshots-check: all referenced assets present."
+
 # Per-task gate. Run before marking any task done.
-gate: fmt check lint test doctest docs
+gate: fmt check lint test doctest docs snapshots-check
 
 # Tier-2 e2e tests. Requires `tauri-driver` and (on Linux) `webkit2gtk-driver`
 # + `xvfb`. Linux runs the suite under `xvfb-run` for headless display;

@@ -2,6 +2,13 @@
 
 ![28 blend modes contact sheet](../../assets/wisp/blend-modes.png)
 
+Backdrop is a red→blue horizontal gradient; foreground is the
+[Apollo 17 "Blue Marble"](https://commons.wikimedia.org/wiki/File:The_Earth_seen_from_Apollo_17.jpg)
+NASA photograph (public domain). Picking real-world content over
+synthetic gradients makes each mode legible: continents punch through
+Multiply, oceans tint under Hue / Color, black space inverts on
+Difference, and so on.
+
 The full PixiJS v8 catalog, implemented in two architectural buckets:
 
 - **Standard** (8 modes) — single-pass GPU blend equations via

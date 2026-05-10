@@ -6,6 +6,57 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.6 — Text composes through mask / filter / blend / export (AUT-80)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — with M-TEXT.5's `TextTexturePipeline` in hand, text becomes a `RenderTexture`, and the existing renderer plumbs that through every composition surface (render_stage, non-Normal blend, filter chain, headless export, mask clipping).
+- **Linear:** [AUT-80](https://linear.app/harwood/issue/AUT-80).
+- **Files:** new `crates/wisp/tests/text_composition.rs` (4 integration tests). New `crates/wisp-storybook/src/stories/s_text_composition.rs` + `writeups/text_composition.md` + `mod.rs` + `all_stories()` entry. New `_docs/book/src/wisp/text/composition.md` chapter. `_docs/book/src/SUMMARY.md`. Regenerated `_docs/book/src/assets/wisp/text-composition.png` via the story exporter.
+- **Verified:** 4 new integration tests cover (1) render_stage participation with bright-pixel check, (2) blend mode visual difference (Normal vs Subtract sum |Δ| > 1000), (3) grayscale filter via `Renderer::apply_filter` produces R≈G≈B on the top-50 brightest pixels, (4) headless export pixel readback contains the text. Full `just gate` green at 309 tests (305 + 4 new). `just snapshots-check` passes.
+- **Subtract vs Multiply for the visual demo.** Multiply with white text against a warm-red backdrop multiplies the backdrop into itself — the text becomes invisible. Subtract (`dst - src` clamped) punches the backdrop out toward black where the glyph alpha is high — visible and clearly different from Normal. Documented in the chapter and writeup.
+- **No new renderer code.** Every acceptance surface was already exposed; this chunk wires existing primitives + writes tests + writes the chapter. The architectural work was M-TEXT.5's `RenderTexture::as_texture()`.
+- **Mask clipping participation.** Mask APIs (`apply_clip`, `compose_through_*`) already accept `RenderTexture`. The text RT plugs in unchanged — covered transitively by the existing M-MASK test suite. Listed in the chapter's compatibility matrix; not re-tested per-mask-flavor (would duplicate the M-MASK coverage).
+
+---
+
+## M-TEXT.5 — Text render-to-texture path + cache (AUT-79)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `TextTexturePipeline` packages engine + renderer + FIFO cache; `WispText` renders into a `RenderTexture` and `RenderTexture::as_texture()` exposes it as a sprite-friendly `Texture` without GPU copy. With this, text inherits transform / alpha / blend / render-pass participation for free via the existing sprite pipeline — the gaps that M-TEXT.3 deferred.
+- **Linear:** [AUT-79](https://linear.app/harwood/issue/AUT-79).
+- **Files:** new `crates/wisp/src/text/texture.rs` (`TextTextureKey`, `TextTextureCache`, `TextTexturePipeline`, `MAX_ENTRIES = 64`). `crates/wisp/src/text/mod.rs` and `crates/wisp/src/lib.rs` re-export the three new public types. `crates/wisp/src/texture/render_texture.rs` adds `RenderTexture::as_texture() -> Texture` (zero-copy, shares the underlying wgpu handles). `crates/wisp/src/texture.rs` adds crate-private `Texture::from_render_texture_parts(...)`. New `crates/wisp-storybook/src/stories/s_text_texture.rs` + `writeups/text_texture.md` + `mod.rs` + `all_stories()` entry. New `_docs/book/src/wisp/text/textures.md` chapter. `_docs/book/src/SUMMARY.md`. Regenerated `_docs/book/src/assets/wisp/text-texture.png` via `just snapshots-wisp`.
+- **Verified:** 11 new unit tests in `text::texture::tests` covering miss-on-first, hit-on-second (same Arc), invalidation on content / style / color / wrap / dims / font_family, FIFO eviction at MAX_ENTRIES, clear-and-refill, and a pixel smoke ("at least one non-zero alpha pixel"). Full `just gate` green at 303 tests (292 + 11 new). `just snapshots-check` confirms every chapter's referenced asset is on disk.
+- **`+y` convention diverges between glyphon and sprite UVs.** Glyphon writes textures with `+y` down (texture row 0 is the top); the sprite pipeline samples with `+y` up. The chapter documents the canonical fix — set `sprite.container.transform.scale.y` negative to display upright. The story uses this idiom.
+- **Cache invalidates on every renderable input.** `TextTextureKey` hashes content + family + style (size, color, line_height, letter_spacing, weight, italic, align) + wrap_width + (width_px, height_px). `f32` fields go through `to_bits()` so equality is exact-bit — same NaN bits hash identically (acceptable, callers re-pass the same style across frames).
+- **`Texture::from_render_texture_parts` stays `pub(crate)`.** Texture's wgpu fields are crate-private; we expose the conversion via `RenderTexture::as_texture()` (public) so the contract is "render targets can become sampleable textures," not "any wgpu::Texture can become a wisp::Texture."
+- **Pipeline is opt-in.** Glyphon + cache costs only apply when a caller constructs `TextTexturePipeline`. `Renderer` doesn't own it, mirroring the M-TEXT.3 sibling-of-Renderer pattern.
+
+---
+
+## M-TEXT.3 follow-up — Custom-font family override + screenshot demo (AUT-77)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — extends M-TEXT.3 with per-text font family selection so FlexibleText can render through specific TTF files (Inter, JetBrains Mono, …) instead of the cosmic-text default sans-serif. Adds the bundled-font exporter that produces the hero screenshot for the chapter.
+- **Linear:** still rolls up under [AUT-77](https://linear.app/harwood/issue/AUT-77) — this PR also lands the Glyphon renderer commit cherry-picked from `wisp/text`.
+- **Files:** `crates/wisp/src/text/mod.rs` adds `WispText::font_family: Option<String>` + `WispText::with_font_family(...)`. `crates/wisp/src/text/flexible.rs` honors the override via `Family::Name` when set, else falls back to `Family::SansSerif`; new `FlexibleTextEngine::from_font_paths(paths) -> io::Result<Self>` loads font files into a fresh `cosmic_text::fontdb::Database` (no system fonts). New `crates/wisp-storybook/assets/fonts/` bundle (Inter Regular + Bold, JetBrains Mono Regular, both OFL-1.1) with `Inter-LICENSE.txt` + `JetBrainsMono-OFL.txt` copies. New `crates/wisp-storybook/src/bin/export_text_screenshots.rs` + `[[bin]] wisp-export-text-screenshots` in `crates/wisp-storybook/Cargo.toml`. `Justfile` `snapshots-wisp` chains the new binary. `_docs/book/src/wisp/text/glyphon-backend.md` embeds the generated PNG. `_docs/book/src/assets/wisp/text-custom-fonts.png` (1024×512 hero).
+- **Verified:** 2 new unit tests (`with_font_family_sets_field`, `custom_font_family_lays_out_without_panic`). Existing M-TEXT.3 renderer tests still pass.
+- **Family resolves at attrs time, not at engine-construct time.** Since `Family::Name(&str)` borrows, the string lives on `WispText` (`Option<String>`); the layout fn computes `Family::Name(name.as_str())` in local scope just before `set_text`. Keeps `WispTextStyle` `Copy` (which atlas.rs and flexible.rs both depend on).
+- **OFL-1.1 already allowed.** `deny.toml` carried the entry from the egui ecosystem (Open Sans / Hack). No deny.toml change needed for Inter + JetBrains Mono.
+- **No system fonts in the exporter.** `from_font_paths` constructs an empty `fontdb::Database` and loads only the supplied files — outputs reproduce byte-identically across hosts. (Cargo doc / clippy still rely on system fonts elsewhere via the default `FontSystem::new`; this helper is opt-in.)
+
+---
+
+## M-TEXT.3 — Glyphon WGPU rasterizer for FlexibleText (AUT-77)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `FlexibleTextRenderer` pairs the cosmic-text layout from M-TEXT.2 with glyphon's wgpu pipeline. Layouts produced by `FlexibleTextEngine` now paint into any `wgpu::TextureView`.
+- **Linear:** [AUT-77](https://linear.app/harwood/issue/AUT-77).
+- **Files:** `crates/wisp/Cargo.toml` adds `glyphon = "=0.8.0"` (pinned, matches wgpu 24 + cosmic-text 0.12). New `crates/wisp/src/text/flexible_renderer.rs` with `FlexibleTextRenderer` owning `TextAtlas`, `Viewport`, `TextRenderer`, `SwashCache`, `Device`, `Queue`, and `Resolution`. `FlexibleTextEngine` gains `font_system_handle() -> Arc<Mutex<FontSystem>>` and now holds the `FontSystem` inside an `Arc<Mutex<…>>` so engine + renderer share the same font database. `crates/wisp/src/text/mod.rs` + `crates/wisp/src/lib.rs` re-export. New `_docs/book/src/wisp/text/glyphon-backend.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 3 new GPU-using unit tests (`renderer_constructs_against_default_app`, `empty_draw_does_not_panic`, `draw_hello_paints_some_non_zero_pixels`). Full `just gate` green at 292 tests (289 + 3 new). `just site` builds cleanly and renders the new chapter at `target/book/wisp/text/glyphon-backend.html`.
+- **Sibling-of-Renderer, not method-on-Renderer.** Glyphon owns ~few MB of GPU state (atlas + pipeline) that shouldn't be paid by callers who never render flexible text. The renderer is constructed explicitly by the caller and given an `Arc<Mutex<FontSystem>>` handle from the engine. Documented in the new chapter's "Shape" section.
+- **Pixel test, not snapshot test.** System fonts vary by host (Liberation Sans / DejaVu / Helvetica depending on platform); a byte-exact snapshot would churn on CI bumps. "At least one non-zero alpha pixel" is the genuine regression surface (glyphon broken, atlas allocation failed, font system empty) without false positives on cosmetic font swaps.
+- **NDC → pixel + REFERENCE_PX rescale at draw time.** Layouts are shaped at `REFERENCE_PX = 1000` (set in M-TEXT.2). The renderer computes `scale = target_height_px / REFERENCE_PX` per draw, so the same `FlexibleTextLayout` can be drawn into any target without re-shaping.
+- **Glyphon `=0.8.0` pin.** Glyphon's wgpu version is exact, not semver-driven — patch bumps can break against wgpu 24. Pinned with `=` to match cosmic-text 0.12 + wgpu 24 at the API level; reconsider when wgpu bumps.
+- **Known gaps deferred to M-TEXT.5.** "Container transform + alpha" and "`render_stage` participation" from AUT-77's acceptance criteria are deferred — they fall out naturally once `FlexibleTextRenderer` writes into an intermediate `RenderTexture` and that texture composes through the existing sprite pipeline (M-TEXT.5's RT cache work). Documented in the chapter's "Known gaps (intentional)" section.
+
+---
+
 ## M-TEXT.2 — Cosmic Text layout backend (AUT-76)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `FlexibleTextEngine` (Cosmic Text) lands behind the M-TEXT.1 trait surface. Layout half only; rasterization is M-TEXT.3 (`glyphon`).

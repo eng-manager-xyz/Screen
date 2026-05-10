@@ -20,6 +20,9 @@ font8x8 = { version = "0.3", default-features = false, features = ["unicode"] }
 # `default-features = false` skips the swash shaper bundle so we can ship
 # without bundled fonts; we add `std` + `swash` for FontSystem support.
 cosmic-text = { version = "0.12", default-features = false, features = ["std", "swash"] }
+# Glyphon — wgpu-side rasterizer for cosmic-text layouts (M-TEXT.3 / AUT-77).
+# Pinned to 0.8 to match wgpu 24 + cosmic-text 0.12.
+glyphon = "=0.8.0"
 thiserror = "2"
 tracing = "0.1"
 

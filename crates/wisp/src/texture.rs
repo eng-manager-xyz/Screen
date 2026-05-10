@@ -120,6 +120,31 @@ impl Texture {
         Self::from_rgba(app, rgba.width(), rgba.height(), rgba.as_raw())
     }
 
+    /// Wrap a set of wgpu texture handles as a [`Texture`].
+    ///
+    /// Used internally by
+    /// [`crate::texture::render_texture::RenderTexture::as_texture`]
+    /// to expose a render-target as a sampled sprite texture without
+    /// copying GPU bytes. Not part of the public API — render textures
+    /// are the supported caller, and `pub(crate)` keeps it that way.
+    pub(crate) fn from_render_texture_parts(
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+        sampler: wgpu::Sampler,
+        width: u32,
+        height: u32,
+    ) -> Self {
+        Self {
+            inner: Arc::new(TextureInner {
+                texture,
+                view,
+                sampler,
+                width,
+                height,
+            }),
+        }
+    }
+
     /// Construct an empty (zeroed) texture for the given format.
     ///
     /// Usage flags include `TEXTURE_BINDING | COPY_DST`, suitable for
