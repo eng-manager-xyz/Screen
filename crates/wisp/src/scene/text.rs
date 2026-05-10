@@ -15,7 +15,7 @@ use crate::scene::container::Container;
 use crate::texture::Texture;
 
 /// Per-glyph metrics — UV rect in the atlas.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphMetrics {
     /// Left U coordinate in the atlas.
     pub u_min: f32,

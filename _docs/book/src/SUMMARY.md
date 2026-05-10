@@ -60,6 +60,7 @@
   - [Path stroke + mask boolean ops — M-VEC.10 + M-VEC.11](./wisp/chunks/vector-path-stroke.md)
   - [Vector primitive gallery — M-VEC.12](./wisp/chunks/vector-gallery.md)
   - [Text architecture — M-TEXT.1](./wisp/text/architecture.md)
+  - [Atlas vs Flexible text — M-TEXT.4](./wisp/text/atlas-vs-flexible.md)
 
 # `decode` — video decode
 

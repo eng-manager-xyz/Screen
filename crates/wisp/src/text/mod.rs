@@ -1,5 +1,9 @@
 //! Wisp text abstraction + backend boundary (M-TEXT.1 / AUT-75).
 //!
+//! Backend modules live under this one — see [`atlas`] for the
+//! bitmap-font path (M-TEXT.4 / AUT-78). M-TEXT.2/.3 will add a
+//! `flexible` module wrapping `cosmic_text` + `glyphon`.
+//!
 //! Wisp owns the text data model. App, editor, and project state never
 //! see `cosmic_text::*` or `glyphon::*` types — they see [`WispText`],
 //! [`WispTextStyle`], [`WispTextLayout`], and a few related value types.
@@ -33,6 +37,10 @@
 use glam::Vec2;
 
 use crate::color::Color;
+
+pub mod atlas;
+
+pub use atlas::{AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout};
 
 /// Font weight on a 100..=900 scale matching CSS / OpenType.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

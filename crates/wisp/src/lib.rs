@@ -41,8 +41,9 @@ pub use scene::{
     Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
 };
 pub use text::{
-    WispFontHandle, WispFontStyle, WispFontWeight, WispText, WispTextAlign, WispTextEngine,
-    WispTextLayout, WispTextMetrics, WispTextRenderer, WispTextStyle,
+    AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout, WispFontHandle, WispFontStyle,
+    WispFontWeight, WispText, WispTextAlign, WispTextEngine, WispTextLayout, WispTextMetrics,
+    WispTextRenderer, WispTextStyle,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;
