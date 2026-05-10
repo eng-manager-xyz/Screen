@@ -6,6 +6,38 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MASK.10 — Freehand path mask in wisp (AUT-35) — series complete
+- **Date:** 2026-05-10
+- **Status:** ✅ done — closes the 10-issue mask suite (AUT-31 / AUT-20 / AUT-21 / AUT-22 / AUT-23 / AUT-28 / AUT-29 / AUT-30 / AUT-34 / AUT-35).
+- **Linear:** [AUT-35](https://linear.app/harwood/issue/AUT-35).
+- **Files:** new `crates/wisp/shaders/path_clip.wgsl` (point-in-polygon via crossings test). New `crates/wisp/src/render/path_clip.rs` (`PathClipPipeline`, uniform-buffered point list, `MAX_PATH_POINTS=32`). `crates/wisp/src/render.rs` adds `path_clip` field, `Renderer::apply_path_clip(points, foreground, output)` and `Renderer::apply_solid_redaction_path(points, color, base, output)`. New `crates/wisp/tests/path_clip.rs` (3 cases: star center pass-through, concave-gap cutout, path solid redaction). New `crates/wisp-storybook/src/stories/s_path_mask.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs`. `_docs/book/src/wisp/chunks/path-mask.md`. `_docs/book/src/SUMMARY.md`. `_docs/book/src/assets/wisp/path-mask.png`. `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap`.
+- **Verified:** `just gate` green (201 tests, +3 from M-MASK.9's 198).
+- **First shape that doesn't fit any SDF.** A free polygon can't be expressed as a closed-form distance function (no analytic SDF for an arbitrary polygon). Two design options were evaluated: (1) tessellate to a triangle fan + draw to a mask RT, (2) point-in-polygon test in the fragment shader against a uniform-buffered point list. Picked (2): no tessellation needed, handles concave shapes for free, single render pass, no scratch RT, and the implementation is ~80 lines of WGSL vs. ~200 lines of CPU triangulation. Trade-off: capped at 32 vertices (uniform buffer size) and hard-edge for V1 (no AA).
+- **Why no `MaskShape::Path` variant.** `MaskShape` is `Copy` — every variant holds POD so the enum stays cheap to pass by value through the auto-dispatch path. A path needs `Vec<Vec2>` or `Arc<[Vec2]>` to own the points; that forces `MaskShape` to drop `Copy` and adopt `Clone`, rippling through `PrivacyBlur`/`DimOutside`/all clip call sites. Not worth it for a "premium expansion." Path-clip lives next to the SDF clip with its own dedicated public methods (`apply_path_clip`, `apply_solid_redaction_path`).
+- **Star-polygon contract test.** Tested with a 10-vertex five-pointed star — concave with gaps between the arms. The crossings test correctly classifies a pixel in one of the gaps (NDC -0.65, +0.55) as outside. Self-intersecting paths aren't on the freehand-mask UX path; this primitive doesn't promise sensible results for them.
+- **`u32::from(bool)` for the invert flag.** The shader takes a `u32` invert flag; `u32::from(true) = 1`, `u32::from(false) = 0`. Cleaner than the cast-precision-loss-prone `if invert { 1 } else { 0 }` and survives clippy without a reason allow.
+
+### Series summary
+
+10 mask primitives shipped on `mvp/masks` in one continuous loop:
+
+| Chunk | Issue | Primitive | Tests | Story |
+| --- | --- | --- | --- | --- |
+| M-MASK.1 | AUT-31 | Rounded crop foundation | 4 | clip-rounded |
+| M-MASK.2 | AUT-20 | Rectangle privacy blur | 3 | privacy-blur-rect |
+| M-MASK.3 | AUT-21 | Rounded privacy blur | 3 | privacy-blur-rounded |
+| M-MASK.4 | AUT-22 | Configurable blur strength | 3 | privacy-blur-strength |
+| M-MASK.5 | AUT-23 | Solid redaction | 4 | solid-redaction |
+| M-MASK.6 | AUT-28 | Spotlight / highlight | 3 | spotlight |
+| M-MASK.7 | AUT-29 | Dim-outside | 3 | dim-outside |
+| M-MASK.8 | AUT-30 | Webcam circle | 3 | webcam-shapes |
+| M-MASK.9 | AUT-34 | Ellipse | 3 | ellipse-mask |
+| M-MASK.10 | AUT-35 | Freehand path | 3 | path-mask |
+
+Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, started at 173 and finished at 201 tests on `just gate`. Single shader (`clip.wgsl`) plus one new pipeline (`path_clip.wgsl`) cover everything. The five composition primitives (`apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_path_clip`) plus three data wrappers (`PrivacyBlur` / `DimOutside` and their strength enums) form the renderer-data API the editor inspector will eventually drive.
+
+---
+
 ## M-MASK.9 — Ellipse / oval mask in wisp (AUT-34)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `MaskShape::Ellipse` adds anisotropic SDF support; first shape that needs a real new SDF (vs. degenerating to rounded-rect).

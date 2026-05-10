@@ -16,6 +16,7 @@ mod blit;
 mod clip;
 mod graphics_pipeline;
 mod mesh_pipeline;
+mod path_clip;
 mod quad_pipeline;
 mod sprite_pipeline;
 mod text_pipeline;
@@ -66,6 +67,7 @@ pub struct Renderer {
     advanced_blend: advanced_blend::AdvancedBlendPipelines,
     blit: blit::BlitPipeline,
     clip: clip::ClipPipeline,
+    path_clip: path_clip::PathClipPipeline,
     output_format: wgpu::TextureFormat,
 }
 
@@ -85,6 +87,7 @@ impl Renderer {
         let advanced_blend = advanced_blend::AdvancedBlendPipelines::new(app, output_format);
         let blit_pipeline = blit::BlitPipeline::new(app, output_format);
         let clip_pipeline = clip::ClipPipeline::new(app, output_format);
+        let path_clip_pipeline = path_clip::PathClipPipeline::new(app, output_format);
         Ok(Self {
             triangle,
             quad,
@@ -95,6 +98,7 @@ impl Renderer {
             advanced_blend,
             blit: blit_pipeline,
             clip: clip_pipeline,
+            path_clip: path_clip_pipeline,
             output_format,
         })
     }
@@ -333,6 +337,89 @@ impl Renderer {
         self.blit.blit(app, base, output.view());
 
         // 4. Compose the masked redaction over base inside output.
+        self.blit.compose_over(app, &masked_rt, output);
+    }
+
+    /// Apply a freehand polygon mask to `foreground`, writing the
+    /// masked result to `output` (M-MASK / AUT-35).
+    ///
+    /// `points` is a closed polygon in NDC `[-1, +1]²`. Up to
+    /// `MAX_PATH_POINTS` (32) vertices are honored; the rest are
+    /// silently ignored. Pixels inside the polygon pass through
+    /// `foreground` unchanged; pixels outside drop to alpha 0.
+    ///
+    /// Implementation note: the WGSL fragment shader runs a
+    /// crossings-test point-in-polygon at every pixel — no
+    /// tessellation, no SDF. AA is hard-edge for V1; the rasterized
+    /// output is integer-pixel accurate (Jordan curve theorem).
+    pub fn apply_path_clip(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        foreground: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        self.path_clip.apply(app, points, false, foreground, output);
+    }
+
+    /// Composition primitive — render `base`, with `points` (a closed
+    /// polygon in NDC) filled by `color` (M-MASK / AUT-35 freehand
+    /// solid redaction). Outside the polygon: base preserved.
+    ///
+    /// Sister to [`Self::apply_solid_redaction`] but with a freehand
+    /// polygon instead of a `MaskShape`. Same four-stage composition
+    /// (clear fill / mask / blit base / compose over) — the only
+    /// difference is the masking pass uses [`Self::apply_path_clip`]
+    /// instead of the SDF clip.
+    pub fn apply_solid_redaction_path(
+        &self,
+        app: &Application,
+        points: &[glam::Vec2],
+        color: Color,
+        base: &RenderTexture,
+        output: &RenderTexture,
+    ) {
+        let format = self.output_format;
+        let fill_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+        let masked_rt = RenderTexture::with_format(app, base.width(), base.height(), format);
+
+        // 1. Clear fill_rt to color.
+        let mut encoder = app
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("wisp::path_redaction fill"),
+            });
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wisp::path_redaction fill pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: fill_rt.view(),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: f64::from(color.r),
+                            g: f64::from(color.g),
+                            b: f64::from(color.b),
+                            a: f64::from(color.a),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        app.queue().submit(std::iter::once(encoder.finish()));
+
+        // 2. Path-mask the fill.
+        self.path_clip
+            .apply(app, points, false, &fill_rt, &masked_rt);
+
+        // 3. Copy base → output.
+        self.blit.blit(app, base, output.view());
+
+        // 4. Compose masked redaction over base inside output.
         self.blit.compose_over(app, &masked_rt, output);
     }
 
