@@ -22,6 +22,7 @@ pub mod filter;
 pub mod math;
 pub mod render;
 pub mod scene;
+pub mod text;
 pub mod texture;
 
 mod error;
@@ -38,6 +39,10 @@ pub use scene::{
     BlurStrength, Callout, Container, DimOutside, DimStrength, Fill, Font, Graphics, Highlight,
     MaskShape, Mesh, Node, NodeId, Path, PathBuilder, PathCommand, PrivacyBlur, Sprite, Stage,
     Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
+};
+pub use text::{
+    WispFontHandle, WispFontStyle, WispFontWeight, WispText, WispTextAlign, WispTextEngine,
+    WispTextLayout, WispTextMetrics, WispTextRenderer, WispTextStyle,
 };
 pub use texture::Texture;
 pub use texture::render_texture::RenderTexture;
