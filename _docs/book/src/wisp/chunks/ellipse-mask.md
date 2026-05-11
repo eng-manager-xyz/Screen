@@ -1,9 +1,19 @@
-# Ellipse mask — M-MASK.9 / AUT-34
+# Ellipse mask
+
+[Linear: AUT-34](https://linear.app/harwood/issue/AUT-34)
 
 `MaskShape::Ellipse { center, half_extents }` adds anisotropic
 elliptical cutouts. Unlike `Circle`, ellipse needs a real new SDF
 since the rounded-rect formula doesn't degenerate to an ellipse with
 unequal half-extents.
+
+> **Note on `MaskShape::Circle`** ([Linear: AUT-30](https://linear.app/harwood/issue/AUT-30)) —
+> a circle is just an ellipse with `half_extents.x == half_extents.y`,
+> so it's available through this same family. Earlier work also
+> exposed `MaskShape::Circle` directly as a degenerate `RoundedRect`
+> (`half_extents = (r, r)`, `corner_radius = r`); both forms produce
+> the same coverage texture. New code should prefer `Ellipse` or
+> `RoundedRect` — they're the cleaner primitives.
 
 ```rust
 use wisp::MaskShape;

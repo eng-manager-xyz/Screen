@@ -48,6 +48,22 @@ The chapter's hero asset is part of the delivery; pick the medium that *shows th
 - **Real content over synthetic gradients** for blend modes, color filters, and anything where structure matters. Bundle a license-clean image (e.g. the bundled Apollo 17 "Blue Marble" at `crates/wisp-storybook/assets/images/`) rather than two gradients overlapping. Real chroma + luminance + edges + dark regions makes per-mode behavior legible at a glance.
 - **`just snapshots-wisp-animated`** runs the gstreamer-backed `wisp-export-animated` binary. It is intentionally *not* chained into `just snapshots-wisp` (it depends on the `gst-launch-1.0` CLI on PATH). Run it before commit when an animated story's `tick` changes. The committed `.mp4` is the source of truth for CI / mdBook — CI does not regenerate videos.
 
+### Diagrams in mdBook — mermaid only, no ASCII
+
+**Every diagram in `_docs/book/src/**/*.md` is a `mermaid` code block.** ASCII / box-drawing / unicode-arrow diagrams are not accepted — the gate (`just gate` → `mermaid-check`) rejects new ones. Prefer types in this order:
+
+1. **`sequenceDiagram`** when the diagram shows actors / processes / threads exchanging messages over time (lifecycle pumps, IPC flows, "shell calls X, X calls Y, Y returns Z"). **Default to sequenceDiagram for anything that has a time component or named participants.**
+2. **`flowchart LR` / `flowchart TD`** for static pipelines / data flows / dispatch trees with no time component (filter chains, render-pass routing).
+3. **`stateDiagram-v2`** for state machines (Playing / Paused / Buffering).
+4. **`graph TD` / `classDiagram`** for hierarchies, crate layouts, or struct relationships.
+
+Allowed exceptions (do NOT convert):
+- **Math / formulas** — type-signature legends, conversion math, sample-rate arithmetic.
+- **Shell pipelines** — actual `gst-launch-1.0 ! foo ! bar` syntax meant to be copy-pasted.
+- **Directory trees** — `crates/wisp/src/...` listings (mermaid is poor at file trees; the indented text is more readable).
+
+The `mermaid-check` gate fails on any non-allowlisted chapter containing box-drawing chars (`┌ │ └ ├ ═ ╔ ╗`) or the unicode arrow run `─►` / `──▶` / `◄──`. New violations show the offending file + line.
+
 ### The recursive-fix loop
 
 When `just gate` fails, you **must** loop until it's green. There is no exit other than green:

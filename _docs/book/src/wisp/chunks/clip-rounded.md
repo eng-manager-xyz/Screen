@@ -1,4 +1,6 @@
-# Rounded crop / mask foundation — M-MASK.1 (AUT-31)
+# Rounded crop / mask foundation
+
+[Linear: AUT-31](https://linear.app/harwood/issue/AUT-31)
 
 ![rounded crop](../../assets/wisp/clip-rounded.png)
 
@@ -27,21 +29,24 @@ mask issue (AUT-20 through AUT-35) extends.
 "dispatched" if it has an advanced blend mode OR a clip set. Both
 trigger the offscreen path:
 
-```text
-render_stage(view, stage)
-  ├─ collect_dispatched_nodes(stage) — pre-order walk
-  ├─ if empty → fast path (one render pass, identical to native-only)
-  └─ else      → slow path:
-        Phase 1: render scene MINUS dispatched subtrees → dest_a
-        Phase 2: for each dispatched node in pre-order:
-                   render subtree → foreground
-                   if clip:        clip.apply(shape, foreground) → masked
-                                   composite_src = masked
-                   else:           composite_src = foreground
-                   if advanced:    apply_advanced_blend(mode, dest_a, composite_src) → dest_b
-                                   swap a ↔ b
-                   else:           blit.compose_over(composite_src, dest_a) — alpha-blend
-        Phase 3: BlitPipeline::blit(final_dest, view)
+```mermaid
+flowchart TD
+    Start(["render_stage(view, stage)"]) --> Collect["collect_dispatched_nodes(stage)<br/>pre-order walk"]
+    Collect --> Any{any<br/>dispatched?}
+    Any -->|no| Fast["fast path:<br/>one render pass<br/>(native-only identical)"]
+    Any -->|yes| Phase1["Phase 1: render scene<br/>MINUS dispatched subtrees → dest_a"]
+    Phase1 --> Phase2[/"Phase 2: for each<br/>dispatched node, pre-order"/]
+    Phase2 --> Subtree["render subtree → foreground"]
+    Subtree --> HasClip{has clip?}
+    HasClip -->|yes| ClipApply["clip.apply(shape, foreground) → masked<br/>composite_src = masked"]
+    HasClip -->|no| NoClip["composite_src = foreground"]
+    ClipApply --> Advanced{advanced<br/>blend?}
+    NoClip --> Advanced
+    Advanced -->|yes| AdvBlend["apply_advanced_blend(mode,<br/>dest_a, composite_src) → dest_b<br/>swap a ↔ b"]
+    Advanced -->|no| Compose["blit.compose_over(<br/>composite_src, dest_a)<br/>alpha-blend"]
+    AdvBlend --> Phase2
+    Compose --> Phase2
+    Phase2 --> Phase3["Phase 3: BlitPipeline::blit(<br/>final_dest, view)"]
 ```
 
 A container with BOTH a clip AND an advanced blend mode does the clip

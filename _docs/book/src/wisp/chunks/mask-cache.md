@@ -1,4 +1,13 @@
-# Mask texture cache — M-DYN.2 / AUT-44
+# Mask texture cache
+
+[Linear: AUT-44](https://linear.app/harwood/issue/AUT-44)
+
+![](../../assets/wisp/mask-texture.png)
+
+*The textures the cache stores — alpha RTs from M-DYN.1's
+`MaskTexturePipeline`. Static scenes (a fixed-position privacy
+crop, a stable webcam overlay) regenerate these once and reuse the
+cached `Arc<RenderTexture>` across every frame.*
 
 `Renderer::cached_mask_texture(shape, w, h)` and the inverted
 companion return `Arc<RenderTexture>`s memoized on `(shape data,

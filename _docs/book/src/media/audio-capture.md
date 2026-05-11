@@ -1,4 +1,6 @@
-# GStreamer audio capture — M-MEDIA.5 / AUT-101
+# GStreamer audio capture
+
+[Linear: AUT-101](https://linear.app/harwood/issue/AUT-101)
 
 Spawns `gst-launch-1.0` with a pipeline that emits normalized `F32LE`
 raw audio on stdout, then chunks the byte stream into

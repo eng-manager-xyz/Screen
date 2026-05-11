@@ -1,28 +1,26 @@
-# Real MP4 → wisp playback (M-DEC.2 + M-PLAY.1)
+# Real MP4 → wisp playback
 
 This is the first chunk that puts the *complete* data path together:
 
-```text
-sample.mp4
-   │
-   ▼
-gst-discoverer-1.0 ── width / height / fps / duration ──▶ Player metadata
-   │
-   ▼
-gst-launch-1.0 ! filesrc ! decodebin ! videoconvert ! BGRA ! fdsink fd=1
-   │
-   ▼  raw BGRA bytes on stdout
-   │
-GstreamerPipeStream ── implements VideoStream ──▶ Player::tick(dt)
-                                                   │
-                                                   ▼
-                              VideoTexture::upload_bgra
-                                                   │
-                                                   ▼
-                                       wisp::Sprite + Renderer
-                                                   │
-                                                   ▼
-                                       RenderTexture → PNG
+```mermaid
+sequenceDiagram
+    participant File as sample.mp4
+    participant Discoverer as gst-discoverer-1.0
+    participant Launch as gst-launch-1.0<br/>(filesrc → decodebin →<br/>videoconvert → BGRA → fdsink)
+    participant Stream as GstreamerPipeStream<br/>(impl VideoStream)
+    participant Player
+    participant Texture as VideoTexture
+    participant Renderer as wisp::Sprite +<br/>Renderer
+    participant Output as RenderTexture → PNG
+
+    File ->> Discoverer: probe
+    Discoverer -->> Player: width / height / fps / duration
+    File ->> Launch: decode
+    Launch -->> Stream: raw BGRA bytes on stdout
+    Stream ->> Player: next_frame() → VideoFrame
+    Player ->> Texture: upload_bgra(frame)
+    Player ->> Renderer: render_stage(stage)
+    Renderer ->> Output: read_pixels → PNG
 ```
 
 ## How to run

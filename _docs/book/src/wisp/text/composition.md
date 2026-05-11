@@ -1,4 +1,6 @@
-# Text composition — mask, filter, blend, export — M-TEXT.6 / AUT-80
+# Text composition — mask, filter, blend, export
+
+[Linear: AUT-80](https://linear.app/harwood/issue/AUT-80)
 
 With M-TEXT.5's `TextTexturePipeline` in hand, text becomes a
 `RenderTexture` — and that means it inherits the full composition

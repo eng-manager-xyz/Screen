@@ -1,4 +1,6 @@
-# Rectangle privacy blur — M-MASK.2 / AUT-20
+# Rectangle privacy blur
+
+[Linear: AUT-20](https://linear.app/harwood/issue/AUT-20)
 
 `Renderer::apply_privacy_blur(region, radius, base, output)` is the
 first masked-filter primitive. It composes three previously shipped

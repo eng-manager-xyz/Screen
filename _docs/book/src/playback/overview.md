@@ -7,26 +7,27 @@ frame rate while the shell ticks it once per render frame.
 
 ## Contract
 
-```text
-Shell (Tauri / winit)
-   │  player.tick(dt)             once per render frame
-   ▼
-Player                            owns:
-   │  ├─ Box<dyn VideoStream>     ← decode crate
-   │  └─ VideoTexture             ← wisp crate
-   │
-   │  per tick:
-   │    1. if Playing, advance elapsed += dt
-   │    2. while elapsed >= next_due:
-   │         frame = stream.next_frame()
-   │         texture.upload_bgra(&frame.bgra)
-   │         next_due += 1.0 / stream.frame_rate()
-   │
-   ▼
-GPU (VideoTexture is now current frame)
-   │
-   ▼
-wisp Sprite::from_texture(player.texture()) → on screen
+```mermaid
+sequenceDiagram
+    participant Shell as Shell<br/>(Tauri / winit)
+    participant Player
+    participant Stream as Box&lt;dyn VideoStream&gt;<br/>(decode crate)
+    participant Texture as VideoTexture<br/>(wisp crate)
+    participant Sprite as wisp::Sprite
+
+    loop once per render frame
+        Shell ->> Player: tick(dt)
+        Note over Player: if Playing,<br/>elapsed += dt
+        loop while elapsed ≥ next_due
+            Player ->> Stream: next_frame()
+            Stream -->> Player: VideoFrame (BGRA)
+            Player ->> Texture: upload_bgra(&frame.bgra)
+            Note over Player: next_due +=<br/>1.0 / frame_rate()
+        end
+        Player -->> Shell: frames_uploaded: u32
+        Note over Shell: redraw only when<br/>frames_uploaded > 0
+        Sprite ->> Texture: sample (on screen)
+    end
 ```
 
 `tick` returns the number of frames it actually uploaded so the shell

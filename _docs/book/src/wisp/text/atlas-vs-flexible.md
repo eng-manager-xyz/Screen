@@ -1,4 +1,6 @@
-# AtlasText vs FlexibleText — M-TEXT.4 / AUT-78
+# AtlasText vs FlexibleText
+
+[Linear: AUT-78](https://linear.app/harwood/issue/AUT-78)
 
 Wisp ships **two** text backends behind the [`WispTextEngine`] +
 [`WispTextLayout`] trait surface (M-TEXT.1 / AUT-75). Pick by use

@@ -1,4 +1,6 @@
-# Dynamic mask textures — M-DYN.1 / AUT-43
+# Dynamic mask textures
+
+[Linear: AUT-43](https://linear.app/harwood/issue/AUT-43)
 
 `Renderer::generate_mask_texture(shape, w, h)` and the path variant
 `Renderer::generate_path_mask_texture(points, w, h)` produce
@@ -39,10 +41,11 @@ work can:
 4. **Refactor** the existing combined-shader primitives onto this
    model in M-VEC.4-6.
 
-```text
-shape data ──► MaskTexturePipeline ──► alpha RT (m, m, m, m)
-                                            │
-                                            └─ sample.a × foreground = masked
+```mermaid
+flowchart LR
+    Shape[shape data] --> Pipeline[MaskTexturePipeline]
+    Pipeline --> Alpha["alpha RT (m, m, m, m)"]
+    Alpha --> Mask["sample.a × foreground = masked"]
 ```
 
 Two pipelines under the hood:

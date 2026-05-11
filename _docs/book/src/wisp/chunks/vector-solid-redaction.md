@@ -1,4 +1,13 @@
-# Solid redaction on vector masks — M-VEC.5 / AUT-57
+# Solid redaction on vector masks
+
+[Linear: AUT-57](https://linear.app/harwood/issue/AUT-57)
+
+![](../../assets/wisp/solid-redaction.png)
+
+*Output is pixel-identical to the M-MASK.5 solid redaction — same
+coverage, same fill color, just driven by a `Vector` instead of a
+`MaskShape`.* Now also accepts path-shaped vectors (custom polygons,
+not just analytic shapes).
 
 `Renderer::apply_solid_redaction_vector(vector, color, base, output)`
 drives the solid-redaction composition from a `Vector`. Like

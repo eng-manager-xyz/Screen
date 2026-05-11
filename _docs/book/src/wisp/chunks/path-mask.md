@@ -1,4 +1,6 @@
-# Freehand path mask — M-MASK.10 / AUT-35
+# Freehand path mask
+
+[Linear: AUT-35](https://linear.app/harwood/issue/AUT-35)
 
 `Renderer::apply_path_clip(points, foreground, output)` and
 `Renderer::apply_solid_redaction_path(points, color, base, output)`

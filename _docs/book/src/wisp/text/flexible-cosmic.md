@@ -1,4 +1,6 @@
-# FlexibleText — Cosmic Text layout — M-TEXT.2 / AUT-76
+# FlexibleText — Cosmic Text layout
+
+[Linear: AUT-76](https://linear.app/harwood/issue/AUT-76)
 
 `FlexibleText` is the styled / wrapped / shaped text path. It uses
 [`cosmic_text`] for layout (line breaking, BiDi, font fallback,
@@ -18,14 +20,10 @@ the wisp crate as a public type.
 [`WispTextEngine`]: ../../api/wisp/text/trait.WispTextEngine.html
 [`WispTextLayout`]: ../../api/wisp/text/trait.WispTextLayout.html
 
-```text
-WispText
-   │  engine.layout(text)
-   ▼
-FlexibleTextLayout { buffer (private), metrics }
-   │  metrics()
-   ▼
-WispTextMetrics
+```mermaid
+flowchart TD
+    WispText -->|"engine.layout(text)"| Layout["FlexibleTextLayout<br/>{ buffer (private),<br/>metrics }"]
+    Layout -->|"metrics()"| Metrics[WispTextMetrics]
 ```
 
 The renderer (M-TEXT.3 glyphon) is a sibling crate-internal module —

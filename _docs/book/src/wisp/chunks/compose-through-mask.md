@@ -1,4 +1,16 @@
-# Composition primitives with explicit masks — M-DYN.3..6
+# Composition primitives with explicit masks
+
+Linear: [AUT-45](https://linear.app/harwood/issue/AUT-45) · [AUT-46](https://linear.app/harwood/issue/AUT-46) · [AUT-47](https://linear.app/harwood/issue/AUT-47) · [AUT-48](https://linear.app/harwood/issue/AUT-48)
+
+![](../../assets/wisp/mask-texture.png)
+
+*Contact sheet of the alpha mask textures M-DYN.1 produces — rect,
+rounded-rect, circle, ellipse, freehand star.* The M-DYN.3..6
+composition primitives take one of these as input and combine it
+with a base RT to produce the final masked output (privacy blur,
+solid redaction, spotlight, clip). The mask generation is decoupled
+from composition so callers can share one alpha across multiple
+effects in the same frame.
 
 The high-level mask primitives (`apply_privacy_blur`,
 `apply_solid_redaction`, `apply_spotlight`, `apply_clip*`) generate
@@ -41,12 +53,14 @@ renderer.compose_dim_through_inverted_mask(
 These primitives are *the* explicit-mask versions of the high-level
 methods. The high-level methods now route through them:
 
-```text
-apply_privacy_blur(MaskShape, ...)
-   └─ wraps in Vector
-   └─ apply_privacy_blur_vector(Vector, ...)
-      └─ cached_vector_mask_texture(Vector) → mask
-      └─ compose_blur_through_mask(base, radius, mask, output)
+```mermaid
+flowchart TD
+    A["apply_privacy_blur(MaskShape, ...)"] --> B[wraps shape in Vector]
+    B --> C["apply_privacy_blur_vector(Vector, ...)"]
+    C --> D["cached_vector_mask_texture(Vector)"]
+    D --> E[mask]
+    C --> F["compose_blur_through_mask(<br/>base, radius, mask, output)"]
+    E --> F
 ```
 
 Same pattern for redaction and spotlight. The lower-level

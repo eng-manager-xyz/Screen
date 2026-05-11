@@ -1,4 +1,6 @@
-# Solid redaction — M-MASK.5 / AUT-23
+# Solid redaction
+
+[Linear: AUT-23](https://linear.app/harwood/issue/AUT-23)
 
 `Renderer::apply_solid_redaction(shape, color, base, output)` is the
 *trust* counterpart to privacy blur. Instead of attenuating detail

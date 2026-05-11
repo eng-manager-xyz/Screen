@@ -1,4 +1,6 @@
-# Media clock + timestamp model — M-MEDIA.2 / AUT-98
+# Media clock + timestamp model
+
+[Linear: AUT-98](https://linear.app/harwood/issue/AUT-98)
 
 Every audio chunk, video frame, cursor event, and visualization
 window in the recorder is stamped against **one** shared timeline.

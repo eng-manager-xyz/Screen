@@ -1,4 +1,15 @@
-# Export & copy-frame mask parity — AUT-27 / AUT-33
+# Export & copy-frame mask parity
+
+Linear: [AUT-27](https://linear.app/harwood/issue/AUT-27) · [AUT-33](https://linear.app/harwood/issue/AUT-33)
+
+![](../../assets/wisp/example-headless-export.png)
+
+*Headless export of a masked scene — the `read_pixels` PNG is
+byte-identical to what the preview surface shows for the same
+`Stage`.* That parity is the contract this chunk pins down: every
+mask primitive (`apply_clip`, `apply_privacy_blur`,
+`apply_solid_redaction`, `apply_spotlight`, `apply_dim_outside`)
+produces the same pixels in preview and in export.
 
 `wisp` has a single `Renderer::render_stage` entry point that drives
 both preview and headless export. Anything `read_pixels` returns is

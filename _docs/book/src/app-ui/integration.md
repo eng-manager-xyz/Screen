@@ -5,34 +5,22 @@ OS-level drag-drop events into a Leptos signal.
 
 ## Data flow
 
-```text
-                            OS drag-drop event
-                                    │
-                                    ▼
-crates/app/src/main.rs
-  on_window_event(WindowEvent::DragDrop)
-  ─ window.emit("file-dropped", path) ───────────┐
-                                                  │  Tauri event channel
-                                                  ▼
-crates/app-ui/index.html
-  <script>
-    window.__TAURI__.event.listen("file-dropped", evt =>
-      window.dispatchEvent(new CustomEvent("file-dropped", {
-        detail: evt.payload
-      }))
-    )
-  </script>                                       │
-                                                  │  browser CustomEvent
-                                                  ▼
-crates/app-ui/src/app.rs
-  install_file_drop_listener()
-  ─ window.addEventListener("file-dropped", …) ──┐
-                                                  │
-                                                  ▼
-                          set_loaded.set(Some(path))
-                                                  │
-                                                  ▼
-                          <App> swaps drop-zone view → player view
+```mermaid
+sequenceDiagram
+    participant OS
+    participant Shell as crates/app/src/main.rs<br/>(Tauri shell)
+    participant Bridge as crates/app-ui/index.html<br/>(JS bridge)
+    participant App as crates/app-ui/src/app.rs<br/>(Leptos)
+    participant View as &lt;App&gt; view
+
+    OS ->> Shell: drag-drop event
+    Note over Shell: on_window_event(<br/>WindowEvent::DragDrop)
+    Shell -->> Bridge: window.emit("file-dropped", path)
+    Note over Bridge: __TAURI__.event.listen
+    Bridge -->> App: window.dispatchEvent(<br/>CustomEvent "file-dropped")
+    Note over App: install_file_drop_listener()<br/>addEventListener
+    App ->> App: set_loaded.set(Some(path))
+    App -->> View: swap drop-zone view → player view
 ```
 
 Every hop is a one-liner. No `tauri-sys` crate, no JS-side state — the

@@ -1,4 +1,6 @@
-# Wisp text architecture — M-TEXT.1 / AUT-75
+# Wisp text architecture
+
+[Linear: AUT-75](https://linear.app/harwood/issue/AUT-75)
 
 Wisp **owns** the text data model. App, editor, project state, and
 storybook code never see `cosmic_text::*` or `glyphon::*` types — they
@@ -9,16 +11,20 @@ backend-stable when we swap or upgrade them.
 
 ## Type relationships
 
-```text
-WispText { content, style, position, max_width_ndc }
-   │
-   │  engine.layout(text)
-   ▼
-Box<dyn WispTextLayout>            ── line-broken, per-glyph, backend-specific
-   │  metrics()                       (concrete type known only to the renderer)
-   │
-   ▼
-renderer.draw(layout, text)        ── GPU side
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Engine as WispTextEngine
+    participant Layout as Box&lt;dyn WispTextLayout&gt;<br/>(backend-specific, opaque)
+    participant Renderer as WispTextRenderer<br/>(GPU side)
+
+    Caller ->> Engine: layout(WispText { content, style,<br/>position, max_width_ndc })
+    Note over Engine,Layout: line-break, shape,<br/>per-glyph metrics
+    Engine -->> Caller: Box&lt;dyn WispTextLayout&gt;
+    Caller ->> Layout: metrics() (Caller-visible)
+    Caller ->> Renderer: draw(layout, text)
+    Note over Renderer,Layout: renderer downcasts<br/>to concrete backend type
+    Renderer ->> Layout: read backend-private buffer
 ```
 
 For most callers `WispText` is the only type they construct directly.

@@ -1,4 +1,6 @@
-# Vector path stroke + boolean ops — M-VEC.10 + M-VEC.11
+# Vector path stroke + boolean ops
+
+Linear: [AUT-62](https://linear.app/harwood/issue/AUT-62) · [AUT-63](https://linear.app/harwood/issue/AUT-63)
 
 Two M-VEC chunks shipped in one chapter — both extend the vector
 catalog with primitives that the rest of the M-VEC track depends on.

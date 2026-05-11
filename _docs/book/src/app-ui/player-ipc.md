@@ -7,16 +7,29 @@ without polling.
 
 ## Data flow
 
-```text
-Leptos UI  (transport buttons)          Rust Tauri shell        playback crate
-─────────                                ──────────────          ──────────────
-                                                                  PlayerSession
-PlayerControls on_toggle ──invoke──► __TAURI__.core ─►  player_play  ─► .play()
-                                                        player_pause ─► .pause()
-DropZone file path ─────────invoke──► __TAURI__.core ─► player_open  ─► .open()
+```mermaid
+sequenceDiagram
+    participant UI as Leptos UI<br/>(transport buttons)
+    participant Bridge as __TAURI__.core<br/>(JS bridge)
+    participant Cmd as Tauri commands<br/>(crates/app)
+    participant Session as PlayerSession<br/>(playback crate)
+    participant Tick as Tick thread
 
-                  player-status event ◄── emit ◄── tick thread ── .tick(dt)
-                                                    (every 33 ms)   .status()
+    UI ->> Bridge: PlayerControls on_toggle (invoke)
+    Bridge ->> Cmd: player_play / player_pause
+    Cmd ->> Session: .play() / .pause()
+
+    UI ->> Bridge: DropZone file path (invoke)
+    Bridge ->> Cmd: player_open
+    Cmd ->> Session: .open(path)
+
+    rect rgb(245, 245, 250)
+        Note over Tick: every 33 ms
+        Tick ->> Session: .tick(dt) → .status()
+        Session -->> Cmd: PlayerStatus
+        Cmd -->> Bridge: emit("player-status")
+        Bridge -->> UI: CustomEvent
+    end
 ```
 
 Every IPC hop is a one-liner. The bridge in `index.html` exposes three
@@ -173,18 +186,29 @@ element whose `src` is derived from the dropped path via Tauri 2's
 [`convertFileSrc`](https://docs.rs/tauri/2/tauri/webview/struct.Webview.html)
 JS helper.
 
-```text
-file dropped → loaded signal → video_src() ─┐
-                                            ▼
-                              window.__screenConvertFileSrc(path)
-                                            │  (asset:// or http://asset.localhost)
-                                            ▼
-                              <video src=... node_ref=video_ref />
+```mermaid
+sequenceDiagram
+    participant Drop as Drop event
+    participant Signal as loaded signal
+    participant Convert as window.__screenConvertFileSrc
+    participant Video as &lt;video&gt; element<br/>(node_ref=video_ref)
+    participant Toggle as PlayerControls toggle
+    participant State as Tauri state<br/>(screen_play/pause)
+    participant Event as player-status event
 
-PlayerControls toggle click ─┬─ video.play() / video.pause() (sync, user-gesture)
-                             └─ screen_play() / screen_pause()  (Tauri state)
+    Drop ->> Signal: file dropped
+    Signal ->> Convert: video_src() resolves path
+    Note over Convert: returns asset:// or<br/>http://asset.localhost URL
+    Convert -->> Video: src= asset URL
 
-player-status event ─→ Effect ─→ video.play()/pause() (catch-up, EOF, future seek)
+    par user gesture (sync)
+        Toggle ->> Video: video.play() / pause()
+    and Tauri state mirror
+        Toggle ->> State: screen_play() / screen_pause()
+    end
+
+    Event ->> Signal: Effect listens
+    Signal ->> Video: catch-up play / pause / future seek
 ```
 
 ### Why two paths to the `<video>` element

@@ -1,4 +1,6 @@
-# Dim outside — M-MASK.7 / AUT-29
+# Dim outside
+
+[Linear: AUT-29](https://linear.app/harwood/issue/AUT-29)
 
 `DimOutside` + `DimStrength` are the renderer-data API for the
 spotlight focus effect. `DimStrength::{Light, Medium, Heavy,
