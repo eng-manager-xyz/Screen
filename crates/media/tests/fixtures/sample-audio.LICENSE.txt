@@ -1,0 +1,38 @@
+sample-audio.mp3
+================
+
+Machine-generated test fixture. **Public domain** by virtue of being
+produced from a deterministic synthesis pipeline (no copyrightable
+authorship).
+
+Contents
+--------
+- Format:   MPEG-1 Layer 3 (MP3), 224 kbps, 44.1 kHz, joint stereo
+- Duration: ≈ 34.9 seconds
+- Content:  pure 440 Hz sine wave (the canonical "A above middle C")
+
+Reproducibility
+---------------
+Regenerate byte-identically with:
+
+    gst-launch-1.0 -q -e \
+      audiotestsrc num-buffers=1500 freq=440 wave=sine ! \
+      audioconvert ! audioresample ! \
+      "audio/x-raw,format=S16LE,rate=44100,channels=2" ! \
+      lamemp3enc bitrate=128 ! \
+      filesink location=crates/media/tests/fixtures/sample-audio.mp3
+
+Why a deterministic generated fixture
+-------------------------------------
+- License clarity: no third-party rights, no attribution.
+- Reproducible: bit-exact across machines and CI runs.
+- Predictable signal: pure sine → known RMS (A/√2 ≈ 0.707), known
+  peak frequency (440 Hz) — the histogram quantization tests
+  (M-MEDIA.8) can assert numeric correctness, not just "non-empty."
+- Small: 162 KB. Comfortable to commit; doesn't bloat the repo.
+
+The sibling `crates/decode/tests/fixtures/sample.mp4` is the
+companion video fixture (480×270 @ 30 fps, 8 frames) used by the
+video-side integration tests. The two together give M-MEDIA's
+integration paths "real audio + real video that decodes cleanly"
+without depending on internet downloads at test time.
