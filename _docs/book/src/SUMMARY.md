@@ -65,6 +65,7 @@
   - [Text render-to-texture — M-TEXT.5](./wisp/text/textures.md)
   - [Text composition — mask / filter / blend / export — M-TEXT.6](./wisp/text/composition.md)
   - [Stroked / outlined text — M-TEXT.7](./wisp/text/stroke.md)
+  - [Text style presets — M-TEXT.12](./wisp/text/presets.md)
 
 # `decode` — video decode
 

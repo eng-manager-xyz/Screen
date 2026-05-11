@@ -26,6 +26,7 @@ mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
 mod s_text_composition;
+mod s_text_presets;
 mod s_text_stroke;
 mod s_text_texture;
 mod s_transform_nesting;
@@ -48,6 +49,7 @@ pub fn all_stories() -> Vec<Story> {
         s_text_texture::story(),
         s_text_composition::story(),
         s_text_stroke::story(),
+        s_text_presets::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),

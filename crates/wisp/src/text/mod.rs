@@ -41,12 +41,14 @@ use crate::color::Color;
 pub mod atlas;
 pub mod flexible;
 pub mod flexible_renderer;
+pub mod presets;
 pub mod stroke;
 pub mod texture;
 
 pub use atlas::{AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout};
 pub use flexible::{FlexibleTextEngine, FlexibleTextLayout};
 pub use flexible_renderer::FlexibleTextRenderer;
+pub use presets::TextPreset;
 pub use stroke::{StrokedTextLayer, stroked_text_sprites};
 pub use texture::{TextTextureCache, TextTextureKey, TextTexturePipeline};
 

@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.12 — Text style presets for Screen workflows (AUT-86)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — seven curated `WispTextStyle` presets land at `wisp::text::presets::*` (also `wisp::text::TextPreset` enum). Pure data, no allocation, no GPU dependency — same struct the editor consumes and the renderer composes from.
+- **Linear:** [AUT-86](https://linear.app/harwood/issue/AUT-86).
+- **Files:** new `crates/wisp/src/text/presets.rs` (`TextPreset` enum, 7 `pub fn -> WispTextStyle` accessors). `crates/wisp/src/text/mod.rs` re-exports `TextPreset`. New `crates/wisp-storybook/src/stories/s_text_presets.rs` + writeup — gallery story renders each preset's name in its own style. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/presets.md` chapter (admonish info for reading order, admonish important for the pure-data property). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-presets.png`.
+- **Verified:** 8 unit tests: 7-presets returned by `all()`, every preset has positive size + line_height, section title is centered+bold, warning is signal-red, watermark is italic+alpha<1, callout is italic, no two presets byte-identical, every preset has a unique non-empty label. `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Test invariants encode the design intent.** "Warning is red-dominant" and "Watermark alpha < 1" are guardrails against quiet regressions where a refactor desaturates the privacy signal or accidentally bumps the watermark to opaque. Adding a new preset only requires extending `TextPreset::all()` plus a `fn`; the gallery story + every-preset-positive-size test pick it up automatically.
+
+---
+
 ## M-TEXT.7 — Stroked / outlined text rendering (AUT-81)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — text gets a configurable outline via `wisp::text::stroked_text_sprites` + `StrokedTextLayer`. CSS-style technique: render text to a texture once via `TextTexturePipeline`, stamp the texture eight times tinted in the stroke color at offsets on a circle, stamp once more tinted in the fill color at the center. No shader changes.
