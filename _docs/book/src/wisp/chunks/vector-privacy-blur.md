@@ -80,18 +80,6 @@ in those chapters describe the previous inline-clip pipeline; that
 description is now historical. The active pipeline is the one
 documented above.
 
-## Done when
-
-- [x] `apply_privacy_blur_vector` accepts any `VectorShape`
-  including `Path`.
-- [x] Existing `apply_privacy_blur(shape: MaskShape, ...)` call sites
-  produce byte-equivalent output (9 M-MASK.2/.3/.4 tests pass
-  unchanged).
-- [x] New tests cover path-driven privacy blur.
-- [x] `apply_mask_to_texture` is the documented intermediate
-  primitive used by the refactor and by AUT-57/-58.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::apply_privacy_blur`](../../api/wisp/render/struct.Renderer.html#method.apply_privacy_blur)

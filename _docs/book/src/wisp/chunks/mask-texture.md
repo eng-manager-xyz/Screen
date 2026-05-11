@@ -57,21 +57,6 @@ Two pipelines under the hood:
   uniform-buffered point-in-polygon as `path_clip.wgsl`, hard edges
   for V1, 32-vertex cap.
 
-## Done when
-
-- [x] `generate_mask_texture` accepts rect, rounded-rect, circle,
-  ellipse.
-- [x] `generate_path_mask_texture` accepts a polygon point list.
-- [x] Inverted variant available for spotlight / dim-outside use.
-- [x] Output texture is GPU-sampleable (RGBA8) and consumable by any
-  composition shader.
-- [x] Pixel-readback tests prove inside-mask = 255 alpha,
-  outside-mask = 0 alpha, rounded-corner cutout = 0, ellipse curve
-  cutoff respected.
-- [x] Storybook story `mask-texture` shows all five shapes as
-  grayscale tiles.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::generate_mask_texture`](../../api/wisp/render/struct.Renderer.html#method.generate_mask_texture)

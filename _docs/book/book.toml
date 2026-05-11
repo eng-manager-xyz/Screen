@@ -4,13 +4,23 @@ language = "en"
 src = "src"
 title = "screen — engineering site"
 description = "Architecture, milestones, conventions, per-feature stories with screenshots, plus the rustdoc API reference under /api."
+# Explicit "ltr" — mdbook 0.5 added this field to `[book]` and
+# serializes it as JSON `null` when unset. mdbook-admonish 1.x's
+# TOML deserializer chokes on null and fails the entire build with
+# "invalid type: null, expected any valid TOML value".
+text-direction = "ltr"
 
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
 no-section-label = false
 mathjax-support = false
+# Explicit "ltr" because some preprocessors (mdbook-admonish 1.20+)
+# choke on `text-direction: null` in the JSON config mdbook 0.5
+# serializes when this is unset.
+text-direction = "ltr"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["mdbook-admonish.css"]
 
 [output.html.fold]
 enable = true
@@ -30,3 +40,14 @@ heading-split-level = 3
 
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
+
+# Run commands at mdBook build time and inline their stdout into the
+# rendered page. Use sparingly — the command must be deterministic
+# and CI-safe (no network, no git state, no timestamps).
+[preprocessor.cmdrun]
+command = "mdbook-cmdrun"
+

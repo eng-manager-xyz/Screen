@@ -50,18 +50,6 @@ let badge = Callout::badge(Vec2::new(0.55, 0.5), 0.085, Color::rgba_u8(220, 60, 
 | `badge(center, radius, fill)` | filled circle | Numbered step markers, dots. |
 | `caption_pill(rect, fill)` | wide rounded-rect, `radius = h/2` | Single-line bottom captions. |
 
-## Done when
-
-- [x] All M-VEC.8 highlight variants ship (`outline`, `filled`,
-  `pill`, `glow` placeholder).
-- [x] All M-VEC.9 callout variants ship (`label_box`, `badge`,
-  `caption_pill`).
-- [x] Unit tests cover constructor invariants (8 tests across both
-  modules).
-- [x] Story `vector-overlays` shows all six presets in one
-  composition.
-- [x] `just gate` green.
-
 ## Known gaps
 
 - **Arrow / pointer-line callouts** need stroke-along-path commands

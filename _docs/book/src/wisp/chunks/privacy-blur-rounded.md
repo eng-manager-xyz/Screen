@@ -29,18 +29,6 @@ will all plug in here without further pipeline work.
   sample a few pixels in to escape the band and confirm bit-exact
   base bytes there.
 
-## Done when
-
-- [x] `Renderer::apply_privacy_blur` accepts `MaskShape::RoundedRect`.
-- [x] Corner radius is a parameter.
-- [x] Three pixel-readback tests cover (a) outside bounding rect equals
-  base, (b) bounding-rect-but-corner equals base, (c) center seam
-  mixes via blur.
-- [x] Storybook story `privacy-blur-rounded` ships.
-- [x] Output deterministic in story snapshots (`story_fingerprints`
-  baseline updated).
-- [x] `just gate` green.
-
 ## API
 
 [`wisp::Renderer::apply_privacy_blur`](../../api/wisp/render/struct.Renderer.html#method.apply_privacy_blur)

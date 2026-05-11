@@ -77,14 +77,3 @@ first run — WGSL `vec3<u32>` is 16-byte aligned, so a struct
 `{ op: u32, _pad: vec3<u32> }` is 32 bytes, not 16. The matching
 Rust struct must pad to the same size or wgpu rejects the bind
 group. Captured in CLAUDE.md "WGSL ↔ Rust uniform layout."
-
-## Done when
-
-- [x] `PathBuilder` chains move/line/quad/cubic/close.
-- [x] `Path::flatten` adaptive Bezier subdivision works.
-- [x] `Path::stroke_to_graphics` rasterizes as segments.
-- [x] `Callout::arrow_to` uses the path stroke.
-- [x] `Renderer::combine_masks` ships Union/Intersect/Subtract.
-- [x] 9 path-flatten tests + 3 mask-combine tests pass.
-- [x] Stories `path-stroke` and `mask-combine` ship.
-- [x] `just gate` green.

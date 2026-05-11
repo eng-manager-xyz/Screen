@@ -84,15 +84,3 @@ counts at 10 ms / 20 ms / 50 ms, silence → zero bars, sine → stable
 RMS, pulse → singular peak, empty chunk → empty histogram,
 contiguous bar timestamps, stereo collapses to mono bar series,
 `Send + Sync`. Full `just gate` green at 376 tests (366 + 10 new).
-
-## Done when
-
-- [x] Silence produces zero-amplitude bars.
-- [x] Sine wave produces stable RMS.
-- [x] Pulse produces expected peak.
-- [x] Bucket count matches duration.
-- [x] Tests cover 10 ms, 20 ms, 50 ms buckets.
-- [x] Bar timestamps are contiguous.
-- [x] Stereo chunks collapse to mono bar series.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

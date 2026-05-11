@@ -71,16 +71,6 @@ Cached version mirrors the same dispatch:
   bypasses the cache (paths can't currently be hashed; documented
   in M-DYN.2's chapter).
 
-## Done when
-
-- [x] `generate_vector_mask_texture` produces alpha-mask textures
-  byte-equivalent to the underlying primitive calls.
-- [x] `cached_vector_mask_texture` hits the cache on analytic
-  shapes and bypasses on paths.
-- [x] Pixel tests confirm bridge ≡ direct call for both routes.
-- [x] No new pipelines or shaders — pure routing.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::generate_vector_mask_texture`](../../api/wisp/render/struct.Renderer.html#method.generate_vector_mask_texture)

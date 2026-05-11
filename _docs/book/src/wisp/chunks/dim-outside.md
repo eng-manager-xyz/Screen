@@ -35,17 +35,6 @@ strength enum are new. The same observation as `PrivacyBlur`/
 `Medium`, `Heavy`), and the numeric alpha mapping can be retuned
 later without breaking project files.
 
-## Done when
-
-- [x] Surrounding area can be dimmed around a selected region.
-- [x] Outside opacity is configurable in renderer data
-  (`DimStrength`).
-- [x] Preview/headless render parity is preserved (single primitive
-  backs both).
-- [x] Storybook story `dim-outside` shows three strength variants
-  side-by-side.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::DimStrength`](../../api/wisp/scene/dim_outside/enum.DimStrength.html)

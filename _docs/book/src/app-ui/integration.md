@@ -151,14 +151,6 @@ Tier-2 e2e (`crates/app-e2e/tests/golden_path.rs`) uses
 parallel to `__test_drop_file` since WebDriver can't synthesize
 OS-level drag events.
 
-## What's NOT here yet
-
-- **Filtering by extension.** Any file path is accepted today;
-  M-POLISH.2 will reject non-video paths with an inline error message.
-- **Drop-while-loaded reset UI.** Dropping a new file while one is
-  already loaded works (the path signal flips), but there's no
-  "← Load another" affordance yet — that's M-POLISH.3.
-
 ## App-shell visual references
 
 The drop-zone surface (idle) at boot — exactly what the user sees

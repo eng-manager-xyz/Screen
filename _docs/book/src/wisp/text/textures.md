@@ -56,11 +56,13 @@ upper bound. `clear_cache()` drops all entries; `stats()` reports
 
 ## NDC-coordinate vs sprite-UV conventions
 
-Glyphon writes the texture with `+y` down (top of the texture is row
-0). The wisp sprite pipeline samples with `+y` up (NDC convention).
-**To display a text texture upright through a sprite, set
-`scale.y` negative** — this is the standard render-target-as-texture
-idiom. See the story for the pattern.
+```admonish bug title="Gotcha — +y flip"
+Glyphon writes the texture with `+y` down (top of the texture is
+row 0). The wisp sprite pipeline samples with `+y` up (NDC
+convention). To display a text texture upright through a sprite,
+**set `scale.y` negative** — standard render-target-as-texture
+idiom. Without this, the text renders upside-down.
+```
 
 ```rust
 let mut sprite = Sprite::from_texture(rt.as_texture());
@@ -96,16 +98,3 @@ sprite.container.transform.scale = Vec2::new(width_ndc, -height_ndc);
 | `rendered_texture_has_non_zero_glyph_pixels` | smoke: pixels exist |
 
 Eleven tests in `crates/wisp/src/text/texture.rs`.
-
-## Done when
-
-- [x] `TextTexturePipeline` renders `WispText` into `RenderTexture`.
-- [x] Static text reuses the cached texture (same `Arc`).
-- [x] Every input change (content / style / family / wrap / dims)
-  invalidates.
-- [x] Cache hit / miss / eviction tests pass.
-- [x] `s_text_texture` story demonstrates Sprite composition.
-- [x] `RenderTexture::as_texture()` exposes the RT as a sprite-friendly
-  `Texture` without GPU copy.
-- [x] mdBook chapter (this one).
-- [x] `just gate` green.

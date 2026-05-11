@@ -52,16 +52,6 @@ All four mask primitives (`apply_clip` / `apply_privacy_blur` /
 accept the new variant automatically — same pattern as
 `MaskShape::Circle` from M-MASK.8.
 
-## Done when
-
-- [x] Ellipse renders in `wisp` (`MaskShape::Ellipse`).
-- [x] Privacy / focus composition paths accept ellipse (proven by
-  `clip_ellipse::ellipse_plugs_into_solid_redaction`).
-- [x] Story `ellipse-mask` shows three variants (wide / tall / round).
-- [x] Snapshot coverage updated.
-- [x] Same primitive backs preview + headless export.
-- [x] `just gate` green.
-
 ## API
 
 [`wisp::MaskShape::Ellipse`](../../api/wisp/scene/clip/enum.MaskShape.html#variant.Ellipse)

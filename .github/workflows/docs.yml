@@ -32,7 +32,14 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  MDBOOK_VERSION: "0.4.40"
+  # Compatible quartet — verified locally. mdbook 0.5.x reshapes the
+  # JSON preprocessor protocol in ways admonish 1.20 doesn't accept;
+  # mermaid 0.17 then assumes 0.5's shape. Sticking on 0.4.52 +
+  # matching preprocessor versions keeps the chain green.
+  MDBOOK_VERSION: "0.4.52"
+  MDBOOK_MERMAID_VERSION: "0.15.0"
+  MDBOOK_ADMONISH_VERSION: "1.20.0"
+  MDBOOK_CMDRUN_VERSION: "0.7.3"
   # Note: do NOT set `RUSTFLAGS: -D warnings` globally — it promotes
   # transitive-crate future-incompat warnings (e.g. `block v0.1.6`,
   # `proc-macro-error2`) into hard failures. Use `RUSTDOCFLAGS` only,
@@ -85,12 +92,34 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-docs-
 
-      - name: Install mdBook
+      - name: Install mdBook + preprocessors (prebuilt)
         run: |
           mkdir -p "$HOME/.local/bin"
+          # mdBook itself.
           curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin"
+          # mdbook-mermaid — sequence + flowchart diagrams in chapters.
+          curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v${MDBOOK_MERMAID_VERSION}/mdbook-mermaid-v${MDBOOK_MERMAID_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin"
+          # mdbook-admonish — colored note/warning/tip callout blocks.
+          curl -sSL "https://github.com/tommilligan/mdbook-admonish/releases/download/v${MDBOOK_ADMONISH_VERSION}/mdbook-admonish-v${MDBOOK_ADMONISH_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # mdbook-cmdrun has no GitHub releases — install from crates.io.
+      # `--locked` keeps the build reproducible; the cargo cache from
+      # the earlier step makes this a no-op on cache hit.
+      - name: Install mdbook-cmdrun (from crates.io)
+        run: cargo install --locked mdbook-cmdrun --version "${MDBOOK_CMDRUN_VERSION}"
+
+      - name: Sanity-check preprocessor binaries
+        run: |
+          mdbook --version
+          mdbook-mermaid --version
+          mdbook-admonish --version
+          # mdbook-cmdrun's CLI rejects `--version`; `--help` exits 0
+          # if the binary is callable, which is all we need here.
+          mdbook-cmdrun --help >/dev/null
 
       # cargo doc needs `missing_docs` to stay a warn-level lint (already
       # the case in workspace lints) so this won't fail on a clean tree.

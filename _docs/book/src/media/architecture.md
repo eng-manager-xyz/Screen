@@ -22,10 +22,14 @@ build footprint + license obligations.
 | `wisp` | visual composition — sprite + graphics + text + mask + filter + blend pipelines | media capture, timing |
 | `app` (Tauri + Leptos) | UI orchestration — webview, IPC, file dialogs, recorder commands | direct GStreamer or wgpu calls |
 
+```admonish important title="Load-bearing boundary"
 **`wisp` must not depend on `media`'s GStreamer integration.** Wisp
 receives `VideoFrame` / `Texture` handles, `WaveformBarRect` geometry,
 cursor state, and timeline timestamps via typed structs, and renders
-them through its existing sprite + graphics pipelines.
+them through its existing sprite + graphics pipelines. Crossing this
+boundary once would bloat every wisp consumer (storybook, headless
+export, future plugins) with GStreamer's build + license footprint.
+```
 
 ## Layering
 
@@ -98,12 +102,3 @@ Order is numeric and follows the dependency chain:
 - **P2** (`AUT-111..117`) — live mic / webcam / playback harness /
   cursor / device enumeration / manifest / Leptos seam.
 - **P3** (`AUT-118`) — end-to-end smoke.
-
-## Done when
-
-- [x] `crates/media` compiles.
-- [x] Module-level docs explain the media/Wisp/UI split.
-- [x] Builds on `decode` via re-export of `VideoFrame` + `VideoStream`.
-- [x] mdBook chapter (this page).
-- [x] PROGRESS entry.
-- [x] `just gate` green.

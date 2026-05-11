@@ -83,14 +83,3 @@ on-GPU draws today; `AtlasTextEngine` formalizes the layout half so
 M-TEXT.5 can route the same data through the upcoming
 render-to-texture path when text needs to participate in masks /
 filters / blends.
-
-## Done when
-
-- [x] Trait-surface backend exists alongside the M0.15 path.
-- [x] No regression in existing bitmap text examples — `scene::Text`
-  is unchanged.
-- [x] Layout produces the same glyph positions as the existing bitmap
-  pipeline at the same `size_ndc` (cells × cell\_size_ndc).
-- [x] Comparison table documenting `AtlasText` vs `FlexibleText`
-  guidance.
-- [x] `just gate` green.

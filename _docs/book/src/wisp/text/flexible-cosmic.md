@@ -90,22 +90,3 @@ engine's call, not ours.
 **system fonts**. Tests that don't want system-font dependence can
 use `FlexibleTextEngine::with_font_system(custom)` to inject a
 hand-curated `Database`.
-
-## Done when
-
-- [x] `cosmic-text` dep added (license-clean — `MIT OR Apache-2.0`).
-- [x] `FlexibleTextEngine` + `FlexibleTextLayout` exist behind the
-  M-TEXT.1 trait surface.
-- [x] No `cosmic_text::*` types leak through public wisp API.
-- [x] Tests cover empty content, single line, multi-line via `\n`,
-  word-wrap behavior, weight/italic style passthrough, and
-  `Send + Sync` engine contract.
-- [x] mdBook chapter (this one).
-- [x] `just gate` green.
-
-## Up next — M-TEXT.3
-
-The glyphon renderer half: `FlexibleTextRenderer` with a wgpu
-pipeline that consumes `FlexibleTextLayout::buffer` and rasterizes
-into the target's color attachment. With the layout fixed here, the
-renderer can be developed without re-shaping every frame.

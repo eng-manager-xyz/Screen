@@ -70,14 +70,3 @@ let mut pulse = StepPulseSource::new(fmt, 7);
 let chunk = pulse.next_chunk(16);
 assert!((chunk.samples()[7] - 1.0).abs() < f32::EPSILON);
 ```
-
-## Done when
-
-- [x] `SineWaveSource` emits expected sample count.
-- [x] `SilenceSource` emits zeros.
-- [x] `StepPulseSource` emits deterministic spike at the configured frame.
-- [x] No GStreamer or device access required.
-- [x] PTS advances correctly across multiple `next_chunk` calls.
-- [x] Stereo interleave matches the `AudioChunk` planar-per-frame convention.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

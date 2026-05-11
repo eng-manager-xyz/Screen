@@ -49,17 +49,6 @@ in copy: solid is the safe default for high-stakes content (API keys,
 passwords, customer IDs); blur is the polished default for visual
 privacy (faces, screen names, low-stakes URLs).
 
-## Done when
-
-- [x] Rectangle and rounded-rect both fully cover the selected region.
-- [x] Pixel tests confirm exact-color fill inside, base bit-exact
-  outside, and rounded corner carved away on `RoundedRect`.
-- [x] Storybook story `solid-redaction` ships.
-- [x] Output deterministic in story snapshots.
-- [x] Same render primitive backs preview + headless export paths
-  (single method on `Renderer`).
-- [x] `just gate` green.
-
 ## API
 
 [`wisp::Renderer::apply_solid_redaction`](../../api/wisp/render/struct.Renderer.html#method.apply_solid_redaction)

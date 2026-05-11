@@ -47,14 +47,6 @@ Adding an invert flag to one shader is cheaper than building a second
 - AUT-29 (dim-outside) becomes a thin wrapper that sets a stronger
   `dim_color` alpha; no further renderer work.
 
-## Done when
-
-- [x] Focus region renders in `wisp` via `apply_spotlight`.
-- [x] Rectangle and rounded rectangle both supported.
-- [x] Storybook story `spotlight` ships with snapshot coverage.
-- [x] Same primitive backs preview + headless export paths.
-- [x] `just gate` green.
-
 ## API
 
 [`wisp::Renderer::apply_spotlight`](../../api/wisp/render/struct.Renderer.html#method.apply_spotlight)
