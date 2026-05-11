@@ -79,6 +79,7 @@
   - [GStreamer video capture — M-MEDIA.6](./media/video-capture.md)
   - [A/V sync harness — M-MEDIA.7](./media/sync-harness.md)
   - [Audio histogram quantization — M-MEDIA.8](./media/histogram.md)
+  - [Waveform bar geometry — M-MEDIA.9](./media/waveform-geometry.md)
 
 # `playback` — player state machine
 

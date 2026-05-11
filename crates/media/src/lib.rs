@@ -96,12 +96,16 @@ pub mod manifest;
 pub mod mock_audio;
 pub mod sync;
 pub mod video;
+pub mod waveform;
 
 pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
 pub use histogram::{AudioBar, AudioHistogram};
 pub use mock_audio::{SilenceSource, SineWaveSource, StepPulseSource};
 pub use video::{VideoFrame, VideoStream};
+pub use waveform::{
+    BarMetric, WaveformBarRect, WaveformDisplayMode, WaveformLayout, mono_bars, stereo_bars,
+};
 
 #[cfg(test)]
 mod tests {

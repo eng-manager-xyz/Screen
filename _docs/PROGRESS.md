@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.9 — Waveform bar geometry for Wisp (AUT-105)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `media::waveform::{mono_bars, stereo_bars}` maps an `AudioHistogram` to a `Vec<WaveformBarRect>` that wisp can render directly via its Graphics pipeline.
+- **Linear:** [AUT-105](https://linear.app/harwood/issue/AUT-105).
+- **Files:** new `crates/media/src/waveform.rs` (`WaveformBarRect`, `WaveformLayout`, `BarMetric`, `WaveformDisplayMode`, `WaveformLayout::ndc_default()`, `mono_bars`, `stereo_bars`). `crates/media/src/lib.rs` re-exports the geometry types. New `_docs/book/src/media/waveform-geometry.md` chapter (mermaid sequence + `admonish important` for the wisp/media boundary + `admonish note` for Anchored vs Mirrored). `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover anchored-bar stride/x/y, anchored-height = `peak × max_height`, mirrored centers on `baseline_y`, RMS metric switches to `rms` field, silence → zero-height bars, empty histogram → empty geometry, stereo pairs (L above / R below baseline), stereo truncates to shorter input, color carry-through, four-bar manual regression table (`peak = [1.0, 0.5, 0.25, 0.0]` → exact `x` / `height` per row), `Send + Sync`. Full `just gate` green.
+- **Boundary preserved.** `wisp` still doesn't depend on `media` or GStreamer — this chunk produces typed `WaveformBarRect` values that wisp consumes through its standard graphics call. The `admonish important` callout in the chapter encodes the rule explicitly so future contributors can't lose it under prose.
+- **Unit-agnostic.** `WaveformLayout` carries no NDC-vs-pixels assumption; the math is the same. `ndc_default()` is a convenience preset for storybook-style usage. M-MEDIA.10's Wisp render will use NDC values; a future editor scrubber could call the same function with pixel values.
+
+---
+
 ## M-MEDIA.8 — Audio histogram quantization (AUT-104)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `quantize(chunk, bucket_duration)` turns an `AudioChunk` into an `AudioHistogram` of `AudioBar`s (start_time, duration, peak, rms). First P1 chunk; foundation for M-MEDIA.9 (waveform geometry) and M-MEDIA.10 (Wisp render).
