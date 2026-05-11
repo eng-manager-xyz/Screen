@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.14 — Synced video + audio histogram in one Wisp scene (AUT-110)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — M-MEDIA P1 capstone. `cargo run -p media --example synced_scene` composes a hue-rotating synthetic video frame (top half) + audio histogram bars (bottom-left) in one wisp scene, anchored to `MediaClock::manual`. 10 frames at 100 ms cadence; amplitude ramps `0.30 → 0.90` so bar heights grow visibly. Every M-MEDIA chunk so far shows up at the same call site.
+- **Linear:** [AUT-110](https://linear.app/harwood/issue/AUT-110).
+- **Files:** new `crates/media/examples/synced_scene.rs`. `crates/media/Cargo.toml` registers the `[[example]]`. New `_docs/book/src/media/synced-scene.md` chapter (mermaid sequence for the per-frame loop, `admonish important` for the one-clock rule, `admonish note` for full reproducibility). New `_docs/book/src/assets/media/synced-scene.png` (frame 05 with mid-amplitude bars). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run produced exactly the expected output — 10 PNGs at `target/synced-scene/`; video PTS `0.000, 0.100, …, 0.900` s; per-frame `peak ≈ amp` and `rms ≈ amp / √2` for every histogram window. Full `just gate` green.
+- **The single-clock rule is the load-bearing decision.** Audio and video don't sync to each other — they both sync to `MediaClock`. Live capture (M-MEDIA.15/.16) plugs in a wall-clock anchor and the rest of the code doesn't move.
+
+---
+
 ## M-MEDIA.13 — GStreamer videotestsrc through Wisp (AUT-109)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `cargo run -p media --example gst_video_to_wisp` captures 8 frames from `videotestsrc` at 320×180@30fps, uploads each to a wisp `VideoTexture`, renders through `Sprite` to a headless `RenderTexture`, and saves PNGs under `target/gst-video-frames/`. Closes the M-MEDIA.6 → M-MEDIA.12 path end-to-end with a real GStreamer source.

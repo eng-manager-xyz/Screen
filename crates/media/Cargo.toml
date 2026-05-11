@@ -50,3 +50,10 @@ path = "examples/gst_audio_histogram.rs"
 [[example]]
 name = "gst_video_to_wisp"
 path = "examples/gst_video_to_wisp.rs"
+
+# M-MEDIA.14 / AUT-110 — capstone P1 example: synthetic video + audio
+# histogram in one wisp scene, driven by a shared MediaClock. Pure
+# synthetic so the frame sequence is reproducible.
+[[example]]
+name = "synced_scene"
+path = "examples/synced_scene.rs"
