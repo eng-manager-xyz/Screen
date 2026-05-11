@@ -99,6 +99,7 @@ pub mod video;
 
 pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
+pub use histogram::{AudioBar, AudioHistogram};
 pub use mock_audio::{SilenceSource, SineWaveSource, StepPulseSource};
 pub use video::{VideoFrame, VideoStream};
 

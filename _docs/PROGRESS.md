@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.8 — Audio histogram quantization (AUT-104)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `quantize(chunk, bucket_duration)` turns an `AudioChunk` into an `AudioHistogram` of `AudioBar`s (start_time, duration, peak, rms). First P1 chunk; foundation for M-MEDIA.9 (waveform geometry) and M-MEDIA.10 (Wisp render).
+- **Linear:** [AUT-104](https://linear.app/harwood/issue/AUT-104).
+- **Files:** filled in `crates/media/src/histogram.rs` (was scaffolded by M-MEDIA.0). `crates/media/src/lib.rs` re-exports `AudioBar`, `AudioHistogram`. New `_docs/book/src/media/histogram.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 10 unit tests cover silence → zero peak/rms, sine → `rms ≈ A/√2` on every interior bar, pulse → singular peak in the expected bucket + zeros elsewhere, bucket counts at 10/20/50 ms, empty chunk → empty histogram, contiguous bar timestamps (`bar[i+1].start == bar[i].start + bar[i].duration`), stereo chunks collapse to a single bar series, `Send + Sync`. Full `just gate` green at 376 tests (366 + 10 new).
+- **Three references match three correctness assertions.** M-MEDIA.4's `SilenceSource` / `SineWaveSource` / `StepPulseSource` line up 1:1 with the histogram's three properties — silence → zero bars, sine → stable RMS, pulse → expected peak. Same mock sources will drive M-MEDIA.10 (Wisp render) + M-MEDIA.11 (gst→histogram example) tests, so the correctness chain is uniform across the visualization stack.
+- **Multi-channel collapses to a single bar series.** Every sample in the interleaved buffer counts toward the same bucket — matches dope-sheet rendering (one row per audio track, not per channel) and keeps the math + tests simple. M-MEDIA.9 (geometry) is where mono vs stereo display becomes meaningful.
+- **Exact timestamps via `MediaTime::from_sample` round-half-up.** Successive bars are byte-exact contiguous; no gap-or-overlap drift across long histograms. The contiguity assertion in the test asserts this byte-for-byte.
+
+---
+
 ## M-MEDIA.7 — A/V sync harness (AUT-103)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `sync::run(SyncConfig)` combines audio + video GStreamer captures and reports per-stream timing + inter-stream drift. Closes the P0 tier: GStreamer can capture audio + video and stamp both on one timeline.
