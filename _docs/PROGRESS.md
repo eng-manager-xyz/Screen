@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.5 — GStreamer audio test-source capture (AUT-101)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `GstreamerAudioCapture::test_source(fmt, freq)` produces normalized `f32` `AudioChunk`s by piping `audiotestsrc ! audioconvert ! audioresample ! F32LE ! fdsink fd=1` through `gst-launch-1.0`. Companion `from_file(path, fmt)` decodes real audio (the bundled MP3 fixture) through the same pipeline shape — proves the histogram + waveform paths against real-world signal.
+- **Linear:** [AUT-101](https://linear.app/harwood/issue/AUT-101).
+- **Files:** new `crates/media/src/gstreamer_audio.rs` (`GstreamerAudioCapture`, `Error`). `crates/media/src/lib.rs` registers the module. New `crates/media/tests/gstreamer_audio_integration.rs` (4 tests, skip-guarded). New `_docs/book/src/media/audio-capture.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 integration tests cover (1) 3×100 ms chunks with contiguous PTS, (2) audiotestsrc sine RMS ≈ 0.566 (= default volume 0.8 / √2), (3) stereo interleave L ≈ R, (4) the bundled MP3 fixture decodes to 44.1 kHz stereo with RMS in `(0.4, 0.95)` and peak > 0.5 after MP3 round-trip. 3 additional unit tests for caps-string construction, non-F32 rejection, and `Send`. Full `just gate` green at 355 tests (348 + 7 new).
+- **`Drop` kills the child + waits.** Without it, `gst-launch-1.0` keeps decoding into a dropped pipe and burns CPU. Matches `decode::GstreamerPipeStream`'s pattern. Documented in the chapter.
+- **Real fixture beats mock.** The committed `tests/fixtures/sample-audio.mp3` (a deterministic 35-s 440 Hz sine generated locally via gstreamer in the previous commit) lets M-MEDIA.8 / .9 / .10 assert numeric correctness against actual decoded audio. The license-clean-by-construction nature means no third-party-rights risk.
+- **Format gate at construction.** Only `SampleFormat::F32` is accepted. Caps are F32LE; converting integer formats here would push sample-format complexity into the public API for no payoff. Non-F32 returns `Error::UnsupportedFormat`. M-MEDIA.15 (live mic) follows the same gate.
+
+---
+
 ## M-MEDIA.4 — Deterministic mock audio sources (AUT-100)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `SineWaveSource`, `SilenceSource`, `StepPulseSource` ship as the byte-exact reproducible audio inputs every M-MEDIA test consumes. No microphone, no GStreamer.

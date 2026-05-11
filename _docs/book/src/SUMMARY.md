@@ -76,6 +76,7 @@
   - [Clock + timestamp model — M-MEDIA.2](./media/clock.md)
   - [Audio data model — M-MEDIA.3](./media/audio.md)
   - [Mock audio sources — M-MEDIA.4](./media/mock-sources.md)
+  - [GStreamer audio capture — M-MEDIA.5](./media/audio-capture.md)
 
 # `playback` — player state machine
 
