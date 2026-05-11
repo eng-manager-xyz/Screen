@@ -29,3 +29,10 @@ tracing-subscriber = { workspace = true }
 [[example]]
 name = "render-mdbook-assets"
 path = "examples/render_mdbook_assets.rs"
+
+# M-MEDIA.11 / AUT-107 — capture audio from `audiotestsrc` through the
+# CLI-pipe GStreamer wrapper, quantize, and print bucket / RMS / peak
+# stats. Skips when gstreamer isn't on PATH.
+[[example]]
+name = "gst_audio_histogram"
+path = "examples/gst_audio_histogram.rs"

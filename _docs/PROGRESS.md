@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.11 — GStreamer audio → histogram example (AUT-107)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `cargo run -p media --example gst_audio_histogram` captures 1 s of `audiotestsrc` (440 Hz, 48 kHz f32 mono), quantizes at 50 ms, and prints bucket / peak / RMS stats with a first-5 + last-5 bar dump. Skips with a friendly message when `gst-launch-1.0` isn't on `PATH`.
+- **Linear:** [AUT-107](https://linear.app/harwood/issue/AUT-107).
+- **Files:** new `crates/media/examples/gst_audio_histogram.rs`. `crates/media/Cargo.toml` registers the `[[example]]`. New `_docs/book/src/media/audio-histogram-gst.md` chapter (mermaid sequence diagram for the probe → spawn → quantize → stdout flow, `admonish important` for the skip-guard, `admonish note` explaining the 0.5657 vs 0.7071 RMS for `audiotestsrc`'s default volume). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run on macOS with GStreamer installed produced exactly the expected output — 20 bars × 50 ms, `peak max = 0.80`, `RMS ≈ 0.5657` on every bar (0.8 / √2). PTS cadence `50_000_000` ns monotonic. Full `just gate` green.
+- **The same `quantize` pipeline works for both mock and real audio.** Storybook story (M-MEDIA.10) uses `SineWaveSource(0.6) → RMS ≈ 0.4243`; example uses `audiotestsrc volume=0.8 → RMS ≈ 0.5657`. Same code path, different `A`. M-MEDIA.15 (live mic) will just plug in another `next_chunk` source — `quantize` doesn't change.
+
+---
+
 ## M-MEDIA.10 — Synthetic audio histogram in Wisp (AUT-106)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — first storybook story that uses the `media → wisp` seam end-to-end. SineWaveSource → `quantize` → `mono_bars` → `Graphics::draw_rect`. PNG hero asset shows 20 amber bars mirrored about the centerline.

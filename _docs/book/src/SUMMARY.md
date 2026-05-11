@@ -81,6 +81,7 @@
   - [Audio histogram quantization — M-MEDIA.8](./media/histogram.md)
   - [Waveform bar geometry — M-MEDIA.9](./media/waveform-geometry.md)
   - [Audio histogram in Wisp — M-MEDIA.10](./media/audio-histogram.md)
+  - [GStreamer audio → histogram example — M-MEDIA.11](./media/audio-histogram-gst.md)
 
 # `playback` — player state machine
 
