@@ -126,13 +126,3 @@ cargo run -p media --example gst_sync_dump  # planned follow-up
 The integration tests run a 1-second capture for CI speed; the
 ticket's recommended 5–10 s manual regression is left as the example
 above.
-
-## Done when
-
-- [x] Captures audio and video for a fixed duration.
-- [x] First audio/video PTS values are aligned within tolerance.
-- [x] Drift over the capture window is measured + logged via `SyncReport::Display`.
-- [x] Test uses deterministic synthetic sources (audiotestsrc + videotestsrc).
-- [x] Skip-guarded when GStreamer is unavailable.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

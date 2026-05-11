@@ -88,16 +88,6 @@ details.
   explicit-mask redaction and spotlight both match their high-level
   counterparts byte-equivalent.
 
-## Done when
-
-- [x] All four primitives (`compose_blur_through_mask`,
-  `compose_solid_through_mask`,
-  `compose_dim_through_inverted_mask`, plus `apply_clip_vector` for
-  webcam crops) are public and documented.
-- [x] High-level `apply_*` methods route through them internally.
-- [x] Tests prove byte-equivalence with the high-level paths.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::compose_blur_through_mask`](../../api/wisp/render/struct.Renderer.html#method.compose_blur_through_mask)

@@ -68,21 +68,6 @@ For paths: `VectorShape::Path` carries an owned `Vec<Vec2>` so
 `MaskShape::Path` was never added — see M-MASK.10's chapter.
 `as_path_points()` exposes the slice for the path-mask machinery.
 
-## Done when
-
-- [x] Shape variants match the M-MASK shape catalog plus `Path` and
-  (in M-VEC.10) future stroke commands.
-- [x] `Vector` carries shape + fill + stroke + opacity + transform.
-- [x] Builder methods chain (`with_fill`, `with_stroke`, etc.).
-- [x] `as_mask_shape()` cleanly bridges to existing mask machinery.
-- [x] Bounds calculation correct for every variant including paths.
-- [x] Unit tests cover every constructor and conversion.
-- [x] `just gate` green.
-
-This chunk is **data-only** — no rendering yet. M-VEC.2 (AUT-54) adds
-the visible rasterizer; M-VEC.3 (AUT-55) bridges to the alpha-mask
-texture path.
-
 ## API
 
 - [`wisp::VectorShape`](../../api/wisp/scene/vector/enum.VectorShape.html)

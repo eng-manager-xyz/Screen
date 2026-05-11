@@ -48,26 +48,3 @@ letterboxed to fit.
 | Frame 03 | Frame 04 |
 |---|---|
 | ![](../../assets/preview/preview_03.png) | ![](../../assets/preview/preview_04.png) |
-
-## Done when
-
-- ✅ `cargo run -p preview` opens a window and plays the fixture.
-- ✅ `cargo run -p preview -- <path>` plays an arbitrary file.
-- ✅ The sprite respects letterbox/pillarbox math when surface and video
-      aspect ratios differ (covered by `aspect_fit_scale` unit tests).
-- ✅ `tests/render_smoke.rs` exercises the `from_wgpu` codepath
-      headlessly — non-clear, non-uniform pixels in the readback.
-- ✅ Window resize reconfigures the surface without recreating wgpu
-      (keeps the device alive across resizes).
-
-## What's next
-
-- M-PLAY.2 — Tauri↔player IPC for transport controls (last remaining
-  chunk on the path to "first MP4 plays in the recorder").
-- After that, the winit preview window becomes a *child* of the Tauri
-  process (today it's a standalone binary), wired via
-  [`tauri::WebviewWindowBuilder`](https://docs.rs/tauri) +
-  `Window::run_event_loop` integration.
-
-[winit]: https://docs.rs/winit
-[`Application::from_wgpu`]: ../../api/wisp/application/struct.Application.html#method.from_wgpu

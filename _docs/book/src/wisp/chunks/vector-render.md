@@ -59,19 +59,6 @@ M-VEC.10 (AUT-62) lands `move_to / line_to / quadratic / cubic /
 close / stroke / fill` path commands. Until then, paths can only
 drive masks via the path-clip and path-mask-texture primitives.
 
-## Done when
-
-- [x] `Vector::to_graphics()` produces a renderable `Graphics` for
-  every analytic shape variant.
-- [x] `Vector::add_to_stage()` is the convenience wrapper for the
-  common case.
-- [x] Fill + stroke + opacity + transform all honored end-to-end.
-- [x] Pixel tests prove the rendered output (rect with fill, circle
-  silhouette, opacity multiplied alpha).
-- [x] Storybook story `vector-render` shows five tiles end-to-end.
-- [x] Path returns `None` (with documented deferral).
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Vector::to_graphics`](../../api/wisp/scene/vector/struct.Vector.html#method.to_graphics)

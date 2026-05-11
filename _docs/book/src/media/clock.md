@@ -90,15 +90,3 @@ Saturating arithmetic prevents overflow at the i64 boundary.
 `MediaDuration::abs()` is provided specifically for drift reporting —
 A/V sync logs typically want the magnitude rather than the signed
 delta.
-
-## Done when
-
-- [x] `MediaTime`, `MediaDuration`, `MediaClock`, `Timestamped<T>` exist.
-- [x] Convert between samples / frames / seconds.
-- [x] Tests cover frame@90 at 30 fps = 3 s.
-- [x] Tests cover sample@48000 at 48 kHz = 1 s.
-- [x] Tests cover duration arithmetic.
-- [x] Tests cover monotonic ordering.
-- [x] No GStreamer dependency.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

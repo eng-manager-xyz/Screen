@@ -64,15 +64,3 @@ let chunk = AudioChunk::new(fmt, samples, MediaTime::ZERO).expect("valid");
 assert_eq!(chunk.frame_count(), 48_000);
 assert!((chunk.duration().as_seconds() - 1.0).abs() < 1e-9);
 ```
-
-## Done when
-
-- [x] `AudioFormat` + `AudioChunk` exist with normalized `f32` samples.
-- [x] Validation rejects unaligned buffers / zero channels / zero rate.
-- [x] Tests cover mono chunks.
-- [x] Tests cover stereo chunks.
-- [x] Tests cover chunk duration from sample count.
-- [x] Tests cover invalid chunk shape.
-- [x] Convenience `peak()` + `rms()` for histogram consumers.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

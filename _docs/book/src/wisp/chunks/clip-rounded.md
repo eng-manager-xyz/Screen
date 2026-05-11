@@ -56,13 +56,17 @@ one.
 
 ## Coordinate system
 
+```admonish warning title="Screen space, not local space"
 `MaskShape::RoundedRect { rect, radius }` is in NDC `[-1, +1]²` —
-**screen space, not container-local space**. The recording-quad use
-case (a fixed-position recording surface with rounded corners) drove
-this. Transform-aware clipping ("clip a moving sprite to its own
-bounds") is a future enhancement; today, clip + transform on the same
-container produces a clip in screen space and a transformed subtree
-inside it.
+**screen space**, not container-local space. A clip + a non-identity
+transform on the same container clips in screen space and then
+transforms the subtree inside it, which is usually not what
+intuition expects. Transform-aware clipping ("clip a moving sprite to
+its own bounds") is a future enhancement.
+```
+
+The recording-quad use case (a fixed-position recording surface with
+rounded corners) drove this choice.
 
 ## SDF anti-aliasing
 
@@ -114,18 +118,3 @@ let _ = stage.add_child(stage.root(), sprite);
   the rounded shape is honored, not just the bounding rect.
 - `no_clip_renders_normally_via_fast_path` — regression guard that
   scenes without `Container::clip` skip the offscreen dispatch.
-
-## What's next
-
-This foundation unlocks:
-
-- **AUT-20 / AUT-21** — privacy blur masks (rectangle + rounded-rect).
-- **AUT-23** — solid redaction (masked fill region).
-- **AUT-28** — highlight / spotlight (focus on a region).
-- **AUT-29** — dim-outside inverse mask.
-- **AUT-30** — webcam circle / rounded-rect (extends `MaskShape`).
-- **AUT-34** — oval / ellipse mask.
-- **AUT-35** — freehand path mask.
-
-Each one is a thin extension: a new `MaskShape` variant, or a new
-filter that reuses this same `apply_clip` plumbing.

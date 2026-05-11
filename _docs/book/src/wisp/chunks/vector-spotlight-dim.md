@@ -60,12 +60,3 @@ renderer.apply_dim_outside_vector(
   byte-equivalence with the existing `apply_dim_outside_data` path.
 - `vector_dim_outside_path_dims_around_polygon` — diamond polygon
   preserves base inside, dims red to mid-range with `DimStrength::Medium`.
-
-## Done when
-
-- [x] Rect spotlight / inverse dim works (M-MASK.6/.7).
-- [x] Rounded rect spotlight / inverse dim works.
-- [x] Outside dim opacity configurable (`DimStrength`).
-- [x] Inside region preserved (existing tests).
-- [x] Path-accepting variant ships (`apply_dim_outside_vector`).
-- [x] `just gate` green.

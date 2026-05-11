@@ -99,19 +99,6 @@ trait without touching app/editor code.
 The boundary lets stories, tests, and the recorder pick the right
 backend per use case without a project-format change.
 
-## Done when
-
-- [x] Public Wisp text data model exists (`WispText`, `WispTextStyle`,
-  `WispTextMetrics`, `WispFontHandle`).
-- [x] Trait surface (`WispTextLayout`, `WispTextEngine`,
-  `WispTextRenderer`) defined.
-- [x] No third-party engine type leaks through any app-facing struct.
-- [x] Existing bitmap text can be represented through the abstraction
-  (M-TEXT.4 lands the actual repackaging; the trait surface accepts
-  the existing data shape).
-- [x] mdBook page: `wisp/text/architecture.md` (this page).
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::WispText`](../../api/wisp/text/struct.WispText.html)

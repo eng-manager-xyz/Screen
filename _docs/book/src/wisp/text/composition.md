@@ -51,17 +51,3 @@ The integration tests live in
 when a caption is unchanged across frames the GPU work for the text
 layer collapses to a single sprite draw + filter dispatch. The cache
 key picks up `font_family` so swapping a face invalidates correctly.
-
-## Done when
-
-- [x] Text renders through normal `render_stage`.
-- [x] Text can be rendered offscreen (`TextTexturePipeline::render`
-  returns a `RenderTexture`).
-- [x] Text composites with Normal and Subtract (one non-Normal blend
-  mode).
-- [x] Text can be filtered via `Renderer::apply_filter`.
-- [x] Headless output (`read_pixels` after `render_stage`) contains
-  the text.
-- [x] Pixel/snapshot tests cover text + blend + filter + export.
-- [x] mdBook chapter (this one).
-- [x] `just gate` green.

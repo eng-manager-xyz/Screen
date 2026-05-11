@@ -45,8 +45,14 @@ graph LR
     App --> Flexible["FlexibleTextRenderer<br/>(glyphon — opt-in)"]
 ```
 
+```admonish note title="Opt-in"
 `FlexibleTextRenderer` is **not** automatically constructed by
-`Renderer`. Two reasons:
+`Renderer`. Callers wire it explicitly when they need flexible text.
+Apps that don't (the storybook smoke harness, simple sprite scenes)
+don't pay the glyphon atlas + pipeline cost.
+```
+
+Two reasons:
 
 1. **Cost.** Glyphon allocates its own atlas + pipeline (~few MB of
    GPU memory + shader compilation). Apps that never render flexible
@@ -154,13 +160,3 @@ allocation failed) without flapping on cosmetic font swaps.
   trait (target view, resolution, batch mode) — deferred until a
   second backend exists that would benefit from a uniform trait
   surface.
-
-## Done when
-
-- [x] `glyphon = "=0.8.0"` added to `crates/wisp/Cargo.toml`.
-- [x] `FlexibleTextRenderer` exposed via `wisp::text::FlexibleTextRenderer`.
-- [x] Renderer constructs against a default `Application`.
-- [x] Renderer rasterizes a `FlexibleTextLayout` into a `wgpu::TextureView`.
-- [x] Pixel test confirms non-zero glyph coverage end-to-end.
-- [x] mdBook chapter (this one).
-- [x] `just gate` green.

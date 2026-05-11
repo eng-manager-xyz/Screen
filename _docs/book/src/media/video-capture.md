@@ -88,13 +88,3 @@ all skip-guarded via
 | `emits_frames_with_expected_dimensions_and_pts` | 5 frames, correct dimensions, byte length, frame index, contiguous PTS. |
 | `frames_have_distinct_content_smpte_colorbars` | Frame 0 vs frame 16 differ in many bytes (animated SMPTE ball moves). |
 | `dimensions_and_framerate_round_trip_through_capture` | `dimensions()` + `framerate()` accessors match construction args. |
-
-## Done when
-
-- [x] Emits BGRA `VideoFrame`s with correct dimensions.
-- [x] Frame PTS increments at the expected frame rate.
-- [x] Frame dimensions are stable across the capture session.
-- [x] Integration test skips if GStreamer is unavailable.
-- [x] `Drop` kills the child + waits.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

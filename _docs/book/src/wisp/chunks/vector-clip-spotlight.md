@@ -76,18 +76,6 @@ primitives (offset by mask cache hits) but would be a regression on
 the hot path. The auto-dispatch keeps using the inline `clip`
 pipeline; explicit `apply_clip` calls go through the new path.
 
-## Done when
-
-- [x] `apply_clip(MaskShape, ...)` byte-equivalent (4 M-MASK.1 +
-  related tests pass unchanged).
-- [x] `apply_spotlight(MaskShape, ...)` byte-equivalent (3 M-MASK.6
-  tests pass unchanged).
-- [x] `apply_clip_vector(vector, ...)` accepts paths.
-- [x] `apply_spotlight_vector(vector, ...)` accepts paths.
-- [x] New tests cover path-driven clip and spotlight.
-- [x] Auto-dispatch path documented as deliberately unchanged.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::apply_clip`](../../api/wisp/render/struct.Renderer.html#method.apply_clip)

@@ -62,19 +62,6 @@ ripple to existing call sites isn't worth it for a premium-shape
 expansion. Path-clip lives next to the SDF clip, accessed via its
 own dedicated public methods.
 
-## Done when
-
-- [x] Freeform/path region renders in `wisp` (`apply_path_clip`).
-- [x] Privacy / focus composition paths can use the path mask
-  (`apply_solid_redaction_path` is the reference example; the same
-  pattern wraps blur / spotlight when needed).
-- [x] Story `path-mask` shows alpha-cutout and solid-redaction
-  variants of a five-pointed star.
-- [x] Snapshot coverage updated.
-- [x] Data model is reusable — `&[Vec2]` polygon, ready for any future
-  drawing tool to feed in.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::apply_path_clip`](../../api/wisp/render/struct.Renderer.html#method.apply_path_clip)

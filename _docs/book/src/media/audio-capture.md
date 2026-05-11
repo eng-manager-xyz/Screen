@@ -126,13 +126,3 @@ just gate                           # runs the integration tests via nextest
                                     # (skips silently if GStreamer absent)
 cargo run -p media --example gst_audio_dump  # planned M-MEDIA.11 follow-up
 ```
-
-## Done when
-
-- [x] `GstreamerAudioCapture::test_source` produces valid `AudioChunk`s.
-- [x] `GstreamerAudioCapture::from_file` decodes the bundled fixture.
-- [x] Chunks include rate, channels, duration, PTS.
-- [x] Integration test skips gracefully when GStreamer is unavailable.
-- [x] `Drop` kills the child + waits.
-- [x] mdBook chapter (this page).
-- [x] `just gate` green.

@@ -48,6 +48,77 @@ The chapter's hero asset is part of the delivery; pick the medium that *shows th
 - **Real content over synthetic gradients** for blend modes, color filters, and anything where structure matters. Bundle a license-clean image (e.g. the bundled Apollo 17 "Blue Marble" at `crates/wisp-storybook/assets/images/`) rather than two gradients overlapping. Real chroma + luminance + edges + dark regions makes per-mode behavior legible at a glance.
 - **`just snapshots-wisp-animated`** runs the gstreamer-backed `wisp-export-animated` binary. It is intentionally *not* chained into `just snapshots-wisp` (it depends on the `gst-launch-1.0` CLI on PATH). Run it before commit when an animated story's `tick` changes. The committed `.mp4` is the source of truth for CI / mdBook — CI does not regenerate videos.
 
+### Callout blocks via mdbook-admonish
+
+mdBook chapters lift the **non-obvious, must-not-miss** facts into
+[mdbook-admonish](https://github.com/tommilligan/mdbook-admonish)
+callouts so they read at a glance instead of disappearing inside a
+paragraph. Use sparingly — a chapter with five admonish blocks loses
+the signal.
+
+Pick the *meaning* first, then the type:
+
+- ```admonish important``` — boundary rules / load-bearing decisions
+  ("`wisp` must not depend on `media`", "screen space, not local
+  space"). The reader breaking this rule costs the most.
+- ```admonish warning``` — gotchas, lurking footguns ("Graphics
+  paints after Sprites in `render_stage`", "lavapipe loses the
+  device on multi-bind-group filter pipelines").
+- ```admonish bug``` — known issues / conventions that exist because
+  of a workaround ("`+y` flip — sprite samples up, glyphon writes
+  down"). Pairs well with a link to the issue.
+- ```admonish note``` — useful side info that isn't dangerous but is
+  easy to miss ("`FlexibleTextRenderer` is opt-in").
+- ```admonish tip``` — best-practice nudges ("prefer `Ellipse` or
+  `RoundedRect` over `Circle`").
+- ```admonish info``` — orientation / "reading the list" framing for
+  a follow-on diagram or table.
+
+Skip ```admonish example``` / ```admonish success``` — normal code
+fences and chapter prose carry that load already.
+
+### Live command output via mdbook-cmdrun
+
+`<!-- cmdrun … -->` inlines a command's stdout into the rendered
+page at build time via
+[mdbook-cmdrun](https://github.com/FauconFan/mdbook-cmdrun). Use it
+for content that would otherwise rot — directory listings, version
+strings of vendored tools, count-of-tests for a crate. The command
+runs from the chapter file's directory, so paths are usually
+`../../../<thing>`.
+
+```admonish warning title="cmdrun must be deterministic + CI-safe"
+The command runs on the CI runner during `mdbook build`. No
+network, no git state, no timestamps — those bake non-determinism
+into the page and rot the moment the doc is rebuilt elsewhere.
+Listing the workspace via `ls -1 ../../../crates` is fine; running
+`git log` to embed a commit list is not.
+```
+
+### Chapter shape — what to cut
+
+The book is for *readers*, not for tracking shipped work. Don't
+include sections that duplicate Linear / PROGRESS.md / git history:
+
+- **No `## Done when` checklists.** Acceptance criteria are tracked
+  in Linear; once the chapter exists, every box would be checked.
+  0 reader value, 5–10 lines of noise.
+- **No `## What's next` / `## Up next` forward-references.** They go
+  stale fast. The SUMMARY.md TOC is how readers navigate between
+  chapters.
+- **No `## Tests` enumeration tables.** "Tests cover X / Y / Z" is
+  progress-tracking. If there's a non-obvious test invariant worth
+  surfacing (a regression-guard intent), inline it in the prose for
+  the feature it guards — not as a flat list.
+- **Drop dev-jargon labels from titles** — "Tier-C", "M-BLEND.2",
+  "dispatched nodes". Use feature names; if jargon is unavoidable,
+  introduce it once at the top of the chapter.
+- **Drop trailing `[api](...)` link soup.** One link near the top
+  next to the title is enough; the rustdoc index lives at `/api/`.
+
+When in doubt: would a reader who's never seen this codebase
+benefit from this paragraph? If no, cut it.
+
 ### Diagrams in mdBook — mermaid only, no ASCII
 
 **Every diagram in `_docs/book/src/**/*.md` is a `mermaid` code block.** ASCII / box-drawing / unicode-arrow diagrams are not accepted — the gate (`just gate` → `mermaid-check`) rejects new ones. Prefer types in this order:

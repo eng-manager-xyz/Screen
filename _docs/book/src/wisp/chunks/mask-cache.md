@@ -55,16 +55,6 @@ existing texture.
   Use `generate_path_mask_texture` directly; manage caching at the
   call site if needed.
 
-## Done when
-
-- [x] Identical `(shape, w, h, invert)` inputs hit the cache after
-  the first miss.
-- [x] Different shapes / dims / invert flags produce distinct keys.
-- [x] `clear_mask_cache()` drops every entry.
-- [x] `mask_cache_stats()` exposes hits + misses for tests.
-- [x] FIFO eviction caps memory at `MAX_ENTRIES`.
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::cached_mask_texture`](../../api/wisp/render/struct.Renderer.html#method.cached_mask_texture)

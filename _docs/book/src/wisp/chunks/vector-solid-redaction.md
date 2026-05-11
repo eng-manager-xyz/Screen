@@ -51,16 +51,6 @@ differs from privacy blur:
 Reuses the M-VEC.4 `MaskComposePipeline` and the M-DYN.2 mask cache
 without adding any new pipelines or shaders.
 
-## Done when
-
-- [x] `apply_solid_redaction_vector` accepts any `VectorShape`
-  including `Path`.
-- [x] `apply_solid_redaction(shape: MaskShape, ...)` produces
-  byte-equivalent output (4 M-MASK.5 tests pass unchanged).
-- [x] Path-driven test confirms the new feature works
-  (`redaction_path_vector_fills_polygon_only`).
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::Renderer::apply_solid_redaction`](../../api/wisp/render/struct.Renderer.html#method.apply_solid_redaction)

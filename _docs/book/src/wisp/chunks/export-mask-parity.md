@@ -51,12 +51,3 @@ tests catch any future regression that tries to diverge them.
 
 Already true today — `Renderer::render_stage` is the only path that
 produces frames. These tests guard against future drift.
-
-## Done when
-
-- [x] All five M-MASK / M-VEC mask primitives have export-parity
-  tests (`export_mask_parity.rs`).
-- [x] `read_pixels` after each primitive returns expected masked
-  content (`copy_frame_mask_parity.rs`).
-- [x] No preview-only mask code path exists.
-- [x] `just gate` green.

@@ -38,17 +38,6 @@ Variants:
 - **Default = Medium.** Unconfigured blurs land at the balanced
   preset, matching the most common publish-safety case.
 
-## Done when
-
-- [x] Strength is part of renderer data (`PrivacyBlur` carries
-  `BlurStrength`).
-- [x] Two+ story variants demonstrate different strengths
-  (`privacy-blur-strength` shows Soft/Medium/Strong side by side).
-- [x] Output deterministic in story snapshots.
-- [x] Preview/headless render parity preserved (stories use the same
-  `apply_privacy_blur_data` codepath as runtime would).
-- [x] `just gate` green.
-
 ## API
 
 - [`wisp::BlurStrength`](../../api/wisp/scene/privacy_blur/enum.BlurStrength.html)

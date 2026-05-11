@@ -40,18 +40,6 @@ composition is unchanged.
   the existing clip primitive. Pixel-space callers convert at their
   edge — keeps the renderer single-coord-system.
 
-## Done when
-
-- [x] `Renderer::apply_privacy_blur` exists, lands the masked blur in
-  `output`.
-- [x] Three pixel-readback tests in `crates/wisp/tests/privacy_blur_rect.rs`
-  cover (a) outside-region pixels match base bit-exactly,
-  (b) near-seam pixels mix both colors via the blur kernel,
-  (c) blur falloff stays bounded.
-- [x] Storybook story `privacy-blur-rect` renders the composition over
-  a gradient + grid backdrop.
-- [x] `just gate` green.
-
 ## API
 
 [`wisp::Renderer::apply_privacy_blur`](../../api/wisp/render/struct.Renderer.html#method.apply_privacy_blur)
