@@ -39,6 +39,7 @@ use glam::Vec2;
 use crate::color::Color;
 
 pub mod atlas;
+pub mod caption;
 pub mod flexible;
 pub mod flexible_renderer;
 pub mod presets;
@@ -46,6 +47,7 @@ pub mod stroke;
 pub mod texture;
 
 pub use atlas::{AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout};
+pub use caption::{CaptionBlock, CaptionLayout};
 pub use flexible::{FlexibleTextEngine, FlexibleTextLayout};
 pub use flexible_renderer::FlexibleTextRenderer;
 pub use presets::TextPreset;

@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.9 — Word-wrapped caption block (AUT-83)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `wisp::text::CaptionBlock` composes wrapped text on a rounded-rect background. Layout measures the wrapped text height via `TextTexturePipeline::engine().layout_concrete()` and sizes the background to `width × (text_h + 2×padding)`. No new shaders; pure scene-graph composition (Graphics + Sprite).
+- **Linear:** [AUT-83](https://linear.app/harwood/issue/AUT-83).
+- **Files:** new `crates/wisp/src/text/caption.rs` (`CaptionBlock` builder + `CaptionLayout` return). `crates/wisp/src/text/mod.rs` re-exports. Also adds `Sprite::with_anchor_set(&mut self, Vec2)` as a `&mut self` companion to the existing builder-style `with_anchor`. New `crates/wisp-storybook/src/stories/s_text_caption_block.rs` + writeup with short + multi-line captions. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/caption-block.md` chapter (mermaid sequence for the layout flow, `admonish important` for the composition-over-inheritance shape, `admonish note` for the caller-set wrap precedence). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-caption-block.png`.
+- **Verified:** 4 unit tests: caption height grows with wrapped lines, height includes padding on both sides, builder methods chain + apply, explicit `.with_wrap` overrides block inner width. `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Caller-set wrap precedence.** If the WispText already has `.with_wrap(...)`, the block respects that instead of `width - 2×padding`. Tooltip-style layouts (wide padding, narrow text) need this; one-size-fits-all wrap would force callers to fight the block.
+
+---
+
 ## M-TEXT.12 — Text style presets for Screen workflows (AUT-86)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — seven curated `WispTextStyle` presets land at `wisp::text::presets::*` (also `wisp::text::TextPreset` enum). Pure data, no allocation, no GPU dependency — same struct the editor consumes and the renderer composes from.
