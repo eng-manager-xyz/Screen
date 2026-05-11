@@ -94,6 +94,7 @@ pub mod gstreamer_video;
 pub mod histogram;
 pub mod manifest;
 pub mod mock_audio;
+pub mod sync;
 pub mod video;
 
 pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};

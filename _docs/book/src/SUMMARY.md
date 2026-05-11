@@ -78,6 +78,7 @@
   - [Mock audio sources — M-MEDIA.4](./media/mock-sources.md)
   - [GStreamer audio capture — M-MEDIA.5](./media/audio-capture.md)
   - [GStreamer video capture — M-MEDIA.6](./media/video-capture.md)
+  - [A/V sync harness — M-MEDIA.7](./media/sync-harness.md)
 
 # `playback` — player state machine
 

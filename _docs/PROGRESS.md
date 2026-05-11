@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.7 — A/V sync harness (AUT-103)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `sync::run(SyncConfig)` combines audio + video GStreamer captures and reports per-stream timing + inter-stream drift. Closes the P0 tier: GStreamer can capture audio + video and stamp both on one timeline.
+- **Linear:** [AUT-103](https://linear.app/harwood/issue/AUT-103).
+- **Files:** new `crates/media/src/sync.rs` (`SyncConfig`, `SyncReport`, `run`, `Error`). `crates/media/src/lib.rs` registers the module. New `crates/media/tests/sync_harness_integration.rs` (4 tests, skip-guarded). New `_docs/book/src/media/sync-harness.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 integration tests (1 s deterministic capture): exact frame counts (48000 audio + 30 video), first-PTS alignment < 100 ms, drift < 1/25 s, last-PTS ≤ 1 s. 2 unit tests for `SyncReport::drift_within` + `SyncConfig::deterministic_1s` arithmetic. Full `just gate` green at 366 tests (360 + 6 new).
+- **`SyncReport::Display`** writes a one-line compact summary for logs — `audio_frames` / `video_frames` / `first_*_pts` / `last_*_pts` / `drift` all reported. The harness's `eprintln!("{report}")` in the integration tests doubles as the AUT-103 "manual regression" diagnostic.
+- **Synthetic sources for the test, real shape for live capture.** The harness type signature accepts arbitrary `SyncConfig` so M-MEDIA.15 / .16 (live mic + webcam) can swap the underlying captures without changing the harness or its callers. For now both sources are GStreamer test sources.
+- **Drift is near-zero by construction for synthetic sources** (counters in / counters out), so the integration assertion uses a wide-but-meaningful tolerance (< 1/25 s, i.e., one 25-fps frame). The drift instrument becomes a real regression check when live capture lands — then it'll surface actual clock disagreement between the OS audio + video subsystems.
+
+---
+
 ## M-MEDIA.6 — GStreamer video test-source capture (AUT-102)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `GstreamerVideoCapture::test_source(w, h, fps)` produces BGRA `VideoFrame`s by piping `videotestsrc ! videoconvert ! video/x-raw,format=BGRA ! fdsink fd=1` through `gst-launch-1.0`.
