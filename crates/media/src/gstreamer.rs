@@ -146,17 +146,35 @@ pub fn is_available() -> bool {
 }
 
 fn version_of(cmd: &str) -> Option<String> {
-    let output = Command::new(cmd)
+    // Try `--version` first (gst-launch-1.0 supports it). Fall back to
+    // `--help` for binaries that don't (gst-discoverer-1.0 rejects
+    // --version on some GStreamer builds; the previously-shipped
+    // version-only probe gave a false negative there, silently
+    // skipping integration tests that should have run).
+    let version = Command::new(cmd)
         .arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+    if let Ok(out) = version
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout);
+        let first = s.lines().next().unwrap_or("").trim().to_owned();
+        if !first.is_empty() {
+            return Some(first);
+        }
+    }
+    let help = Command::new(cmd)
+        .arg("--help")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
         .ok()?;
-    if !output.status.success() {
+    if !help.status.success() {
         return None;
     }
-    let s = String::from_utf8_lossy(&output.stdout);
-    Some(s.lines().next().unwrap_or("").trim().to_owned())
+    Some(format!("{cmd} (--help responded)"))
 }
 
 fn check_plugin(plugin: &str) -> bool {

@@ -85,9 +85,13 @@ pub struct SyncReport {
     pub first_audio_pts: MediaTime,
     /// PTS of the first video frame.
     pub first_video_pts: MediaTime,
-    /// PTS of the last audio chunk's first sample.
+    /// End-of-window timestamp for the last audio chunk
+    /// (`chunk.pts + chunk.duration`). Reporting the chunk end (vs
+    /// start) keeps the drift calculation symmetric with video — see
+    /// the [`drift`](Self::drift) field doc.
     pub last_audio_pts: MediaTime,
-    /// PTS of the last video frame.
+    /// End-of-display timestamp for the last video frame
+    /// (`frame.pts + 1/fps`). Symmetric with `last_audio_pts`.
     pub last_video_pts: MediaTime,
     /// `|last_audio_pts - last_video_pts|`. For synthetic test sources
     /// this is near-zero by construction.
@@ -154,20 +158,29 @@ pub fn run(config: SyncConfig) -> Result<SyncReport, Error> {
         if first_audio_pts.is_none() {
             first_audio_pts = Some(chunk.pts());
         }
-        last_audio_pts = chunk.pts();
+        // last_audio_pts tracks the END of the last delivered chunk
+        // (chunk start + chunk duration). Without this, comparing a
+        // chunk-start audio PTS against a single-frame-start video PTS
+        // under-counts audio by (chunk_duration − frame_duration);
+        // for 100 ms audio chunks vs 33 ms video frames that's 67 ms of
+        // architectural drift — masking the real sync behavior.
+        last_audio_pts = chunk.pts() + chunk.duration();
         audio_frames_total += want;
     }
 
     let mut first_video_pts: Option<MediaTime> = None;
     let mut last_video_pts = MediaTime::ZERO;
     let mut video_frames_total: u64 = 0;
+    let frame_period = MediaDuration::from_seconds(1.0 / f64::from(config.video_framerate));
     while video_frames_total < target_video_frames {
         let frame = video.next_frame()?;
         let pts = MediaTime::from_seconds(frame.pts_seconds);
         if first_video_pts.is_none() {
             first_video_pts = Some(pts);
         }
-        last_video_pts = pts;
+        // Symmetric with audio: report the END of the frame's display
+        // window (frame PTS + 1/fps).
+        last_video_pts = pts + frame_period;
         video_frames_total += 1;
     }
 

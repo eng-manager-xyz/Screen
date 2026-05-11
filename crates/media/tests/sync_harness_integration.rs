@@ -67,15 +67,38 @@ fn deterministic_1s_drift_is_below_one_frame() {
 }
 
 #[test]
-fn last_pts_values_are_below_capture_duration() {
+fn last_pts_values_match_capture_duration_within_one_frame() {
     if !is_available() {
         eprintln!("gst-launch-1.0 not on PATH — skipping");
         return;
     }
     let cfg = SyncConfig::deterministic_1s();
     let report = run(cfg).expect("sync harness");
-    // We captured 1 s of data, so the last PTS should be <= 1 s.
+    // last_*_pts is the END of the last chunk / frame, so it should be
+    // ≈ the capture duration (1.0 s). Allow one video frame's worth
+    // (1/30 s ≈ 33 ms) of slack on each side.
     let one_second = MediaTime::from_seconds(1.0);
-    assert!(report.last_audio_pts <= one_second);
-    assert!(report.last_video_pts <= one_second);
+    let slack = MediaDuration::from_seconds(1.0 / 30.0);
+    let audio_delta = if report.last_audio_pts > one_second {
+        report.last_audio_pts - one_second
+    } else {
+        one_second - report.last_audio_pts
+    };
+    let video_delta = if report.last_video_pts > one_second {
+        report.last_video_pts - one_second
+    } else {
+        one_second - report.last_video_pts
+    };
+    assert!(
+        audio_delta.as_nanos().abs() <= slack.as_nanos(),
+        "audio end PTS {} differs from 1.0s by {}",
+        report.last_audio_pts.as_seconds(),
+        audio_delta.as_seconds(),
+    );
+    assert!(
+        video_delta.as_nanos().abs() <= slack.as_nanos(),
+        "video end PTS {} differs from 1.0s by {}",
+        report.last_video_pts.as_seconds(),
+        video_delta.as_seconds(),
+    );
 }

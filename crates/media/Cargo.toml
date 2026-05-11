@@ -17,3 +17,15 @@ path = "src/lib.rs"
 decode = { path = "../decode", version = "0.1.0" }
 thiserror = "2"
 tracing = { workspace = true }
+
+[dev-dependencies]
+image = "0.25"
+tracing-subscriber = { workspace = true }
+
+# mdBook visual asset generator — renders the waveform / histogram /
+# capture PNGs that the media chapters embed. Local-only (depends on
+# gstreamer + the bundled MP3 fixture); CI consumes the committed
+# PNGs.
+[[example]]
+name = "render-mdbook-assets"
+path = "examples/render_mdbook_assets.rs"
