@@ -326,32 +326,57 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
   `WGPU_BACKEND=vulkan` + `WGPU_POWER_PREF=low` in the workflow env so
   wgpu doesn't spend cycles probing every backend.
 - **Lavapipe loses the device on multi-bind-group filter pipelines.**
-  Symptom: `wgpu error: Validation Error / In Device::create_render_pipeline,
-  label = 'wisp::blur pipeline' / Parent device is lost`. Real adapters
-  (Metal, hardware Vulkan) build the same pipelines fine. Pattern: add
-  a `skip_on_software_adapter()` helper guard at the top of affected
-  tests, gated on `WISP_SKIP_GPU_FILTER_TESTS=1` set only in the CI
-  workflow's `$GITHUB_ENV`. Local dev and real-hardware CI leave the
-  env var unset and run the tests normally — gate stays green without
-  losing the assertion on real GPUs.
-  **Audit the call graph, not just direct usage.** The blur pipeline
-  is reached transitively by every `Renderer` method that wraps
-  `apply_filter` with a `BlurFilter` — currently `apply_privacy_blur`,
-  `apply_privacy_blur_data`, and any future wrapper. Whenever a new
-  test/story calls one of those, you must:
-    1. Add the guard to **the test** (`if skip_on_software_adapter() { return; }`).
-    2. Add the **story id** to `LAVAPIPE_INCOMPATIBLE` in
-       `crates/wisp-storybook/tests/story_smoke.rs` if a story uses
-       it during `build()`.
-  The non-blur mask primitives (`apply_clip` / `apply_solid_redaction` /
-  `apply_spotlight` / `apply_dim_outside_data` / `apply_path_clip`) use
-  single-bind-group pipelines and run fine on lavapipe — don't guard
-  them. **Verification:** locally run
-  `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp --test <new>`
-  and confirm the GPU-using tests early-return in <50ms; without the
-  env var, confirm they still actually exercise the pipeline (~1s+).
-  M-MASK.2/.3/.4 burned a CI cycle on this — every wrapper around
-  `apply_filter` carries the same lavapipe risk as the filter itself.
+  Symptom: `wgpu error: Validation Error / In
+  Device::create_render_pipeline, label = 'wisp::blur pipeline' /
+  Parent device is lost`, OR `Buffer with 'wisp::blur uniforms' label
+  is invalid` at `Buffer::get_mapped_range`. Real adapters (Metal,
+  hardware Vulkan) build the same pipelines fine.
+
+  **Every filter that transitively runs
+  `crate::filter::blur::run_blur_pass` is in this class.** A new
+  story/test that touches *any* of these will trip lavapipe unless
+  it's guarded:
+
+  | Filter / wrapper            | How it reaches `run_blur_pass`                |
+  | --------------------------- | --------------------------------------------- |
+  | `BlurFilter`                | direct                                        |
+  | `DropShadowFilter`          | alpha-extract → `run_blur_pass` → composite   |
+  | `MotionBlurFilter`          | directional `run_blur_pass`                   |
+  | `apply_privacy_blur`        | wraps `BlurFilter` via `apply_filter`         |
+  | `apply_privacy_blur_data`   | wraps `BlurFilter` via `apply_filter`         |
+
+  Anything new that calls `apply_filter(<one of the above>, …)` falls
+  into the same class. **The non-blur mask primitives** (`apply_clip`
+  / `apply_solid_redaction` / `apply_spotlight` /
+  `apply_dim_outside_data` / `apply_path_clip` /
+  `apply_mask_to_texture`) use single-bind-group pipelines and run
+  fine on lavapipe — **don't guard them**.
+
+  **Pre-PR checklist when adding a story or test:**
+  1. Grep your diff for the filter names above:
+     `git diff main...HEAD -- crates/wisp-storybook/src/stories/ crates/wisp/tests/ | grep -E "BlurFilter|DropShadowFilter|MotionBlurFilter|apply_privacy_blur"`.
+  2. If anything matches AND the call site isn't behind a
+     `WISP_SKIP_GPU_FILTER_TESTS` env-guard that returns a non-filter
+     value, the story/test trips lavapipe.
+  3. **Storybook story** → add its id to `LAVAPIPE_INCOMPATIBLE` in
+     `crates/wisp-storybook/tests/story_smoke.rs`. **`wisp` unit /
+     integration test** → add `if skip_on_software_adapter() { return; }`
+     at the top, gated on `WISP_SKIP_GPU_FILTER_TESTS=1`.
+  4. Verify both paths locally:
+     `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp-storybook --test story_smoke`
+     must pass (story is filtered or guard fires); without the env
+     var, the same run must still exercise the pipeline (~1s+ for
+     blur-touching paths). Both runs green = lavapipe-safe.
+
+  **Burned cycles so far:**
+  - M-MASK.2/.3/.4 — `apply_privacy_blur*` reached `BlurFilter`.
+  - M-TEXT.8 (`text-shadow-glow`) — `apply_filter(DropShadowFilter)`
+    runs `run_blur_pass` internally; the story had no env-guard and
+    only the *immediate* `BlurFilter` was in the explicit example
+    list. Fix: add `text-shadow-glow` to `LAVAPIPE_INCOMPATIBLE` +
+    expand the explicit-filter list (this table) to name
+    `DropShadowFilter` and `MotionBlurFilter` so future authors
+    cannot read "blur" too narrowly.
 - **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
   `cargo check` time, not just at link time.** `glib-sys`'s build script
   invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev

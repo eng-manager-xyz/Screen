@@ -3497,10 +3497,14 @@ name = "media"
 version = "0.1.0"
 dependencies = [
  "decode",
+ "glam",
  "image",
+ "pollster",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
+ "wgpu",
+ "wisp",
 ]
 
 [[package]]
@@ -8330,6 +8334,7 @@ dependencies = [
  "glam",
  "image",
  "insta",
+ "media",
  "pollster",
  "tracing-subscriber",
  "wgpu",

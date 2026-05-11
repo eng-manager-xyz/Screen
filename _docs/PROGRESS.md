@@ -6,6 +6,128 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.11 — Text as mask (AUT-85)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text drives the existing `Renderer::apply_mask_to_texture` primitive. Storybook story `text-mask` shows "WISP" clipping three foregrounds: a gradient color-band fill, a blurred circles backdrop, and a warm spotlight. One mask, three foregrounds.
+- **Linear:** [AUT-85](https://linear.app/harwood/issue/AUT-85).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_mask.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/text-mask.md` chapter (mermaid sequence for the mask-compose pipeline, `admonish important` for the apply_mask_to_texture-is-load-bearing rule, `admonish tip` for the separable-foreground pattern, `admonish warning` for the lavapipe filter guard). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-mask.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green. PNG inspected — top row gradient bands through "WI", middle row blurred circles, bottom row warm spotlight. Three distinct foregrounds clipped to the same glyph silhouette.
+- **No new wisp code.** `apply_mask_to_texture` already accepted any coverage RT (M-VEC.4..6, M-MASK.2..4). Text just joins the list of valid coverage sources. Story uses `WISP_SKIP_GPU_FILTER_TESTS` to substitute non-blur foregrounds on lavapipe so CI stays green.
+
+---
+
+## M-TEXT.10 — Vector-backed callouts (AUT-84)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — five callout shapes (caption pill, number badge, label box, pointer + label, arrow + label) composed from `Graphics::draw_rounded_rect` / `draw_ellipse` / `draw_line` + `CaptionBlock` + text sprites. No new wisp primitives.
+- **Linear:** [AUT-84](https://linear.app/harwood/issue/AUT-84).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_callouts.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/callouts.md` chapter (flowchart for the five recipes, `admonish tip` for pill-vs-label, `admonish note` flagging the no-general-path limit that forced the arrowhead-via-three-lines workaround). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-callouts.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Arrowhead from three lines.** Wisp's `Graphics` doesn't expose a general `draw_path`; the arrowhead uses three `draw_line` calls fanning from the tip. Future M-VEC.13 (SVG path import) or a `Graphics::draw_path` would let us render richer arrow geometries (curved, double-headed, filled triangle). Flagged in the chapter so future contributors don't reinvent the workaround.
+
+---
+
+## M-TEXT.8 — Drop shadow + glow on text (AUT-82)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text run through the existing `wisp::DropShadowFilter` produces both drop shadows (with offset) and glows (with offset = 0). One pipeline, two parameter sets. Storybook story `text-shadow-glow` shows both side-by-side on a paper-white backdrop.
+- **Linear:** [AUT-82](https://linear.app/harwood/issue/AUT-82).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_shadow_glow.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/shadow-glow.md` chapter (mermaid sequence for the pipeline, `admonish important` for the glow-is-shadow-with-offset-zero insight, `admonish warning` for the sprite-vs-graphics backdrop rule, a parameter table for picking the right look). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-shadow-glow.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green. PNG inspected — drop shadow (dark offset blur) and glow (warm halo at zero offset) both render correctly through the same filter.
+- **No new wisp code.** The filter pipeline already accepted any source `RenderTexture`; the text-texture pipeline already produced one. The chunk is composition + documentation — but documenting the parameter set per look is what turns a generic filter into a recognizable design vocabulary.
+
+---
+
+## M-TEXT.9 — Word-wrapped caption block (AUT-83)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `wisp::text::CaptionBlock` composes wrapped text on a rounded-rect background. Layout measures the wrapped text height via `TextTexturePipeline::engine().layout_concrete()` and sizes the background to `width × (text_h + 2×padding)`. No new shaders; pure scene-graph composition (Graphics + Sprite).
+- **Linear:** [AUT-83](https://linear.app/harwood/issue/AUT-83).
+- **Files:** new `crates/wisp/src/text/caption.rs` (`CaptionBlock` builder + `CaptionLayout` return). `crates/wisp/src/text/mod.rs` re-exports. Also adds `Sprite::with_anchor_set(&mut self, Vec2)` as a `&mut self` companion to the existing builder-style `with_anchor`. New `crates/wisp-storybook/src/stories/s_text_caption_block.rs` + writeup with short + multi-line captions. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/caption-block.md` chapter (mermaid sequence for the layout flow, `admonish important` for the composition-over-inheritance shape, `admonish note` for the caller-set wrap precedence). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-caption-block.png`.
+- **Verified:** 4 unit tests: caption height grows with wrapped lines, height includes padding on both sides, builder methods chain + apply, explicit `.with_wrap` overrides block inner width. `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Caller-set wrap precedence.** If the WispText already has `.with_wrap(...)`, the block respects that instead of `width - 2×padding`. Tooltip-style layouts (wide padding, narrow text) need this; one-size-fits-all wrap would force callers to fight the block.
+
+---
+
+## M-TEXT.12 — Text style presets for Screen workflows (AUT-86)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — seven curated `WispTextStyle` presets land at `wisp::text::presets::*` (also `wisp::text::TextPreset` enum). Pure data, no allocation, no GPU dependency — same struct the editor consumes and the renderer composes from.
+- **Linear:** [AUT-86](https://linear.app/harwood/issue/AUT-86).
+- **Files:** new `crates/wisp/src/text/presets.rs` (`TextPreset` enum, 7 `pub fn -> WispTextStyle` accessors). `crates/wisp/src/text/mod.rs` re-exports `TextPreset`. New `crates/wisp-storybook/src/stories/s_text_presets.rs` + writeup — gallery story renders each preset's name in its own style. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/presets.md` chapter (admonish info for reading order, admonish important for the pure-data property). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-presets.png`.
+- **Verified:** 8 unit tests: 7-presets returned by `all()`, every preset has positive size + line_height, section title is centered+bold, warning is signal-red, watermark is italic+alpha<1, callout is italic, no two presets byte-identical, every preset has a unique non-empty label. `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Test invariants encode the design intent.** "Warning is red-dominant" and "Watermark alpha < 1" are guardrails against quiet regressions where a refactor desaturates the privacy signal or accidentally bumps the watermark to opaque. Adding a new preset only requires extending `TextPreset::all()` plus a `fn`; the gallery story + every-preset-positive-size test pick it up automatically.
+
+---
+
+## M-TEXT.7 — Stroked / outlined text rendering (AUT-81)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text gets a configurable outline via `wisp::text::stroked_text_sprites` + `StrokedTextLayer`. CSS-style technique: render text to a texture once via `TextTexturePipeline`, stamp the texture eight times tinted in the stroke color at offsets on a circle, stamp once more tinted in the fill color at the center. No shader changes.
+- **Linear:** [AUT-81](https://linear.app/harwood/issue/AUT-81).
+- **Files:** new `crates/wisp/src/text/stroke.rs` (`StrokedTextLayer`, `stroked_text_sprites`, `STROKE_OFFSETS` ring). `crates/wisp/src/text/mod.rs` re-exports. New `crates/wisp-storybook/src/stories/s_text_stroke.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/stroke.md` chapter (mermaid sequence for the texture → ring-stamp → fill flow, `admonish important` for the local-NDC convention, `admonish note` for the 8-direction ring, `admonish bug` for the Graphics-after-Sprites gotcha that bit the story's backdrop). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-stroke.png` showing READ ME with stroke vs unstroked "no stroke" baseline.
+- **Verified:** 4 unit tests (zero stroke → one sprite, positive stroke → eight + one, sprites on radius-r ring, stroke width scales linearly). `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Pre-rendered RT-as-Sprite backdrop is the workaround.** A direct `Graphics` backdrop in the same stage paints AFTER the sprite text and hides it — recurring footgun from CLAUDE.md's renderer-batching note. The story renders the colored backdrop into its own RT and attaches that as a Sprite; the chapter calls this out in an `admonish bug`.
+
+---
+
+## M-MEDIA.14 — Synced video + audio histogram in one Wisp scene (AUT-110)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — M-MEDIA P1 capstone. `cargo run -p media --example synced_scene` composes a hue-rotating synthetic video frame (top half) + audio histogram bars (bottom-left) in one wisp scene, anchored to `MediaClock::manual`. 10 frames at 100 ms cadence; amplitude ramps `0.30 → 0.90` so bar heights grow visibly. Every M-MEDIA chunk so far shows up at the same call site.
+- **Linear:** [AUT-110](https://linear.app/harwood/issue/AUT-110).
+- **Files:** new `crates/media/examples/synced_scene.rs`. `crates/media/Cargo.toml` registers the `[[example]]`. New `_docs/book/src/media/synced-scene.md` chapter (mermaid sequence for the per-frame loop, `admonish important` for the one-clock rule, `admonish note` for full reproducibility). New `_docs/book/src/assets/media/synced-scene.png` (frame 05 with mid-amplitude bars). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run produced exactly the expected output — 10 PNGs at `target/synced-scene/`; video PTS `0.000, 0.100, …, 0.900` s; per-frame `peak ≈ amp` and `rms ≈ amp / √2` for every histogram window. Full `just gate` green.
+- **The single-clock rule is the load-bearing decision.** Audio and video don't sync to each other — they both sync to `MediaClock`. Live capture (M-MEDIA.15/.16) plugs in a wall-clock anchor and the rest of the code doesn't move.
+
+---
+
+## M-MEDIA.13 — GStreamer videotestsrc through Wisp (AUT-109)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `cargo run -p media --example gst_video_to_wisp` captures 8 frames from `videotestsrc` at 320×180@30fps, uploads each to a wisp `VideoTexture`, renders through `Sprite` to a headless `RenderTexture`, and saves PNGs under `target/gst-video-frames/`. Closes the M-MEDIA.6 → M-MEDIA.12 path end-to-end with a real GStreamer source.
+- **Linear:** [AUT-109](https://linear.app/harwood/issue/AUT-109).
+- **Files:** new `crates/media/examples/gst_video_to_wisp.rs`. `crates/media/Cargo.toml` adds `wisp` / `wgpu` / `pollster` / `glam` as **dev-dependencies** (library stays wgpu-free) and registers the `[[example]]`. New `_docs/book/src/media/video-render.md` chapter (mermaid sequence for the capture → upload → render → PNG loop, `admonish important` clarifying the dev-dep-only boundary). New `_docs/book/src/assets/media/gst-video-to-wisp.png` (frame 0 SMPTE colorbars). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run on macOS with GStreamer installed produced 8 PNGs of SMPTE colorbars at 33.33 ms PTS intervals (30 fps). Cumulative `frames_emitted` matches the upload count (8 = 8 = 8). Full `just gate` green.
+- **Boundary preserved.** `media` library still doesn't import `wisp`. Only the example brings wisp in via `[dev-dependencies]`. Downstream consumers of `media` (e.g., `playback`, `app`) won't pull wgpu unless they explicitly opt-in by depending on it themselves.
+
+---
+
+## M-MEDIA.12 — Video texture handoff (AUT-108)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — synthetic `decode::VideoFrame` (128×72 BGRA, diagonal gradient + horizontal stripes) uploaded to wisp `VideoTexture` and rendered through `Sprite`. Storybook story `video-frame-handoff` proves the seam works end-to-end; PNG hero asset confirms BGRA → wgpu `Bgra8UnormSrgb` roundtrip is correct.
+- **Linear:** [AUT-108](https://linear.app/harwood/issue/AUT-108).
+- **Files:** new `crates/wisp-storybook/src/stories/s_video_frame_handoff.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers the new story. New `_docs/book/src/media/video-texture.md` chapter (mermaid sequence for the handoff path, `admonish important` for the wisp-doesn't-know-source rule, `admonish note` for BGRA being wgpu's native pixel order). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/video-frame-handoff.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` (snapshot extended) pass for the new story. Full `just gate` green. PNG inspected — gradient + stripes render with correct channel order, expected aspect ratio (16:9 scaled to ~75% NDC).
+- **Existing infrastructure formalized, not new.** `VideoTexture::upload_bgra` (wisp) and `decode::VideoFrame` (media re-export) existed before this chunk. M-MEDIA.12 is the storybook + chapter that proves the call sites work and locks the contract in a regression test. M-MEDIA.13 will swap the synthetic frame for a real GStreamer-captured one.
+
+---
+
+## M-MEDIA.11 — GStreamer audio → histogram example (AUT-107)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `cargo run -p media --example gst_audio_histogram` captures 1 s of `audiotestsrc` (440 Hz, 48 kHz f32 mono), quantizes at 50 ms, and prints bucket / peak / RMS stats with a first-5 + last-5 bar dump. Skips with a friendly message when `gst-launch-1.0` isn't on `PATH`.
+- **Linear:** [AUT-107](https://linear.app/harwood/issue/AUT-107).
+- **Files:** new `crates/media/examples/gst_audio_histogram.rs`. `crates/media/Cargo.toml` registers the `[[example]]`. New `_docs/book/src/media/audio-histogram-gst.md` chapter (mermaid sequence diagram for the probe → spawn → quantize → stdout flow, `admonish important` for the skip-guard, `admonish note` explaining the 0.5657 vs 0.7071 RMS for `audiotestsrc`'s default volume). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run on macOS with GStreamer installed produced exactly the expected output — 20 bars × 50 ms, `peak max = 0.80`, `RMS ≈ 0.5657` on every bar (0.8 / √2). PTS cadence `50_000_000` ns monotonic. Full `just gate` green.
+- **The same `quantize` pipeline works for both mock and real audio.** Storybook story (M-MEDIA.10) uses `SineWaveSource(0.6) → RMS ≈ 0.4243`; example uses `audiotestsrc volume=0.8 → RMS ≈ 0.5657`. Same code path, different `A`. M-MEDIA.15 (live mic) will just plug in another `next_chunk` source — `quantize` doesn't change.
+
+---
+
+## M-MEDIA.10 — Synthetic audio histogram in Wisp (AUT-106)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — first storybook story that uses the `media → wisp` seam end-to-end. SineWaveSource → `quantize` → `mono_bars` → `Graphics::draw_rect`. PNG hero asset shows 20 amber bars mirrored about the centerline.
+- **Linear:** [AUT-106](https://linear.app/harwood/issue/AUT-106).
+- **Files:** new `crates/wisp-storybook/src/stories/s_audio_histogram.rs` + `writeups/audio_histogram.md`. `crates/wisp-storybook/src/stories/mod.rs` registers the new story. `crates/wisp-storybook/Cargo.toml` gains `media = { path = "../media" }` as a storybook-side dep (wisp itself stays media-free). New `_docs/book/src/media/audio-histogram.md` chapter. `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/audio-histogram.png` (regenerated by `just snapshots-wisp`). `crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap` extended with the new entry.
+- **Verified:** `story_smoke` (no wgpu validation errors + visible pixels) and `story_fingerprints` (quadrant snapshot) both pass for the new story. Full `just gate` green. PNG inspected manually — 20 bars at expected positions, uniform height (constant amplitude).
+- **wisp stays unaware of audio.** wisp-storybook bridges the two crates by depending on both; that's the right shape — `wisp` is generic, `wisp-storybook` is a gallery that demonstrates wisp's primitives against domain data (audio, video, capture).
+- **Deterministic by construction.** Mock source + integer-arithmetic quantization + `Graphics::draw_rect` = identical PNG run-to-run on the same GPU. M-MEDIA.11's gst-captured variant will diverge per-microphone, so the determinism story is parked here for snapshot purposes.
+
+---
+
+## M-MEDIA.9 — Waveform bar geometry for Wisp (AUT-105)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `media::waveform::{mono_bars, stereo_bars}` maps an `AudioHistogram` to a `Vec<WaveformBarRect>` that wisp can render directly via its Graphics pipeline.
+- **Linear:** [AUT-105](https://linear.app/harwood/issue/AUT-105).
+- **Files:** new `crates/media/src/waveform.rs` (`WaveformBarRect`, `WaveformLayout`, `BarMetric`, `WaveformDisplayMode`, `WaveformLayout::ndc_default()`, `mono_bars`, `stereo_bars`). `crates/media/src/lib.rs` re-exports the geometry types. New `_docs/book/src/media/waveform-geometry.md` chapter (mermaid sequence + `admonish important` for the wisp/media boundary + `admonish note` for Anchored vs Mirrored). `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover anchored-bar stride/x/y, anchored-height = `peak × max_height`, mirrored centers on `baseline_y`, RMS metric switches to `rms` field, silence → zero-height bars, empty histogram → empty geometry, stereo pairs (L above / R below baseline), stereo truncates to shorter input, color carry-through, four-bar manual regression table (`peak = [1.0, 0.5, 0.25, 0.0]` → exact `x` / `height` per row), `Send + Sync`. Full `just gate` green.
+- **Boundary preserved.** `wisp` still doesn't depend on `media` or GStreamer — this chunk produces typed `WaveformBarRect` values that wisp consumes through its standard graphics call. The `admonish important` callout in the chapter encodes the rule explicitly so future contributors can't lose it under prose.
+- **Unit-agnostic.** `WaveformLayout` carries no NDC-vs-pixels assumption; the math is the same. `ndc_default()` is a convenience preset for storybook-style usage. M-MEDIA.10's Wisp render will use NDC values; a future editor scrubber could call the same function with pixel values.
+
+---
+
 ## M-MEDIA.8 — Audio histogram quantization (AUT-104)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `quantize(chunk, bucket_duration)` turns an `AudioChunk` into an `AudioHistogram` of `AudioBar`s (start_time, duration, peak, rms). First P1 chunk; foundation for M-MEDIA.9 (waveform geometry) and M-MEDIA.10 (Wisp render).

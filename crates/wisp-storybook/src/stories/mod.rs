@@ -1,6 +1,7 @@
 //! Registry of all stories. Each chunk that introduces a renderable feature
 //! adds one entry here.
 
+mod s_audio_histogram;
 mod s_blur_filter;
 mod s_clip_rounded;
 mod s_color_matrix;
@@ -24,12 +25,19 @@ mod s_solid_redaction;
 mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
+mod s_text_callouts;
+mod s_text_caption_block;
 mod s_text_composition;
+mod s_text_mask;
+mod s_text_presets;
+mod s_text_shadow_glow;
+mod s_text_stroke;
 mod s_text_texture;
 mod s_transform_nesting;
 mod s_vector_gallery;
 mod s_vector_overlays;
 mod s_vector_render;
+mod s_video_frame_handoff;
 mod s_webcam_shapes;
 
 use crate::story::Story;
@@ -44,6 +52,12 @@ pub fn all_stories() -> Vec<Story> {
         s_text::story(),
         s_text_texture::story(),
         s_text_composition::story(),
+        s_text_stroke::story(),
+        s_text_presets::story(),
+        s_text_caption_block::story(),
+        s_text_shadow_glow::story(),
+        s_text_callouts::story(),
+        s_text_mask::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),
@@ -68,5 +82,7 @@ pub fn all_stories() -> Vec<Story> {
         s_path_stroke::story(),
         s_mask_combine::story(),
         s_vector_gallery::story(),
+        s_audio_histogram::story(),
+        s_video_frame_handoff::story(),
     ]
 }

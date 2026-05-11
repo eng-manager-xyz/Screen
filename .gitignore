@@ -1,8 +1,9 @@
 # ─── Rust / Cargo ─────────────────────────────────────────────────────────────
-# Workspace build output. Anchored to root because nested `/target` paths
-# under crates aren't a thing in this layout — cargo writes everything to
-# the workspace's top-level target/.
+# Workspace build output. Cargo normally writes everything to the
+# top-level `target/`, but invoking `cargo` from inside a sub-crate
+# directory leaves a nested `target/` behind — ignore both shapes.
 /target
+crates/*/target/
 
 # rustfmt backup files (`cargo fmt --backup`).
 **/*.rs.bk

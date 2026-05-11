@@ -64,6 +64,12 @@
   - [FlexibleText — Glyphon WGPU rasterizer — M-TEXT.3](./wisp/text/glyphon-backend.md)
   - [Text render-to-texture — M-TEXT.5](./wisp/text/textures.md)
   - [Text composition — mask / filter / blend / export — M-TEXT.6](./wisp/text/composition.md)
+  - [Stroked / outlined text — M-TEXT.7](./wisp/text/stroke.md)
+  - [Text style presets — M-TEXT.12](./wisp/text/presets.md)
+  - [Word-wrapped caption block — M-TEXT.9](./wisp/text/caption-block.md)
+  - [Drop shadow + glow on text — M-TEXT.8](./wisp/text/shadow-glow.md)
+  - [Callouts, badges, arrows — M-TEXT.10](./wisp/text/callouts.md)
+  - [Text as mask — fill, blur, spotlight — M-TEXT.11](./wisp/text/text-mask.md)
 
 # `decode` — video decode
 
@@ -79,6 +85,12 @@
   - [GStreamer video capture — M-MEDIA.6](./media/video-capture.md)
   - [A/V sync harness — M-MEDIA.7](./media/sync-harness.md)
   - [Audio histogram quantization — M-MEDIA.8](./media/histogram.md)
+  - [Waveform bar geometry — M-MEDIA.9](./media/waveform-geometry.md)
+  - [Audio histogram in Wisp — M-MEDIA.10](./media/audio-histogram.md)
+  - [GStreamer audio → histogram example — M-MEDIA.11](./media/audio-histogram-gst.md)
+  - [Video texture handoff — M-MEDIA.12](./media/video-texture.md)
+  - [GStreamer videotestsrc through Wisp — M-MEDIA.13](./media/video-render.md)
+  - [Synced video + audio in one scene — M-MEDIA.14](./media/synced-scene.md)
 
 # `playback` — player state machine
 
