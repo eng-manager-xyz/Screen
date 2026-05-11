@@ -33,7 +33,15 @@ fn clear_color() -> Color {
 /// runners) loses the device on. Real adapters (Metal locally and on
 /// macos-latest CI) build them fine. The CI workflow sets
 /// `WISP_SKIP_GPU_FILTER_TESTS=1` on the Linux job; this filter
-/// transparently drops those stories so the remaining 9 can still run.
+/// transparently drops those stories so the rest can still run.
+///
+/// **Adding a new story?** If its `build()` ever calls
+/// `apply_filter(BlurFilter, …)`, `apply_filter(DropShadowFilter, …)`,
+/// `apply_filter(MotionBlurFilter, …)`, `apply_privacy_blur*`, or any
+/// other wrapper that touches `crate::filter::blur::run_blur_pass`,
+/// add the story id here. `DropShadowFilter` and `MotionBlurFilter`
+/// **both** call `run_blur_pass` internally — they're transitively
+/// the same problem as a raw `BlurFilter`.
 const LAVAPIPE_INCOMPATIBLE: &[&str] = &[
     "filter-blur",
     "filter-drop-shadow",
@@ -47,6 +55,12 @@ const LAVAPIPE_INCOMPATIBLE: &[&str] = &[
     "privacy-blur-rect",
     "privacy-blur-rounded",
     "privacy-blur-strength",
+    // M-TEXT.8 — `apply_filter(DropShadowFilter)` ×2 (shadow + glow).
+    // `DropShadowFilter` performs alpha-extract → run_blur_pass →
+    // composite, so it pulls the same blur pipeline that lavapipe
+    // can't keep alive. The story's `build()` runs unconditionally; no
+    // env-var guard is possible without losing the visual demo.
+    "text-shadow-glow",
 ];
 
 fn stories_for_env() -> Vec<wisp_storybook::story::Story> {
