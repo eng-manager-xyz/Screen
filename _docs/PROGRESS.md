@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.12 — Video texture handoff (AUT-108)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — synthetic `decode::VideoFrame` (128×72 BGRA, diagonal gradient + horizontal stripes) uploaded to wisp `VideoTexture` and rendered through `Sprite`. Storybook story `video-frame-handoff` proves the seam works end-to-end; PNG hero asset confirms BGRA → wgpu `Bgra8UnormSrgb` roundtrip is correct.
+- **Linear:** [AUT-108](https://linear.app/harwood/issue/AUT-108).
+- **Files:** new `crates/wisp-storybook/src/stories/s_video_frame_handoff.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers the new story. New `_docs/book/src/media/video-texture.md` chapter (mermaid sequence for the handoff path, `admonish important` for the wisp-doesn't-know-source rule, `admonish note` for BGRA being wgpu's native pixel order). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/video-frame-handoff.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` (snapshot extended) pass for the new story. Full `just gate` green. PNG inspected — gradient + stripes render with correct channel order, expected aspect ratio (16:9 scaled to ~75% NDC).
+- **Existing infrastructure formalized, not new.** `VideoTexture::upload_bgra` (wisp) and `decode::VideoFrame` (media re-export) existed before this chunk. M-MEDIA.12 is the storybook + chapter that proves the call sites work and locks the contract in a regression test. M-MEDIA.13 will swap the synthetic frame for a real GStreamer-captured one.
+
+---
+
 ## M-MEDIA.11 — GStreamer audio → histogram example (AUT-107)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `cargo run -p media --example gst_audio_histogram` captures 1 s of `audiotestsrc` (440 Hz, 48 kHz f32 mono), quantizes at 50 ms, and prints bucket / peak / RMS stats with a first-5 + last-5 bar dump. Skips with a friendly message when `gst-launch-1.0` isn't on `PATH`.

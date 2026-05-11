@@ -31,6 +31,7 @@ mod s_transform_nesting;
 mod s_vector_gallery;
 mod s_vector_overlays;
 mod s_vector_render;
+mod s_video_frame_handoff;
 mod s_webcam_shapes;
 
 use crate::story::Story;
@@ -70,5 +71,6 @@ pub fn all_stories() -> Vec<Story> {
         s_mask_combine::story(),
         s_vector_gallery::story(),
         s_audio_histogram::story(),
+        s_video_frame_handoff::story(),
     ]
 }
