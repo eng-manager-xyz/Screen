@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-00 — Storybook workbench scaffolding (AUT-120)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `crates/ui-storybook` refactored into the proposed product-surface layout (`components/{primitives,shell,menus,recorder,library,editor,cursor}`, `fixtures/`, `stories/`). Public re-export surface preserved so `app-ui`'s `use ui_storybook::components::{Button, DropZone, ...}` imports keep working unchanged. New `StoryViewport` enum on `Story`. Eighteen pre-existing stories all keep their stable kebab-case ids.
+- **Linear:** [AUT-120](https://linear.app/harwood/issue/AUT-120).
+- **Files:** moved all seven existing components into subgroup folders via `git mv` (history preserved). New `fixtures/{cursor,devices,editor,library,recorder,workspaces}.rs` with owned fixture builders + per-module unit tests. New `stories/{cursor,editor,library,menus,primitives,recorder,shell}.rs` per-surface registries; old `stories.rs` moved to `stories/mod.rs` with `Story` + `StoryViewport` + `render()` helper + `all_stories()` aggregator. New `tests/story_registry.rs` (5 tests: unique ids, kebab-case, non-empty metadata, known category buckets, fixture smoke). New `_docs/book/src/ui/presentational-contract.md` chapter. Updated `_docs/book/src/ui/overview.md` (workbench layout mermaid + boundaries) + `_docs/book/src/ui/components.md` (subgroup index). `_docs/book/src/SUMMARY.md` adds presentational-contract entry.
+- **Verified:** 17 ui-storybook tests pass (12 fixture/snapshot + 5 registry). `app-ui` still compiles unchanged. Full `just gate` green; `just snapshots-ui` regenerated every existing story asset.
+- **Contract codified in test, not just docs.** `tests/story_registry.rs::category_set_is_within_known_buckets` lists the seven approved categories — adding a new one without registering it here OR in `components.md` trips the gate. Same for kebab-case ids: a story id like `Drop Zone Idle` would fail the regex check.
+
+---
+
 ## M-TEXT.11 — Text as mask (AUT-85)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — text drives the existing `Renderer::apply_mask_to_texture` primitive. Storybook story `text-mask` shows "WISP" clipping three foregrounds: a gradient color-band fill, a blurred circles backdrop, and a warm spotlight. One mask, three foregrounds.

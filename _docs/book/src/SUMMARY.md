@@ -112,6 +112,7 @@
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)
+- [Presentational contract](./ui/presentational-contract.md)
 - [Components](./ui/components.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
