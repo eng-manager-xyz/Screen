@@ -25,6 +25,7 @@ mod s_solid_redaction;
 mod s_spotlight;
 mod s_sprite_batcher;
 mod s_text;
+mod s_text_callouts;
 mod s_text_caption_block;
 mod s_text_composition;
 mod s_text_presets;
@@ -54,6 +55,7 @@ pub fn all_stories() -> Vec<Story> {
         s_text_presets::story(),
         s_text_caption_block::story(),
         s_text_shadow_glow::story(),
+        s_text_callouts::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_gradients::story(),

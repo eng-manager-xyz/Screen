@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.10 — Vector-backed callouts (AUT-84)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — five callout shapes (caption pill, number badge, label box, pointer + label, arrow + label) composed from `Graphics::draw_rounded_rect` / `draw_ellipse` / `draw_line` + `CaptionBlock` + text sprites. No new wisp primitives.
+- **Linear:** [AUT-84](https://linear.app/harwood/issue/AUT-84).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_callouts.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/callouts.md` chapter (flowchart for the five recipes, `admonish tip` for pill-vs-label, `admonish note` flagging the no-general-path limit that forced the arrowhead-via-three-lines workaround). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-callouts.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Arrowhead from three lines.** Wisp's `Graphics` doesn't expose a general `draw_path`; the arrowhead uses three `draw_line` calls fanning from the tip. Future M-VEC.13 (SVG path import) or a `Graphics::draw_path` would let us render richer arrow geometries (curved, double-headed, filled triangle). Flagged in the chapter so future contributors don't reinvent the workaround.
+
+---
+
 ## M-TEXT.8 — Drop shadow + glow on text (AUT-82)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — text run through the existing `wisp::DropShadowFilter` produces both drop shadows (with offset) and glows (with offset = 0). One pipeline, two parameter sets. Storybook story `text-shadow-glow` shows both side-by-side on a paper-white backdrop.
