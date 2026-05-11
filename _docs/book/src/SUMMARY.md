@@ -70,6 +70,17 @@
 
 - [Overview](./decode/overview.md)
 
+# `media` — capture + playback + timing
+
+- [Architecture — M-MEDIA.0](./media/architecture.md)
+  - [Clock + timestamp model — M-MEDIA.2](./media/clock.md)
+  - [Audio data model — M-MEDIA.3](./media/audio.md)
+  - [Mock audio sources — M-MEDIA.4](./media/mock-sources.md)
+  - [GStreamer audio capture — M-MEDIA.5](./media/audio-capture.md)
+  - [GStreamer video capture — M-MEDIA.6](./media/video-capture.md)
+  - [A/V sync harness — M-MEDIA.7](./media/sync-harness.md)
+  - [Audio histogram quantization — M-MEDIA.8](./media/histogram.md)
+
 # `playback` — player state machine
 
 - [Overview](./playback/overview.md)

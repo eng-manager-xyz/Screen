@@ -1,0 +1,19 @@
+[package]
+name = "media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "GStreamer-backed audio + video capture/playback and data models. Hands typed media data to wisp; wisp never depends on this crate's GStreamer integration."
+
+[lints]
+workspace = true
+
+[lib]
+name = "media"
+path = "src/lib.rs"
+
+[dependencies]
+decode = { path = "../decode", version = "0.1.0" }
+thiserror = "2"
+tracing = { workspace = true }

@@ -16,3 +16,9 @@ path = "src/lib.rs"
 [dependencies]
 thiserror = "2"
 tracing = { workspace = true }
+
+[dev-dependencies]
+# Shared, structured GStreamer probe (M-MEDIA.1 / AUT-97). media
+# depends on decode for VideoFrame, so this is a dev-only edge —
+# decode's normal build doesn't pull media.
+media = { path = "../media", version = "0.1.0" }

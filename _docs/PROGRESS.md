@@ -6,6 +6,114 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.8 — Audio histogram quantization (AUT-104)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `quantize(chunk, bucket_duration)` turns an `AudioChunk` into an `AudioHistogram` of `AudioBar`s (start_time, duration, peak, rms). First P1 chunk; foundation for M-MEDIA.9 (waveform geometry) and M-MEDIA.10 (Wisp render).
+- **Linear:** [AUT-104](https://linear.app/harwood/issue/AUT-104).
+- **Files:** filled in `crates/media/src/histogram.rs` (was scaffolded by M-MEDIA.0). `crates/media/src/lib.rs` re-exports `AudioBar`, `AudioHistogram`. New `_docs/book/src/media/histogram.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 10 unit tests cover silence → zero peak/rms, sine → `rms ≈ A/√2` on every interior bar, pulse → singular peak in the expected bucket + zeros elsewhere, bucket counts at 10/20/50 ms, empty chunk → empty histogram, contiguous bar timestamps (`bar[i+1].start == bar[i].start + bar[i].duration`), stereo chunks collapse to a single bar series, `Send + Sync`. Full `just gate` green at 376 tests (366 + 10 new).
+- **Three references match three correctness assertions.** M-MEDIA.4's `SilenceSource` / `SineWaveSource` / `StepPulseSource` line up 1:1 with the histogram's three properties — silence → zero bars, sine → stable RMS, pulse → expected peak. Same mock sources will drive M-MEDIA.10 (Wisp render) + M-MEDIA.11 (gst→histogram example) tests, so the correctness chain is uniform across the visualization stack.
+- **Multi-channel collapses to a single bar series.** Every sample in the interleaved buffer counts toward the same bucket — matches dope-sheet rendering (one row per audio track, not per channel) and keeps the math + tests simple. M-MEDIA.9 (geometry) is where mono vs stereo display becomes meaningful.
+- **Exact timestamps via `MediaTime::from_sample` round-half-up.** Successive bars are byte-exact contiguous; no gap-or-overlap drift across long histograms. The contiguity assertion in the test asserts this byte-for-byte.
+
+---
+
+## M-MEDIA.7 — A/V sync harness (AUT-103)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `sync::run(SyncConfig)` combines audio + video GStreamer captures and reports per-stream timing + inter-stream drift. Closes the P0 tier: GStreamer can capture audio + video and stamp both on one timeline.
+- **Linear:** [AUT-103](https://linear.app/harwood/issue/AUT-103).
+- **Files:** new `crates/media/src/sync.rs` (`SyncConfig`, `SyncReport`, `run`, `Error`). `crates/media/src/lib.rs` registers the module. New `crates/media/tests/sync_harness_integration.rs` (4 tests, skip-guarded). New `_docs/book/src/media/sync-harness.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 integration tests (1 s deterministic capture): exact frame counts (48000 audio + 30 video), first-PTS alignment < 100 ms, drift < 1/25 s, last-PTS ≤ 1 s. 2 unit tests for `SyncReport::drift_within` + `SyncConfig::deterministic_1s` arithmetic. Full `just gate` green at 366 tests (360 + 6 new).
+- **`SyncReport::Display`** writes a one-line compact summary for logs — `audio_frames` / `video_frames` / `first_*_pts` / `last_*_pts` / `drift` all reported. The harness's `eprintln!("{report}")` in the integration tests doubles as the AUT-103 "manual regression" diagnostic.
+- **Synthetic sources for the test, real shape for live capture.** The harness type signature accepts arbitrary `SyncConfig` so M-MEDIA.15 / .16 (live mic + webcam) can swap the underlying captures without changing the harness or its callers. For now both sources are GStreamer test sources.
+- **Drift is near-zero by construction for synthetic sources** (counters in / counters out), so the integration assertion uses a wide-but-meaningful tolerance (< 1/25 s, i.e., one 25-fps frame). The drift instrument becomes a real regression check when live capture lands — then it'll surface actual clock disagreement between the OS audio + video subsystems.
+
+---
+
+## M-MEDIA.6 — GStreamer video test-source capture (AUT-102)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `GstreamerVideoCapture::test_source(w, h, fps)` produces BGRA `VideoFrame`s by piping `videotestsrc ! videoconvert ! video/x-raw,format=BGRA ! fdsink fd=1` through `gst-launch-1.0`.
+- **Linear:** [AUT-102](https://linear.app/harwood/issue/AUT-102).
+- **Files:** new `crates/media/src/gstreamer_video.rs`. `crates/media/src/lib.rs` registers the module. New `crates/media/tests/gstreamer_video_integration.rs` (3 tests, skip-guarded). New `_docs/book/src/media/video-capture.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 3 integration tests (skip-guarded): 5-frame contiguous PTS at 30 fps, distinct frame bytes (SMPTE colorbars include an animated ball), dimensions/framerate accessor round-trip. 2 unit tests for construction guards + `Send`. Full `just gate` green at 360 tests (355 + 5 new).
+- **Reuses `decode::VideoFrame`.** The frame contract is shared end-to-end (decode crate's VideoStream impls, media's new GStreamer capture, future webcam capture in M-MEDIA.16). No duplication; one type means one shape passed to wisp's texture upload (M-MEDIA.12).
+- **PTS via `MediaTime::from_frame`.** Frame 90 at 30 fps = exactly 3.0 s. No drift across long captures thanks to M-MEDIA.2's round-half-up.
+- **`Drop` kills + waits** (same as `gstreamer_audio`). Without it, the gst-launch child keeps decoding into a dropped pipe.
+
+---
+
+## M-MEDIA.5 — GStreamer audio test-source capture (AUT-101)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `GstreamerAudioCapture::test_source(fmt, freq)` produces normalized `f32` `AudioChunk`s by piping `audiotestsrc ! audioconvert ! audioresample ! F32LE ! fdsink fd=1` through `gst-launch-1.0`. Companion `from_file(path, fmt)` decodes real audio (the bundled MP3 fixture) through the same pipeline shape — proves the histogram + waveform paths against real-world signal.
+- **Linear:** [AUT-101](https://linear.app/harwood/issue/AUT-101).
+- **Files:** new `crates/media/src/gstreamer_audio.rs` (`GstreamerAudioCapture`, `Error`). `crates/media/src/lib.rs` registers the module. New `crates/media/tests/gstreamer_audio_integration.rs` (4 tests, skip-guarded). New `_docs/book/src/media/audio-capture.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 4 integration tests cover (1) 3×100 ms chunks with contiguous PTS, (2) audiotestsrc sine RMS ≈ 0.566 (= default volume 0.8 / √2), (3) stereo interleave L ≈ R, (4) the bundled MP3 fixture decodes to 44.1 kHz stereo with RMS in `(0.4, 0.95)` and peak > 0.5 after MP3 round-trip. 3 additional unit tests for caps-string construction, non-F32 rejection, and `Send`. Full `just gate` green at 355 tests (348 + 7 new).
+- **`Drop` kills the child + waits.** Without it, `gst-launch-1.0` keeps decoding into a dropped pipe and burns CPU. Matches `decode::GstreamerPipeStream`'s pattern. Documented in the chapter.
+- **Real fixture beats mock.** The committed `tests/fixtures/sample-audio.mp3` (a deterministic 35-s 440 Hz sine generated locally via gstreamer in the previous commit) lets M-MEDIA.8 / .9 / .10 assert numeric correctness against actual decoded audio. The license-clean-by-construction nature means no third-party-rights risk.
+- **Format gate at construction.** Only `SampleFormat::F32` is accepted. Caps are F32LE; converting integer formats here would push sample-format complexity into the public API for no payoff. Non-F32 returns `Error::UnsupportedFormat`. M-MEDIA.15 (live mic) follows the same gate.
+
+---
+
+## M-MEDIA.4 — Deterministic mock audio sources (AUT-100)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `SineWaveSource`, `SilenceSource`, `StepPulseSource` ship as the byte-exact reproducible audio inputs every M-MEDIA test consumes. No microphone, no GStreamer.
+- **Linear:** [AUT-100](https://linear.app/harwood/issue/AUT-100).
+- **Files:** new `crates/media/src/mock_audio.rs`. `crates/media/src/lib.rs` registers + re-exports the three sources. New `_docs/book/src/media/mock-sources.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover sample counts, stereo interleave, peak ≈ amplitude, RMS ≈ A/√2 (the canonical sinusoid identity), PTS-advance across calls, silence → zeros, spike at expected frame, spike outside window (cross-chunk boundary), stereo spike fills both channels, no-GStreamer-or-device-dep contract, `Send + Sync`. Full `just gate` green at 348 tests (337 + 11 new).
+- **Three shapes match M-MEDIA.8's three assertions.** Silence → zero bars. Sine → stable RMS. Pulse → expected peak. The same sources used to test the histogram quantizer (M-MEDIA.8) will be used to test the histogram→Wisp render path (M-MEDIA.10) and the GStreamer-audio→histogram example (M-MEDIA.11). One reference, three layers of consumers.
+- **PTS comes from `MediaTime::from_sample`.** Two successive `next_chunk(48_000)` calls on a 48 kHz source produce chunks with `pts = 0 s` and `pts = 1 s` exactly — no rounding drift across long sessions thanks to the round-half-up in M-MEDIA.2's clock.
+
+---
+
+## M-MEDIA.3 — Audio sample + chunk data model (AUT-99)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `AudioFormat` + `AudioChunk` ship as the single shared audio data model. Every M-MEDIA chunk that touches audio (capture, mock sources, histogram, mic) flows through this type.
+- **Linear:** [AUT-99](https://linear.app/harwood/issue/AUT-99).
+- **Files:** filled in `crates/media/src/audio.rs` (scaffolded by M-MEDIA.0). New types: `SampleFormat`, `AudioFormat` (with `mono_f32` / `stereo_f32` presets), `AudioChunk` (validated), `AudioChunkError`. `crates/media/src/lib.rs` re-exports all four. New `_docs/book/src/media/audio.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 11 unit tests cover mono@48kHz=1s, stereo@48kHz=0.5s, unaligned-buffer rejection, zero-channels rejection, zero-rate rejection, empty buffer = zero duration, `peak()` returns max-abs, `rms()` zero for silence + unit for constant signal, preset channel counts, `Send + Sync`. Full `just gate` green at 337 tests (326 + 11 new).
+- **Normalized f32 end-to-end.** GStreamer's `audioconvert ! audio/x-raw,format=F32LE` produces it natively; cpal / coreaudio prefer it. No re-layout work at the capture seam. The `SampleFormat` enum lets capture-side code declare its *input* layout (F32 / I16 / U8) for future device backends — internally `AudioChunk::samples` is always `&[f32]`.
+- **Planar-per-frame interleave** (`[L₀, R₀, L₁, R₁, …]`). Matches GStreamer + cpal conventions.
+- **Validation covers what matters at the data layer.** `samples.len() % channels == 0`, channels > 0, rate > 0. NaN / clipping / DC-offset are visualization concerns and live in M-MEDIA.8 (histogram).
+- **Pre-computed `peak()` + `rms()`** on the chunk — they're called every bucket by the histogram quantizer; caching the result avoids re-walking the same buffer.
+
+---
+
+## M-MEDIA.2 — Timestamp + clock model (AUT-98)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `MediaTime`, `MediaDuration`, `MediaClock`, `Timestamped<T>` ship as the shared timeline vocabulary. Every M-MEDIA chunk after this stamps its chunks/frames against a `MediaClock`.
+- **Linear:** [AUT-98](https://linear.app/harwood/issue/AUT-98).
+- **Files:** filled in `crates/media/src/clock.rs` (was scaffolded by M-MEDIA.0). `crates/media/src/lib.rs` re-exports the four types. New `_docs/book/src/media/clock.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 13 unit tests cover frame-90@30fps == 3s, sample-48000@48kHz == 1s exactly, sample round-trip at 44.1/48 kHz, frame round-trip at 24/30/60 fps, duration arithmetic (`MediaTime ± MediaDuration` and `MediaTime - MediaTime`), monotonic ordering + sort, manual-clock advance, wall-clock non-decreasing, `Timestamped<T>::assign`, `MediaDuration::abs` (drift), `from_millis` exactness, `Send + Sync`. Full `just gate` green at 326 tests (313 + 13 new).
+- **i64 nanoseconds internal.** ≈ 292 years of headroom, exact integer arithmetic, signed for pre-origin offsets. `f64` seconds is exposed for user-facing labels but the math runs in i128 to avoid mid-computation overflow.
+- **Round-half-up in `to_sample` / `to_frame`.** Without rounding, 44.1 kHz drifts -1 sample per conversion (the original `from_sample(1, 44100)` produced 22 675 ns, `to_sample(22 675, 44100)` gave back 0). Round-trip now exact for every sample rate that doesn't divide 10⁹ evenly.
+- **Two clock modes — `wall_clock` vs `manual`.** Production uses wall-clock; tests + the synthetic A/V sync harness (M-MEDIA.7) use manual mode for byte-exact reproducibility. `MediaClock::is_manual()` exposes the mode for assertions.
+
+---
+
+## M-MEDIA.1 — Shared structured GStreamer probe (AUT-97)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `media::gstreamer::probe()` returns a structured `GStreamerProbe` (per-binary version, requested-plugin map, `PATH` snapshot) instead of a bare `bool`. CI failure logs now show *why* GStreamer is unavailable, not just "false."
+- **Linear:** [AUT-97](https://linear.app/harwood/issue/AUT-97).
+- **Files:** filled in `crates/media/src/gstreamer.rs` (was scaffolded by M-MEDIA.0). New: `GStreamerProbe`, `probe()`, `probe_with_plugins(&[&str])`, `is_available()`, `Display` impl that pretty-prints the diagnostic. `crates/decode/Cargo.toml` adds `media` as a dev-dep (one-way edge — `media` already depends on `decode` for `VideoFrame`, so `dev-dep` reverses safely without cycling the production build). `crates/decode/tests/gstreamer_integration.rs` migrated from a local `gstreamer_available()` to `media::gstreamer::is_available`. `crates/decode/src/gstreamer_pipe.rs::gstreamer_available()` gains a docstring pointing at the canonical helper (`preview` + `app` tests keep calling the decode helper for now — they'll cut over when M-MEDIA.5/.6 touches them).
+- **Verified:** 6 new media::gstreamer unit tests (path-snapshot non-empty, empty-plugin-map default, requested-plugin recording, `is_available` consistency, `Display` format, `Send + Sync`). All run without GStreamer installed (the deterministic `__not_a_real_plugin__` check and the synthetic `Display` test are host-independent). Full `just gate` green at 313 tests (311 + 2 new media-crate tests + 4 in `gstreamer`).
+- **Plugin checks via `gst-inspect-1.0`.** Used over parsing `gst-launch -h` output. Returns `false` for both "checked-but-missing" and "not-checked"; callers wanting to distinguish inspect `GStreamerProbe::plugins` directly.
+- **Dev-dep direction is intentional.** Adding `media` as a normal dep on `decode` would cycle the lib graph (`media` → `decode` → `media`); the test-target-only edge is safe because Cargo doesn't include dev-deps in the lib graph. M-MEDIA.5/.6 may later move `VideoFrame` into `media` and flip the dependency, but that's a later chunk.
+- **Decode's bool helper kept on purpose.** `decode::gstreamer_pipe::gstreamer_available()` continues to work as a backwards-compat shim. Its docstring now points at `media::gstreamer::is_available()` as the canonical entrypoint. Callers in `preview` + `app` tests are unchanged — chunk-bound migration avoids unrelated test churn.
+
+---
+
+## M-MEDIA.0 — Media crate boundary + architecture docs (AUT-96)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — new `crates/media` is the home for GStreamer-backed audio + video capture, playback orchestration, and the data models that `wisp` (renderer) and `app` (Tauri+Leptos shell) consume. Scaffolded with module-level docs that lock in the three-way responsibility split before any of the subsequent 22 M-MEDIA chunks land.
+- **Linear:** [AUT-96](https://linear.app/harwood/issue/AUT-96). Foundation chunk for the M-MEDIA track; the remaining P0 (AUT-97..103), P1 (AUT-104..110), P2 (AUT-111..117), and P3 (AUT-118) tickets all build on top.
+- **Files:** new `crates/media/Cargo.toml` (depends on `decode` for the `VideoFrame` re-export + `thiserror`/`tracing` workspace deps). New `crates/media/src/lib.rs` with the crate-level architecture docstring + module declarations. Six scaffolded module files (`audio.rs`, `clock.rs`, `gstreamer.rs`, `histogram.rs`, `manifest.rs`, `video.rs`), each carrying a `//!` header documenting the planned surface for its chunk. New `_docs/book/src/media/architecture.md` chapter. `_docs/book/src/SUMMARY.md` gains a new `media` section. CLAUDE.md was updated separately (commit `5e58d54`) with the asset-choice rules every M-MEDIA chunk consumes.
+- **Verified:** 2 smoke tests in `crates/media/src/lib.rs` (re-export of `VideoFrame`, trait re-export of `VideoStream`). `cargo check -p media --all-targets` green; full `just gate` green.
+- **Why this split.** The boundary is load-bearing: every wisp consumer (storybook, headless export, future plugins) would inherit GStreamer's build + license footprint if `wisp` ever depended on this crate's GStreamer integration. The split also makes the backend swappable — a future ScreenCaptureKit / Media Foundation native path slots into `media` without touching `wisp`.
+- **CLI-pipe over `gstreamer-rs`.** Documented in the architecture chapter and in CLAUDE.md's GStreamer lessons. M-MEDIA.1 will extract `decode::gstreamer_pipe::gstreamer_available()` into a shared structured-diagnostic helper.
+- **Scaffolded modules are intentional.** Each `//!` doc describes the planned surface so the very next chunk on the module reads as "convert this comment into real types + tests + an mdBook chapter of its own." The crate compiles green from day one; chunks add code, not infrastructure.
+
+---
+
 ## M-TEXT.6 — Text composes through mask / filter / blend / export (AUT-80)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — with M-TEXT.5's `TextTexturePipeline` in hand, text becomes a `RenderTexture`, and the existing renderer plumbs that through every composition surface (render_stage, non-Normal blend, filter chain, headless export, mask clipping).

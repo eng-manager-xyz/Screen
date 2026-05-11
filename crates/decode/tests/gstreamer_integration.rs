@@ -6,21 +6,10 @@
 //! without `GStreamer` don't fail the gate.
 
 use std::path::Path;
-use std::process::Command;
 
 use decode::VideoStream;
 use decode::gstreamer_pipe::GstreamerPipeStream;
-
-fn gstreamer_available() -> bool {
-    Command::new("gst-launch-1.0")
-        .arg("--version")
-        .output()
-        .is_ok_and(|out| out.status.success())
-        && Command::new("gst-discoverer-1.0")
-            .arg("--version")
-            .output()
-            .is_ok_and(|out| out.status.success())
-}
+use media::gstreamer::is_available as gstreamer_available;
 
 const FIXTURE: &str = "tests/fixtures/sample.mp4";
 
