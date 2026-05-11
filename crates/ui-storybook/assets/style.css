@@ -28,7 +28,214 @@
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Semantic UI-01 tokens ──────────────────────────────────
+   *
+   * Aliases for the recurring product surfaces. Components should
+   * reach for these instead of the raw `--bg` / `--border` /
+   * `--accent` values so the same component reads correctly in
+   * popovers, panels, and selected rows. New semantic tokens are
+   * added here when a component needs one that isn't yet defined.
+   */
+  --surface-base: var(--bg);
+  --surface-elevated: var(--bg-elev);
+  --surface-popover: #131316;
+  --surface-selected: #232329;
+  --surface-glass: rgba(24, 24, 27, 0.78);
+
+  --text-primary: var(--fg);
+  --text-secondary: var(--fg-muted);
+  --text-tertiary: #71717a;
+
+  --line-subtle: var(--border);
+  --line-strong: var(--border-strong);
+
+  --action-record: var(--danger);
+  --action-record-hover: #dc2626;
+
+  --shadow-popover: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --shadow-elevated: 0 6px 16px rgba(0, 0, 0, 0.30);
+
+  --radius-panel: var(--radius-lg);
+  --radius-control: var(--radius);
+  --radius-pill: 999px;
+
+  --focus-ring: 0 0 0 2px rgba(56, 189, 248, 0.55);
 }
+
+/* ───── Surface ───── */
+.surface {
+  border-radius: var(--radius-panel);
+}
+.surface-base { background: var(--surface-base); }
+.surface-elevated {
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  box-shadow: var(--shadow-elevated);
+}
+.surface-popover {
+  background: var(--surface-popover);
+  border: 1px solid var(--line-subtle);
+  box-shadow: var(--shadow-popover);
+}
+.surface-selected {
+  background: var(--surface-selected);
+  border: 1px solid var(--line-strong);
+}
+.surface-glass {
+  background: var(--surface-glass);
+  border: 1px solid var(--line-strong);
+  backdrop-filter: blur(12px);
+}
+
+/* ───── Badge ───── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.badge-neutral {
+  background: var(--secondary);
+  color: var(--text-primary);
+}
+.badge-accent {
+  background: rgba(250, 250, 250, 0.10);
+  color: var(--text-primary);
+  border: 1px solid var(--line-subtle);
+}
+.badge-danger {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+.badge-live {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+.badge-live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--action-record);
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  animation: rec-pulse 1.4s ease-out infinite;
+}
+.badge-plan {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--line-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+.badge-count {
+  background: var(--secondary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  min-width: 18px;
+  justify-content: center;
+}
+
+/* ───── Divider ───── */
+.divider {
+  background: var(--line-subtle);
+}
+.divider-h {
+  height: 1px;
+  width: 100%;
+}
+.divider-v {
+  width: 1px;
+  align-self: stretch;
+}
+
+/* ───── Kbd row ───── */
+.kbd-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.kbd-key {
+  font-family: var(--font-mono);
+  background: var(--secondary);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+}
+
+/* ───── IconTile ───── */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  border: 1px solid var(--line-subtle);
+}
+.icon-tile-workspace { background: linear-gradient(135deg, #4338ca, #db2777); color: #fff; border-color: transparent; }
+.icon-tile-device    { background: var(--secondary); color: var(--text-secondary); }
+.icon-tile-app       { background: #1e293b; color: #e2e8f0; }
+.icon-tile-action    { background: var(--surface-elevated); }
+.icon-tile-user      { background: #18181b; color: #fafafa; border-radius: 8px; }
+
+/* ───── UI-01 story layout helpers ───── */
+.token-grid {
+  display: grid;
+  grid-template-columns: 220px 80px 1fr;
+  gap: 8px 14px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 14px 18px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-panel);
+}
+.token-name { color: var(--text-secondary); }
+.token-swatch {
+  width: 60px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-subtle);
+}
+.token-value { color: var(--text-primary); }
+
+.surface-stack {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  background: var(--surface-base);
+  border-radius: var(--radius-panel);
+}
+.surface-demo {
+  padding: 16px 20px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.badge-row { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 14px; }
 
 html, body {
   background: var(--bg);

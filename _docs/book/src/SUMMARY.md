@@ -114,6 +114,8 @@
 - [Overview](./ui/overview.md)
 - [Presentational contract](./ui/presentational-contract.md)
 - [Components](./ui/components.md)
+  - [Design tokens](./ui/chunks/tokens.md)
+  - [Surface primitives](./ui/chunks/surface-primitives.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

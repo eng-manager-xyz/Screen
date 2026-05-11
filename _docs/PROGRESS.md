@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-01 — Design tokens + base surface primitives (AUT-121)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — five new primitives (`Surface`, `Badge`, `Divider`, `Kbd`, `IconTile`) + a semantic-token expansion of `style.css`. Five new stories (`tokens-dark-zinc`, `surface-stack`, `badge-variants`, `kbd-shortcuts`, `icon-tile-variants`). Two new mdBook chapters (token table + surface primitives).
+- **Linear:** [AUT-121](https://linear.app/harwood/issue/AUT-121).
+- **Files:** new `crates/ui-storybook/src/components/primitives/{surface,badge,divider,kbd,icon_tile}.rs`. `components/primitives/mod.rs` + `components/mod.rs` re-export the new types. `assets/style.css` gains semantic tokens (`--surface-base/-elevated/-popover/-selected/-glass`, `--text-primary/-secondary/-tertiary`, `--line-subtle/-strong`, `--action-record/-hover`, `--shadow-popover/-elevated`, `--radius-panel/-control/-pill`, `--focus-ring`) + new component classes. `stories/primitives.rs` adds the five new stories. New `_docs/book/src/ui/chunks/{tokens,surface-primitives}.md`. `SUMMARY.md` indexes both. Five new HTML assets via `just snapshots-ui`.
+- **Verified:** 22 ui-storybook tests pass (12 fixture + 5 registry + 4 primitive class-uniqueness + 1 SSR snapshot — snapshot extended for new stories). Full `just gate` green.
+- **Tokens are the public API; raw hex is implementation detail.** `:root` in `style.css` defines the zinc palette; every component class references semantic aliases. UI-23's grep guardrail (later in this PR) will flag stray hex outside `:root` + token demos.
+
+---
+
 ## UI-00 — Storybook workbench scaffolding (AUT-120)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `crates/ui-storybook` refactored into the proposed product-surface layout (`components/{primitives,shell,menus,recorder,library,editor,cursor}`, `fixtures/`, `stories/`). Public re-export surface preserved so `app-ui`'s `use ui_storybook::components::{Button, DropZone, ...}` imports keep working unchanged. New `StoryViewport` enum on `Story`. Eighteen pre-existing stories all keep their stable kebab-case ids.

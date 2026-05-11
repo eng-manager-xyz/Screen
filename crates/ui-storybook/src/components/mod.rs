@@ -58,6 +58,9 @@ pub use editor::{
     DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, PlayState, PlayerControls,
     TrackKind,
 };
-pub use primitives::{Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader};
+pub use primitives::{
+    Badge, BadgeKind, Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, Divider,
+    DividerOrientation, IconTile, IconTileKind, Kbd, Surface, SurfaceKind,
+};
 pub use recorder::{RecordingState, RecordingToolbar};
 pub use shell::{DropZone, DropZoneState, StatusBar, StatusKind};
