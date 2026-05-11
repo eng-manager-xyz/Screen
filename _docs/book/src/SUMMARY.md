@@ -69,6 +69,7 @@
   - [Word-wrapped caption block — M-TEXT.9](./wisp/text/caption-block.md)
   - [Drop shadow + glow on text — M-TEXT.8](./wisp/text/shadow-glow.md)
   - [Callouts, badges, arrows — M-TEXT.10](./wisp/text/callouts.md)
+  - [Text as mask — fill, blur, spotlight — M-TEXT.11](./wisp/text/text-mask.md)
 
 # `decode` — video decode
 

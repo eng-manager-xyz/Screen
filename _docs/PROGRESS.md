@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.11 — Text as mask (AUT-85)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text drives the existing `Renderer::apply_mask_to_texture` primitive. Storybook story `text-mask` shows "WISP" clipping three foregrounds: a gradient color-band fill, a blurred circles backdrop, and a warm spotlight. One mask, three foregrounds.
+- **Linear:** [AUT-85](https://linear.app/harwood/issue/AUT-85).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_mask.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/text-mask.md` chapter (mermaid sequence for the mask-compose pipeline, `admonish important` for the apply_mask_to_texture-is-load-bearing rule, `admonish tip` for the separable-foreground pattern, `admonish warning` for the lavapipe filter guard). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-mask.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green. PNG inspected — top row gradient bands through "WI", middle row blurred circles, bottom row warm spotlight. Three distinct foregrounds clipped to the same glyph silhouette.
+- **No new wisp code.** `apply_mask_to_texture` already accepted any coverage RT (M-VEC.4..6, M-MASK.2..4). Text just joins the list of valid coverage sources. Story uses `WISP_SKIP_GPU_FILTER_TESTS` to substitute non-blur foregrounds on lavapipe so CI stays green.
+
+---
+
 ## M-TEXT.10 — Vector-backed callouts (AUT-84)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — five callout shapes (caption pill, number badge, label box, pointer + label, arrow + label) composed from `Graphics::draw_rounded_rect` / `draw_ellipse` / `draw_line` + `CaptionBlock` + text sprites. No new wisp primitives.
