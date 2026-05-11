@@ -117,7 +117,9 @@ jobs:
           mdbook --version
           mdbook-mermaid --version
           mdbook-admonish --version
-          mdbook-cmdrun --version
+          # mdbook-cmdrun's CLI rejects `--version`; `--help` exits 0
+          # if the binary is callable, which is all we need here.
+          mdbook-cmdrun --help >/dev/null
 
       # cargo doc needs `missing_docs` to stay a warn-level lint (already
       # the case in workspace lints) so this won't fail on a clean tree.
