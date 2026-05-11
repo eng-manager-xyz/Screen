@@ -5,6 +5,14 @@ reproducible samples — no microphone, no GStreamer. Every test that
 wants "this is what audio looks like" without a live device uses one
 of these.
 
+![](../assets/media/mock-sources-waveform.png)
+
+*Left to right:* `SineWaveSource(440 Hz, A=0.7)` — five cycles
+fitting the panel; `SilenceSource` — flat zero everywhere;
+`StepPulseSource(120)` — a single 1.0 spike at frame 120, silent
+otherwise. Rendered against a white backdrop per the CLAUDE.md
+asset-choice rule (audio shape needs light backing to read).
+
 [api](../api/media/mock_audio/index.html)
 
 ## The three shapes

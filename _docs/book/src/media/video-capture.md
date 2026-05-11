@@ -6,6 +6,19 @@ raw BGRA frames on stdout, then chunks the byte stream into
 type [`decode::VideoStream`](../api/decode/trait.VideoStream.html)
 returns.
 
+<video controls autoplay muted loop playsinline width="320" src="../assets/media/video-capture.mp4">
+  Your browser doesn't support inline video; see
+  <a href="../assets/media/video-capture.mp4">video-capture.mp4</a>.
+</video>
+
+*3 seconds of `videotestsrc` SMPTE colorbars at 320×240, 30 fps.*
+Same content `GstreamerVideoCapture::test_source` emits frame-by-frame
+into a `VideoFrame` stream; the animated ball in the bottom-left
+corner is `videotestsrc`'s built-in "is this actually moving"
+indicator. Captured directly via `gst-launch-1.0 + x264enc + mp4mux`
+(see `just snapshots-media-video`) so the chapter carries a concrete
+artifact independent of the Rust test path.
+
 [api](../api/media/gstreamer_video/struct.GstreamerVideoCapture.html)
 
 ## Pipeline

@@ -1145,6 +1145,7 @@ dependencies = [
 name = "decode"
 version = "0.1.0"
 dependencies = [
+ "media",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -3489,6 +3490,17 @@ checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
 dependencies = [
  "cfg-if",
  "rayon",
+]
+
+[[package]]
+name = "media"
+version = "0.1.0"
+dependencies = [
+ "decode",
+ "image",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

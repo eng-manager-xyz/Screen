@@ -27,7 +27,19 @@ cargo run -p preview --example render_offscreen
 ```
 
 Five frames into a 800×450 surface (16:9), with the 480×270 fixture
-letterboxed to fit:
+letterboxed to fit.
+
+> **What you're looking at.** The committed `sample.mp4` test
+> fixture is a deterministic *synthetic* gradient (the M-DEC.1
+> mock-stream encoded once with x264 into an 11 KB MP4) — the
+> visible "gradient look" is the fixture content, not a rendering
+> bug. The chapter's claim is that the
+> `winit → wgpu → Application::from_wgpu → Player::tick → Renderer`
+> path delivers decoded frames into the surface; the
+> horizontal-phase advance frame-to-frame is the proof. For a more
+> representative example of decoded-video output, see the
+> [`media` chapters](../../media/video-capture.html) which use
+> `videotestsrc` SMPTE colorbars.
 
 | Frame 00 | Frame 01 | Frame 02 |
 |---|---|---|
@@ -36,11 +48,6 @@ letterboxed to fit:
 | Frame 03 | Frame 04 |
 |---|---|
 | ![](../../assets/preview/preview_03.png) | ![](../../assets/preview/preview_04.png) |
-
-The fixture is the M-DEC.1 mock-stream gradient encoded once with x264
-into an 11 KB MP4. The horizontal phase advances tick-over-tick — same
-`Player::tick(dt)` pump as `playback::play_file`, just routed through
-`from_wgpu` instead of `Application::new`.
 
 ## Done when
 

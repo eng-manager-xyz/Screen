@@ -5,6 +5,34 @@ raw audio on stdout, then chunks the byte stream into
 [`AudioChunk`](../api/media/audio/struct.AudioChunk.html)s with
 contiguous PTS.
 
+## Round-tripped through the bundled MP3 fixture
+
+<audio controls preload="metadata" src="../assets/media/sample-audio.mp3">
+  Your browser doesn't support inline audio; the fixture lives at
+  `crates/media/tests/fixtures/sample-audio.mp3`.
+</audio>
+
+The bundled 34.9-s [`sample-audio.mp3`](../assets/media/sample-audio.mp3)
+(deterministic 440 Hz sine, generated locally via gstreamer's
+`audiotestsrc + lamemp3enc` — license-clean by construction) feeds
+`GstreamerAudioCapture::from_file`. After decode you get a stream of
+`AudioChunk`s carrying normalized `f32` samples.
+
+![](../assets/media/audio-capture-waveform.png)
+
+*First 100 ms of the decoded MP3.* The flat lead-in is the MP3
+decoder's priming samples (mpeg-layer-3 has a brief encoder delay);
+the visible sine cycles afterward are the 440 Hz tone the fixture
+encodes. Rendered as a min/max envelope per pixel column so the
+high-frequency content reads as a band rather than aliased noise.
+
+![](../assets/media/audio-capture-histogram.png)
+
+*Same audio, quantized at 200 ms buckets across the full 34.9 s.*
+Uniform bars — a pure tone has constant amplitude so every bucket
+has the same `peak` and `rms`. RMS sits ≈ 0.707 × peak (the
+canonical sinusoid identity `A/√2`).
+
 [api](../api/media/gstreamer_audio/struct.GstreamerAudioCapture.html)
 
 ## Two source modes

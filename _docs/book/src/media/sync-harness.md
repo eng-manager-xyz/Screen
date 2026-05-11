@@ -7,6 +7,43 @@ drift. With synthetic `audiotestsrc` + `videotestsrc` the assertion
 stays deterministic — live capture (M-MEDIA.15 / .16) will reuse this
 exact harness with `autoaudiosrc` / `autovideosrc`.
 
+## The two streams the harness drives
+
+<table>
+<tr>
+<td valign="top" width="50%">
+
+<video controls muted loop playsinline width="320" src="../assets/media/video-capture.mp4">
+  <a href="../assets/media/video-capture.mp4">video-capture.mp4</a>
+</video>
+
+*Video side — `videotestsrc` SMPTE colorbars (3 s, 320×240, 30 fps).*
+
+</td>
+<td valign="top" width="50%">
+
+<audio controls preload="metadata" src="../assets/media/sample-audio.mp3">
+  See `crates/media/tests/fixtures/sample-audio.mp3`.
+</audio>
+
+![](../assets/media/audio-capture-waveform.png)
+
+*Audio side — first 100 ms of the bundled 440 Hz MP3 fixture.*
+
+</td>
+</tr>
+</table>
+
+The harness pulls audio chunks (`audio_chunk_frames` per call —
+4 800 frames / 100 ms at 48 kHz in the default config) and one video
+frame per video tick until the configured `MediaDuration` is covered.
+Both streams stamp their own PTS via
+[`MediaTime`](../api/media/clock/struct.MediaTime.html); the
+[`SyncReport`](../api/media/sync/struct.SyncReport.html) records the
+**end-of-window** timestamp for each stream
+(`chunk.pts + chunk.duration` for audio, `frame.pts + 1/fps` for
+video) so the drift calculation is symmetric.
+
 [api](../api/media/sync/index.html)
 
 ## What "drift" means here

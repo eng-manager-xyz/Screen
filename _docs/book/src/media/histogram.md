@@ -6,6 +6,15 @@ visualization. Each
 [`AudioBar`](../api/media/histogram/struct.AudioBar.html) carries
 its window's start time, duration, peak, and RMS.
 
+![](../assets/media/histogram-three-panel.png)
+
+*Left to right: the same three mock sources as the
+[mock-sources chapter](mock-sources.md), quantized at 50 ms buckets
+over 1 s of audio.* Outer (light grey) extent = `peak`; inner
+(amber) bar = `rms`. **Sine:** every bucket carries the same
+height — constant amplitude. **Silence:** nothing. **Pulse:** one
+bucket carries the spike (`peak = 1.0`), the rest are zero.
+
 [api](../api/media/histogram/index.html)
 
 ## Math
