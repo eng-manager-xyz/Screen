@@ -67,6 +67,7 @@
   - [Stroked / outlined text — M-TEXT.7](./wisp/text/stroke.md)
   - [Text style presets — M-TEXT.12](./wisp/text/presets.md)
   - [Word-wrapped caption block — M-TEXT.9](./wisp/text/caption-block.md)
+  - [Drop shadow + glow on text — M-TEXT.8](./wisp/text/shadow-glow.md)
 
 # `decode` — video decode
 

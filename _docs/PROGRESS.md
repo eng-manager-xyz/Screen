@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.8 — Drop shadow + glow on text (AUT-82)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text run through the existing `wisp::DropShadowFilter` produces both drop shadows (with offset) and glows (with offset = 0). One pipeline, two parameter sets. Storybook story `text-shadow-glow` shows both side-by-side on a paper-white backdrop.
+- **Linear:** [AUT-82](https://linear.app/harwood/issue/AUT-82).
+- **Files:** new `crates/wisp-storybook/src/stories/s_text_shadow_glow.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/shadow-glow.md` chapter (mermaid sequence for the pipeline, `admonish important` for the glow-is-shadow-with-offset-zero insight, `admonish warning` for the sprite-vs-graphics backdrop rule, a parameter table for picking the right look). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-shadow-glow.png`.
+- **Verified:** `story_smoke` + `story_fingerprints` pass. Full `just gate` green. PNG inspected — drop shadow (dark offset blur) and glow (warm halo at zero offset) both render correctly through the same filter.
+- **No new wisp code.** The filter pipeline already accepted any source `RenderTexture`; the text-texture pipeline already produced one. The chunk is composition + documentation — but documenting the parameter set per look is what turns a generic filter into a recognizable design vocabulary.
+
+---
+
 ## M-TEXT.9 — Word-wrapped caption block (AUT-83)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `wisp::text::CaptionBlock` composes wrapped text on a rounded-rect background. Layout measures the wrapped text height via `TextTexturePipeline::engine().layout_concrete()` and sizes the background to `width × (text_h + 2×padding)`. No new shaders; pure scene-graph composition (Graphics + Sprite).
