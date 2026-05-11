@@ -7,15 +7,14 @@ shell.
 
 ## Architecture
 
-```text
-crates/app/                         crates/app-ui/                crates/ui-storybook/
-─ Tauri shell (Rust binary)         ─ Leptos CSR app (WASM)       ─ Component library
-─ tauri.conf.json                   ─ Trunk-built dist/             + SSR snapshot tests
-─ frontendDist points at ──────►    ─ Mounts <App> to <body>        + visual gallery
-  app-ui's dist/ (M-INT.2)          ─ Reuses ui-storybook's       (consumed as a normal
-                                      DropZone, PlayerControls,    Cargo lib dep)
-                                      RecordingToolbar, StatusBar,
-                                      Card, DopeSheet
+```mermaid
+graph LR
+    App["<b>crates/app/</b><br/>Tauri shell (Rust binary)<br/>tauri.conf.json<br/>frontendDist → app-ui/dist (M-INT.2)"]
+    AppUi["<b>crates/app-ui/</b><br/>Leptos CSR app (WASM)<br/>Trunk-built dist/<br/>Mounts &lt;App&gt; to &lt;body&gt;"]
+    Storybook["<b>crates/ui-storybook/</b><br/>Component library<br/>SSR snapshot tests<br/>visual gallery"]
+
+    App -->|frontendDist points at| AppUi
+    AppUi -->|reuses DropZone,<br/>PlayerControls, RecordingToolbar,<br/>StatusBar, Card, DopeSheet| Storybook
 ```
 
 Three layers, three crates, one direction of dependency. Adding a new

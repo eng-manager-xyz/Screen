@@ -1,4 +1,6 @@
-# Spotlight / highlight — M-MASK.6 / AUT-28
+# Spotlight / highlight
+
+[Linear: AUT-28](https://linear.app/harwood/issue/AUT-28)
 
 `Renderer::apply_spotlight(shape, dim_color, base, output)` is the
 attention-guiding primitive. Pixels *inside* `shape` show through
@@ -27,14 +29,13 @@ Same composition as solid redaction with one bit flipped: the clip
 pipeline runs in `apply_inverted` mode. The WGSL invert is a uniform
 flag (`invert: f32`); same pipeline, no separate shader.
 
-```text
-fill_rt    ← cleared to dim_color
-                              │
-                              ├─ ClipPipeline(shape, invert=true) ─►  masked_rt
-                              │
-base ─────────────────────────► output  (Blit::REPLACE)
-                              │
-masked_rt ────────────────────► output  (Blit::ALPHA_BLENDING — over)
+```mermaid
+flowchart LR
+    Fill["fill_rt<br/>(cleared to dim_color)"]
+    Fill --> Clip["ClipPipeline<br/>(shape, invert=true)"]
+    Clip --> Masked[masked_rt]
+    Base[base] --> |"Blit::REPLACE"| Output
+    Masked --> |"Blit::ALPHA_BLENDING (over)"| Output
 ```
 
 Adding an invert flag to one shader is cheaper than building a second

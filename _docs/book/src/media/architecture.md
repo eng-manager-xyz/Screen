@@ -1,4 +1,6 @@
-# `media` — architecture — M-MEDIA.0 / AUT-96
+# `media` — architecture
+
+[Linear: AUT-96](https://linear.app/harwood/issue/AUT-96)
 
 The `media` crate is the home for GStreamer-backed audio + video capture,
 playback orchestration, and the data models that `wisp` (the renderer)
@@ -27,24 +29,18 @@ them through its existing sprite + graphics pipelines.
 
 ## Layering
 
-```text
- ┌──────────────────────────────────────────────┐
- │ app  (Tauri shell + Leptos UI)              │
- │   - calls `media::commands::*`              │
- │   - feeds `wisp` typed data                 │
- └────────────┬──────────────────┬──────────────┘
-              │                  │
-    ┌─────────▼────────┐   ┌─────▼────────────┐
-    │      media       │   │      wisp        │
-    │  - GStreamer     │   │  - render        │
-    │  - timing model  │   │  - sprite/graphics│
-    │  - histogram     │   │  - text + mask   │
-    │  - manifest      │   │  - filter + blend│
-    └────────┬─────────┘   └──────────────────┘
-             │      typed data (VideoFrame,
-             │      WaveformBarRect, MediaTime, …)
-             ▼
-        (no direct dep on wisp)
+```mermaid
+graph TD
+    App["<b>app</b><br/>(Tauri shell + Leptos UI)<br/>• calls media::commands::*<br/>• feeds wisp typed data"]
+    App --> Media
+    App --> Wisp
+
+    subgraph siblings ["sibling crates — no direct dep between them"]
+        Media["<b>media</b><br/>• GStreamer<br/>• timing model<br/>• histogram<br/>• manifest"]
+        Wisp["<b>wisp</b><br/>• render<br/>• sprite/graphics<br/>• text + mask<br/>• filter + blend"]
+    end
+
+    Media -. typed data: VideoFrame,<br/>WaveformBarRect,<br/>MediaTime, … .-> Wisp
 ```
 
 ## Build-on-`decode`

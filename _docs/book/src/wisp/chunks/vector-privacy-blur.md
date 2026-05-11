@@ -1,4 +1,14 @@
-# Privacy blur on vector masks — M-VEC.4 / AUT-56
+# Privacy blur on vector masks
+
+[Linear: AUT-56](https://linear.app/harwood/issue/AUT-56)
+
+![](../../assets/wisp/privacy-blur-rounded.png)
+
+*Output is pixel-identical to the M-MASK.3 rounded privacy blur —
+the same blur radius, the same rounded-rect coverage, just driven by
+a `Vector` instead of a `MaskShape`.* The bridge picks the analytic
+SDF path; the cached mask texture is shared across frames and across
+effects.
 
 `Renderer::apply_privacy_blur_vector(vector, radius, base, output)`
 drives the privacy-blur composition from a `Vector` instead of a
@@ -41,15 +51,15 @@ The new pipeline replaces the inline `clip.wgsl` pass with a
 two-shader sequence: generate the mask once, then compose. Both
 existing M-MASK call paths route through it.
 
-```text
-   base ─ BlurFilter(radius) ──────────► blur_rt
-                                              │
-   vector ─ generate_vector_mask_texture ─► mask_rt
-                                              │
-                          (blur_rt × mask_rt) ► masked_rt   ← new mask_compose pass
-                                              │
-   base ───────────────────────────────────► output  (REPLACE)
-   masked_rt ──────────────────────────────► output  (compose_over)
+```mermaid
+flowchart LR
+    Base[base] -->|BlurFilter radius| BlurRT[blur_rt]
+    Vector[vector] -->|generate_vector_mask_texture| MaskRT[mask_rt]
+    BlurRT --> Compose["mask_compose pass<br/>blur_rt × mask_rt"]
+    MaskRT --> Compose
+    Compose --> MaskedRT[masked_rt]
+    Base ===>|"Blit::REPLACE"| Output
+    MaskedRT -->|compose_over| Output
 ```
 
 New primitive: `Renderer::apply_mask_to_texture(foreground, mask,

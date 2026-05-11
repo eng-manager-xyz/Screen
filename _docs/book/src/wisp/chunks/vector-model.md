@@ -1,4 +1,15 @@
-# Vector shape model — M-VEC.1 / AUT-53
+# Vector shape model
+
+[Linear: AUT-53](https://linear.app/harwood/issue/AUT-53)
+
+![](../../assets/wisp/vector-render.png)
+
+*Sample `Vector`s rendered as a contact sheet — rounded rect,
+circle, ellipse, freehand path, line stroke. Each tile is the output
+of `Renderer::render_stage` after building a one-node `Vector`
+scene.* The shape data shown here is exactly what `VectorShape` +
+`Vector` carry — the rest of this chapter is the type surface that
+produces it.
 
 `VectorShape` and `Vector` are Wisp's shared shape language. Every
 visual tool — masks, crops, highlights, callouts, cursor effects,

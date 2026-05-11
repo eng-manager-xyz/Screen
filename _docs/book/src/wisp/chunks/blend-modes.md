@@ -1,4 +1,4 @@
-# Blend modes — M-BLEND.1
+# Blend modes
 
 ![28 blend modes contact sheet](../../assets/wisp/blend-modes.png)
 
@@ -87,18 +87,19 @@ renderer.render_stage(&app, view, Color::BLACK, &stage);
 Internally the renderer detects advanced-blend nodes during scene
 traversal and routes them through the offscreen pipeline:
 
-```text
-render_stage
-  ├─ collect_advanced_blend_nodes(stage) → Vec<NodeId>
-  ├─ if empty → fast path (one render pass into `view`, identical to pre-M-BLEND.2)
-  └─ else      → slow path:
-        1. Allocate dest_a, dest_b at app dims (ping-pong RTs).
-        2. Phase 1 — render scene MINUS advanced subtrees → dest_a.
-        3. Phase 2 — for each advanced node in pre-order:
-             a. Render that subtree → foreground RT.
-             b. apply_advanced_blend(mode, backdrop=dest_a, foreground, output=dest_b).
-             c. Swap dest_a ↔ dest_b.
-        4. Phase 3 — blit final dest → view via the new BlitPipeline.
+```mermaid
+flowchart TD
+    Start([render_stage]) --> Collect["collect_advanced_blend_nodes(stage)<br/>→ Vec&lt;NodeId&gt;"]
+    Collect --> Check{any advanced<br/>nodes?}
+    Check -->|no| Fast["fast path:<br/>one render pass into view<br/>(identical to pre-M-BLEND.2)"]
+    Check -->|yes| Alloc["allocate dest_a, dest_b<br/>at app dims (ping-pong RTs)"]
+    Alloc --> Phase1["Phase 1: render scene MINUS<br/>advanced subtrees → dest_a"]
+    Phase1 --> Phase2[/"Phase 2: for each advanced<br/>node in pre-order"/]
+    Phase2 --> SubRender["a. render that subtree → foreground RT"]
+    SubRender --> AdvBlend["b. apply_advanced_blend(<br/>mode, backdrop=dest_a,<br/>foreground, output=dest_b)"]
+    AdvBlend --> Swap["c. swap dest_a ↔ dest_b"]
+    Swap --> Phase2
+    Phase2 --> Phase3["Phase 3: blit final dest<br/>→ view via BlitPipeline"]
 ```
 
 The fast path is unchanged for native-only stages — no perf regression

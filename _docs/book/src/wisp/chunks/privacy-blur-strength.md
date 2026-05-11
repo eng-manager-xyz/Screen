@@ -1,4 +1,6 @@
-# Privacy blur strengths — M-MASK.4 / AUT-22
+# Privacy blur strengths
+
+[Linear: AUT-22](https://linear.app/harwood/issue/AUT-22)
 
 `BlurStrength` adds the renderer-data API for "how strong." The
 `PrivacyBlur` struct now bundles a `MaskShape` (where) with a

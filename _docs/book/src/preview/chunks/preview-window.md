@@ -1,4 +1,4 @@
-# Native winit window — M-PREVIEW.1
+# Native winit window
 
 The fifth chunk on the path to "first MP4 plays in the recorder via wisp".
 Builds a real OS window via [winit] 0.30 and hands the wgpu surface to

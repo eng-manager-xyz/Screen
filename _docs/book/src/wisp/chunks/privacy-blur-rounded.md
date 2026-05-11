@@ -1,4 +1,6 @@
-# Rounded privacy blur — M-MASK.3 / AUT-21
+# Rounded privacy blur
+
+[Linear: AUT-21](https://linear.app/harwood/issue/AUT-21)
 
 AUT-21 generalizes the AUT-20 primitive: `apply_privacy_blur` now
 accepts any `MaskShape`, so `MaskShape::RoundedRect { rect, radius }`

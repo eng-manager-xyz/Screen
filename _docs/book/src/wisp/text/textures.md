@@ -1,4 +1,6 @@
-# Text render-to-texture path — M-TEXT.5 / AUT-79
+# Text render-to-texture path
+
+[Linear: AUT-79](https://linear.app/harwood/issue/AUT-79)
 
 `TextTexturePipeline` packages
 [`FlexibleTextEngine`](../../api/wisp/text/flexible/struct.FlexibleTextEngine.html)

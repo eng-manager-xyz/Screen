@@ -1,4 +1,6 @@
-# FlexibleText — Glyphon WGPU rasterizer — M-TEXT.3 / AUT-77
+# FlexibleText — Glyphon WGPU rasterizer
+
+[Linear: AUT-77](https://linear.app/harwood/issue/AUT-77)
 
 This chunk lands the **rasterization** half of `FlexibleText`. The
 [`FlexibleTextEngine`](./flexible-cosmic.md) (M-TEXT.2) shapes a
@@ -37,9 +39,10 @@ semver-driven).
 
 ## Shape — a sibling of `Renderer`, not a method on it
 
-```text
-Application ─┬─► Renderer            (sprites, graphics, masks, …)
-             └─► FlexibleTextRenderer (glyphon — opt-in)
+```mermaid
+graph LR
+    App[Application] --> Renderer["Renderer<br/>(sprites, graphics, masks, …)"]
+    App --> Flexible["FlexibleTextRenderer<br/>(glyphon — opt-in)"]
 ```
 
 `FlexibleTextRenderer` is **not** automatically constructed by

@@ -1,4 +1,6 @@
-# A/V sync harness — M-MEDIA.7 / AUT-103
+# A/V sync harness
+
+[Linear: AUT-103](https://linear.app/harwood/issue/AUT-103)
 
 Combines [`GstreamerAudioCapture`](../api/media/gstreamer_audio/struct.GstreamerAudioCapture.html)
 + [`GstreamerVideoCapture`](../api/media/gstreamer_video/struct.GstreamerVideoCapture.html)

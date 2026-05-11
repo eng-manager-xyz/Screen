@@ -42,7 +42,6 @@
   - [Solid redaction — M-MASK.5](./wisp/chunks/solid-redaction.md)
   - [Spotlight / highlight — M-MASK.6](./wisp/chunks/spotlight.md)
   - [Dim outside — M-MASK.7](./wisp/chunks/dim-outside.md)
-  - [Webcam shapes — M-MASK.8](./wisp/chunks/webcam-shapes.md)
   - [Ellipse mask — M-MASK.9](./wisp/chunks/ellipse-mask.md)
   - [Freehand path mask — M-MASK.10](./wisp/chunks/path-mask.md)
   - [Dynamic mask textures — M-DYN.1](./wisp/chunks/mask-texture.md)

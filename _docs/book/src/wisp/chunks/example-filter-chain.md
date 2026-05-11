@@ -7,14 +7,12 @@ trait composes cleanly when multiple post-processing passes need to stack.
 
 The pipeline:
 
-```text
-Stage  ─Renderer::render_stage─►  RT_base
-    │
-    ├─BlurFilter(radius=lerp(0.5..6))──►  RT_a
-    │
-    ├─DropShadowFilter(blur=lerp(0..14), offset=(8,8))──►  RT_b
-    │
-    └─MotionBlurFilter(velocity=lerp((0,0)..(60,0)))──►   RT_final
+```mermaid
+flowchart LR
+    Stage --> |Renderer::render_stage| RTbase[RT_base]
+    RTbase --> |BlurFilter<br/>radius=lerp 0.5..6| RTa[RT_a]
+    RTa --> |DropShadowFilter<br/>blur=lerp 0..14<br/>offset=8,8| RTb[RT_b]
+    RTb --> |MotionBlurFilter<br/>velocity=lerp 0,0..60,0| RTfinal[RT_final]
 ```
 
 Three filters in sequence, each fed by the previous filter's output. Each

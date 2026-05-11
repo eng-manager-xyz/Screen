@@ -1,13 +1,26 @@
-# Render vectors to alpha-mask textures — M-VEC.3 / AUT-55
+# Render vectors to alpha-mask textures
+
+[Linear: AUT-55](https://linear.app/harwood/issue/AUT-55)
+
+![](../../assets/wisp/mask-texture.png)
+
+*Output of the bridge: the M-DYN.1 alpha contact sheet — rect,
+rounded-rect, circle, ellipse, freehand star. Every tile is what
+`generate_vector_mask_texture` produces for the corresponding
+`Vector`.* The bridge picks between the analytic SDF path and the
+freehand path mask based on the shape variant; the resulting alpha
+RT is byte-identical to what `generate_mask_texture(MaskShape::…)`
+or `generate_path_mask_texture(&[Vec2])` would emit directly.
 
 `Renderer::generate_vector_mask_texture(vector, w, h)` and the
 cached companion bridge a [`Vector`] primitive to the M-DYN.1 alpha
 mask texture path. The bridge is a single dispatch:
 
-```text
-            ┌─ analytic SDF ──► generate_mask_texture(MaskShape, w, h)
-Vector ─► ──┤
-            └─ path points  ──► generate_path_mask_texture(&[Vec2], w, h)
+```mermaid
+flowchart LR
+    Vector --> Bridge{vector.shape}
+    Bridge -->|analytic SDF| Mask["generate_mask_texture<br/>(MaskShape, w, h)"]
+    Bridge -->|path points| PathMask["generate_path_mask_texture<br/>(&[Vec2], w, h)"]
 ```
 
 Only `vector.shape` is consulted — `fill` / `stroke` / `opacity` /

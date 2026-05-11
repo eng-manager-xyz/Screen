@@ -1,4 +1,6 @@
-# Audio histogram quantization — M-MEDIA.8 / AUT-104
+# Audio histogram quantization
+
+[Linear: AUT-104](https://linear.app/harwood/issue/AUT-104)
 
 Turns an [`AudioChunk`](../api/media/audio/struct.AudioChunk.html)
 into design-friendly rectangle bars for timeline / dope-sheet

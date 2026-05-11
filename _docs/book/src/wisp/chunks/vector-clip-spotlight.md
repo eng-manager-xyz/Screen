@@ -1,4 +1,29 @@
-# Clip + spotlight on vector masks — M-VEC.6 / AUT-58
+# Clip + spotlight on vector masks
+
+[Linear: AUT-58](https://linear.app/harwood/issue/AUT-58)
+
+<table>
+<tr>
+<td valign="top" width="50%">
+
+![](../../assets/wisp/clip-rounded.png)
+
+*`apply_clip_vector` — rounded crop driven by a `Vector`.*
+
+</td>
+<td valign="top" width="50%">
+
+![](../../assets/wisp/spotlight.png)
+
+*`apply_spotlight_vector` — same vector data, spotlight composition.*
+
+</td>
+</tr>
+</table>
+
+Output is pixel-identical to the M-MASK.1 / M-MASK.6 equivalents —
+the vector path lets you drive both off the same `Vector` value, and
+adds freehand-polygon variants of each.
 
 Closes the M-VEC.4..6 refactor zone. `apply_clip` (the rounded-crop
 foundation from M-MASK.1) and `apply_spotlight` (M-MASK.6) now route

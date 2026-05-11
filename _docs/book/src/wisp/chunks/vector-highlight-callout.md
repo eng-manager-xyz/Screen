@@ -1,4 +1,6 @@
-# Highlight + callout primitives — M-VEC.8 + M-VEC.9 (AUT-60 / AUT-61)
+# Highlight + callout primitives
+
+Linear: [AUT-60](https://linear.app/harwood/issue/AUT-60) · [AUT-61](https://linear.app/harwood/issue/AUT-61)
 
 `Highlight` (M-VEC.8) and `Callout` (M-VEC.9) are preset constructors
 for the most common attention-guiding overlays. They produce plain

@@ -1,4 +1,6 @@
-# Render vector primitives — M-VEC.2 / AUT-54
+# Render vector primitives
+
+[Linear: AUT-54](https://linear.app/harwood/issue/AUT-54)
 
 `Vector::add_to_stage(&mut stage, parent)` (and the underlying
 `to_graphics()` lower-level method) make a `Vector` primitive

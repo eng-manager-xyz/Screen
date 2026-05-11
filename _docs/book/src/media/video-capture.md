@@ -1,4 +1,6 @@
-# GStreamer video capture — M-MEDIA.6 / AUT-102
+# GStreamer video capture
+
+[Linear: AUT-102](https://linear.app/harwood/issue/AUT-102)
 
 Spawns `gst-launch-1.0` with a `videotestsrc`-fed pipeline that emits
 raw BGRA frames on stdout, then chunks the byte stream into

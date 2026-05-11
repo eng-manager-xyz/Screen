@@ -1,6 +1,26 @@
-// Auto-generated stub for M-VEC.7. See PROGRESS.md for details.
+# Vector spotlight + inverse-dim
 
-# Vector spotlight + inverse-dim — M-VEC.7 / AUT-59
+[Linear: AUT-59](https://linear.app/harwood/issue/AUT-59)
+
+<table>
+<tr>
+<td valign="top" width="50%">
+
+![](../../assets/wisp/spotlight.png)
+
+*`apply_spotlight_vector` — focus a region while dimming the rest.*
+
+</td>
+<td valign="top" width="50%">
+
+![](../../assets/wisp/dim-outside.png)
+
+*`apply_dim_outside_vector` — same shape, inverse coverage:
+attenuate everything outside the focus path.*
+
+</td>
+</tr>
+</table>
 
 `apply_spotlight_vector` (M-VEC.6) and `apply_dim_outside_vector`
 (M-VEC.7, this chunk) are the vector-driven entry points for guiding

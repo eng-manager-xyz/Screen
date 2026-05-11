@@ -1,4 +1,6 @@
-# Audio data model — M-MEDIA.3 / AUT-99
+# Audio data model
+
+[Linear: AUT-99](https://linear.app/harwood/issue/AUT-99)
 
 Every audio buffer in the recorder flows through one type:
 [`AudioChunk`](../api/media/audio/struct.AudioChunk.html) — a

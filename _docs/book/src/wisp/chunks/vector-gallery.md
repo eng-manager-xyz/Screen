@@ -1,4 +1,6 @@
-# Vector primitive examples gallery — M-VEC.12 / AUT-64
+# Vector primitive examples gallery
+
+[Linear: AUT-64](https://linear.app/harwood/issue/AUT-64)
 
 Closes the M-VEC track. Single-canvas overview of the catalog —
 glance to confirm the surface, then drill into the chunk chapter

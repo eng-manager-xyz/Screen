@@ -1,4 +1,6 @@
-# Deterministic mock audio sources — M-MEDIA.4 / AUT-100
+# Deterministic mock audio sources
+
+[Linear: AUT-100](https://linear.app/harwood/issue/AUT-100)
 
 Three sources that emit timestamped [`AudioChunk`]s with byte-exact
 reproducible samples — no microphone, no GStreamer. Every test that

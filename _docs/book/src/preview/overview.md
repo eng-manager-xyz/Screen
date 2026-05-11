@@ -5,19 +5,28 @@ Plays an MP4 end-to-end through the
 [decode](../decode/overview.md) → [playback](../playback/overview.md) →
 [wisp](../wisp/overview.md) stack:
 
-```text
-winit::Window
-   │  surface: wgpu::Surface
-   ▼
-wgpu::Instance / Adapter / Device / Queue
-   │  ├──────▶ wisp::Application::from_wgpu(…)   ← embedding host entry point
-   │  └──────▶ wgpu::Surface::configure(…)
-   ▼
-Per RedrawRequested:
-   │  ├─ Player::tick(dt)            ← uploads next frame to VideoTexture
-   │  ├─ build a one-Sprite Stage     ← anchored center, aspect-fit scaled
-   │  ├─ Renderer::render_stage(view) ← draws into the surface texture view
-   │  └─ surface_texture.present()
+```mermaid
+sequenceDiagram
+    participant Window as winit::Window
+    participant Wgpu as wgpu Instance /<br/>Adapter / Device / Queue
+    participant App as wisp::Application<br/>(from_wgpu)
+    participant Surface as wgpu::Surface
+    participant Player
+    participant Stage
+    participant Renderer
+
+    Note over Window,Wgpu: boot
+    Window ->> Wgpu: create_surface(window)
+    Wgpu ->> App: from_wgpu(instance, adapter, device, queue)
+    Wgpu ->> Surface: configure(width, height, format)
+
+    loop Per RedrawRequested
+        Window ->> Player: tick(dt)
+        Note over Player: uploads next frame<br/>to VideoTexture
+        Player ->> Stage: build one-Sprite scene<br/>(centered, aspect-fit)
+        Stage ->> Renderer: render_stage(surface_view)
+        Renderer ->> Surface: surface_texture.present()
+    end
 ```
 
 ## Why it exists
