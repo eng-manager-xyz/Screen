@@ -83,6 +83,7 @@
   - [Audio histogram in Wisp — M-MEDIA.10](./media/audio-histogram.md)
   - [GStreamer audio → histogram example — M-MEDIA.11](./media/audio-histogram-gst.md)
   - [Video texture handoff — M-MEDIA.12](./media/video-texture.md)
+  - [GStreamer videotestsrc through Wisp — M-MEDIA.13](./media/video-render.md)
 
 # `playback` — player state machine
 

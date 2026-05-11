@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.13 — GStreamer videotestsrc through Wisp (AUT-109)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `cargo run -p media --example gst_video_to_wisp` captures 8 frames from `videotestsrc` at 320×180@30fps, uploads each to a wisp `VideoTexture`, renders through `Sprite` to a headless `RenderTexture`, and saves PNGs under `target/gst-video-frames/`. Closes the M-MEDIA.6 → M-MEDIA.12 path end-to-end with a real GStreamer source.
+- **Linear:** [AUT-109](https://linear.app/harwood/issue/AUT-109).
+- **Files:** new `crates/media/examples/gst_video_to_wisp.rs`. `crates/media/Cargo.toml` adds `wisp` / `wgpu` / `pollster` / `glam` as **dev-dependencies** (library stays wgpu-free) and registers the `[[example]]`. New `_docs/book/src/media/video-render.md` chapter (mermaid sequence for the capture → upload → render → PNG loop, `admonish important` clarifying the dev-dep-only boundary). New `_docs/book/src/assets/media/gst-video-to-wisp.png` (frame 0 SMPTE colorbars). `_docs/book/src/SUMMARY.md`.
+- **Verified:** Local run on macOS with GStreamer installed produced 8 PNGs of SMPTE colorbars at 33.33 ms PTS intervals (30 fps). Cumulative `frames_emitted` matches the upload count (8 = 8 = 8). Full `just gate` green.
+- **Boundary preserved.** `media` library still doesn't import `wisp`. Only the example brings wisp in via `[dev-dependencies]`. Downstream consumers of `media` (e.g., `playback`, `app`) won't pull wgpu unless they explicitly opt-in by depending on it themselves.
+
+---
+
 ## M-MEDIA.12 — Video texture handoff (AUT-108)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — synthetic `decode::VideoFrame` (128×72 BGRA, diagonal gradient + horizontal stripes) uploaded to wisp `VideoTexture` and rendered through `Sprite`. Storybook story `video-frame-handoff` proves the seam works end-to-end; PNG hero asset confirms BGRA → wgpu `Bgra8UnormSrgb` roundtrip is correct.

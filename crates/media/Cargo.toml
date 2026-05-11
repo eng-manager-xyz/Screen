@@ -21,6 +21,13 @@ tracing = { workspace = true }
 [dev-dependencies]
 image = "0.25"
 tracing-subscriber = { workspace = true }
+# Examples only — `gst_video_to_wisp` boots a headless wisp Application
+# and renders captured frames to PNG. The `media` library itself stays
+# wgpu-free; this dep is dev-only and never re-exported.
+wisp = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
+glam = { workspace = true }
 
 # mdBook visual asset generator — renders the waveform / histogram /
 # capture PNGs that the media chapters embed. Local-only (depends on
@@ -36,3 +43,10 @@ path = "examples/render_mdbook_assets.rs"
 [[example]]
 name = "gst_audio_histogram"
 path = "examples/gst_audio_histogram.rs"
+
+# M-MEDIA.13 / AUT-109 — capture frames from `videotestsrc`, upload to
+# wisp `VideoTexture`, render through `Sprite`, save PNGs. Skips when
+# gstreamer isn't on PATH.
+[[example]]
+name = "gst_video_to_wisp"
+path = "examples/gst_video_to_wisp.rs"
