@@ -1,6 +1,7 @@
 //! Registry of all stories. Each chunk that introduces a renderable feature
 //! adds one entry here.
 
+mod s_audio_histogram;
 mod s_blur_filter;
 mod s_clip_rounded;
 mod s_color_matrix;
@@ -68,5 +69,6 @@ pub fn all_stories() -> Vec<Story> {
         s_path_stroke::story(),
         s_mask_combine::story(),
         s_vector_gallery::story(),
+        s_audio_histogram::story(),
     ]
 }

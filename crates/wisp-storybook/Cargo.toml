@@ -43,6 +43,10 @@ path = "src/bin/export_animated.rs"
 
 [dependencies]
 wisp = { workspace = true }
+# `media` produces typed geometry (e.g. `WaveformBarRect`) that wisp's
+# graphics pipeline can render directly. wisp itself must not depend
+# on media — this is a storybook-side composition only.
+media = { path = "../media", version = "0.1.0" }
 glam = { workspace = true }
 wgpu = { workspace = true }
 tracing-subscriber = { workspace = true }

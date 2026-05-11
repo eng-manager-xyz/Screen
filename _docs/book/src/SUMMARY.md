@@ -80,6 +80,7 @@
   - [A/V sync harness — M-MEDIA.7](./media/sync-harness.md)
   - [Audio histogram quantization — M-MEDIA.8](./media/histogram.md)
   - [Waveform bar geometry — M-MEDIA.9](./media/waveform-geometry.md)
+  - [Audio histogram in Wisp — M-MEDIA.10](./media/audio-histogram.md)
 
 # `playback` — player state machine
 
