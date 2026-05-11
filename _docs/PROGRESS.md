@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TEXT.7 — Stroked / outlined text rendering (AUT-81)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — text gets a configurable outline via `wisp::text::stroked_text_sprites` + `StrokedTextLayer`. CSS-style technique: render text to a texture once via `TextTexturePipeline`, stamp the texture eight times tinted in the stroke color at offsets on a circle, stamp once more tinted in the fill color at the center. No shader changes.
+- **Linear:** [AUT-81](https://linear.app/harwood/issue/AUT-81).
+- **Files:** new `crates/wisp/src/text/stroke.rs` (`StrokedTextLayer`, `stroked_text_sprites`, `STROKE_OFFSETS` ring). `crates/wisp/src/text/mod.rs` re-exports. New `crates/wisp-storybook/src/stories/s_text_stroke.rs` + writeup. `crates/wisp-storybook/src/stories/mod.rs` registers. New `_docs/book/src/wisp/text/stroke.md` chapter (mermaid sequence for the texture → ring-stamp → fill flow, `admonish important` for the local-NDC convention, `admonish note` for the 8-direction ring, `admonish bug` for the Graphics-after-Sprites gotcha that bit the story's backdrop). `_docs/book/src/SUMMARY.md`. New `_docs/book/src/assets/wisp/text-stroke.png` showing READ ME with stroke vs unstroked "no stroke" baseline.
+- **Verified:** 4 unit tests (zero stroke → one sprite, positive stroke → eight + one, sprites on radius-r ring, stroke width scales linearly). `story_smoke` + `story_fingerprints` pass. Full `just gate` green.
+- **Pre-rendered RT-as-Sprite backdrop is the workaround.** A direct `Graphics` backdrop in the same stage paints AFTER the sprite text and hides it — recurring footgun from CLAUDE.md's renderer-batching note. The story renders the colored backdrop into its own RT and attaches that as a Sprite; the chapter calls this out in an `admonish bug`.
+
+---
+
 ## M-MEDIA.14 — Synced video + audio histogram in one Wisp scene (AUT-110)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — M-MEDIA P1 capstone. `cargo run -p media --example synced_scene` composes a hue-rotating synthetic video frame (top half) + audio histogram bars (bottom-left) in one wisp scene, anchored to `MediaClock::manual`. 10 frames at 100 ms cadence; amplitude ramps `0.30 → 0.90` so bar heights grow visibly. Every M-MEDIA chunk so far shows up at the same call site.

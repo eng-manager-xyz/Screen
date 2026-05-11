@@ -64,6 +64,7 @@
   - [FlexibleText — Glyphon WGPU rasterizer — M-TEXT.3](./wisp/text/glyphon-backend.md)
   - [Text render-to-texture — M-TEXT.5](./wisp/text/textures.md)
   - [Text composition — mask / filter / blend / export — M-TEXT.6](./wisp/text/composition.md)
+  - [Stroked / outlined text — M-TEXT.7](./wisp/text/stroke.md)
 
 # `decode` — video decode
 
