@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MEDIA.6 — GStreamer video test-source capture (AUT-102)
+- **Date:** 2026-05-10
+- **Status:** ✅ done — `GstreamerVideoCapture::test_source(w, h, fps)` produces BGRA `VideoFrame`s by piping `videotestsrc ! videoconvert ! video/x-raw,format=BGRA ! fdsink fd=1` through `gst-launch-1.0`.
+- **Linear:** [AUT-102](https://linear.app/harwood/issue/AUT-102).
+- **Files:** new `crates/media/src/gstreamer_video.rs`. `crates/media/src/lib.rs` registers the module. New `crates/media/tests/gstreamer_video_integration.rs` (3 tests, skip-guarded). New `_docs/book/src/media/video-capture.md` chapter. `_docs/book/src/SUMMARY.md`.
+- **Verified:** 3 integration tests (skip-guarded): 5-frame contiguous PTS at 30 fps, distinct frame bytes (SMPTE colorbars include an animated ball), dimensions/framerate accessor round-trip. 2 unit tests for construction guards + `Send`. Full `just gate` green at 360 tests (355 + 5 new).
+- **Reuses `decode::VideoFrame`.** The frame contract is shared end-to-end (decode crate's VideoStream impls, media's new GStreamer capture, future webcam capture in M-MEDIA.16). No duplication; one type means one shape passed to wisp's texture upload (M-MEDIA.12).
+- **PTS via `MediaTime::from_frame`.** Frame 90 at 30 fps = exactly 3.0 s. No drift across long captures thanks to M-MEDIA.2's round-half-up.
+- **`Drop` kills + waits** (same as `gstreamer_audio`). Without it, the gst-launch child keeps decoding into a dropped pipe.
+
+---
+
 ## M-MEDIA.5 — GStreamer audio test-source capture (AUT-101)
 - **Date:** 2026-05-10
 - **Status:** ✅ done — `GstreamerAudioCapture::test_source(fmt, freq)` produces normalized `f32` `AudioChunk`s by piping `audiotestsrc ! audioconvert ! audioresample ! F32LE ! fdsink fd=1` through `gst-launch-1.0`. Companion `from_file(path, fmt)` decodes real audio (the bundled MP3 fixture) through the same pipeline shape — proves the histogram + waveform paths against real-world signal.

@@ -90,6 +90,7 @@ pub mod audio;
 pub mod clock;
 pub mod gstreamer;
 pub mod gstreamer_audio;
+pub mod gstreamer_video;
 pub mod histogram;
 pub mod manifest;
 pub mod mock_audio;
