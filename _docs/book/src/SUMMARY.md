@@ -135,6 +135,7 @@
   - [Recording card + grid](./ui/chunks/recording-card.md)
   - [Editor shell](./ui/chunks/editor-shell.md)
   - [Editor drop zone + canvas](./ui/chunks/editor-drop-zone-canvas.md)
+  - [Inspector panel](./ui/chunks/inspector-panel.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

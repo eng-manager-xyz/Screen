@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-18 — InspectorPanel + property rows (AUT-138)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `InspectorPanel` composes `InspectorTabs` (Style / Cursor / Audio / Captions / AI) + a list of `PropertySection`s. Five built-in property controls via `PropertyControlView` enum: `ValueOnly`, `SliderPercent`, `Toggle`, `ColorSwatches`, `SelectPill`. 6 stories sweep style tab, cursor tab, disabled section, and individual control rows.
+- **Linear:** [AUT-138](https://linear.app/harwood/issue/AUT-138).
+- **Files:** new `components/editor/inspector_panel.rs` (`InspectorPanel`, `InspectorPanelView`, `InspectorTab`, `InspectorTabs`, `PropertySection`, `PropertySectionView`, `PropertyRowView`, `PropertyControlView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_inspector_style_tab()`, `_cursor_tab()`, `_disabled_section()`. `stories/editor.rs` adds `inspector_stories()` bucket. `tests/story_registry.rs` adds `"Inspector"` category. `assets/style.css` adds `.inspector-*` + `.property-*` classes. New `_docs/book/src/ui/chunks/inspector-panel.md`. `SUMMARY.md` indexes it.
+- **Verified:** 73 ui-storybook tests pass. 6 new `inspector-*` / `property-row-*` asset HTMLs exported. Full `just gate` green.
+- **Controls as enum, not children slot.** `PropertyControlView` is an enum so every row goes through the same layout path. Adding a new control type means adding an enum variant — the parent never has to ship its own row markup.
+
+---
+
 ## UI-17 — WispCanvasHost + editor drop-zone canvas (AUT-137)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `WispCanvasHost` is a backend-agnostic host that renders one of three modes: `CssFallback` (checkered fallback used by SSR + mdBook), `WispAsset { asset_path }` (committed PNG via `<img>`), or `WispRuntimeUnavailable` (warning banner). `EditorDropZoneCanvas` wraps the host in the dotted drop overlay + action cards (Record screen / Open library / Import file) + recent-clips strip.

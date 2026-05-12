@@ -86,6 +86,7 @@ fn category_set_is_within_known_buckets() {
         "Compositions",
         "Menus",
         "Library",
+        "Inspector",
         // Future categories (Cursor) get appended by their
         // introducing ticket — UI-20.
     ];

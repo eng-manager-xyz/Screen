@@ -5,13 +5,15 @@
 use leptos::prelude::*;
 
 use crate::components::editor::{
-    CanvasBackendView, DopeSheet, EditorDropZoneCanvas, EditorShell, PlayState, PlayerControls,
+    CanvasBackendView, DopeSheet, EditorDropZoneCanvas, EditorShell, InspectorPanel, PlayState,
+    PlayerControls, PropertyControlView, PropertyRowView, PropertySection, PropertySectionView,
     WispCanvasHost,
 };
 use crate::components::primitives::{Card, CardBody, CardHeader};
 use crate::fixtures::editor::{
     sample_dope_sheet_dense, sample_dope_sheet_tracks, sample_editor_drop_zone,
     sample_editor_drop_zone_no_recent, sample_editor_shell, sample_editor_shell_export_disabled,
+    sample_inspector_cursor_tab, sample_inspector_disabled_section, sample_inspector_style_tab,
 };
 
 use super::{Story, StoryViewport, render};
@@ -125,6 +127,54 @@ fn editor_shell_stories() -> Vec<Story> {
     ]
 }
 
+fn inspector_stories() -> Vec<Story> {
+    let panel = fixed(320, 480);
+    vec![
+        s(
+            "inspector-style-tab",
+            "Inspector",
+            "Inspector — Style tab",
+            panel,
+            render_inspector_style,
+        ),
+        s(
+            "inspector-cursor-tab",
+            "Inspector",
+            "Inspector — Cursor tab",
+            panel,
+            render_inspector_cursor,
+        ),
+        s(
+            "property-row-slider",
+            "Inspector",
+            "Property row — slider",
+            fixed(320, 80),
+            render_row_slider,
+        ),
+        s(
+            "property-row-toggle",
+            "Inspector",
+            "Property row — toggle",
+            fixed(320, 80),
+            render_row_toggle,
+        ),
+        s(
+            "property-row-color-swatches",
+            "Inspector",
+            "Property row — color swatches",
+            fixed(320, 80),
+            render_row_swatches,
+        ),
+        s(
+            "inspector-disabled-section",
+            "Inspector",
+            "Inspector — disabled rows",
+            panel,
+            render_inspector_disabled,
+        ),
+    ]
+}
+
 fn editor_canvas_stories() -> Vec<Story> {
     let drop_zone = fixed(760, 520);
     let canvas = fixed(600, 360);
@@ -173,6 +223,7 @@ pub fn stories() -> Vec<Story> {
     let mut out = legacy_editor_stories();
     out.extend(editor_shell_stories());
     out.extend(editor_canvas_stories());
+    out.extend(inspector_stories());
     out
 }
 
@@ -267,6 +318,60 @@ fn render_canvas_host_fallback() -> String {
 
 fn render_canvas_host_unavailable() -> String {
     render(view! { <WispCanvasHost backend=CanvasBackendView::WispRuntimeUnavailable /> })
+}
+
+fn render_inspector_style() -> String {
+    render(view! { <InspectorPanel view=sample_inspector_style_tab() /> })
+}
+
+fn render_inspector_cursor() -> String {
+    render(view! { <InspectorPanel view=sample_inspector_cursor_tab() /> })
+}
+
+fn render_inspector_disabled() -> String {
+    render(view! { <InspectorPanel view=sample_inspector_disabled_section() /> })
+}
+
+fn render_row_slider() -> String {
+    let section = PropertySectionView {
+        title: "EXAMPLE",
+        rows: vec![PropertyRowView {
+            label: "Auto-zoom",
+            value: Some("2.0×"),
+            disabled: false,
+            control: PropertyControlView::SliderPercent { percent: 55 },
+        }],
+    };
+    render(view! { <PropertySection section=section /> })
+}
+
+fn render_row_toggle() -> String {
+    let section = PropertySectionView {
+        title: "EXAMPLE",
+        rows: vec![PropertyRowView {
+            label: "Drop shadow",
+            value: None,
+            disabled: false,
+            control: PropertyControlView::Toggle { on: true },
+        }],
+    };
+    render(view! { <PropertySection section=section /> })
+}
+
+fn render_row_swatches() -> String {
+    let section = PropertySectionView {
+        title: "EXAMPLE",
+        rows: vec![PropertyRowView {
+            label: "Color",
+            value: None,
+            disabled: false,
+            control: PropertyControlView::ColorSwatches {
+                swatches: vec!["#fafafa", "#facc15", "#38bdf8", "#a78bfa", "#f97316"],
+                selected: 2,
+            },
+        }],
+    };
+    render(view! { <PropertySection section=section /> })
 }
 
 fn render_editor_mock() -> String {
