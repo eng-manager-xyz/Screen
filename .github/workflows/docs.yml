@@ -26,6 +26,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Bash everywhere for consistency with gate.yml. docs.yml runs on
+# ubuntu-latest only today, but the explicit default keeps both
+# workflows on the same shell discipline so a future Windows /
+# macOS expansion doesn't trip on PowerShell parsing.
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
   pages: write

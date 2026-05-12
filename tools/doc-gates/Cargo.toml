@@ -1,0 +1,20 @@
+[package]
+name = "doc-gates"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "CI/local gates for the screen + wisp mdBooks (shared-check, snapshots-check)."
+
+[lib]
+name = "doc_gates"
+path = "src/lib.rs"
+
+[[bin]]
+name = "doc-gates"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

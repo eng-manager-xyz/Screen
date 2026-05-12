@@ -68,6 +68,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Default every `run:` step to bash on every OS — including windows-latest,
+# where bash routes through Git Bash (preinstalled on the runner image).
+# Without this, windows-latest uses PowerShell by default and bash-style
+# line continuations (`\` at end-of-line) crash with
+#   "Missing expression after unary operator '--'"
+# because PowerShell ends the statement at the newline and parses the next
+# line's `--all-targets` as a unary minus. Setting `shell: bash` once at
+# workflow level removes the entire class of `\`-continuation gotchas.
+defaults:
+  run:
+    shell: bash
+
 env:
   CARGO_TERM_COLOR: always
 

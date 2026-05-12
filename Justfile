@@ -62,6 +62,14 @@ docs-strict:
 preprocessor-build:
     @cargo build -p mdbook-preprocessor-cross
 
+# Build the `tools/doc-gates` binary used by `shared-check` /
+# `snapshots-check`. Cheap incremental rebuild on warm cache; the
+# cargo step short-circuits when nothing changed. Pure Rust + std +
+# regex, no python / no external interpreter — same gate on macOS,
+# Ubuntu, and Windows.
+doc-gates-build:
+    @cargo build -p doc-gates
+
 site: docs preprocessor-build site-screen site-wisp
     @echo
     @echo "Open: file://$(pwd)/target/book/index.html  (screen project book)"
@@ -123,37 +131,13 @@ snapshots-media-video:
 # catches "added a chapter, forgot to commit the PNG." Run
 # `just snapshots` locally before committing if you changed a
 # story's rendered output.
-snapshots-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    missing=0
-    # Find every `assets/...` reference in markdown chapters, resolve
-    # relative to the chapter's directory, and check existence.
-    while IFS= read -r chapter; do
-      chapter_dir="$(dirname "$chapter")"
-      # markdown image syntax: ![alt](path) or <iframe src="path">
-      python3 - "$chapter" "$chapter_dir" <<'PY'
-    import re, sys, os
-    chapter, chapter_dir = sys.argv[1], sys.argv[2]
-    text = open(chapter).read()
-    refs = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"', text)
-    flat = [a or b for a, b in refs]
-    missing = []
-    for ref in flat:
-        if ref.startswith(('http://', 'https://')):
-            continue
-        # Only check assets/ references — code links / api links live elsewhere.
-        if '/assets/' not in ref:
-            continue
-        path = os.path.normpath(os.path.join(chapter_dir, ref))
-        if not os.path.exists(path):
-            missing.append((chapter, ref, path))
-    for c, r, p in missing:
-        print(f"MISSING ASSET: {c} → {r} (resolved {p})", file=sys.stderr)
-    sys.exit(1 if missing else 0)
-    PY
-    done < <(find _docs/book/src _docs/wisp-book/src _docs/shared -name "*.md" -type f 2>/dev/null)
-    echo "snapshots-check: all referenced assets present (screen + wisp + shared)."
+#
+# Implementation: `tools/doc-gates` Rust binary. Replaces the
+# python heredoc that used to live here (DOCS-08) so the gate is
+# pure Rust + just on macOS, Ubuntu, and Windows alike — no
+# external interpreter required.
+snapshots-check: doc-gates-build
+    @target/debug/doc-gates snapshots-check
 
 # Diagrams must be mermaid, not ASCII.
 # Rejects any chapter under `_docs/book/src/`, `_docs/wisp-book/src/`,
@@ -199,7 +183,7 @@ mermaid-check:
     echo "mermaid-check: no ASCII diagrams in mdBook chapters."
 
 # Source-only drift gate for the two-book setup. Walks both books +
-# shared for `{{shared X}}` tags and fails if `_docs/shared/X` is
+# shared for `\{\{shared X\}\}` tags and fails if `_docs/shared/X` is
 # missing. Catches the common typo / missing-file case at source —
 # no `mdbook` required, so `just gate` stays Rust-only and CI's
 # gate-screen.yml doesn't need to install mdbook on every PR.
@@ -209,28 +193,13 @@ mermaid-check:
 # `docs.yml` after both books are built. That keeps the
 # concern-separation clean: `just gate` = Rust quality; `docs.yml`
 # = site rendering + drift.
-shared-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    python3 - <<'PY'
-    import os, re, sys
-    SHARED = re.compile(r'\{\{\s*shared\s+([^}]+?)\s*\}\}')
-    fail = 0
-    for root in ("_docs/book/src", "_docs/wisp-book/src"):
-        for dirpath, _, files in os.walk(root):
-            for f in files:
-                if not f.endswith(".md"):
-                    continue
-                p = os.path.join(dirpath, f)
-                text = open(p).read()
-                for m in SHARED.finditer(text):
-                    ref = m.group(1).strip()
-                    if not os.path.isfile(os.path.join("_docs/shared", ref)):
-                        print(f"MISSING SHARED FRAGMENT: {p} → _docs/shared/{ref}", file=sys.stderr)
-                        fail = 1
-    sys.exit(fail)
-    PY
-    echo "shared-check: source-level shared() references resolve."
+#
+# Implementation: `tools/doc-gates` Rust binary. Replaces the
+# python heredoc that used to live here (DOCS-08) so the gate is
+# pure Rust + just on macOS, Ubuntu, and Windows alike — no
+# external interpreter required.
+shared-check: doc-gates-build
+    @target/debug/doc-gates shared-check
 
 # Full site-rendering drift gate. Builds both books, then greps
 # rendered HTML for `mdbook-preprocessor-cross.*error` sentinels

@@ -246,7 +246,8 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 
 ### Tauri 2 specifics
 
-- **`tauri::generate_context!()` requires `icons/icon.png` at compile time** even when `bundle.active = false`. The macro embeds the icon into the binary. Minimum: a real PNG file at `crates/app/icons/icon.png`. (M1.1 caught this — a one-line Python script generates a 32×32 transparent PNG when needed.)
+- **`tauri::generate_context!()` requires `icons/icon.png` at compile time** even when `bundle.active = false`. The macro embeds the icon into the binary. Minimum: a real PNG file at `crates/app/icons/icon.png`. M1.1 caught this on macOS/Linux.
+- **Windows builds *also* need `crates/app/icons/icon.ico`** for `tauri-winres` (the Windows resource compiler). Without it, the screen-app build script aborts with `package.metadata.tauri-winres does not exist; icons/icon.ico not found; required for generating a Windows Resource file during tauri-build`. **Regen via `cargo run -p screen-app --example regen-icons`** — pure-std Rust example that wraps the existing `icon.png` bytes in a minimal valid ICO container (PNG-in-ICO). Output is committed; CI never regenerates.
 - **`tauri` feature `protocol-asset`** is required to use `convertFileSrc` in JS. Without it, build fails with "Tauri dependency features … does not match the allowlist."
 - **`tauri::generate_context!` is a procedural macro** that depends on `tauri` at expansion time. `cargo machete` doesn't see this — add `[package.metadata.cargo-machete] ignored = ["tauri"]` to suppress the false positive.
 - **Tauri 2's Linux backend pulls archived gtk-rs crates.** Expect ~16 RustSec advisories on Linux (RUSTSEC-2024-0411..0420 family + 2025-0075..0100). All unmaintained-only, none exploits. Add to `deny.toml` `[advisories].ignore` once. (M1.1, ISS-02.)
@@ -316,140 +317,251 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
 - **Quadrant fingerprint snapshot pattern:** for visual regression, render at small resolution (256×256), divide into a 4×4 quadrant grid, average each quadrant's RGBA, bucket to multiples of 8 (~3% tolerance), `insta::assert_yaml_snapshot!` the resulting `Vec<[u32; 4]>`. Robust to driver variation, fails on real visual changes, snapshot is human-readable in the diff.
 - **Animated stories need `tick(stage, 0.0)` before rendering** so the test sees the deterministic initial frame, not the empty `build()`-only state. (Stories like `s_graphics_ellipse` populate the graphics inside `tick`, not `build`.)
 
-### CI / GitHub Actions / Linux runner
+### CI / GitHub Actions — universal rules
 
-- **`just fmt-fix` (or `cargo fmt --all`) before every commit, no exceptions.**
-  CI's first step is `cargo fmt --all --check`. A stray multi-line array
-  literal that rustfmt would collapse to one line burns 2-3 minutes of
-  runner time just to fail on fmt before any real work runs. Local fmt
-  costs <1s — no excuse.
+The rules in this subsection apply on **every** OS. Per-OS specifics
+live in the three subsections below it.
 
-- **`macos-latest` is the truth runner for wgpu tests.** GitHub-hosted
-  Linux runners only have lavapipe (mesa's software Vulkan), which loses
-  the device on multi-bind-group filter pipelines. macOS runners have
-  real Apple Silicon Metal — same backend as the dev box — and run all
-  117 tests without skips. macos-latest minutes are free on public
-  repos; on private repos they're 10× the multiplier so use a matrix
-  judiciously. **Default the gate to a matrix `[macos-latest,
-  ubuntu-latest]` with `fail-fast: false`**: macOS validates "real
-  hardware passes everything"; Linux validates the build path
-  (gtk-rs/winit/apt deps) with the lavapipe-affected tests skipped via
-  `WISP_SKIP_GPU_FILTER_TESTS=1`.
-- **Don't rely on Linux GPU tests in CI without real hardware.**
-  Filter pipelines that work on Metal/hardware-Vulkan/D3D will fail on
-  lavapipe with `Validation Error / Parent device is lost`. Refactoring
-  the pipelines to fit lavapipe is the wrong call — it compromises
-  real-GPU design for a software emulator's limits. Either run on
-  macos-latest, gate the test on an env-var skip, or bring real
-  hardware via a self-hosted runner.
-
-- **winit 0.30 fails to compile on Linux with
-  `compile_error!("The platform you're compiling for is not supported by
-  winit")` if `x11` and `wayland` features aren't active.** Both are
-  defaults, so this normally Just Works — but a transitive dep somewhere
-  in our tree pulls winit with `default-features = false`, and cargo's
-  feature unification then leaves Linux without any backend. **Fix:**
-  pin `winit = { version = "0.30", features = ["x11", "wayland",
-  "wayland-dlopen", "wayland-csd-adwaita"] }` explicitly in our
-  Cargo.toml so the unified feature set always carries a Linux backend.
-  Also apt-install the matching headers for CI (`libx11-dev`,
-  `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`,
-  `libxcursor-dev`, `libxrandr-dev`, `libxi-dev`).
-  **AND** chase down every dep edge that re-pulls winit. eframe with
-  `default-features = false` strips its own `x11`/`wayland` features
-  (which proxy to `winit/x11`/`winit/wayland`); add them back
-  explicitly: `eframe = { default-features = false, features = ["wgpu",
-  "default_fonts", "x11", "wayland"] }`. The `cargo check --all-features`
-  workspace gate masks this because feature unification activates them
-  via SOME other edge; `cargo doc` (no `--all-features`) is stricter
-  and surfaces the gap.
-- **Never set `RUSTFLAGS: -D warnings` at the workflow `env:` level.**
-  It promotes transitive-crate future-incompat warnings (`block v0.1.6`,
-  `proc-macro-error2 v2.0.1`, …) into hard failures. We can't fix those
-  upstream warnings; they pour in any time `cargo doc --workspace`
-  touches the dep tree. For docs-strict semantics, scope `RUSTDOCFLAGS`
-  to a single command (`RUSTDOCFLAGS="-D warnings -D rustdoc::broken-intra-doc-links" cargo doc …`),
+- **`just fmt-fix` (or `cargo fmt --all`) before every commit, no
+  exceptions.** CI's first step is `cargo fmt --all --check`. A
+  stray multi-line array literal that rustfmt would collapse to
+  one line burns 2-3 minutes of runner time just to fail on fmt
+  before any real work runs. Local fmt costs <1s — no excuse.
+- **`actionlint` is the local workflow validator.**
+  `brew install actionlint`, then
+  `actionlint .github/workflows/*.yml` before every CI edit.
+  Catches YAML errors, shellcheck issues in `run:` blocks, and
+  unset env refs. The gate doesn't run it remotely (yet) — it's a
+  local-only smoke test, but it has caught every workflow mistake
+  in this repo on first try.
+- **Default every `run:` step to bash with `defaults.run.shell: bash`
+  at the workflow level.** On `windows-latest`, GitHub Actions
+  defaults to PowerShell, which doesn't understand bash-style `\`
+  line continuations and crashes with
+  `"Missing expression after unary operator '--'"` mid-`cargo
+  clippy`. Setting `shell: bash` once at workflow level routes
+  every step through Git Bash (preinstalled on windows-latest) and
+  removes the entire class of continuation gotchas.
+- **`just gate` must stay mdbook-free.** Site rendering belongs
+  in `docs.yml` via `just site-check`, not in `just gate`. CI
+  gate-screen doesn't install mdbook on any runner; if `gate`
+  ever needs it, every matrix runner fails immediately. The
+  `gate-screen` workflow also has an explicit `command -v mdbook`
+  anti-regression step that fails fast with a clear `::error::`
+  pointing at this section. (Burned cycle: DOCS-02 wired
+  `shared-check` to `site` → mdbook; gate failed on every PR.)
+- **`just gate` must stay python-free.** Use Rust binaries under
+  `tools/` for any non-trivial text munging (see `tools/doc-gates`
+  for the pattern). Windows ships `python` not `python3`, Git Bash
+  PATH ordering varies, and adding an interpreter dep to every CI
+  runner defeats the "one toolchain" story.
+- **Never set `RUSTFLAGS: -D warnings` at the workflow `env:`
+  level.** It promotes transitive-crate future-incompat warnings
+  (`block v0.1.6`, `proc-macro-error2 v2.0.1`, …) into hard
+  failures. We can't fix those upstream; they pour in any time
+  `cargo doc --workspace` touches the dep tree. For docs-strict
+  semantics, scope `RUSTDOCFLAGS` to a single command
+  (`RUSTDOCFLAGS="-D warnings -D rustdoc::broken-intra-doc-links" cargo doc …`),
   not a workflow-wide env var.
-- **wgpu on Linux CI needs `mesa-vulkan-drivers` + `libvulkan1`** so
-  lavapipe (software Vulkan) is available as the wgpu adapter. Without
-  this the first wisp test that calls `Application::new` either hangs on
-  adapter probe or aborts with "no adapters found". Pair with
-  `WGPU_BACKEND=vulkan` + `WGPU_POWER_PREF=low` in the workflow env so
-  wgpu doesn't spend cycles probing every backend.
-- **Lavapipe loses the device on multi-bind-group filter pipelines.**
-  Symptom: `wgpu error: Validation Error / In
-  Device::create_render_pipeline, label = 'wisp::blur pipeline' /
-  Parent device is lost`, OR `Buffer with 'wisp::blur uniforms' label
-  is invalid` at `Buffer::get_mapped_range`. Real adapters (Metal,
-  hardware Vulkan) build the same pipelines fine.
-
-  **Every filter that transitively runs
-  `crate::filter::blur::run_blur_pass` is in this class.** A new
-  story/test that touches *any* of these will trip lavapipe unless
-  it's guarded:
-
-  | Filter / wrapper            | How it reaches `run_blur_pass`                |
-  | --------------------------- | --------------------------------------------- |
-  | `BlurFilter`                | direct                                        |
-  | `DropShadowFilter`          | alpha-extract → `run_blur_pass` → composite   |
-  | `MotionBlurFilter`          | directional `run_blur_pass`                   |
-  | `apply_privacy_blur`        | wraps `BlurFilter` via `apply_filter`         |
-  | `apply_privacy_blur_data`   | wraps `BlurFilter` via `apply_filter`         |
-
-  Anything new that calls `apply_filter(<one of the above>, …)` falls
-  into the same class. **The non-blur mask primitives** (`apply_clip`
-  / `apply_solid_redaction` / `apply_spotlight` /
-  `apply_dim_outside_data` / `apply_path_clip` /
-  `apply_mask_to_texture`) use single-bind-group pipelines and run
-  fine on lavapipe — **don't guard them**.
-
-  **Pre-PR checklist when adding a story or test:**
-  1. Grep your diff for the filter names above:
-     `git diff main...HEAD -- crates/wisp-storybook/src/stories/ crates/wisp/tests/ | grep -E "BlurFilter|DropShadowFilter|MotionBlurFilter|apply_privacy_blur"`.
-  2. If anything matches AND the call site isn't behind a
-     `WISP_SKIP_GPU_FILTER_TESTS` env-guard that returns a non-filter
-     value, the story/test trips lavapipe.
-  3. **Storybook story** → add its id to `LAVAPIPE_INCOMPATIBLE` in
-     `crates/wisp-storybook/tests/story_smoke.rs`. **`wisp` unit /
-     integration test** → add `if skip_on_software_adapter() { return; }`
-     at the top, gated on `WISP_SKIP_GPU_FILTER_TESTS=1`.
-  4. Verify both paths locally:
-     `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp-storybook --test story_smoke`
-     must pass (story is filtered or guard fires); without the env
-     var, the same run must still exercise the pipeline (~1s+ for
-     blur-touching paths). Both runs green = lavapipe-safe.
-
-  **Burned cycles so far:**
-  - M-MASK.2/.3/.4 — `apply_privacy_blur*` reached `BlurFilter`.
-  - M-TEXT.8 (`text-shadow-glow`) — `apply_filter(DropShadowFilter)`
-    runs `run_blur_pass` internally; the story had no env-guard and
-    only the *immediate* `BlurFilter` was in the explicit example
-    list. Fix: add `text-shadow-glow` to `LAVAPIPE_INCOMPATIBLE` +
-    expand the explicit-filter list (this table) to name
-    `DropShadowFilter` and `MotionBlurFilter` so future authors
-    cannot read "blur" too narrowly.
-- **Tauri 2 on Ubuntu requires the gtk-rs build toolchain at `cargo doc` /
-  `cargo check` time, not just at link time.** `glib-sys`'s build script
-  invokes `pkg-config --libs --cflags glib-2.0` and aborts if the dev
-  headers aren't present. **Install before any cargo invocation in CI:**
-  `pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev
-  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-  build-essential` (the official Tauri 2 prerequisite list). Affects
-  *every* CI workflow that compiles the workspace, not just the gate —
-  the docs workflow's `cargo doc --workspace` hits the same wall.
-- **GStreamer in CI: install `gstreamer1.0-tools gstreamer1.0-plugins-base
-  gstreamer1.0-plugins-good gstreamer1.0-libav`.** Without
-  `gstreamer1.0-libav` the H.264 fixture in `decode/tests/fixtures/sample.mp4`
-  doesn't decode (libav is what carries the H.264 plugin on stock Ubuntu).
 - **Cache `target/` plus `~/.cargo/registry/{index,cache}` and
-  `~/.cargo/git/db`** keyed on `Cargo.lock`. Caching just `~/.cargo` and
-  not `target/` halves the speedup; caching the workspace `target/`
-  yields the biggest win.
+  `~/.cargo/git/db`**, keyed on `Cargo.lock`. Caching just
+  `~/.cargo` and not `target/` halves the speedup; caching the
+  workspace `target/` is the biggest single win. Use a per-OS
+  cache key (`${{ runner.os }}-cargo-…`) so the three matrix
+  runners don't fight over the same cache.
+- **`dorny/paths-filter@v3` + synthetic aggregator** is the
+  pattern for path-filtered jobs that must satisfy branch
+  protection. Conditional jobs that skip return `skipped` —
+  branch protection reads that as success, but if you mark
+  `gate-wisp` as "required" directly, a screen-only PR is
+  blocked because the required check never ran. Fix: add a
+  `gate-all` job that `needs: [changes, gate-wisp, gate-screen]`
+  + `if: always()`, inspects `needs.*.result`, and exits non-zero
+  only if a triggered job actually failed. Make `gate-all` the
+  required check.
+- **Both gates trigger on shared workspace files** (`Cargo.lock`,
+  `Cargo.toml`, `rust-toolchain.toml`, the workflow file itself).
+  Workspace-wide changes affect everyone, so we run both gates.
+  Per-crate paths split into `wisp` vs `screen` filters.
+- **Three-OS matrix is the standard:**
+  `[macos-latest, ubuntu-latest, windows-latest]` with
+  `fail-fast: false`. See the per-OS subsections below for what
+  to install and what env vars to set on each.
+- **Two-book Pages deploy composes into one artifact.**
+  `actions/upload-pages-artifact@v3` accepts a single directory.
+  Mount the wisp book at `target/book/wisp/` via
+  `mdbook build _docs/wisp-book --dest-dir target/book/wisp` AFTER
+  the screen book builds at `target/book/`. Result: one Pages
+  site with path-based routing (`/screen/`, `/screen/wisp/`,
+  `/screen/api/`).
+- **Post-build smoke test before upload.** docs.yml asserts
+  well-known files (`wisp/overview.html`, `wisp/chunks/filter-blur.html`,
+  `wisp-overview.html`) exist before `upload-pages-artifact`.
+  Cheap insurance against "preprocessor silently dropped half
+  the book" — catches the failure on PR rather than after deploy.
 - **HTTPS push to a fresh GitHub repo can hit transient HTTP 400
   ("send-pack: unexpected disconnect").** Fix: `git config --local
-  http.postBuffer 524288000` (500 MB). The default 1 MB buffer is
-  enough for small commits but stalls on initial repo seeding with
-  binary assets (PNGs, MP4 fixtures).
+  http.postBuffer 524288000` (500 MB). Default 1 MB buffer is
+  enough for small commits but stalls on initial repo seeding
+  with binary assets (PNGs, MP4 fixtures).
+
+### CI — macOS (`macos-latest`)
+
+- **Truth runner for wgpu.** Real Apple Silicon Metal — same
+  backend as the dev box — runs every wgpu test without skips.
+  macos-latest minutes are free on public repos; 10× multiplier
+  on private. Use the matrix judiciously.
+- **Brew installs GStreamer for the screen gate:**
+  `brew install gstreamer`. No further env vars.
+- **No `WGPU_BACKEND` / `WGPU_POWER_PREF` / `WISP_SKIP_GPU_FILTER_TESTS`.**
+  Those are lavapipe-specific (see Ubuntu). Setting them on macOS
+  silently drops coverage of pipelines that work fine on Metal.
+- **e2e (Tier-2) tests are intentionally skipped.** `tauri-driver`
+  + WKWebView support is incomplete upstream; the suite prints a
+  clear skip message and exits 0 on macOS.
+
+### CI — Ubuntu (`ubuntu-latest`)
+
+- **Validates the Linux build path.** Lavapipe (mesa's software
+  Vulkan) loses the device on multi-bind-group filter pipelines,
+  so the 3 affected wgpu tests skip via env var. Everything else
+  runs.
+- **apt install — Tauri 2 toolchain:** `pkg-config libglib2.0-dev
+  libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev
+  libayatana-appindicator3-dev librsvg2-dev build-essential`.
+  `glib-sys`'s build script invokes `pkg-config --libs --cflags
+  glib-2.0` and aborts if these dev headers aren't present — at
+  `cargo doc` and `cargo check` time, not just at link time.
+  Install before any cargo invocation. Affects *every* CI workflow
+  that compiles the workspace, including docs.yml's
+  `cargo doc --workspace`.
+- **apt install — GStreamer:** `gstreamer1.0-tools
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+  gstreamer1.0-libav`. Without `gstreamer1.0-libav` the H.264
+  fixture in `decode/tests/fixtures/sample.mp4` doesn't decode
+  (libav carries the H.264 plugin on stock Ubuntu).
+- **apt install — wgpu adapter + winit features:**
+  `mesa-vulkan-drivers libvulkan1` (for lavapipe — without these
+  the first wisp test that calls `Application::new` either hangs
+  on adapter probe or aborts with "no adapters found") plus
+  `libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev
+  libxcursor-dev libxrandr-dev libxi-dev` (winit 0.30 x11/wayland
+  backend headers).
+- **Set wgpu env so adapter probing doesn't churn:**
+  `WGPU_BACKEND=vulkan`, `WGPU_POWER_PREF=low`, and
+  `WISP_SKIP_GPU_FILTER_TESTS=1` (for the lavapipe filter skips).
+- **winit 0.30 feature pin.** A transitive dep with
+  `default-features = false` strips winit's `x11`/`wayland`
+  features and cargo's feature unification can leave Linux
+  without any backend (`compile_error!("The platform you're
+  compiling for is not supported by winit")`). Pin
+  `winit = { version = "0.30", features = ["x11", "wayland",
+  "wayland-dlopen", "wayland-csd-adwaita"] }` explicitly in our
+  Cargo.toml. **Also chase every edge that re-pulls winit:**
+  eframe with `default-features = false` strips its proxy
+  features (`x11` → `winit/x11`); add them back explicitly:
+  `eframe = { default-features = false, features = ["wgpu",
+  "default_fonts", "x11", "wayland"] }`. `cargo check
+  --all-features` masks this via feature unification; `cargo doc`
+  (no `--all-features`) is stricter and surfaces the gap.
+- **e2e (Tier-2) tests are intentionally skipped in CI.**
+  `tauri-driver` + WebKitGTK under xvfb proved flaky enough that
+  the signal stopped being useful. Contributors run it locally
+  before opening Tauri shell PRs (`_docs/book/src/app-ui/testing.md`).
+- **Lavapipe is the software emulator, not real GPU.** Don't
+  rely on it for GPU-correctness signals — see the dedicated
+  "Lavapipe filter-test skip pattern" section below for the
+  guard discipline.
+
+### CI — Windows (`windows-latest`)
+
+- **Validates the Windows build path** (MSVC, WebView2, native
+  DX12 for wgpu). All preinstalled on `windows-latest`; no extra
+  install steps for cargo to compile screen-app + run wisp tests.
+- **DX12 native — no lavapipe skip env vars.** Don't set
+  `WGPU_BACKEND` / `WGPU_POWER_PREF` / `WISP_SKIP_GPU_FILTER_TESTS`
+  on Windows. wgpu picks DX12 automatically and runs the
+  multi-bind-group filter pipelines that lavapipe can't.
+- **Git Bash preinstalled — set `defaults.run.shell: bash`** at
+  the workflow level (see universal rules above). Recipes with
+  `#!/usr/bin/env bash` shebangs route through Git Bash
+  automatically. Add a `bash --version` smoke step before
+  `just gate` so a future runner image change that drops Git
+  Bash fails with a clear error.
+- **GStreamer intentionally NOT installed.** Choco-install
+  GStreamer takes ~5 min per CI run for marginal coverage; the
+  `gstreamer_available()` runtime guard in `decode`, `preview`,
+  and `screen-app` integration tests skips them cleanly when the
+  binary is absent. If you ever want full GStreamer coverage on
+  Windows, install via
+  `choco install gstreamer gstreamer-devel --no-progress` and
+  prepend `C:\Program Files\gstreamer\1.0\msvc_x86_64\bin` to
+  `$GITHUB_PATH`.
+- **Tauri's `tauri-winres` requires `crates/app/icons/icon.ico`.**
+  See the "Tauri 2 specifics" section — without it the
+  screen-app build script aborts on `windows-latest`. Regen via
+  `cargo run -p screen-app --example regen-icons`; commit the
+  output.
+- **Path separators:** Windows uses `\` natively but bash on
+  Windows accepts `/` in cargo paths. Stick to `/` in Justfile
+  recipes for cross-platform consistency.
+
+### CI — Lavapipe filter-test skip pattern
+
+Filter pipelines that work on Metal / hardware Vulkan / DX12 fail
+on lavapipe with `Validation Error / Parent device is lost` or
+`Buffer ... is invalid` at `get_mapped_range`. Refactoring the
+pipelines to fit lavapipe compromises real-GPU design for a
+software emulator's limits — wrong call. Skip on lavapipe
+instead.
+
+**Every filter that transitively runs
+`crate::filter::blur::run_blur_pass` is in this class.** A new
+story / test that touches *any* of these trips lavapipe unless
+it's guarded:
+
+| Filter / wrapper            | How it reaches `run_blur_pass`                |
+| --------------------------- | --------------------------------------------- |
+| `BlurFilter`                | direct                                        |
+| `DropShadowFilter`          | alpha-extract → `run_blur_pass` → composite   |
+| `MotionBlurFilter`          | directional `run_blur_pass`                   |
+| `apply_privacy_blur`        | wraps `BlurFilter` via `apply_filter`         |
+| `apply_privacy_blur_data`   | wraps `BlurFilter` via `apply_filter`         |
+
+Anything new that calls `apply_filter(<one of the above>, …)`
+falls into the same class. **Non-blur mask primitives**
+(`apply_clip` / `apply_solid_redaction` / `apply_spotlight` /
+`apply_dim_outside_data` / `apply_path_clip` /
+`apply_mask_to_texture`) use single-bind-group pipelines and run
+fine on lavapipe — **don't guard them**.
+
+**Pre-PR checklist when adding a story or test:**
+
+1. Grep your diff:
+   `git diff main...HEAD -- crates/wisp-storybook/src/stories/ crates/wisp/tests/ | grep -E "BlurFilter|DropShadowFilter|MotionBlurFilter|apply_privacy_blur"`.
+2. If anything matches AND the call site isn't behind a
+   `WISP_SKIP_GPU_FILTER_TESTS` env guard, the story / test
+   trips lavapipe.
+3. **Storybook story** → add its id to `LAVAPIPE_INCOMPATIBLE` in
+   `crates/wisp-storybook/tests/story_smoke.rs`. **`wisp` unit /
+   integration test** → `if skip_on_software_adapter() { return; }`
+   at the top, gated on `WISP_SKIP_GPU_FILTER_TESTS=1`.
+4. Verify both paths locally:
+   `WISP_SKIP_GPU_FILTER_TESTS=1 cargo nextest run -p wisp-storybook --test story_smoke`
+   must pass (story is filtered or guard fires); without the env
+   var, the same run must still exercise the pipeline (~1s+ for
+   blur-touching paths). Both runs green = lavapipe-safe.
+
+**Burned cycles so far:**
+
+- M-MASK.2/.3/.4 — `apply_privacy_blur*` reached `BlurFilter`.
+- M-TEXT.8 (`text-shadow-glow`) — `apply_filter(DropShadowFilter)`
+  runs `run_blur_pass` internally; the story had no env-guard and
+  only the *immediate* `BlurFilter` was in the explicit example
+  list. Fix: add `text-shadow-glow` to `LAVAPIPE_INCOMPATIBLE` +
+  expand the explicit-filter list (this table) to name
+  `DropShadowFilter` and `MotionBlurFilter` so future authors
+  cannot read "blur" too narrowly.
 
 ### Trunk + Leptos CSR
 
@@ -566,80 +678,14 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
   / "Variable not defined". Use plain prose ("the shared X tag")
   or escape with backticks in comments.
 - **macOS `sed` lacks ERE `+` in BRE mode.** `sed 's/X+/Y/'` works
-  on GNU sed (Linux) but fails on macOS unless you pass `-E`.
-  Prefer `python3 - <<'PY' ... PY` heredocs in just recipes for
-  any non-trivial text munging — portable, no `-E`/`-r` flag
-  gymnastics. The `snapshots-check` and `shared-check` recipes
-  both use this pattern.
-
-### GitHub Actions (path-filtered gates + Pages composition)
-
-- **`actionlint` is the validator.** `brew install actionlint`,
-  then `actionlint .github/workflows/*.yml` before every CI edit.
-  Catches workflow YAML errors, shellcheck issues in `run:`
-  blocks, and unset env refs. The gate doesn't run it remotely
-  (yet), so it's a local-only smoke test — but it has caught
-  every workflow mistake in this repo on first try.
-- **`just gate` must stay mdbook-free.** This is the most-recently
-  burned cycle: DOCS-02 wired `shared-check` to depend on `site`
-  which calls `mdbook build`. CI's gate-screen workflow doesn't
-  install mdbook (only docs.yml does), so the gate failed on
-  every PR on every matrix runner with `bash: mdbook: command
-  not found`. **Fix:** split `shared-check` (source-level grep,
-  mdbook-free, in `gate`) from `site-check` (rendered-HTML grep,
-  mdbook-required, in `docs.yml` only). The boundary rule:
-  **`just gate` is the Rust + python quality gate; site rendering
-  belongs to `docs.yml`.** Never re-wire `gate` to anything
-  requiring mdbook; the no-mdbook CI gate matrix is the
-  anti-regression net (if mdbook creeps back into `gate`, every
-  matrix runner fails immediately).
-- **`dorny/paths-filter@v3` + synthetic aggregator** is the pattern
-  for path-filtered jobs that must still satisfy branch protection
-  rules. Conditional jobs that skip return `skipped` — branch
-  protection reads that as success, but if you mark gate-wisp as
-  "required" directly, a screen-only PR is blocked because the
-  required check never ran. The fix: add a `gate-all` job that
-  `needs: [changes, gate-wisp, gate-screen]` and `if: always()`,
-  inspect `needs.*.result`, and exit non-zero only if a triggered
-  job actually failed. Make `gate-all` the required check.
-- **Both gates trigger on shared workspace files** (`Cargo.lock`,
-  `Cargo.toml`, `rust-toolchain.toml`, workflow file itself).
-  Workspace-wide changes affect everyone, so we run both gates.
-  Per-crate paths are split into `wisp` vs `screen` filters.
-- **Three-OS matrix is the standard:** `[macos-latest,
-  ubuntu-latest, windows-latest]` with `fail-fast: false`. macOS
-  is the wgpu truth runner (Metal, no skips). Linux validates the
-  Linux build path with lavapipe-skip env for the 3 multi-bind-
-  group filter tests. **Windows** uses native DX12 for wgpu (no
-  lavapipe skip needed); WebView2 + MSVC are preinstalled on
-  windows-latest so Tauri 2 builds out of the box; GStreamer is
-  intentionally NOT installed in CI (choco-install takes ~5 min,
-  and the `gstreamer_available()` runtime guard in gstreamer-using
-  integration tests skips them cleanly when the binary is absent).
-- **`just` works on windows-latest via Git Bash.** Git for Windows
-  is preinstalled, putting `bash.exe` on PATH. Recipes with
-  `#!/usr/bin/env bash` shebangs route through Git Bash
-  automatically — no `set shell := ...` directive needed. Add a
-  `bash --version` smoke step before `just gate` so the failure
-  mode is clear if a runner image change ever drops Git Bash.
-- **Don't set `WGPU_BACKEND` / `WISP_SKIP_GPU_FILTER_TESTS` on
-  Windows or macOS.** Those env vars are lavapipe-specific — they
-  exist to work around mesa's software Vulkan losing the device on
-  multi-bind-group filter pipelines. macOS Metal and Windows DX12
-  build those pipelines fine. Setting the skip env var on a
-  non-lavapipe runner silently drops coverage.
-- **Two-book Pages deploy composes into one artifact.** The
-  `actions/upload-pages-artifact@v3` step accepts a single
-  directory. We mount the wisp book at
-  `target/book/wisp/` via `mdbook build _docs/wisp-book --dest-dir
-  target/book/wisp` AFTER the screen book builds at `target/book/`.
-  Result: one Pages site with path-based routing (`/screen/`,
-  `/screen/wisp/`, `/screen/api/`). No subdomain, no custom domain.
-- **Post-build smoke test before upload.** The docs workflow asserts
-  well-known files (`wisp/overview.html`, `wisp/chunks/filter-blur.html`,
-  `wisp-overview.html`) exist before `upload-pages-artifact` runs.
-  Cheap insurance against "preprocessor silently dropped half the
-  book" — catches the failure on PR rather than after deploy.
+  on GNU sed (Linux) but fails on macOS unless you pass `-E`. For
+  non-trivial text munging in a justfile, **don't reach for python
+  heredocs** — that adds an interpreter dep to every CI runner
+  (Windows ships `python` not `python3`, Git Bash PATH ordering
+  varies). Instead, write a small Rust binary under `tools/` (see
+  `tools/doc-gates/` for the pattern: ~150 LOC lib + bin + tests,
+  `cargo build`-fast, fully cross-platform). The
+  `snapshots-check` / `shared-check` recipes use this pattern.
 
 ### mdBook live-reload (split-book serving)
 
