@@ -25,9 +25,10 @@ together over 60 frames so the chain visibly *layers* — the highlight
 above is frame 30, where blur radius is 3.25 px, drop-shadow blur is
 7 px, and motion-blur kernel is at 50% of `peak_velocity_pps`.
 
-The example is fully headless — same render path the M2+ export
-pipeline will use when it consumes a project file and emits PNGs (or
-fed into ffmpeg-next directly, the original M0.21 spec). Run with:
+The example is fully headless — same render path the M-EXPORT
+pipeline will use when it consumes a project file and emits PNGs
+(or pushes BGRA frames into GStreamer's `appsrc → encoder → mp4mux`
+graph, per [AUT-144](https://linear.app/harwood/issue/AUT-144)). Run with:
 
 ```bash
 cargo run -p wisp --example filter_chain

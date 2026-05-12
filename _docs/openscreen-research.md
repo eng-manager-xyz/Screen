@@ -183,10 +183,10 @@ The export is essentially: web-demuxer → VideoDecoder → PixiJS render with e
 | Dependency | Role today | Rust replacement |
 |---|---|---|
 | **Electron** | Shell, capture APIs (`desktopCapturer`), file dialogs, multi-window | **Tauri** (multi-window supported in v2) — Tauri exposes none of the capture APIs Chromium gives Electron, so this is the *biggest* substitution to plan for. |
-| **MediaRecorder + WebCodecs (capture)** | Real-time encoding of the screen stream | Native: `scap`/`screencapturekit-rs` (macOS), `windows-capture` crate (Windows), `pipewire-rs` / `wayland-protocols-screencopy` (Linux). Encoding via `ffmpeg-next` / `gstreamer-rs` / `cpal` for audio, or hardware encoders (VideoToolbox / Media Foundation / VAAPI) directly. |
+| **MediaRecorder + WebCodecs (capture)** | Real-time encoding of the screen stream | Native: `scap`/`screencapturekit-rs` (macOS), `windows-capture` crate (Windows), `pipewire-rs` / `wayland-protocols-screencopy` (Linux). Encoding via GStreamer (`gstreamer-rs` + `appsrc` → platform HW encoder element: `vtenc_h264_hw` / `mfh264enc` / `vaapih264enc`). This project does **not** use `ffmpeg-next` — see [AUT-144](https://linear.app/harwood/issue/AUT-144). |
 | **PixiJS** | WebGL render of zoom/blur/shadow on the editor canvas | **`wgpu`** (with `bevy_render` if going Bevy) or **Skia/skia-safe** for 2D-style compositing. |
-| **`mediabunny`** | MP4 muxing | `mp4` crate, `matroska-rs`, or `ffmpeg-next` mux. |
-| **`web-demuxer`** | Demuxing source MP4 in browser | `symphonia` (no video codecs yet) + `ffmpeg-next`, or `gstreamer-rs`. |
+| **`mediabunny`** | MP4 muxing | GStreamer `mp4mux` / `matroskamux` / `webmmux` via `gstreamer-rs`. |
+| **`web-demuxer`** | Demuxing source MP4 in browser | GStreamer CLI-pipe (`decodebin`) — already shipped as `decode::gstreamer_pipe`. |
 | **`gif.js`** | GIF encoding in worker | `image::codecs::gif` or `gifski`. |
 | **`pixi-filters` / `@pixi/filter-drop-shadow`** | Motion blur, drop shadow on canvas | wgpu shaders (compute or fragment); Bevy's built-in post-processing if Bevy. |
 | **`gsap`, `motion`** | Animation / easing curves | Pure Rust: hand-rolled tweens or `bevy_tweening`. |
@@ -275,13 +275,13 @@ From the README, releases, and [open issues](https://github.com/siddharthvaddem/
 
 ### What they struggle with — Rust+Tauri can do better
 
-1. **Export reliability is the #1 user pain.** Doing decode → render → encode → mux in a renderer process via WebCodecs is fragile. A native Rust pipeline using `ffmpeg-next` or `gstreamer-rs` (or directly: VideoToolbox/MediaFoundation/VAAPI + the `mp4` crate) sidesteps the entire class of bugs in issues #157, #256, #269, #540. **This is the strongest single argument for a Rust port.**
+1. **Export reliability is the #1 user pain.** Doing decode → render → encode → mux in a renderer process via WebCodecs is fragile. A native Rust pipeline using GStreamer (`gstreamer-rs` bindings + `appsrc` → platform HW encoder element) sidesteps the entire class of bugs in issues #157, #256, #269, #540. **This is the strongest single argument for a Rust port.** See [AUT-144](https://linear.app/harwood/issue/AUT-144) for why this workspace landed on GStreamer-only (not `ffmpeg-next`).
 2. **Cold start / bundle size.** Electron + a 100+ MB JS bundle vs Tauri's ~10 MB. Editor lazy-loading wouldn't even be needed.
 3. **Memory.** Electron + Chromium for a video editor with PixiJS easily hits 1+ GB. wgpu + Tauri can sit under 200 MB.
 4. **Wayland/Linux compositing hacks** (`gl.readPixels()` fallback) disappear when you control the GPU pipeline directly with wgpu.
 5. **Permissions on macOS re-prompt** (#558) — usually because TCC database entries get stale per-bundle-id. A Tauri app with stable bundle ID + proper `Info.plist` `NSScreenCaptureDescription` and `NSMicrophoneUsageDescription` handles this cleanly.
 6. **Click capture cross-platform**. The `rdev` crate or platform-native event taps work on all three OSes — no need to skip Linux/Windows like `uiohook-napi` does today.
-7. **Codec breadth**. A native ffmpeg link gets you ProRes, DNxHD, HEVC, AV1, VP9 — useful for power users who want to feed editing pipelines downstream.
+7. **Codec breadth**. GStreamer gives you ProRes (`avenc_prores_ks`), DNxHD (`avenc_dnxhd`), HEVC (`x265enc` / `vtenc_h265_hw` / `mfh265enc`), AV1 (`av1enc` / `rav1enc`), VP9 (`vp9enc`) — useful for power users who want to feed editing pipelines downstream, without dragging in a second media stack.
 8. **Real "zero-copy" capture**. ScreenCaptureKit (macOS 13+) and Windows Graphics Capture both support `IOSurface`/`ID3D11Texture2D` zero-copy paths into the encoder. Electron's `desktopCapturer` round-trips through `MediaRecorder` and a JS ArrayBuffer. Native Rust can keep frames on GPU end-to-end.
 
 ### What Rust+Tauri will do *worse* — be honest about these
@@ -315,7 +315,7 @@ From the README, releases, and [open issues](https://github.com/siddharthvaddem/
 **What to rewrite from scratch:**
 
 - All capture (native per platform, not Chromium).
-- All encoding/muxing (ffmpeg/gstreamer/native HW).
+- All encoding/muxing (GStreamer single stack — platform HW encoder element selected per OS).
 - All rendering (wgpu, not PixiJS).
 - All UI (Leptos, not React).
 - All IPC (Tauri commands, not Electron `ipcMain`).
@@ -323,7 +323,7 @@ From the README, releases, and [open issues](https://github.com/siddharthvaddem/
 ### A reasonable build order for the Rust port
 
 1. **Capture** on one platform (recommend macOS first via `screencapturekit-rs` — best APIs, biggest user base for demo-makers). Pipe to file via VideoToolbox H.264 hardware encoder. Cursor telemetry as separate JSON stream.
-2. **Headless export pipeline**: take a recording + a project JSON → produce MP4. wgpu compositor + ffmpeg encode. This validates the renderer before any UI.
+2. **Headless export pipeline**: take a recording + a project JSON → produce MP4. wgpu compositor + GStreamer `appsrc → vtenc_h264_hw → mp4mux → filesink` encode. This validates the renderer before any UI.
 3. **Editor UI** in Leptos with Canvas/wgpu preview. Timeline last (it's the hardest UI).
 4. **Cross-platform**: Windows next (`windows-capture`), Linux last (PipeWire portal — most fiddly).
 5. **Tauri shell** with multi-window (HUD/picker/countdown/editor) integrated last.

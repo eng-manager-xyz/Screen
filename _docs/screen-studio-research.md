@@ -541,8 +541,8 @@ The hard problems decompose roughly into: capture, animation, render preview, ex
 4. **System audio capture on macOS** – `ScreenCaptureKit` is the only sanctioned API. You'll need an `objc2` / `swift-bridge` layer. Not trivial but not novel. On Windows you'd use `WASAPI` loopback; on Linux PipeWire.
 5. **Screen capture w/ cursor stream** – `ScreenCaptureKit` for pixels (excluding cursor) + `CGEventTap` for cursor positions and clicks at high resolution. Or just `ScreenCaptureKit`'s built-in cursor but you'd have to extract it. Most clones (ScreenKite) draw their own cursor, capturing pixels with cursor hidden + a separate `CGEvent` stream for positions.
 6. **Motion blur** – directional blur shader along velocity vector during zoom/pan transitions. wgpu compute shader. Standard postprocess; tunable params.
-7. **GPU-accelerated GIF export** – non-trivial. Palette quantisation + dithering. SS uses ffmpeg's `palettegen`+`paletteuse`; you can pipe to `ffmpeg-next` crate or hand-roll wuant in Rust.
-8. **Motion-blur-aware H.264/H.265 export** – encode via VideoToolbox on macOS (best efficiency), or via FFmpeg's `libx264`. There's a Rust `videotoolbox` crate but it's nascent. Most reliable: `ffmpeg-next` for the encoder, feed it RGBA frames from your wgpu render passes.
+7. **GPU-accelerated GIF export** – non-trivial. Palette quantisation + dithering. Screen Studio uses ffmpeg's `palettegen` + `paletteuse`; this project uses GStreamer's `gdkpixbufdec` path or the `gifski` crate (no ffmpeg — see [AUT-144](https://linear.app/harwood/issue/AUT-144)).
+8. **Motion-blur-aware H.264/H.265 export** – this project uses GStreamer's `vtenc_h264_hw` element on macOS (wraps VideoToolbox), `mfh264enc` on Windows (Media Foundation), `vaapih264enc` / `nvh264enc` on Linux. Push BGRA frames from your wgpu render passes into `appsrc`; the encoder element selection is the only platform-specific bit.
 9. **Webcam capture** – `AVCaptureDevice` on macOS via `objc2`. Standard, but needs camera-format negotiation for 720p/1080p/4K.
 10. **On-device transcription** – ship Whisper (`whisper-rs`) and bridge Apple Speech via `Speech.framework` for macOS. Whisper bundles add ~150MB+ depending on model.
 11. **Robust project file format** – SS's 40GB-for-3hrs is hint they store frames raw. You can do better: chunked H.264 segments + a SQLite or sled-backed event log + JSON edit graph. Goal: random-access scrubbing without re-decoding. mp4 fragments + manifest works.
@@ -580,7 +580,7 @@ Bevy is the right choice **only if** you intend to ship effects, particles, comp
 - `wgpu`, `winit`, `tao` (Tauri's window backend).
 - `cidre` or `objc2` + `objc2-foundation` for ScreenCaptureKit / AVFoundation bindings.
 - `coreaudio-rs` for audio.
-- `ffmpeg-next` or `ac-ffmpeg` for encode/decode; longer-term `mp4-rust` for muxing and a thin VideoToolbox crate for HW encode on macOS.
+- GStreamer for encode/decode/mux: `gstreamer-rs` Rust bindings + `appsrc` for the encode side (wgpu render targets push BGRA → encoder), `gst-launch-1.0` CLI-subprocess for the decode side (already shipped — see `decode::gstreamer_pipe`). Element selection per platform: `vtenc_h264_hw` (macOS) / `mfh264enc` (Windows) / `vaapih264enc` / `nvh264enc` (Linux). **No `ffmpeg-next`** — see [AUT-144](https://linear.app/harwood/issue/AUT-144).
 - `whisper-rs` for transcription.
 - `dasp` / `cpal` for audio editing graph.
 - `rfd` for native file dialogs (cross-platform).
