@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-03 — Shared menu + popover primitives (AUT-123)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `PopoverSurface` (header / body / footer + `PopoverPlacement`), `MenuList`, `MenuSection`, `MenuRow` (with `MenuRowKind { Default, Selected, Action, Danger, Disabled }` + `MenuBadgeView`), `MenuFooter`. Six new stories cover the recurring menu shapes used by every later tray / picker / on-screen-options popover.
+- **Linear:** [AUT-123](https://linear.app/harwood/issue/AUT-123).
+- **Files:** new `crates/ui-storybook/src/components/menus/{popover_surface,menu_list,menu_section,menu_row,menu_footer}.rs`. `components/menus/mod.rs` + `components/mod.rs` re-export. `stories/menus.rs` populates the previously-empty menus surface with 6 stories. `assets/style.css` adds `.popover-*`, `.menu-list`, `.menu-section*`, `.menu-row*`, `.menu-footer` classes. New `_docs/book/src/ui/chunks/{popover-surface,menu-row}.md`. `SUMMARY.md` indexes both. `tests/story_registry.rs` adds `Menus` to the known category set.
+- **Verified:** 28 ui-storybook tests pass. Full `just gate` green.
+- **Primitives don't carry domain.** `MenuRow` doesn't know about workspaces, devices, or apps — it renders rows of arbitrary content with the right look. UI-05 / UI-08 / UI-09 / UI-10 / UI-12 will compose these primitives with the relevant fixtures from `fixtures::{workspaces, devices, recorder}`.
+
+---
+
 ## UI-02 — AppShell + NavigationRail (AUT-122)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `AppShell` provides slots (rail / main / titlebar / inspector / footer); `NavigationRail` is a stateless left-edge nav with `AppSection` enum (Record / Library / Editor / Cursor / Prefs). `WorkspaceBadge` + `UserAvatar` cap the rail. Six new stories cover all four active-section states + notification count + a three-pane shell composition.

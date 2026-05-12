@@ -84,8 +84,9 @@ fn category_set_is_within_known_buckets() {
         "Shell",
         "App surfaces",
         "Compositions",
-        // Future categories (Library, Menus, Cursor) get appended by
-        // their introducing ticket — UI-03 / UI-14 / UI-20 etc.
+        "Menus",
+        // Future categories (Library, Cursor) get appended by their
+        // introducing ticket — UI-14 / UI-20.
     ];
     for story in all_stories() {
         assert!(

@@ -58,6 +58,10 @@ pub use editor::{
     DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, PlayState, PlayerControls,
     TrackKind,
 };
+pub use menus::{
+    MenuBadgeView, MenuFooter, MenuList, MenuRow, MenuRowKind, MenuSection, PopoverPlacement,
+    PopoverSurface,
+};
 pub use primitives::{
     Badge, BadgeKind, Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, Divider,
     DividerOrientation, IconTile, IconTileKind, Kbd, Surface, SurfaceKind,

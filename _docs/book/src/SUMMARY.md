@@ -118,6 +118,8 @@
   - [Surface primitives](./ui/chunks/surface-primitives.md)
   - [Navigation rail](./ui/chunks/navigation-rail.md)
   - [App shell](./ui/chunks/app-shell.md)
+  - [Popover surface](./ui/chunks/popover-surface.md)
+  - [Menu row](./ui/chunks/menu-row.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

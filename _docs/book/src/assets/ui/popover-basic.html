@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Player controls — playing mid-clip</title>
+    <title>Popover — header + menu list</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1024,6 +1024,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="group" aria-label="Player transport" class="player-controls"><button type="button" aria-label="Pause" class="player-toggle player-toggle-playing"><span class="player-toggle-glyph">❚❚</span></button><div data-role="current" class="player-time">0:27</div><div class="player-scrub"><div class="player-scrub-track"><div class="player-scrub-fill" style="width: 32.00%;"></div><div class="player-scrub-handle" style="left: 32.00%;"></div></div></div><div data-role="total" class="player-time">1:24</div></div>
+    <div role="dialog" class="popover-surface popover-bl" style="width:280px;"><header class="popover-header"><div class="popover-title">Workspaces</div><div class="popover-description">Switch between your personal and team workspaces.</div></header><div class="popover-body"><ul role="menu" aria-label="Workspaces" class="menu-list"><li role="presentation" class="menu-section"><div class="menu-section-heading">Personal</div><ul role="group" class="menu-section-rows"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-selected"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-workspace">PE</span></span><span class="menu-row-text"><span class="menu-row-title">Personal</span><!></span><!><!><span aria-hidden="true" class="menu-row-check">✓</span></button></li></ul></li><li role="presentation" class="menu-section"><div class="menu-section-heading">Teams</div><ul role="group" class="menu-section-rows"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-workspace">AC</span></span><span class="menu-row-text"><span class="menu-row-title">Acme Inc.</span><span class="menu-row-subtitle">3 members</span></span><!><!><!></button></li><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-workspace">CD</span></span><span class="menu-row-text"><span class="menu-row-title">Client demos</span><!></span><!><!><!></button></li></ul></li></ul></div><!></div>
   </body>
 </html>

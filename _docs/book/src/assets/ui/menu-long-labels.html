@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Player controls — playing mid-clip</title>
+    <title>Menu — long labels truncate cleanly</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1024,6 +1024,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="group" aria-label="Player transport" class="player-controls"><button type="button" aria-label="Pause" class="player-toggle player-toggle-playing"><span class="player-toggle-glyph">❚❚</span></button><div data-role="current" class="player-time">0:27</div><div class="player-scrub"><div class="player-scrub-track"><div class="player-scrub-fill" style="width: 32.00%;"></div><div class="player-scrub-handle" style="left: 32.00%;"></div></div></div><div data-role="total" class="player-time">1:24</div></div>
+    <div role="dialog" class="popover-surface popover-bl" style="width:260px;"><!><div class="popover-body"><ul role="menu" aria-label="Long labels" class="menu-list"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">🎙</span></span><span class="menu-row-text"><span class="menu-row-title">A very long microphone label that overflows the row width</span><span class="menu-row-subtitle">Subtitle that is also extremely long and needs to truncate cleanly</span></span><!><!><!></button></li><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-app">S</span></span><span class="menu-row-text"><span class="menu-row-title">App name with lots of words to test truncation</span><!></span><!><!><!></button></li></ul></div><!></div>
   </body>
 </html>
