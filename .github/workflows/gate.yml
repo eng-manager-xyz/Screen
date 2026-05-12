@@ -1,4 +1,4 @@
-# Path-filtered gate (DOCS-04 / AUT-158).
+# Path-filtered gate (DOCS-04 + DOCS-07).
 #
 # # Why path-filtered
 #
@@ -11,28 +11,53 @@
 # - **gate-wisp** — renderer + preprocessor. Triggered when only
 #   `crates/wisp/**`, `crates/wisp-storybook/**`, `_docs/wisp-book/**`,
 #   `_docs/shared/**`, or `tools/mdbook-preprocessor-cross/**`
-#   change. ~5 min on macOS + Linux. Runs the wisp-subset of
-#   `cargo nextest` + clippy + a wisp-book mdbook build.
+#   change. ~5 min on each runner. Runs the wisp-subset of
+#   `cargo nextest` + clippy on macOS, Ubuntu, and Windows.
 #
 # - **gate-screen** — full integration. Triggered on any other
 #   crate, any Tauri/Leptos change, any workspace-wide file
 #   (`Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, `Justfile`,
 #   `deny.toml`), and any `.github/workflows/` edit. Runs the full
-#   `just gate`. If a PR touches both wisp and screen, both jobs
-#   run — fail-fast doesn't cancel siblings.
+#   `just gate` on macOS, Ubuntu, and Windows.
 #
-# - **gate-all** — synthetic required check. Aggregates the two
+# - **gate-all** — synthetic required check. Aggregates the
 #   conditional jobs so branch-protection rules can stay green
 #   when a job legitimately skips. Required for merge.
 #
-# # `macos-latest is the truth runner`
+# # Platform matrix
 #
-# Same logic as the original gate: real Apple Silicon Metal runs
-# every wgpu test without the lavapipe device-loss skip. Linux
-# validates the build path (gtk-rs, winit x11/wayland, GStreamer
-# apt) and skips the 3 multi-bind-group filter tests via
-# `WISP_SKIP_GPU_FILTER_TESTS=1`. See `crates/wisp/tests/` for
-# the guard pattern.
+# All gates run on a `[macos-latest, ubuntu-latest, windows-latest]`
+# matrix with `fail-fast: false` so one platform's failure doesn't
+# cancel the others:
+#
+# - **macos-latest** — truth runner for wgpu (real Apple Silicon
+#   Metal). Every wgpu test passes without skips. Brew installs
+#   GStreamer for the screen gate.
+#
+# - **ubuntu-latest** — validates the Linux build path (gtk-rs +
+#   winit x11/wayland + GStreamer apt). Lavapipe (software Vulkan)
+#   loses the device on multi-bind-group filter pipelines, so the
+#   3 affected tests skip via `WISP_SKIP_GPU_FILTER_TESTS=1`.
+#
+# - **windows-latest** — validates the Windows build path
+#   (MSVC, WebView2, native DX12 for wgpu). GStreamer is NOT
+#   installed in CI (choco-install takes ~5 min and the
+#   `gstreamer_available()` runtime guard skips those tests
+#   cleanly when the binary is absent). `just` works via Git Bash
+#   (preinstalled on windows-latest); recipes with
+#   `#!/usr/bin/env bash` shebangs route through Git Bash
+#   automatically. No `WGPU_BACKEND` / `WISP_SKIP_GPU_FILTER_TESTS`
+#   env vars — those are lavapipe-specific.
+#
+# # `just gate` is mdbook-free
+#
+# The previous iteration of this workflow failed because
+# `just gate` → `shared-check` → `site` → `mdbook build` required
+# `mdbook` on PATH. We split that: `gate` runs the source-level
+# `shared-check` (Python only); `site-check` (which builds both
+# books and greps rendered HTML) is invoked from `docs.yml`
+# instead. The gate stays Rust-only — easier to install on every
+# runner.
 
 name: gate
 
@@ -58,15 +83,11 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # Match the workspace's logical seam (wisp + its
-          # preprocessor are publishable independently of the
-          # recorder; everything else is integration).
-          #
           # `_docs/shared/` and the workspace-wide files
           # (`Cargo.lock` etc.) appear under BOTH filters so a
-          # change there triggers BOTH jobs — the wisp gate
-          # because shared content might break wisp, the screen
-          # gate because workspace-level changes affect everyone.
+          # change there triggers both gates — wisp because shared
+          # content might break it, screen because workspace-level
+          # changes affect everyone.
           filters: |
             wisp:
               - 'crates/wisp/**'
@@ -105,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +148,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-gate-wisp-
 
+      # Linux-only: lavapipe + X11/wayland headers for headless wgpu.
+      # macOS uses native Metal (no install). Windows uses native DX12
+      # (no install; lavapipe is software Vulkan, not relevant).
       - name: Install Linux deps (lavapipe for wgpu headless)
         if: matrix.os == 'ubuntu-latest'
         env:
@@ -144,6 +168,8 @@ jobs:
             libxrandr-dev \
             libxi-dev
 
+      # Lavapipe-only — the 3 multi-bind-group filter tests run
+      # natively on macOS Metal and Windows DX12.
       - name: Configure wgpu for Linux headless CI
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -162,8 +188,7 @@ jobs:
       # storybook, and the cross-book preprocessor. No Tauri, no
       # GStreamer, no Leptos — faster wheels-up.
       - name: cargo fmt (wisp subset)
-        run: |
-          cargo fmt -p wisp -p wisp-storybook -p mdbook-preprocessor-cross -- --check
+        run: cargo fmt -p wisp -p wisp-storybook -p mdbook-preprocessor-cross -- --check
 
       - name: cargo clippy (wisp subset)
         run: |
@@ -196,7 +221,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -221,8 +246,7 @@ jobs:
 
       - name: Install macOS deps (GStreamer)
         if: matrix.os == 'macos-latest'
-        run: |
-          brew install gstreamer
+        run: brew install gstreamer
 
       - name: Install Linux deps (Tauri 2 + GStreamer + lavapipe + winit)
         if: matrix.os == 'ubuntu-latest'
@@ -257,6 +281,13 @@ jobs:
             libxrandr-dev \
             libxi-dev
 
+      # Windows: WebView2 (Tauri 2) + MSVC build tools are preinstalled
+      # on windows-latest. GStreamer is intentionally NOT installed —
+      # the `gstreamer_available()` runtime guard in `decode`,
+      # `preview`, and `screen-app` integration tests skips them
+      # cleanly when the binary is absent. Saves ~5 min of CI per run.
+
+      # Lavapipe-only.
       - name: Configure wgpu for Linux headless CI
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -273,6 +304,33 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
+
+      # Smoke-check that `bash` is available before running `just gate`.
+      # On windows-latest, Git Bash is preinstalled and on PATH as
+      # `bash.exe`; recipes with `#!/usr/bin/env bash` shebangs use it.
+      # If a runner image change ever drops Git Bash, this fails fast
+      # with a clear error instead of an opaque recipe failure.
+      - name: Sanity-check bash for `just` recipes
+        run: bash --version
+
+      # Anti-regression: `just gate` is Rust + python only. If a future
+      # change wires `gate` to need `mdbook` (or any preprocessor) on
+      # PATH, this assertion fires BEFORE the gate runs and points at
+      # the right fix (move the dep to `site-check` in docs.yml).
+      # Burned cycle history: DOCS-02 → AUT-156 wired shared-check to
+      # `site`, gate failed with `mdbook: command not found`. This
+      # step turns that failure mode into a clear error message.
+      - name: Anti-regression — gate must not need mdbook
+        shell: bash
+        run: |
+          if command -v mdbook >/dev/null 2>&1; then
+            echo "::error::mdbook is on PATH in gate-screen runner."
+            echo "::error::This means a previous step installed it, OR the gate now needs it."
+            echo "::error::Site-rendering belongs in docs.yml via just site-check, not in just gate."
+            echo "::error::See CLAUDE.md § 'GitHub Actions' → 'just gate must stay mdbook-free'."
+            exit 1
+          fi
+          echo "OK: mdbook is not on PATH; gate is Rust + python only."
 
       - name: just gate
         run: just gate

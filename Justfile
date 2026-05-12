@@ -198,16 +198,18 @@ mermaid-check:
     fi
     echo "mermaid-check: no ASCII diagrams in mdBook chapters."
 
-# Drift gate for the two-book setup. Walks both books for
-# `{{shared path}}` and `{{wisp-link path}}` tags and asserts:
-#   1. every `{{shared X}}` resolves to an existing file under
-#      `_docs/shared/`,
-#   2. the rendered HTML doesn't carry any
-#      `mdbook-preprocessor-cross: ... error` comments (a missing
-#      fragment in production emits one of those).
-# Run as part of `gate` so a typo in a shared/wisp-link tag fails
-# CI before deploy.
-shared-check: site
+# Source-only drift gate for the two-book setup. Walks both books +
+# shared for `{{shared X}}` tags and fails if `_docs/shared/X` is
+# missing. Catches the common typo / missing-file case at source —
+# no `mdbook` required, so `just gate` stays Rust-only and CI's
+# gate-screen.yml doesn't need to install mdbook on every PR.
+#
+# The rendered-HTML belt-and-braces grep lives in `site-check`
+# (depends on `site`, requires `mdbook` on PATH) and is invoked by
+# `docs.yml` after both books are built. That keeps the
+# concern-separation clean: `just gate` = Rust quality; `docs.yml`
+# = site rendering + drift.
+shared-check:
     #!/usr/bin/env bash
     set -euo pipefail
     python3 - <<'PY'
@@ -228,18 +230,32 @@ shared-check: site
                         fail = 1
     sys.exit(fail)
     PY
-    # Belt-and-braces: rendered HTML must not carry the preprocessor's
-    # error sentinel (catches runtime-only failures the source grep
-    # cannot see — unreadable files, typo'd tag forms, etc.).
-    # Exclude `target/book/api/` because rustdoc renders the preprocessor's
-    # own source — the error-comment template would otherwise match itself.
-    if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
-      echo "RUNTIME ERROR COMMENT IN RENDERED HTML — see above." >&2
-      exit 1
-    fi
-    echo "shared-check: all shared() references resolve and no runtime errors in rendered HTML."
+    echo "shared-check: source-level shared() references resolve."
 
-# Per-task gate. Run before marking any task done.
+# Full site-rendering drift gate. Builds both books, then greps
+# rendered HTML for `mdbook-preprocessor-cross.*error` sentinels
+# the source-level shared-check can't see (unreadable files,
+# typo'd tag forms whose source variant matches but whose runtime
+# variant doesn't). Requires `mdbook` + preprocessors on PATH.
+# Invoked by `docs.yml` after both books are built; NOT invoked
+# by `just gate` so the Rust gate stays mdbook-free.
+#
+# `target/book/api/` is excluded because rustdoc renders the
+# preprocessor's own source (which contains the literal error
+# template string) and the grep would self-match.
+site-check: site shared-check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
+        echo "RUNTIME ERROR COMMENT IN RENDERED HTML — see above." >&2
+        exit 1
+    fi
+    echo "site-check: both books rendered cleanly, no preprocessor error sentinels."
+
+# Per-task gate. Run before marking any task done. Pure Rust +
+# python — does NOT require mdbook, so it runs identically on
+# every supported CI runner (macOS, Ubuntu, Windows) and locally.
+# Site-rendering drift is gated by `just site-check` in docs.yml.
 gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check
 
 # ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────

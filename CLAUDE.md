@@ -580,6 +580,19 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
   blocks, and unset env refs. The gate doesn't run it remotely
   (yet), so it's a local-only smoke test — but it has caught
   every workflow mistake in this repo on first try.
+- **`just gate` must stay mdbook-free.** This is the most-recently
+  burned cycle: DOCS-02 wired `shared-check` to depend on `site`
+  which calls `mdbook build`. CI's gate-screen workflow doesn't
+  install mdbook (only docs.yml does), so the gate failed on
+  every PR on every matrix runner with `bash: mdbook: command
+  not found`. **Fix:** split `shared-check` (source-level grep,
+  mdbook-free, in `gate`) from `site-check` (rendered-HTML grep,
+  mdbook-required, in `docs.yml` only). The boundary rule:
+  **`just gate` is the Rust + python quality gate; site rendering
+  belongs to `docs.yml`.** Never re-wire `gate` to anything
+  requiring mdbook; the no-mdbook CI gate matrix is the
+  anti-regression net (if mdbook creeps back into `gate`, every
+  matrix runner fails immediately).
 - **`dorny/paths-filter@v3` + synthetic aggregator** is the pattern
   for path-filtered jobs that must still satisfy branch protection
   rules. Conditional jobs that skip return `skipped` — branch
@@ -593,6 +606,28 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
   `Cargo.toml`, `rust-toolchain.toml`, workflow file itself).
   Workspace-wide changes affect everyone, so we run both gates.
   Per-crate paths are split into `wisp` vs `screen` filters.
+- **Three-OS matrix is the standard:** `[macos-latest,
+  ubuntu-latest, windows-latest]` with `fail-fast: false`. macOS
+  is the wgpu truth runner (Metal, no skips). Linux validates the
+  Linux build path with lavapipe-skip env for the 3 multi-bind-
+  group filter tests. **Windows** uses native DX12 for wgpu (no
+  lavapipe skip needed); WebView2 + MSVC are preinstalled on
+  windows-latest so Tauri 2 builds out of the box; GStreamer is
+  intentionally NOT installed in CI (choco-install takes ~5 min,
+  and the `gstreamer_available()` runtime guard in gstreamer-using
+  integration tests skips them cleanly when the binary is absent).
+- **`just` works on windows-latest via Git Bash.** Git for Windows
+  is preinstalled, putting `bash.exe` on PATH. Recipes with
+  `#!/usr/bin/env bash` shebangs route through Git Bash
+  automatically — no `set shell := ...` directive needed. Add a
+  `bash --version` smoke step before `just gate` so the failure
+  mode is clear if a runner image change ever drops Git Bash.
+- **Don't set `WGPU_BACKEND` / `WISP_SKIP_GPU_FILTER_TESTS` on
+  Windows or macOS.** Those env vars are lavapipe-specific — they
+  exist to work around mesa's software Vulkan losing the device on
+  multi-bind-group filter pipelines. macOS Metal and Windows DX12
+  build those pipelines fine. Setting the skip env var on a
+  non-lavapipe runner silently drops coverage.
 - **Two-book Pages deploy composes into one artifact.** The
   `actions/upload-pages-artifact@v3` step accepts a single
   directory. We mount the wisp book at

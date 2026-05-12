@@ -122,14 +122,17 @@ jobs:
       - name: cargo doc
         run: cargo doc --workspace --no-deps --document-private-items
 
-      - name: mdBook build — screen project book
-        run: |
-          mkdir -p target/book
-          mdbook build _docs/book --dest-dir "$PWD/target/book"
+      - name: Install just
+        uses: extractions/setup-just@v2
 
-      - name: mdBook build — wisp library book (mounted at /screen/wisp/)
-        run: |
-          mdbook build _docs/wisp-book --dest-dir "$PWD/target/book/wisp"
+      # `just site-check` runs everything we need: builds BOTH books,
+      # then greps rendered HTML for `mdbook-preprocessor-cross.*error`
+      # sentinels (the runtime drift gate that the source-level
+      # `shared-check` in `just gate` can't catch). Driving from `just`
+      # keeps the local + CI behaviour identical — a contributor who
+      # runs `just site-check` locally sees the same pass/fail as CI.
+      - name: just site-check (mdbook build both books + drift gate)
+        run: just site-check
 
       - name: Splice rustdoc into the book under /api
         run: |
@@ -145,19 +148,6 @@ jobs:
           <!doctype html>
           <meta http-equiv="refresh" content="0; url=./screen_app/" />
           HTML
-          fi
-
-      # Drift gate: the in-repo `just shared-check` would catch
-      # missing `{{shared X}}` references and runtime error
-      # comments in rendered HTML. Run the inline equivalent here
-      # so a deploy can't ship pages with broken shared fragments
-      # even if a contributor pushes without running `just gate`
-      # locally.
-      - name: Drift gate (no preprocessor error comments in rendered HTML)
-        run: |
-          if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
-            echo "::error::rendered HTML contains preprocessor error sentinel — see above"
-            exit 1
           fi
 
       - name: Verify both books mounted at expected paths
