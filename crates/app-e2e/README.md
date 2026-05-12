@@ -1,54 +1,105 @@
-# `app-e2e` — Tier-2 WebDriver e2e tests for `screen-app`
+# `app-e2e` — Tier-2 WebDriver tests for `screen-app`
 
-Spawns `tauri-driver` plus the `screen-app` binary and drives the real
-webview with `fantoccini`. Covers the golden-path user flow (drag-drop
-→ playback) end-to-end against a production-like build.
+> Spawns `tauri-driver` + the `screen-app` binary and drives the real
+> WebView via `fantoccini`. Catches cross-process behaviour that
+> Tier-0 chunk tests + Tier-1 IPC harness can't see (real Leptos
+> render, JS bridge, OS event timing).
 
-**Linux-only.** macOS is skipped because `tauri-driver`'s WKWebView
-support is incomplete upstream. The Tier-1 IPC harness in
-`crates/app/tests/commands.rs` runs cross-platform and is included in
-`just gate`.
+## What it does
 
-## Run locally
+Tier-2 in the project's three-tier testing model. Real WebView, real
+Tauri binary, real `playback::Player`. Tests poke the UI through
+WebDriver and observe state transitions through the JS bridge.
 
-### Linux
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Test as test process
+    participant Driver as tauri-driver
+    participant App as screen-app<br/>(real binary)
+    participant Web as WebView (Leptos)
+    participant Player as playback::Player
+
+    Test->>Driver: start session
+    Driver->>App: spawn child
+    Driver->>Web: WebDriver commands
+    Web->>App: invoke('player_open', ...)
+    App->>Player: open + play
+    Player-->>App: status events
+    App-->>Web: emit('player-status')
+    Web-->>Test: observable DOM / signal state
+```
+
+## Quickstart
 
 ```bash
-# from: anywhere — one-time setup.
-cargo install --locked tauri-driver
-sudo apt-get install -y webkit2gtk-driver xvfb
-
-# from: repo root — run the suite under a virtual display.
+# Linux only — Tier-2 is gated to a real X11 / xvfb environment.
 just e2e
-# Equivalent (also from: repo root, so the workspace target/ is reused):
-xvfb-run --auto-servernum cargo nextest run -p app-e2e
 ```
 
-`just e2e` builds `screen-app`, spawns `tauri-driver` on port 4444,
-points fantoccini at it, and runs the tests. Drop kills both processes.
+> [!WARNING]
+> **Linux-only.** `tauri-driver` + WKWebView on macOS is incomplete
+> upstream; on Windows we haven't validated the Edge WebDriver path.
+> The `just e2e` recipe prints a clear skip message on macOS / Windows.
 
-### macOS
+> [!IMPORTANT]
+> **Intentionally NOT run in CI.** `tauri-driver` + WebKitGTK under
+> xvfb on GitHub-hosted Ubuntu runners proved flaky enough that the
+> skip-or-fail signal stopped being useful. Contributors run it
+> locally before opening Tauri shell PRs.
+
+## Runbook
+
+### Prerequisites
 
 ```bash
-# from: repo root
-just e2e   # prints a clear skip message and exits 0
+cargo install --locked tauri-driver
+
+# Linux deps for tauri-driver:
+sudo apt install webkit2gtk-driver xvfb
 ```
 
-Use Linux CI for the gate; mac uses manual smoke tests before tagging.
-
-## Test locally
-
-The same `just e2e` recipe is the test entry point. To target a single
-test:
+### Run the suite
 
 ```bash
-# from: repo root (Linux only)
-xvfb-run --auto-servernum cargo nextest run -p app-e2e golden_path
+just e2e        # spawns xvfb-run under the hood on Linux
 ```
 
-## Why it's excluded from `just gate`
+The recipe handles `xvfb-run` wrapping automatically. macOS prints
+a skip message; Windows ditto.
 
-`just gate`'s `test` step uses `--exclude app-e2e` because the harness
-needs `tauri-driver` + `webkit2gtk-driver` + `xvfb`, which aren't on
-default dev hosts. Running e2e is opt-in via `just e2e` (or the CI
-matrix's Linux job).
+### Add a new test
+
+1. Add a `#[tokio::test]` fn in `tests/`.
+2. Start a fantoccini session: `Client::new("http://localhost:4444")`.
+3. Drive the UI via standard WebDriver methods (`find`, `click`,
+   `send_keys`).
+4. Observe state via `evaluate_script` to read Leptos signal values.
+
+See existing tests for patterns. The
+[Testing tiers chapter](https://eng-manager-xyz.github.io/screen/app-ui/testing.html)
+documents what each tier catches.
+
+### Troubleshooting
+
+> [!NOTE]
+> **File-drop simulation** — WebDriver doesn't natively dispatch
+> drag-drop events. The test pattern: call the
+> `__test_drag_enter` / `__test_drag_leave` debug-only Tauri
+> commands. Each is `#[cfg(debug_assertions)]`-gated so they don't
+> ship in release.
+
+> [!NOTE]
+> **`tauri-driver` listens on `localhost:4444`** by default. If
+> another WebDriver process is running, set `WEBDRIVER_PORT` before
+> launching to pick another port.
+
+## Deep dive
+
+- **[Testing tiers chapter](https://eng-manager-xyz.github.io/screen/app-ui/testing.html)**
+  — Tier 0 / Tier 1 / Tier 2 distinctions + when to add a test where.
+- **[`screen-app`](../app/README.md)** — the binary under test.
+
+## License
+
+MIT.

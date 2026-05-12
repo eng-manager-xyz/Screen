@@ -1,47 +1,129 @@
 # `preview` — native winit + wgpu window driven by `wisp`
 
-A standalone binary that opens a winit window, hands its wgpu surface to
-`wisp::Application::from_wgpu`, and plays an MP4 end-to-end through the
-`decode` → `playback` → `wisp` stack. Proves the embedding seam that
-`screen-app` will use for its sibling preview window (M-PREVIEW.x).
+> Standalone binary that opens a winit window, hands its wgpu surface
+> to `wisp::Application::from_wgpu`, and plays an MP4 end-to-end
+> through the `decode` → `playback` → `wisp` stack. Proves the
+> embedding seam that `screen-app` uses for its sibling preview
+> window.
 
-## Run locally
+## What it does
+
+`preview` is the proof-of-concept for native-window wgpu inside a
+non-Tauri host. The recorder's editor view is a native sibling window
+(not the Tauri webview) because GPU-accelerated 4K preview behind
+WebKit's compositor isn't a viable path. `preview` validates that
+contract: wisp can attach to a host-supplied wgpu device and render
+into the host's surface.
+
+## Where it fits
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Window as winit::Window
+    participant Wgpu as wgpu Instance /<br/>Adapter / Device / Queue
+    participant App as wisp::Application<br/>(from_wgpu)
+    participant Surface as wgpu::Surface
+    participant Player as playback::Player
+    participant Stage as wisp::Stage
+    participant Renderer as wisp::Renderer
+
+    Note over Window,Wgpu: boot
+    Window ->> Wgpu: create_surface(window)
+    Wgpu ->> App: from_wgpu(instance, adapter, device, queue)
+    Wgpu ->> Surface: configure(width, height, format)
+
+    loop Per RedrawRequested
+        Window ->> Player: tick(dt)
+        Note over Player: uploads next frame<br/>to VideoTexture
+        Player ->> Stage: build one-Sprite scene<br/>(centered, aspect-fit)
+        Stage ->> Renderer: render_stage(surface_view)
+        Renderer ->> Surface: surface_texture.present()
+    end
+```
+
+## Quickstart
 
 ```bash
-# from: repo root (the no-arg form looks up the fixture at
-#       crates/decode/tests/fixtures/sample.mp4 relative to cwd)
-
-# No args — uses the committed fixture so it just works.
+# Default fixture (committed test MP4):
 cargo run -p preview
 
-# With a custom file (path resolved relative to cwd).
-cargo run -p preview -- path/to/your.mp4
+# Custom video:
+cargo run -p preview -- /path/to/video.mp4
 
-# Release build for smoother playback.
-cargo run -p preview --release -- path/to/your.mp4
+# Release build for smoother playback:
+cargo run -p preview --release -- /path/to/video.mp4
 ```
 
-Requires GStreamer on `$PATH` for any real MP4 (see the `decode`
-README). The window aspect-fits the video into its current size; resize
-to letterbox/pillarbox.
+> [!IMPORTANT]
+> Requires GStreamer on `$PATH` for any real MP4 — see
+> [`decode`](../decode/README.md). The bundled fixture
+> (`crates/decode/tests/fixtures/sample.mp4`, 11 KB) decodes via
+> GStreamer too.
 
-Press the OS window-close button to quit. There is no other UI yet.
+## Public API at a glance
 
-## Test locally
+`preview` is mostly a `bin` but exposes a small `[lib]` of pure
+helpers so they're testable:
+
+| Item | Purpose |
+|---|---|
+| `aspect_fit_scale(src, dst)` | Compute the centered aspect-fit scale factor |
+| `render_offscreen(path, frames)` | Headless variant — render N frames to PNG |
+
+Full rustdoc: [`api/preview/`](https://eng-manager-xyz.github.io/screen/api/preview/index.html).
+
+## Runbook
+
+### Build + test
 
 ```bash
-# from: repo root (or anywhere inside the workspace)
-cargo nextest run -p preview
+cargo nextest run -p preview                 # unit + render smoke
 cargo test -p preview --doc
+cargo clippy -p preview --all-targets --all-features -- -D warnings
 ```
 
-`tests/render_smoke.rs` exercises the headless render path
-(`examples/render_offscreen.rs`) so the surface-less branch keeps
-working without needing a real display server in CI.
-
-You can also run the headless example directly:
+### Run
 
 ```bash
-# from: repo root (or anywhere inside the workspace)
-cargo run -p preview --example render_offscreen
+cargo run -p preview                                    # fixture
+cargo run -p preview -- video.mp4                       # custom file
+cargo run -p preview --example render_offscreen         # headless PNG dump
 ```
+
+Close the window to exit; playback also auto-exits at EOF.
+
+### Common tasks
+
+**Embed wisp in your own winit app.** The pattern is in `src/main.rs`:
+
+```rust
+let instance = wgpu::Instance::new(...);
+let surface = instance.create_surface(&window)?;
+let adapter = instance.request_adapter(...).await?;
+let (device, queue) = adapter.request_device(..., None).await?;
+let app = wisp::Application::from_wgpu(instance, adapter, device, queue);
+```
+
+`Application::from_wgpu` is the seam. Tauri's shell will use the same
+pattern to wire two windows (the WebKit-backed shell + a winit-backed
+preview).
+
+### Troubleshooting
+
+> [!NOTE]
+> **No GStreamer = clear skip.** `preview` falls back to
+> `MockVideoStream` if `gstreamer_available()` returns false — you'll
+> see synthetic gradients instead of your video, with a clear
+> stderr message. No silent failure.
+
+## Deep dive
+
+- **[`preview` overview chapter](https://eng-manager-xyz.github.io/screen/preview/overview.html)**
+- **[Native winit window chunk](https://eng-manager-xyz.github.io/screen/preview/chunks/preview-window.html)**
+- **[`wisp`](../wisp/README.md)** — the renderer that `from_wgpu`
+  attaches to.
+
+## License
+
+MIT.
