@@ -539,6 +539,90 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
 - **`additional-css` paths in book.toml resolve relative to the source dir.**
   If you reference a stylesheet that doesn't exist mdBook silently emits a
   broken `<link>` rather than failing the build.
+- **Two-book setup uses an in-repo preprocessor for cross-links and
+  shared fragments** (`tools/mdbook-preprocessor-cross`). Tags:
+  `\{\{shared rel/path.md\}\}` inlines from `_docs/shared/`;
+  `\{\{wisp-link path\}\}` emits a per-book URL (relative inside
+  wisp, absolute `/screen/wisp/...` from screen). The preprocessor
+  needs `target/debug` on PATH before `mdbook build`; recipes set
+  `PATH="$(pwd)/target/debug:$PATH"`.
+- **When documenting `\{\{shared X\}\}` syntax inside a shared
+  fragment, escape the braces** (`\{\{` in source → renders as `{{`
+  in the page) so the preprocessor doesn't recursively try to
+  expand its own docs. Otherwise every page that inlines the
+  fragment gets a runtime "no such file" error comment.
+- **Rustdoc renders the preprocessor's own source as HTML under
+  `target/book/api/`,** which contains the literal error-template
+  string. Exclude `api/` from any "no preprocessor errors in
+  rendered HTML" grep: `grep -rE 'mdbook-preprocessor-cross.*error' target/book --exclude-dir=api`.
+- **mdbook static asset references in `book.toml` (mermaid.min.js,
+  mdbook-admonish.css) must exist in the book's root, not just in
+  the workspace's first book.** When extracting a second book,
+  copy these alongside `book.toml` or `mdbook build` fails with
+  "Unable to copy across static files" on the first build.
+- **`just` reads `{{X}}` as variable interpolation in recipe
+  bodies.** Strings like `{{shared X}}` or `{{wisp-link Y}}` in
+  Justfile *comments* parse and fail with "Unknown start of token"
+  / "Variable not defined". Use plain prose ("the shared X tag")
+  or escape with backticks in comments.
+- **macOS `sed` lacks ERE `+` in BRE mode.** `sed 's/X+/Y/'` works
+  on GNU sed (Linux) but fails on macOS unless you pass `-E`.
+  Prefer `python3 - <<'PY' ... PY` heredocs in just recipes for
+  any non-trivial text munging — portable, no `-E`/`-r` flag
+  gymnastics. The `snapshots-check` and `shared-check` recipes
+  both use this pattern.
+
+### GitHub Actions (path-filtered gates + Pages composition)
+
+- **`actionlint` is the validator.** `brew install actionlint`,
+  then `actionlint .github/workflows/*.yml` before every CI edit.
+  Catches workflow YAML errors, shellcheck issues in `run:`
+  blocks, and unset env refs. The gate doesn't run it remotely
+  (yet), so it's a local-only smoke test — but it has caught
+  every workflow mistake in this repo on first try.
+- **`dorny/paths-filter@v3` + synthetic aggregator** is the pattern
+  for path-filtered jobs that must still satisfy branch protection
+  rules. Conditional jobs that skip return `skipped` — branch
+  protection reads that as success, but if you mark gate-wisp as
+  "required" directly, a screen-only PR is blocked because the
+  required check never ran. The fix: add a `gate-all` job that
+  `needs: [changes, gate-wisp, gate-screen]` and `if: always()`,
+  inspect `needs.*.result`, and exit non-zero only if a triggered
+  job actually failed. Make `gate-all` the required check.
+- **Both gates trigger on shared workspace files** (`Cargo.lock`,
+  `Cargo.toml`, `rust-toolchain.toml`, workflow file itself).
+  Workspace-wide changes affect everyone, so we run both gates.
+  Per-crate paths are split into `wisp` vs `screen` filters.
+- **Two-book Pages deploy composes into one artifact.** The
+  `actions/upload-pages-artifact@v3` step accepts a single
+  directory. We mount the wisp book at
+  `target/book/wisp/` via `mdbook build _docs/wisp-book --dest-dir
+  target/book/wisp` AFTER the screen book builds at `target/book/`.
+  Result: one Pages site with path-based routing (`/screen/`,
+  `/screen/wisp/`, `/screen/api/`). No subdomain, no custom domain.
+- **Post-build smoke test before upload.** The docs workflow asserts
+  well-known files (`wisp/overview.html`, `wisp/chunks/filter-blur.html`,
+  `wisp-overview.html`) exist before `upload-pages-artifact` runs.
+  Cheap insurance against "preprocessor silently dropped half the
+  book" — catches the failure on PR rather than after deploy.
+
+### mdBook live-reload (split-book serving)
+
+- **`mdbook serve` has its own live-reload** — filesystem watch +
+  websocket broadcast to a script injected into the rendered HTML.
+  Different from the `dev-server` crate (which is for storybook
+  asset reloads). For docs, prefer `mdbook serve` directly. The
+  `dev-book` / `dev-wisp-book` recipes use it on ports 3001/3002.
+- **mdbook's watch covers `src/` + `book.toml`, including
+  `_docs/shared/`** (followed transitively through the
+  preprocessor's `{{shared}}` inclusion). It does NOT cover the
+  preprocessor's source — changes to
+  `tools/mdbook-preprocessor-cross/src/lib.rs` need a Ctrl-C +
+  re-run of `just dev-book` so `preprocessor-build` recompiles.
+- **Cross-book absolute URLs (`/screen/wisp/...`) don't resolve
+  under `mdbook serve`.** Production deploys at that prefix; local
+  serve runs at `/`. Use the in-book TOC for navigation; use `just
+  site` + open `target/book/` for production-shape verification.
 
 ### Build hygiene
 
