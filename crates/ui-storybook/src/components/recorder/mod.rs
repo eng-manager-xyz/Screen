@@ -6,6 +6,7 @@ pub mod capture_mode_tabs;
 pub mod capture_source_row;
 pub mod device_picker;
 pub mod display_source;
+pub mod on_screen_options;
 pub mod recording_toolbar;
 pub mod system_audio;
 
@@ -16,6 +17,7 @@ pub use display_source::{
     DisplayPreviewFrame, DisplayPreviewView, DisplaySourceCard, DisplaySourceView,
     PreviewWindowChip, aspect_ratio_css,
 };
+pub use on_screen_options::{OnScreenOptionKind, OnScreenOptionView, OnScreenOptionsPopover};
 pub use recording_toolbar::{RecordingState, RecordingToolbar};
 pub use system_audio::{
     AppIconView, AudioAppView, AudioFilter, SystemAudioAppList, SystemAudioRow, SystemAudioView,

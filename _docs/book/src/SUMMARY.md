@@ -126,6 +126,8 @@
   - [Display source card](./ui/chunks/display-source-card.md)
   - [Capture source row](./ui/chunks/capture-source-row.md)
   - [Device picker menu](./ui/chunks/device-picker-menu.md)
+  - [System audio picker](./ui/chunks/system-audio-picker.md)
+  - [On-screen options](./ui/chunks/on-screen-options.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

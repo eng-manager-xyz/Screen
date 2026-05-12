@@ -71,8 +71,9 @@ pub use recorder::{
     AppIconView, AudioAppView, AudioFilter, CaptureModeTabs, CaptureSourceKind, CaptureSourceRow,
     CaptureSourceView, DeviceOptionView, DevicePickerMenu, DevicePickerState, DeviceThumb,
     DisplayPreviewFrame, DisplayPreviewView, DisplaySourceCard, DisplaySourceView,
-    PreviewWindowChip, RecordingState, RecordingToolbar, SystemAudioAppList, SystemAudioRow,
-    SystemAudioView, aspect_ratio_css, format_selection_count,
+    OnScreenOptionKind, OnScreenOptionView, OnScreenOptionsPopover, PreviewWindowChip,
+    RecordingState, RecordingToolbar, SystemAudioAppList, SystemAudioRow, SystemAudioView,
+    aspect_ratio_css, format_selection_count,
 };
 pub use shell::{
     AppSection, AppShell, DropZone, DropZoneState, NavItemView, NavigationRail, StatusBar,

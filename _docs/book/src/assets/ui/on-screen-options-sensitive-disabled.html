@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Menu row — selected</title>
+    <title>On-screen options — Blur sensitive disabled</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1675,6 +1675,6 @@ kbd {
     </style>
   </head>
   <body>
-    <ul role="menu" aria-label="example" class="menu-list" style="width:260px;padding:6px;background:var(--surface-popover);border:1px solid var(--line-subtle);border-radius:8px;;"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-selected"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-action">⏵</span></span><span class="menu-row-text"><span class="menu-row-title">Open editor</span><!></span><!><span class="menu-row-trailing"><span class="kbd-row"><kbd class="kbd-key">⌘</kbd><kbd class="kbd-key">O</kbd><!></span></span><span aria-hidden="true" class="menu-row-check">✓</span></button></li></ul>
+    <div role="dialog" class="popover-surface popover-bl" style="width:380px;"><header class="popover-header"><div class="popover-title">On-screen</div><div class="popover-description">Choose what shows during recording.</div></header><div class="popover-body"><ul role="group" aria-label="On-screen options" class="on-screen-options"><li data-option="clean-desktop" class="on-screen-option-row"><span class="on-screen-option-toggle"><button role="switch" aria-checked aria-label="Enable clean up the desktop" class="toggle toggle-on"><span class="toggle-track"><span class="toggle-knob"></span></span></button></span><span class="on-screen-option-text"><span class="on-screen-option-title">Clean up the desktop</span><span class="on-screen-option-description">Hide icons + the dock for a clean recording. Wallpaper stays.</span></span></li><li data-option="show-keys" class="on-screen-option-row"><span class="on-screen-option-toggle"><button role="switch" aria-checked aria-label="Enable show keys you press" class="toggle toggle-on"><span class="toggle-track"><span class="toggle-knob"></span></span></button></span><span class="on-screen-option-text"><span class="on-screen-option-title">Show keys you press</span><span class="on-screen-option-description">Render ⌘C / ⌃-space badges over the recording so viewers can follow along.</span></span></li><li data-option="blur-sensitive-info" class="on-screen-option-row on-screen-option-row-disabled"><span class="on-screen-option-toggle"><button role="switch" aria-label="Enable blur sensitive info" disabled class="toggle toggle-disabled"><span class="toggle-track"><span class="toggle-knob"></span></span></button></span><span class="on-screen-option-text"><span class="on-screen-option-title">Blur sensitive info</span><span class="on-screen-option-description">Auto-detect password fields and other sensitive regions, and blur them. Coming soon.</span></span></li><!></ul></div><footer class="popover-footer"><div class="menu-footer"><span style="font-size:11px;color:var(--text-tertiary);">Applies to this recording</span><button class="btn btn-default btn-sm">Done</button></div></footer></div>
   </body>
 </html>

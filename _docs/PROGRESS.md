@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-10 — OnScreenOptionsPopover (AUT-130)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `OnScreenOptionsPopover` composes UI-03 `PopoverSurface` + UI-04 `ToggleSwitch`. `OnScreenOptionKind { CleanDesktop, ShowKeys, BlurSensitiveInfo }` stable enum. Four stories cover default + all-on + sensitive-disabled + long-copy.
+- **Linear:** [AUT-130](https://linear.app/harwood/issue/AUT-130).
+- **Files:** new `crates/ui-storybook/src/components/recorder/on_screen_options.rs` (`OnScreenOptionsPopover`, `OnScreenOptionView`, `OnScreenOptionKind` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `fixtures/recorder.rs` extended with `sample_on_screen_options(sensitive_disabled)` / `_all_on()` / `_long_copy()` + a one-per-kind unit test. New `stories/recorder_on_screen.rs`. `stories/mod.rs` aggregates. `assets/style.css` adds `.on-screen-option-row*` classes. New `_docs/book/src/ui/chunks/on-screen-options.md`. `SUMMARY.md` indexes it (and closes a gap — UI-09's `system-audio-picker` chapter was created earlier but never linked from SUMMARY).
+- **Verified:** 50 ui-storybook tests pass (was 47; +3 unit/fixture tests + 4 new stories). Full `just gate` green.
+- **`disabled` is per-row.** Pending features (auto-blur) ship the row with `disabled = true`; the parent flips it `false` when the runtime backend lands. The popover doesn't need to know anything about feature flags — it just renders what it's told.
+
+---
+
 ## UI-08 — CaptureSourceRow + device picker rows (AUT-128)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `CaptureSourceRow` (collapsed row, 5-col grid), `DevicePickerMenu` (composes UI-03 popover), `DevicePickerRow` (custom shape with thumbnail + meter + selected check). Six new stories cover collapsed camera/mic + open camera/mic pickers + empty + permission-needed states.
