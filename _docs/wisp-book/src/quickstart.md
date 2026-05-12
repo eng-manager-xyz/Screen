@@ -75,8 +75,8 @@ filters layered on one container.
   textures, vector → mask bridging.
 
 ```admonish info title="Used in production"
-wisp is the renderer behind [Screen Studio](/screen/), a native
+wisp is the renderer behind [Screen Studio](/Screen/), a native
 Rust screen recorder. If you want to see how an editor / capture
 pipeline / encoder integrates with wisp, the screen project book
-at [/screen/](/screen/) has the full integration story.
+at [/Screen/](/Screen/) has the full integration story.
 ```

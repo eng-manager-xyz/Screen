@@ -71,7 +71,7 @@ helpers so they're testable:
 | `aspect_fit_scale(src, dst)` | Compute the centered aspect-fit scale factor |
 | `render_offscreen(path, frames)` | Headless variant — render N frames to PNG |
 
-Full rustdoc: [`api/preview/`](https://eng-manager-xyz.github.io/screen/api/preview/index.html).
+Full rustdoc: [`api/preview/`](https://eng-manager-xyz.github.io/Screen/api/preview/index.html).
 
 ## Runbook
 
@@ -119,8 +119,8 @@ preview).
 
 ## Deep dive
 
-- **[`preview` overview chapter](https://eng-manager-xyz.github.io/screen/preview/overview.html)**
-- **[Native winit window chunk](https://eng-manager-xyz.github.io/screen/preview/chunks/preview-window.html)**
+- **[`preview` overview chapter](https://eng-manager-xyz.github.io/Screen/preview/overview.html)**
+- **[Native winit window chunk](https://eng-manager-xyz.github.io/Screen/preview/chunks/preview-window.html)**
 - **[`wisp`](../wisp/README.md)** — the renderer that `from_wgpu`
   attaches to.
 

@@ -190,6 +190,97 @@ fn is_tracked_by_git(path: &str) -> bool {
     output.status.success()
 }
 
+/// One wrong-case Pages URL found by [`check_pages_urls`]. The
+/// path + line number locate the violation; the matched substring
+/// is the exact wrong-case prefix.
+#[derive(Debug, PartialEq, Eq)]
+pub struct PagesUrlViolation {
+    /// File (`.md` or `.toml`) that contained the wrong-case URL.
+    pub file: PathBuf,
+    /// 1-based line number.
+    pub line_number: usize,
+    /// The offending line text (trimmed).
+    pub line: String,
+    /// The wrong-case prefix that triggered the match.
+    pub matched: String,
+}
+
+/// Walk `roots` recursively (any depth, any file type matching
+/// `extensions`) and report every line that contains one of the
+/// `forbidden` substrings. Used to catch wrong-case GitHub Pages
+/// URLs before they ship as 404s.
+///
+/// The root cause: GitHub Pages serves at `<user>.github.io/<repo>/`
+/// using the repo name's *exact* case. A repo named `Screen` is
+/// served at `/Screen/`; references to `/screen/` 404. There's no
+/// case-insensitive fallback.
+///
+/// Source of truth for the canonical URL: the deploy workflow's
+/// `Evaluated environment url:` log line, which uses
+/// `github.repository` verbatim. Keep `forbidden` in sync with what
+/// has appeared in past drift; never add the *correct* form to
+/// `forbidden` by mistake.
+#[must_use]
+pub fn check_pages_urls(
+    roots: &[&Path],
+    extensions: &[&str],
+    forbidden: &[&str],
+) -> Vec<PagesUrlViolation> {
+    let mut hits = Vec::new();
+    for root in roots {
+        for path in walk_files_with_extensions(root, extensions) {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for (i, line) in text.lines().enumerate() {
+                for f in forbidden {
+                    if line.contains(f) {
+                        hits.push(PagesUrlViolation {
+                            file: path.clone(),
+                            line_number: i + 1,
+                            line: line.trim().to_owned(),
+                            matched: (*f).to_owned(),
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    hits
+}
+
+/// Recursively collect every file under `root` whose extension is
+/// in `extensions`. Internal helper for [`check_pages_urls`] —
+/// generalises [`walk_md`] to multiple extension filters.
+fn walk_files_with_extensions(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack: Vec<PathBuf> = vec![root.to_owned()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                // Skip `target/` and `.git/` to avoid scanning build
+                // output / repo metadata.
+                if let Some(name) = p.file_name().and_then(|n| n.to_str())
+                    && (name == "target" || name == ".git" || name == "node_modules")
+                {
+                    continue;
+                }
+                stack.push(p);
+            } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
+                && extensions.contains(&ext)
+            {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
 /// One ASCII-diagram violation found by [`check_mermaid`]:
 /// a chapter whose prose contains box-drawing characters or
 /// the arrow runs reserved for mermaid diagrams.
@@ -500,6 +591,56 @@ mod tests {
         );
         let issues = check_shared(&[book.as_path()], shared.as_path());
         assert!(issues.is_empty(), "got {issues:?}");
+    }
+
+    #[test]
+    fn check_pages_urls_clean_when_no_forbidden() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root.join("a.md"),
+            "Visit https://example.github.io/Screen/ — all good.\n",
+        );
+        let hits = check_pages_urls(&[root], &["md"], &["https://example.github.io/screen/"]);
+        assert!(hits.is_empty(), "got {hits:?}");
+    }
+
+    #[test]
+    fn check_pages_urls_finds_wrong_case_form() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root.join("a.md"),
+            "Visit https://example.github.io/screen/wisp/ for docs.\n",
+        );
+        let hits = check_pages_urls(&[root], &["md"], &["https://example.github.io/screen/"]);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].matched, "https://example.github.io/screen/");
+        assert_eq!(hits[0].line_number, 1);
+    }
+
+    #[test]
+    fn check_pages_urls_scans_toml_when_extension_listed() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(root.join("book.toml"), "site-url = \"/screen/\"\n");
+        let hits = check_pages_urls(&[root], &["toml"], &["/screen/"]);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].file, root.join("book.toml"));
+    }
+
+    #[test]
+    fn check_pages_urls_skips_target_and_git_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root.join("target/book/x.md"),
+            "should-not-match /screen/ ever\n",
+        );
+        write(root.join("src/a.md"), "should-match /screen/ here\n");
+        let hits = check_pages_urls(&[root], &["md"], &["/screen/"]);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].file.ends_with("src/a.md"));
     }
 
     #[test]

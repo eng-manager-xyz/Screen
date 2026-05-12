@@ -51,7 +51,7 @@ while let Some(frame) = stream.next_frame()? {
 > gstreamer1.0-plugins-good gstreamer1.0-libav`
 > (`-libav` is required for H.264). Windows: not installed by default
 > in CI — see
-> [GStreamer integration choice](https://eng-manager-xyz.github.io/screen/media/architecture.html).
+> [GStreamer integration choice](https://eng-manager-xyz.github.io/Screen/media/architecture.html).
 
 ## Public API at a glance
 
@@ -63,7 +63,7 @@ while let Some(frame) = stream.next_frame()? {
 | `gstreamer_pipe::GstreamerPipeStream` | Real decode via `gst-launch-1.0` subprocess |
 | `gstreamer_pipe::gstreamer_available()` | Runtime probe — true iff the binary is on PATH and responds to `--version` |
 
-Full rustdoc: [`api/decode/`](https://eng-manager-xyz.github.io/screen/api/decode/index.html).
+Full rustdoc: [`api/decode/`](https://eng-manager-xyz.github.io/Screen/api/decode/index.html).
 
 ## Runbook
 
@@ -121,8 +121,8 @@ skip cleanly when the binary is absent (Windows CI relies on this).
 
 ## Deep dive
 
-- **[Decode book chapter](https://eng-manager-xyz.github.io/screen/decode/overview.html)**
-- **[GStreamer integration choice — CLI pipe](https://eng-manager-xyz.github.io/screen/media/architecture.html)**
+- **[Decode book chapter](https://eng-manager-xyz.github.io/Screen/decode/overview.html)**
+- **[GStreamer integration choice — CLI pipe](https://eng-manager-xyz.github.io/Screen/media/architecture.html)**
 - **[CLAUDE.md](../../CLAUDE.md)** — "GStreamer / external CLI integration".
 
 ## License

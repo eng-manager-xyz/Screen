@@ -154,7 +154,7 @@ preprocessor. READMEs use:
   (`../../_docs/wisp-book/src/assets/wisp/foo.png` from a crate
   README).
 - Absolute URLs into the published mdBook / rustdoc for deep-dive
-  links (`https://eng-manager-xyz.github.io/screen/...`).
+  links (`https://eng-manager-xyz.github.io/Screen/...`).
 ```
 
 **Canonical sections per README** (skip any that don't apply):
@@ -534,8 +534,27 @@ live in the three subsections below it.
   Mount the wisp book at `target/book/wisp/` via
   `mdbook build _docs/wisp-book --dest-dir target/book/wisp` AFTER
   the screen book builds at `target/book/`. Result: one Pages
-  site with path-based routing (`/screen/`, `/screen/wisp/`,
-  `/screen/api/`).
+  site with path-based routing (`/Screen/`, `/Screen/wisp/`,
+  `/Screen/api/`).
+- **GitHub Pages URLs use the repo name's exact case.** This was
+  the wisp-docs-404 bug: repo is named `Screen` (capital S), so
+  Pages serves at `https://eng-manager-xyz.github.io/Screen/`.
+  Every reference using lowercase `/screen/` 404s — there's no
+  case-insensitive fallback on `*.github.io`. The trap:
+  `book.toml`'s `site-url` field, `[preprocessor.cross]`'s
+  `wisp-base`, README deep-dive links, and the cross-link-
+  convention shared fragment all need the case to match exactly.
+  **Source of truth**: the deploy workflow's
+  `Evaluated environment url:` log line uses `github.repository`
+  verbatim and is case-exact. Verify with
+  `gh run view <deploy-job-id> --log | grep 'Evaluated environment url'`.
+  **Anti-regression**: `doc-gates pages-url-check` (in `just gate`)
+  scans every `.md` and `.toml` for the forbidden lowercase forms
+  (see `FORBIDDEN_PAGES_URL_PREFIXES` in
+  `tools/doc-gates/src/main.rs`) and fails fast with the exact
+  line. If the repo is ever renamed, update both that list (add
+  the old form to forbid future regression) and every committed
+  reference to the published URL.
 - **Post-build smoke test before upload.** docs.yml asserts
   well-known files (`wisp/overview.html`, `wisp/chunks/filter-blur.html`,
   `wisp-overview.html`) exist before `upload-pages-artifact`.
@@ -849,7 +868,7 @@ fine on lavapipe — **don't guard them**.
   shared fragments** (`tools/mdbook-preprocessor-cross`). Tags:
   `\{\{shared rel/path.md\}\}` inlines from `_docs/shared/`;
   `\{\{wisp-link path\}\}` emits a per-book URL (relative inside
-  wisp, absolute `/screen/wisp/...` from screen). The preprocessor
+  wisp, absolute `/Screen/wisp/...` from screen). The preprocessor
   needs `target/debug` on PATH before `mdbook build`; recipes set
   `PATH="$(pwd)/target/debug:$PATH"`.
 - **When documenting `\{\{shared X\}\}` syntax inside a shared
@@ -908,7 +927,7 @@ fine on lavapipe — **don't guard them**.
   preprocessor's source — changes to
   `tools/mdbook-preprocessor-cross/src/lib.rs` need a Ctrl-C +
   re-run of `just dev-book` so `preprocessor-build` recompiles.
-- **Cross-book absolute URLs (`/screen/wisp/...`) don't resolve
+- **Cross-book absolute URLs (`/Screen/wisp/...`) don't resolve
   under `mdbook serve`.** Production deploys at that prefix; local
   serve runs at `/`. Use the in-book TOC for navigation; use `just
   site` + open `target/book/` for production-shape verification.

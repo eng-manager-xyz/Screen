@@ -121,7 +121,9 @@ tmp/
 !.claude/skills/**
 
 # ─── Project / output scratch ─────────────────────────────────────────────────
-# mdBook + rustdoc outputs land under target/ already, but keep this here
-# in case someone does `mdbook build` without `--dest-dir` (writes to `book/`).
+# mdBook + rustdoc outputs land under target/ already, but keep these here
+# in case someone does `mdbook build` without `--dest-dir` (writes to a
+# `book/` subdirectory of the source root by default).
 /_docs/book/book/
+/_docs/wisp-book/book/
 .cargo/config.toml

@@ -53,7 +53,7 @@ just dev-remote-stop      # tear down
 
 > [!TIP]
 > See the
-> [Remote dev playbook](https://eng-manager-xyz.github.io/screen/conventions/remote-dev.html)
+> [Remote dev playbook](https://eng-manager-xyz.github.io/Screen/conventions/remote-dev.html)
 > for the ≤5-click Tailscale setup. After the one-time setup, the
 > daily loop is `just dev-remote` + tap home-screen icon on the
 > phone.
@@ -70,7 +70,7 @@ recipes (e.g. `dev-book` mdbook serving) reuse:
 | `worker` | `WorkerCommand`, `WorkerReply` | JSON-IPC contract with `render-worker` |
 | `main.rs` | CLI | `--assets`, `--watch`, `--port`, `--host` |
 
-Full rustdoc: [`api/dev_server/`](https://eng-manager-xyz.github.io/screen/api/dev_server/index.html).
+Full rustdoc: [`api/dev_server/`](https://eng-manager-xyz.github.io/Screen/api/dev_server/index.html).
 
 ## Runbook
 
@@ -137,8 +137,8 @@ ln -s .cargo/config.toml.example .cargo/config.toml
 
 ## Deep dive
 
-- **[Dev loop — local](https://eng-manager-xyz.github.io/screen/conventions/dev-loop.html)**
-- **[Remote dev — phone over Tailscale](https://eng-manager-xyz.github.io/screen/conventions/remote-dev.html)**
+- **[Dev loop — local](https://eng-manager-xyz.github.io/Screen/conventions/dev-loop.html)**
+- **[Remote dev — phone over Tailscale](https://eng-manager-xyz.github.io/Screen/conventions/remote-dev.html)**
 - **[`ui-storybook`](../ui-storybook/README.md)** — the assets this
   server serves.
 

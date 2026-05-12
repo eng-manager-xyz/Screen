@@ -191,6 +191,19 @@ shared-check: doc-gates-build
 required-files-check: doc-gates-build
     @target/debug/doc-gates required-files-check
 
+# Anti-regression for the wrong-case Pages URL trap.
+# The repo is named `Screen` (capital S) so GitHub Pages serves at
+# /Screen/. Every reference using lowercase `/screen/` would 404 in
+# production. This step scans all .md + .toml files for the known
+# wrong-case forms (see FORBIDDEN_PAGES_URL_PREFIXES in
+# tools/doc-gates/src/main.rs) and fails fast with the exact line.
+#
+# Source of truth for the canonical URL: the docs.yml deploy job's
+# "Evaluated environment url:" log line, which uses
+# github.repository verbatim and is therefore case-exact.
+pages-url-check: doc-gates-build
+    @target/debug/doc-gates pages-url-check
+
 # Full site-rendering drift gate. Builds both books, then greps
 # rendered HTML for `mdbook-preprocessor-cross.*error` sentinels
 # the source-level shared-check can't see (unreadable files,
@@ -216,7 +229,7 @@ site-check: site shared-check
 # site-check` in docs.yml) and does NOT require python (text
 # munging lives in `tools/doc-gates`). Runs identically on every
 # supported CI runner (macOS, Ubuntu, Windows) and locally.
-gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check required-files-check
+gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check required-files-check pages-url-check
 
 # ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
 

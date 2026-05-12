@@ -74,7 +74,7 @@ enabled). Drop any `.mp4` → player view loads.
 | Event `player-status` | Emitted from the tick thread on state changes |
 | `PlayerSession` | `tauri::Manager`-managed wrapper around `playback::Player` |
 
-Full rustdoc: [`api/screen_app/`](https://eng-manager-xyz.github.io/screen/api/screen_app/index.html).
+Full rustdoc: [`api/screen_app/`](https://eng-manager-xyz.github.io/Screen/api/screen_app/index.html).
 
 ## Runbook
 
@@ -137,9 +137,9 @@ cargo run -p screen-app --example regen-icons
 
 ## Deep dive
 
-- **[`app-ui` integration chapter](https://eng-manager-xyz.github.io/screen/app-ui/integration.html)**
-- **[Player IPC + status events](https://eng-manager-xyz.github.io/screen/app-ui/player-ipc.html)**
-- **[Testing tiers](https://eng-manager-xyz.github.io/screen/app-ui/testing.html)**
+- **[`app-ui` integration chapter](https://eng-manager-xyz.github.io/Screen/app-ui/integration.html)**
+- **[Player IPC + status events](https://eng-manager-xyz.github.io/Screen/app-ui/player-ipc.html)**
+- **[Testing tiers](https://eng-manager-xyz.github.io/Screen/app-ui/testing.html)**
   — Tier 0 (chunk tests), Tier 1 (IPC harness), Tier 2 (WebDriver e2e).
 - **[CLAUDE.md](../../CLAUDE.md)** — "Tauri 2 specifics".
 

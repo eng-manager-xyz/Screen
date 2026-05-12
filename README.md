@@ -8,9 +8,9 @@
 
 > [!NOTE]
 > Two engineering books deploy from this repo to one GitHub Pages
-> site: the **[screen project book](https://eng-manager-xyz.github.io/screen/)**
+> site: the **[screen project book](https://eng-manager-xyz.github.io/Screen/)**
 > (recorder / capture / encoder) and the
-> **[wisp library book](https://eng-manager-xyz.github.io/screen/wisp/)**
+> **[wisp library book](https://eng-manager-xyz.github.io/Screen/wisp/)**
 > (publishable renderer reference).
 
 ## Architecture
@@ -226,13 +226,13 @@ skips. See [`.github/workflows/gate.yml`](./.github/workflows/gate.yml).
   session. Architecture, conventions, an ever-growing list of
   *anti-patterns we've earned* (each one cost a recursive-fix iteration
   somewhere; captured prophylactically).
-- **[Screen project book](https://eng-manager-xyz.github.io/screen/)**
+- **[Screen project book](https://eng-manager-xyz.github.io/Screen/)**
   (`just dev-book` for local) — Tauri shell, Leptos UI, capture,
   decode, playback, preview, app-ui, media, milestones.
-- **[Wisp library book](https://eng-manager-xyz.github.io/screen/wisp/)**
+- **[Wisp library book](https://eng-manager-xyz.github.io/Screen/wisp/)**
   (`just dev-wisp-book` for local) — Pixi-shaped API tour, every chunk
   chapter, text architecture, mask system, headless export.
-- **[rustdoc](https://eng-manager-xyz.github.io/screen/api/)** — every
+- **[rustdoc](https://eng-manager-xyz.github.io/Screen/api/)** — every
   public item has a `///` doc; `missing_docs` is a workspace `warn` lint
   and `just docs-strict` flips broken intra-doc links to errors.
 - **[PROGRESS.md](./_docs/PROGRESS.md)** — newest at top.

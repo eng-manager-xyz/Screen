@@ -17,8 +17,34 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str =
-    "usage: doc-gates <shared-check|snapshots-check|mermaid-check|required-files-check>";
+const USAGE: &str = "usage: doc-gates <shared-check|snapshots-check|mermaid-check|required-files-check|pages-url-check>";
+
+/// Wrong-case GitHub Pages URL prefixes that must NEVER appear in
+/// committed files. The repo is named `Screen` (capital S) so
+/// GitHub Pages serves at `/Screen/` — see the deploy job's
+/// `Evaluated environment url:` log line for the canonical
+/// source-of-truth.
+///
+/// If the repo is ever renamed, update both this list (add the old
+/// form to forbid future regression) and every committed reference
+/// to the published URL.
+const FORBIDDEN_PAGES_URL_PREFIXES: &[&str] = &[
+    "https://eng-manager-xyz.github.io/screen/",
+    "https://eng-manager-xyz.github.io/screen)",
+    "(/screen/",
+    " /screen/",
+    "\"/screen/",
+    "/screen/wisp/",
+    "site-url = \"/screen",
+    "wisp-base = \"/screen",
+];
+
+/// Roots to scan for [`FORBIDDEN_PAGES_URL_PREFIXES`]. Covers every
+/// committed markdown / toml in the workspace.
+const PAGES_URL_ROOTS: &[&str] = &["."];
+
+/// File extensions to scan for wrong-case Pages URLs.
+const PAGES_URL_EXTENSIONS: &[&str] = &["md", "toml"];
 
 const BOOK_ROOTS: &[&str] = &["_docs/book/src", "_docs/wisp-book/src"];
 const SHARED_ROOT: &str = "_docs/shared";
@@ -56,6 +82,7 @@ fn main() -> ExitCode {
         "snapshots-check" => run_snapshots(),
         "mermaid-check" => run_mermaid(),
         "required-files-check" => run_required_files(),
+        "pages-url-check" => run_pages_urls(),
         other => {
             eprintln!("unknown command: {other}");
             eprintln!("{USAGE}");
@@ -123,6 +150,40 @@ fn run_mermaid() -> ExitCode {
     eprintln!("Per CLAUDE.md 'Diagrams in mdBook — mermaid only, no ASCII',");
     eprintln!("convert to a ```mermaid block.");
     eprintln!("Prefer sequenceDiagram when participants exchange messages over time.");
+    ExitCode::FAILURE
+}
+
+fn run_pages_urls() -> ExitCode {
+    let roots: Vec<&Path> = PAGES_URL_ROOTS.iter().map(Path::new).collect();
+    let hits =
+        doc_gates::check_pages_urls(&roots, PAGES_URL_EXTENSIONS, FORBIDDEN_PAGES_URL_PREFIXES);
+    if hits.is_empty() {
+        println!(
+            "pages-url-check: no wrong-case Pages URLs in {} forbidden form(s).",
+            FORBIDDEN_PAGES_URL_PREFIXES.len()
+        );
+        return ExitCode::SUCCESS;
+    }
+    // Group by file for readable output.
+    let mut current: Option<&Path> = None;
+    for hit in &hits {
+        if current.map(Path::to_owned) != Some(hit.file.clone()) {
+            eprintln!("WRONG-CASE PAGES URL: {}", hit.file.display());
+            current = Some(&hit.file);
+        }
+        eprintln!(
+            "  {}: {} (matched `{}`)",
+            hit.line_number, hit.line, hit.matched
+        );
+    }
+    eprintln!();
+    eprintln!(
+        "Found {} reference(s) using wrong-case Pages URLs.",
+        hits.len()
+    );
+    eprintln!("The repo is named `Screen` so GitHub Pages serves at /Screen/.");
+    eprintln!("Update lowercase `/screen/` references to `/Screen/`.");
+    eprintln!("See CLAUDE.md 'GitHub Pages URLs use the repo name's exact case'.");
     ExitCode::FAILURE
 }
 

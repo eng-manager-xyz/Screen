@@ -12,7 +12,7 @@ preferred-dark-theme = "navy"
 no-section-label = false
 mathjax-support = false
 text-direction = "ltr"
-site-url = "/screen/wisp/"
+site-url = "/Screen/wisp/"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
 additional-css = ["mdbook-admonish.css"]
 
@@ -49,4 +49,4 @@ command = "mdbook-cmdrun"
 command = "mdbook-preprocessor-cross"
 target = "wisp"
 shared-root = "../shared"
-wisp-base = "/screen/wisp"
+wisp-base = "/Screen/wisp"

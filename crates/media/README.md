@@ -81,7 +81,7 @@ roughly the same height — that's the constant-amplitude sine.
 | `sync` | `SyncHarness` | Drive both pipelines + report drift |
 | `manifest` | `RecordingManifest` (planned, M-MEDIA.20) | Session descriptor (Uuid, tracks, timeline) |
 
-Full rustdoc: [`api/media/`](https://eng-manager-xyz.github.io/screen/api/media/index.html).
+Full rustdoc: [`api/media/`](https://eng-manager-xyz.github.io/Screen/api/media/index.html).
 
 ## Runbook
 
@@ -116,7 +116,7 @@ The existing mocks are the reference: `SilenceSource`,
 **Wire a real capture pipeline.** `GstreamerAudioCapture::live_mic()`
 / `GstreamerVideoCapture::live_webcam()` are the entry points;
 they spawn `gst-launch-1.0` with `autoaudiosrc` / `autovideosrc`.
-See [audio capture chapter](https://eng-manager-xyz.github.io/screen/media/audio-capture.html).
+See [audio capture chapter](https://eng-manager-xyz.github.io/Screen/media/audio-capture.html).
 
 ### Troubleshooting
 
@@ -137,16 +137,16 @@ See [audio capture chapter](https://eng-manager-xyz.github.io/screen/media/audio
 > **`MediaTime::from_sample` is exact at nanosecond precision.**
 > Don't convert to `f64` for arithmetic — drift accumulates fast.
 > `MediaTime::from_frame(90, 30.0) = 3.0 s` exactly. See
-> [clock chapter](https://eng-manager-xyz.github.io/screen/media/clock.html).
+> [clock chapter](https://eng-manager-xyz.github.io/Screen/media/clock.html).
 
 ## Deep dive
 
-- **[Architecture](https://eng-manager-xyz.github.io/screen/media/architecture.html)**
+- **[Architecture](https://eng-manager-xyz.github.io/Screen/media/architecture.html)**
   — the M-MEDIA crate boundary + GStreamer CLI-pipe rationale.
-- **[Clock + timestamp model](https://eng-manager-xyz.github.io/screen/media/clock.html)**
-- **[Audio data model](https://eng-manager-xyz.github.io/screen/media/audio.html)**
-- **[A/V sync harness](https://eng-manager-xyz.github.io/screen/media/sync-harness.html)**
-- **[Video texture handoff](https://eng-manager-xyz.github.io/screen/media/video-texture.html)**
+- **[Clock + timestamp model](https://eng-manager-xyz.github.io/Screen/media/clock.html)**
+- **[Audio data model](https://eng-manager-xyz.github.io/Screen/media/audio.html)**
+- **[A/V sync harness](https://eng-manager-xyz.github.io/Screen/media/sync-harness.html)**
+- **[Video texture handoff](https://eng-manager-xyz.github.io/Screen/media/video-texture.html)**
 
 ## License
 

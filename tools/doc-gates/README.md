@@ -68,7 +68,7 @@ Fence-aware: `check_shared` and `check_snapshots` skip references
 inside `` ``` `` code blocks (those are documentation examples, not
 real refs). See unit tests for the contract.
 
-Full rustdoc: [`api/doc_gates/`](https://eng-manager-xyz.github.io/screen/api/doc_gates/index.html).
+Full rustdoc: [`api/doc_gates/`](https://eng-manager-xyz.github.io/Screen/api/doc_gates/index.html).
 
 ## Runbook
 

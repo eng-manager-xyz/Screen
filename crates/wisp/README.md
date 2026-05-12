@@ -70,14 +70,14 @@ fn main() {
 ```
 
 Full quickstart with the frame loop (windowed + headless variants):
-[Wisp book — Quickstart](https://eng-manager-xyz.github.io/screen/wisp/quickstart.html).
+[Wisp book — Quickstart](https://eng-manager-xyz.github.io/Screen/wisp/quickstart.html).
 
 ## Hero output
 
 ![filter chain](../../_docs/wisp-book/src/assets/wisp/example-filter-chain.png)
 
 Blur + drop-shadow + color-matrix composed in one container — see
-the [filter-chain chapter](https://eng-manager-xyz.github.io/screen/wisp/wisp/chunks/example-filter-chain.html).
+the [filter-chain chapter](https://eng-manager-xyz.github.io/Screen/wisp/wisp/chunks/example-filter-chain.html).
 
 ## Public API at a glance
 
@@ -94,7 +94,7 @@ the [filter-chain chapter](https://eng-manager-xyz.github.io/screen/wisp/wisp/ch
 | `transform` | `Transform2D` | Position / rotation / scale |
 | `color` | `Color`, `Color::rgba_u8`, `Color::rgba` | Color helpers |
 
-Full rustdoc: [`api/wisp/`](https://eng-manager-xyz.github.io/screen/api/wisp/index.html).
+Full rustdoc: [`api/wisp/`](https://eng-manager-xyz.github.io/Screen/api/wisp/index.html).
 
 ## Runbook
 
@@ -167,7 +167,7 @@ For the interactive feature gallery, see
 
 ## Deep dive
 
-- **[Wisp book](https://eng-manager-xyz.github.io/screen/wisp/)** —
+- **[Wisp book](https://eng-manager-xyz.github.io/Screen/wisp/)** —
   Pixi-shaped API tour, every chunk chapter, text architecture,
   mask system, headless export. Run locally with `just dev-wisp-book`.
 - **[Examples](./examples)** — 8 runnable end-to-end demos.

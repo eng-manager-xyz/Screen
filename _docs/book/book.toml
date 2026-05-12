@@ -58,5 +58,5 @@ command = "mdbook-cmdrun"
 command = "mdbook-preprocessor-cross"
 target = "screen"
 shared-root = "../shared"
-wisp-base = "/screen/wisp"
+wisp-base = "/Screen/wisp"
 

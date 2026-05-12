@@ -136,9 +136,9 @@ cargo insta accept
 
 ## Deep dive
 
-- **[Wisp stories chapter](https://eng-manager-xyz.github.io/screen/wisp/wisp/stories.html)**
+- **[Wisp stories chapter](https://eng-manager-xyz.github.io/Screen/wisp/wisp/stories.html)**
   — every story with screenshot + design notes.
-- **[Story / screenshot pipeline](https://eng-manager-xyz.github.io/screen/conventions/screenshots.html)**
+- **[Story / screenshot pipeline](https://eng-manager-xyz.github.io/Screen/conventions/screenshots.html)**
 - **[`wisp`](../wisp/README.md)** — the renderer being exercised.
 
 ## License

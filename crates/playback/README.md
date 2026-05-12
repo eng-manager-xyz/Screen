@@ -69,7 +69,7 @@ The full headless example is `cargo run -p playback --example play_file`.
 | `Player::texture()` | The `VideoTexture` for binding to a `Sprite` |
 | `PlayerState::{Empty, Paused, Playing, Ended}` | State machine |
 
-Full rustdoc: [`api/playback/`](https://eng-manager-xyz.github.io/screen/api/playback/index.html).
+Full rustdoc: [`api/playback/`](https://eng-manager-xyz.github.io/Screen/api/playback/index.html).
 
 ## Hero output
 
@@ -136,8 +136,8 @@ the canonical Tauri IPC pattern: `player_open` / `player_play` /
 
 ## Deep dive
 
-- **[Playback book chapter](https://eng-manager-xyz.github.io/screen/playback/overview.html)**
-- **[Real MP4 → wisp playback](https://eng-manager-xyz.github.io/screen/playback/play-file.html)**
+- **[Playback book chapter](https://eng-manager-xyz.github.io/Screen/playback/overview.html)**
+- **[Real MP4 → wisp playback](https://eng-manager-xyz.github.io/Screen/playback/play-file.html)**
 - **[`decode`](../decode/README.md)** — the `VideoStream` source.
 - **[`wisp`](../wisp/README.md)** — the `VideoTexture` sink.
 
