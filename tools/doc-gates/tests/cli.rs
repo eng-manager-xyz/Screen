@@ -98,6 +98,28 @@ fn snapshots_check_fails_on_missing_asset() {
 }
 
 #[test]
+fn required_files_check_passes_for_tracked_files() {
+    // Run from the workspace root so the binary's hard-coded
+    // file list resolves against the real git repo.
+    let out = Command::new(binary_path())
+        .arg("required-files-check")
+        .current_dir(workspace_root())
+        .output()
+        .expect("spawn doc-gates");
+    assert!(
+        out.status.success(),
+        "exit={:?} stderr={}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("required-files-check: all"),
+        "stdout={stdout}"
+    );
+}
+
+#[test]
 fn unknown_command_exits_with_usage() {
     let out = Command::new(binary_path())
         .arg("not-a-command")

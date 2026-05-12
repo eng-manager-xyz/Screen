@@ -28,8 +28,16 @@ crates/*/target/
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon
-Icon?
+# DO NOT add bare `Icon` / `Icon?` here even though the upstream macOS
+# gitignore template suggests them for Finder's `Icon\r` metadata file.
+# `Icon?` is a glob — `?` matches any single character, including the
+# `s` in our real `crates/app/icons/` directory on case-insensitive
+# filesystems. That makes `cargo run -p screen-app --example regen-icons`
+# silently drop the regenerated `icon.ico` from `git add`, and the
+# Windows CI build fails with `icons/icon.ico not found` deep inside
+# `tauri-winres`. The proper pattern for Finder's `Icon\r` is `Icon\r`
+# (literal CR) which is hard to express in a text file; given the
+# file is vanishingly rare on modern macOS, we omit it entirely.
 # Resource forks created when copying files from non-macOS volumes.
 ._*
 # Spotlight / Time Machine / Finder artifacts on shared volumes.

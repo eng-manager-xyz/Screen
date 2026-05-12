@@ -404,6 +404,27 @@ live in the three subsections below it.
   http.postBuffer 524288000` (500 MB). Default 1 MB buffer is
   enough for small commits but stalls on initial repo seeding
   with binary assets (PNGs, MP4 fixtures).
+- **`.gitignore` globs can silently eat real directories.** The
+  upstream macOS template's `Icon?` pattern (meant for Finder's
+  `Icon\r` metadata file) matches our real `crates/app/icons/`
+  directory on case-insensitive filesystems (macOS, Windows):
+  glob `?` matches any single char, so `Icon?` matches `icons`
+  (`Icon` + `s`). `git add` silently drops anything inside, and
+  CI fails opaquely on the missing artefact. **Anti-regression:**
+  `doc-gates required-files-check` (in `just gate`) runs
+  `git ls-files --error-unmatch` over a hard-coded list of
+  build-critical files (`crates/app/icons/icon.{png,ico}` today)
+  and fails with a clear pointer at `git check-ignore -v <file>`.
+  Add new entries to `REQUIRED_FILES` in
+  `tools/doc-gates/src/main.rs` whenever a new build-critical
+  asset gets committed.
+- **Debug a "file exists but isn't tracked" mystery with
+  `git check-ignore -v <path>`.** It prints the exact
+  `.gitignore` line that matches. Files that survived an earlier
+  commit before the bad pattern was added stay tracked
+  (grandfathered) — that's why `icon.png` was fine and the new
+  `icon.ico` wasn't, and why this class of failure looks like a
+  random one-off rather than a pattern-overreach.
 
 ### CI — macOS (`macos-latest`)
 

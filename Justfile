@@ -201,6 +201,22 @@ mermaid-check:
 shared-check: doc-gates-build
     @target/debug/doc-gates shared-check
 
+# Anti-regression for the "silent .gitignore drop" failure mode.
+# Some build-critical files (`crates/app/icons/icon.{png,ico}`) live
+# in directories whose names can be matched by overly-broad
+# .gitignore globs (the macOS template's `Icon?` pattern matched
+# our real `icons/` dir on case-insensitive filesystems, eating
+# `icon.ico` and making the Windows CI build fail opaquely deep
+# inside `tauri-winres`). This step runs `git ls-files
+# --error-unmatch` for each file in `REQUIRED_FILES` in
+# `tools/doc-gates/src/main.rs` and fails fast with a clear message
+# pointing at `.gitignore` + `git check-ignore -v <file>`.
+#
+# Add to the REQUIRED_FILES list (in `tools/doc-gates/src/main.rs`)
+# whenever a new build-critical asset gets committed.
+required-files-check: doc-gates-build
+    @target/debug/doc-gates required-files-check
+
 # Full site-rendering drift gate. Builds both books, then greps
 # rendered HTML for `mdbook-preprocessor-cross.*error` sentinels
 # the source-level shared-check can't see (unreadable files,
@@ -221,11 +237,12 @@ site-check: site shared-check
     fi
     echo "site-check: both books rendered cleanly, no preprocessor error sentinels."
 
-# Per-task gate. Run before marking any task done. Pure Rust +
-# python — does NOT require mdbook, so it runs identically on
-# every supported CI runner (macOS, Ubuntu, Windows) and locally.
-# Site-rendering drift is gated by `just site-check` in docs.yml.
-gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check
+# Per-task gate. Run before marking any task done. Pure Rust —
+# does NOT require mdbook (site rendering is gated by `just
+# site-check` in docs.yml) and does NOT require python (text
+# munging lives in `tools/doc-gates`). Runs identically on every
+# supported CI runner (macOS, Ubuntu, Windows) and locally.
+gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check required-files-check
 
 # ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
 

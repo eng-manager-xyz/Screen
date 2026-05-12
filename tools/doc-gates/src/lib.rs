@@ -16,6 +16,7 @@
 
 use regex::Regex;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::OnceLock;
 
 /// One missing / broken reference found by [`check_shared`] or
@@ -169,6 +170,42 @@ pub fn walk_md(root: &Path) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// Run `git ls-files --error-unmatch -- <path>` and return whether
+/// the file is tracked. A non-success exit means git considers the
+/// path either ignored, untracked, or non-existent. Used by
+/// [`check_required_files`] to surface the silent failure mode where
+/// a real source file is in the working tree but not in the git
+/// index — usually because a `.gitignore` pattern overreaches and
+/// `git add` silently dropped it.
+fn is_tracked_by_git(path: &str) -> bool {
+    let Ok(output) = Command::new("git")
+        .args(["ls-files", "--error-unmatch", "--"])
+        .arg(path)
+        .output()
+    else {
+        return false;
+    };
+    output.status.success()
+}
+
+/// Returns the subset of `paths` that exist as files in the working
+/// tree but are NOT tracked in the git index — typically because of
+/// a `.gitignore` overreach. Empty vector means every required file
+/// is committed.
+///
+/// `cwd` should be the workspace root so the relative paths resolve
+/// against the right git repo.
+#[must_use]
+pub fn check_required_files(paths: &[&str]) -> Vec<String> {
+    let mut missing = Vec::new();
+    for p in paths {
+        if !is_tracked_by_git(p) {
+            missing.push((*p).to_owned());
+        }
+    }
+    missing
 }
 
 /// Normalise `..` components in a path without touching the
@@ -407,6 +444,34 @@ mod tests {
         );
         let issues = check_shared(&[book.as_path()], shared.as_path());
         assert!(issues.is_empty(), "got {issues:?}");
+    }
+
+    #[test]
+    fn check_required_files_returns_empty_when_all_tracked() {
+        // The workspace's `Cargo.toml` is always tracked — use it
+        // as a known-good fixture without setting up a separate
+        // git repo.
+        let missing = check_required_files(&["Cargo.toml"]);
+        assert!(missing.is_empty(), "Cargo.toml should be tracked");
+    }
+
+    #[test]
+    fn check_required_files_reports_untracked_file() {
+        // A file we definitely never commit — `target/` is in
+        // .gitignore. The string is enough; we don't even need it
+        // to exist for `git ls-files --error-unmatch` to fail.
+        let missing = check_required_files(&["target/this-is-not-tracked.txt"]);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0], "target/this-is-not-tracked.txt");
+    }
+
+    #[test]
+    fn check_required_files_mixes_tracked_and_untracked() {
+        let missing =
+            check_required_files(&["Cargo.toml", "target/missing-1.txt", "target/missing-2.txt"]);
+        assert_eq!(missing.len(), 2);
+        assert!(missing.iter().any(|f| f.ends_with("missing-1.txt")));
+        assert!(missing.iter().any(|f| f.ends_with("missing-2.txt")));
     }
 
     #[test]
