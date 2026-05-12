@@ -1,22 +1,38 @@
-# `just gate` in CI — fmt, check, lint, nextest, doctest, cargo doc.
+# Path-filtered gate (DOCS-04 / AUT-158).
 #
-# # Why a matrix
+# # Why path-filtered
 #
-# **macos-latest is the truth runner.** It has real Apple Silicon Metal,
-# the same backend the dev box uses, so every wgpu test runs against a
-# real GPU and *all 117 tests pass without skips*.
+# A change to wisp doesn't always touch screen-app, and vice versa.
+# Running the full cross-platform gate on every push burns ~20min
+# of CI time even when the PR only edits a wisp filter shader. The
+# `dorny/paths-filter@v3` action lets us route the change through
+# the right gate:
 #
-# **ubuntu-latest validates the Linux build path** (Tauri 2's gtk-rs
-# toolchain, winit's x11/wayland features, GStreamer apt deps). It also
-# runs every non-GPU-heavy test. The 3 multi-bind-group filter tests
-# (`blur_filter_smears_edge`, `motion_blur_zero_velocity_is_no_op`,
-# `drop_shadow_renders_visible_shadow`) are skipped via
-# `WISP_SKIP_GPU_FILTER_TESTS=1` because lavapipe (mesa's software
-# Vulkan) reliably loses the device when wgpu asks it to build those
-# specific pipelines. A future real-hardware Linux CI runner would
-# leave the env var unset and run them.
+# - **gate-wisp** — renderer + preprocessor. Triggered when only
+#   `crates/wisp/**`, `crates/wisp-storybook/**`, `_docs/wisp-book/**`,
+#   `_docs/shared/**`, or `tools/mdbook-preprocessor-cross/**`
+#   change. ~5 min on macOS + Linux. Runs the wisp-subset of
+#   `cargo nextest` + clippy + a wisp-book mdbook build.
 #
-# `fail-fast: false` so one platform's failure doesn't cancel the other.
+# - **gate-screen** — full integration. Triggered on any other
+#   crate, any Tauri/Leptos change, any workspace-wide file
+#   (`Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, `Justfile`,
+#   `deny.toml`), and any `.github/workflows/` edit. Runs the full
+#   `just gate`. If a PR touches both wisp and screen, both jobs
+#   run — fail-fast doesn't cancel siblings.
+#
+# - **gate-all** — synthetic required check. Aggregates the two
+#   conditional jobs so branch-protection rules can stay green
+#   when a job legitimately skips. Required for merge.
+#
+# # `macos-latest is the truth runner`
+#
+# Same logic as the original gate: real Apple Silicon Metal runs
+# every wgpu test without the lavapipe device-loss skip. Linux
+# validates the build path (gtk-rs, winit x11/wayland, GStreamer
+# apt) and skips the 3 multi-bind-group filter tests via
+# `WISP_SKIP_GPU_FILTER_TESTS=1`. See `crates/wisp/tests/` for
+# the guard pattern.
 
 name: gate
 
@@ -31,8 +47,152 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  gate:
-    name: gate (${{ matrix.os }})
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      wisp: ${{ steps.filter.outputs.wisp }}
+      screen: ${{ steps.filter.outputs.screen }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Match the workspace's logical seam (wisp + its
+          # preprocessor are publishable independently of the
+          # recorder; everything else is integration).
+          #
+          # `_docs/shared/` and the workspace-wide files
+          # (`Cargo.lock` etc.) appear under BOTH filters so a
+          # change there triggers BOTH jobs — the wisp gate
+          # because shared content might break wisp, the screen
+          # gate because workspace-level changes affect everyone.
+          filters: |
+            wisp:
+              - 'crates/wisp/**'
+              - 'crates/wisp-storybook/**'
+              - '_docs/wisp-book/**'
+              - '_docs/shared/**'
+              - 'tools/mdbook-preprocessor-cross/**'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/gate.yml'
+            screen:
+              - 'crates/app/**'
+              - 'crates/app-ui/**'
+              - 'crates/app-e2e/**'
+              - 'crates/decode/**'
+              - 'crates/media/**'
+              - 'crates/playback/**'
+              - 'crates/preview/**'
+              - 'crates/ui-storybook/**'
+              - 'crates/dev-server/**'
+              - '_docs/book/**'
+              - '_docs/shared/**'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - 'Justfile'
+              - 'deny.toml'
+              - 'rustfmt.toml'
+              - '.github/workflows/gate.yml'
+
+  gate-wisp:
+    name: gate-wisp (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.wisp == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (nightly per rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-gate-wisp-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-gate-wisp-
+
+      - name: Install Linux deps (lavapipe for wgpu headless)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers \
+            libvulkan1 \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev
+
+      - name: Configure wgpu for Linux headless CI
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          {
+            echo "WGPU_BACKEND=vulkan"
+            echo "WGPU_POWER_PREF=low"
+            echo "WISP_SKIP_GPU_FILTER_TESTS=1"
+          } >> "$GITHUB_ENV"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      # The wisp subset: fmt + clippy + tests for wisp, the wisp
+      # storybook, and the cross-book preprocessor. No Tauri, no
+      # GStreamer, no Leptos — faster wheels-up.
+      - name: cargo fmt (wisp subset)
+        run: |
+          cargo fmt -p wisp -p wisp-storybook -p mdbook-preprocessor-cross -- --check
+
+      - name: cargo clippy (wisp subset)
+        run: |
+          cargo clippy \
+            -p wisp \
+            -p wisp-storybook \
+            -p mdbook-preprocessor-cross \
+            --all-targets --all-features \
+            -- -D warnings
+
+      - name: cargo nextest (wisp subset)
+        run: |
+          cargo nextest run \
+            -p wisp \
+            -p wisp-storybook \
+            -p mdbook-preprocessor-cross \
+            --all-features
+
+      - name: cargo doctest (wisp subset)
+        run: |
+          cargo test --doc \
+            -p wisp \
+            -p wisp-storybook \
+            -p mdbook-preprocessor-cross
+
+  gate-screen:
+    name: gate-screen (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.screen == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -55,9 +215,9 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: ${{ runner.os }}-cargo-gate-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-gate-screen-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-gate-
+            ${{ runner.os }}-cargo-gate-screen-
 
       - name: Install macOS deps (GStreamer)
         if: matrix.os == 'macos-latest'
@@ -100,12 +260,11 @@ jobs:
       - name: Configure wgpu for Linux headless CI
         if: matrix.os == 'ubuntu-latest'
         run: |
-          echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
-          echo "WGPU_POWER_PREF=low" >> "$GITHUB_ENV"
-          # Lavapipe loses the device on multi-bind-group filter
-          # pipelines; the affected tests guard on this env var. macOS
-          # uses real Metal and runs them.
-          echo "WISP_SKIP_GPU_FILTER_TESTS=1" >> "$GITHUB_ENV"
+          {
+            echo "WGPU_BACKEND=vulkan"
+            echo "WGPU_POWER_PREF=low"
+            echo "WISP_SKIP_GPU_FILTER_TESTS=1"
+          } >> "$GITHUB_ENV"
 
       - name: Install just
         uses: extractions/setup-just@v2
@@ -119,8 +278,38 @@ jobs:
         run: just gate
 
       # ─── Tier-2 e2e (local only) ────────────────────────────────────────
-      # `just e2e` is intentionally NOT run in CI. tauri-driver + WebKitGTK
-      # under xvfb on GitHub-hosted Ubuntu runners proved flaky enough that
-      # the skip-or-fail signal stopped being useful. Contributors run it
-      # locally before opening a PR that touches the Tauri shell — see
-      # `_docs/book/src/app-ui/testing.md` for the procedure.
+      # `just e2e` is intentionally NOT run in CI. tauri-driver +
+      # WebKitGTK under xvfb proved flaky enough on GitHub-hosted Ubuntu
+      # runners that the signal stopped being useful. Contributors run
+      # it locally before opening a PR that touches the Tauri shell —
+      # see `_docs/book/src/app-ui/testing.md`.
+
+  # Synthetic required check. Branch protection should require this
+  # job. It passes iff every triggered gate passed (skipped jobs
+  # don't fail). Without this, branch-protection rules that require
+  # `gate-wisp` would block screen-only PRs (and vice versa) because
+  # the conditional job would be skipped rather than passing.
+  gate-all:
+    name: gate-all
+    needs: [changes, gate-wisp, gate-screen]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs succeeded
+        run: |
+          fail=0
+          if [[ "${{ needs.changes.outputs.wisp }}" == "true" \
+                && "${{ needs.gate-wisp.result }}" != "success" ]]; then
+            echo "::error::gate-wisp was required but result was ${{ needs.gate-wisp.result }}"
+            fail=1
+          fi
+          if [[ "${{ needs.changes.outputs.screen }}" == "true" \
+                && "${{ needs.gate-screen.result }}" != "success" ]]; then
+            echo "::error::gate-screen was required but result was ${{ needs.gate-screen.result }}"
+            fail=1
+          fi
+          if [[ "${{ needs.changes.outputs.wisp }}" != "true" \
+                && "${{ needs.changes.outputs.screen }}" != "true" ]]; then
+            echo "::notice::no relevant paths changed — gate-all passes by default"
+          fi
+          exit $fail
