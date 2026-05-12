@@ -51,3 +51,12 @@ assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
 [preprocessor.cmdrun]
 command = "mdbook-cmdrun"
 
+# Cross-book shared content + cross-book hyperlinks (DOCS-00 / AUT-154).
+# Expands `{{shared path}}` from `_docs/shared/` and `{{wisp-link path}}`
+# to a URL appropriate for whichever book is rendering.
+[preprocessor.cross]
+command = "mdbook-preprocessor-cross"
+target = "screen"
+shared-root = "../shared"
+wisp-base = "/screen/wisp"
+

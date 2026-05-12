@@ -22,7 +22,9 @@ For each `Story` in `wisp_storybook::stories::all_stories()`:
 1. Build a fresh `Application` and `Renderer` (Rgba8Unorm, 256×256).
 2. Call `story.build(app, &mut stage)`; if `tick` is set, call `tick(stage, 0.0)`.
 3. Render to a `RenderTexture` and read pixels back.
-4. Save to `_docs/book/src/assets/wisp/<id>.png`.
+4. Save to `_docs/wisp-book/src/assets/wisp/<id>.png`
+   (the wisp-book is the canonical home for renderer assets;
+   the screen book cross-links to them).
 
 ### `ui-storybook` exporter (HTML)
 

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "tools/*"]
 
 [workspace.dependencies]
 wisp = { path = "crates/wisp", version = "0.1.0" }

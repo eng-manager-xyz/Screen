@@ -3816,6 +3816,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdbook-preprocessor-cross"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "regex",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "media"
 version = "0.1.0"
 dependencies = [

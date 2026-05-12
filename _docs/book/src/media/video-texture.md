@@ -8,7 +8,7 @@ geometry; the video side emits raw BGRA bytes. wisp's
 already knew how to receive them — this chunk formalizes the call
 site as a story so future code can copy the pattern.
 
-![](../assets/wisp/video-frame-handoff.png)
+![](../assets/media/video-frame-handoff.png)
 
 A 128×72 synthetic [`VideoFrame`](../api/media/struct.VideoFrame.html)
 (diagonal gradient + horizontal stripes) uploaded to a

@@ -56,12 +56,30 @@ docs-strict:
 #
 # `--dest-dir` is resolved relative to the source dir, so we pass an absolute
 # path rooted at the workspace.
-site: docs
-    @mkdir -p target/book
-    mdbook build _docs/book --dest-dir "$(pwd)/target/book"
-    @rm -rf target/book/api && cp -r target/doc target/book/api
+# Build the in-repo mdBook preprocessor binary so `mdbook build` can find
+# it on PATH via the recipes below. The first mdbook call after a clean
+# would otherwise fail because the preprocessor isn't installed globally.
+preprocessor-build:
+    @cargo build -p mdbook-preprocessor-cross
+
+site: docs preprocessor-build site-screen site-wisp
     @echo
-    @echo "Open: file://$(pwd)/target/book/index.html"
+    @echo "Open: file://$(pwd)/target/book/index.html  (screen project book)"
+    @echo "      file://$(pwd)/target/book/wisp/index.html  (wisp library book)"
+
+# Build the screen project book. Standalone recipe so CI can target a
+# single book without rebuilding the other.
+site-screen: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/book --dest-dir "$(pwd)/target/book"
+    @rm -rf target/book/api && cp -r target/doc target/book/api
+
+# Build the wisp library book into `target/book/wisp/` so the two books
+# compose into one site rooted at `target/book/`. Standalone target so
+# the wisp-only CI gate can build it without touching the screen book.
+site-wisp: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-book --dest-dir "$(pwd)/target/book/wisp"
 
 # Regenerate per-feature screenshots / story HTML into _docs/book/src/assets/.
 # Used by mdBook chapters; commit the output so docs build is reproducible.

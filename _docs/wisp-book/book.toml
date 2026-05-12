@@ -1,0 +1,52 @@
+[book]
+authors = ["wisp authors"]
+language = "en"
+src = "src"
+title = "wisp — wgpu 2D scene graph + filter chain"
+description = "Pixi-shaped public API for wgpu. Scene tree, sprite batcher, filter chain, mask system, text. Native Rust."
+text-direction = "ltr"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+no-section-label = false
+mathjax-support = false
+text-direction = "ltr"
+site-url = "/screen/wisp/"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["mdbook-admonish.css"]
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+
+[preprocessor.links]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0"
+
+[preprocessor.cmdrun]
+command = "mdbook-cmdrun"
+
+# Cross-book shared content + cross-book hyperlinks (DOCS-00 / AUT-154).
+# In the wisp book, `{{wisp-link path}}` becomes a relative URL inside
+# this book; `{{shared path}}` inlines a fragment from `_docs/shared/`.
+[preprocessor.cross]
+command = "mdbook-preprocessor-cross"
+target = "wisp"
+shared-root = "../shared"
+wisp-base = "/screen/wisp"
