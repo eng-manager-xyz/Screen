@@ -143,7 +143,7 @@ These are the per-frame composition primitives. **Every item here is owned by `c
 
 | # | Feature | Tag | Owner |
 |---|---|---|---|
-| 1.7.1 | MP4 / H.264 software encode | MVP | encode (ffmpeg-next) |
+| 1.7.1 | MP4 / H.264 software encode | MVP | encode (GStreamer `x264enc` via `gstreamer-rs`) |
 | 1.7.2 | MP4 / H.264 hardware encode (VideoToolbox / MF) | v2 | encode |
 | 1.7.3 | GIF export | v1 | encode (gifski) |
 | 1.7.4 | Aspect ratio presets (16:9, 9:16, 1:1, 4:5) | v1 | render (stage size) |

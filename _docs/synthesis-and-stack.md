@@ -249,7 +249,7 @@ The bare minimum to validate the stack and the architecture. Cross-platform from
    - VideoToolbox H.264 hardware encode → `.mp4` chunks on disk.
 2. **Project format**: lift OS's JSON schema verbatim, change names if you must, version it from v1.
 3. **`crates/wisp` library — MVP API surface** (Rust + WGSL): scene graph (`Container`, `Sprite`, `Mesh`, `Graphics`, `Text`), transform tree, render-to-texture, video texture binding, filter chain (motion blur, drop shadow, gaussian blur, color matrix). Ship a `cargo run -p render --example screen-mock` standalone demo before integrating with the recorder. This is the foundation; everything else depends on it.
-4. **Headless export pipeline**: `cargo run -- render project.json out.mp4` opens a headless wgpu surface, runs the same scene graph for each frame timestamp, hands `RenderTexture` output to `ffmpeg-next` for encode. Validates per-frame determinism before any UI exists.
+4. **Headless export pipeline**: `cargo run -- render project.json out.mp4` opens a headless wgpu surface, runs the same scene graph for each frame timestamp, pushes `RenderTexture` BGRA into a GStreamer `appsrc → encoder → mp4mux → filesink` pipeline (see [AUT-144](https://linear.app/harwood/issue/AUT-144)). Validates per-frame determinism before any UI exists.
 5. **Editor UI** in Leptos (Tauri webview chrome) + native preview window (winit, rendered by `render` crate):
    - Leptos: timeline (budget 6 weeks, the hardest UI), inspector, settings sidebar, source picker, HUD.
    - Preview: native winit window positioned under/alongside the Leptos chrome. Cursor + project-state changes flow from Leptos via Tauri events into the render thread.
@@ -318,13 +318,13 @@ These are where you actually win, not just match:
 - **Editor preview canvas:** native `winit` sibling window (NOT in the webview), rendered by the in-repo `render` crate via `wgpu`. Tauri 2 supports child/sibling native windows; chrome is webview, preview is native.
 - **Renderer (`crates/wisp`):** in-repo, library-shaped, Rust + `wgpu` + WGSL. Pixi-style API surface (Container, Sprite, Filter, RenderTexture). Scoped to what the recorder uses — not full Pixi parity.
 - **Capture:** native Rust per OS — `objc2` / ScreenCaptureKit (macOS), `windows-rs` / Windows.Graphics.Capture (Windows), `pipewire-rs` / portal (Linux).
-- **Encode / mux:** native Rust — `ffmpeg-next` for MVP; VideoToolbox / Media Foundation HW paths in v2.
+- **Media (decode + playback + encode + mux):** GStreamer — single stack. CLI-subprocess (`gst-launch-1.0`) for decode + playback today; `gstreamer-rs` Rust bindings + `appsrc` for encode in M-EXPORT. Platform HW encoders: `vtenc_h264_hw` (macOS), `mfh264enc` (Windows), `vaapih264enc`/`nvh264enc` (Linux). See [AUT-144](https://linear.app/harwood/issue/AUT-144) — **no ffmpeg-next**.
 - **Click telemetry:** native Rust per OS.
 - **Audio capture:** `cpal` + `coreaudio-rs`.
 - **Project format:** plain JSON via `serde_json`, schema lifted from OpenScreen.
 
 **Why native preview window instead of webview canvas:**
-- Video texture path is direct: ffmpeg-next decode → `wgpu::Queue::write_texture`. No `VideoFrame`, no wasm-bindgen, no `importExternalTexture` lifetime dance.
+- Video texture path is direct: GStreamer decode (CLI-pipe → BGRA bytes on stdout) → `wgpu::Queue::write_texture`. No `VideoFrame`, no wasm-bindgen, no `importExternalTexture` lifetime dance.
 - No WASM compilation needed for the render crate at MVP — pure native.
 - No frame-blit IPC bottleneck for export — same render path writes to `RenderTexture`, encoder consumes from same process.
 - Cost: positioning a native winit window inside/under Tauri's webview takes platform-specific care, especially on Linux/Wayland. Spike validates this in week 1.
@@ -349,7 +349,7 @@ Out of scope for the in-repo library: particle systems, sprite sheets / animatio
 - **WGSL shaders work everywhere.** Same shader source runs in browser WebGPU (if we ever target web) and native wgpu. No port cost.
 - **No JS in the hot path.** Capture → render → encode is all native Rust. No `<canvas>`, no `VideoFrame`, no `importExternalTexture`, no IPC frame blits.
 - **Library-shaped from day one.** Clean public API (`Container::new()`, `Sprite::from_texture()`, `MotionBlur::default()`), but no `cargo publish`, no semver burden, no contributor model. We get most of the benefits of library hygiene with none of the OSS overhead.
-- **The "video texture battle-tested" gap is reduced** — when you control native ffmpeg decode and the wgpu texture upload directly, the unproven part is *just* "does my filter chain look right at 4K@60." That's a tractable engineering problem, not an unknown system.
+- **The "video texture battle-tested" gap is reduced** — when you control native GStreamer decode and the wgpu texture upload directly, the unproven part is *just* "does my filter chain look right at 4K@60." That's a tractable engineering problem, not an unknown system.
 
 ### What we lose vs Pixi+Bun
 
@@ -381,7 +381,7 @@ Caveat: if you're macOS-first and accept "Windows is a stretch goal", native Coc
 
 ### Why Leptos over Tauri's other options (Vue, Svelte, React-via-Tauri)
 
-- **All-Rust:** the renderer (wgpu), the capture layer (objc2/windows-rs), the export pipeline (ffmpeg-next), the project format (serde), and the UI all share types. No FFI between UI state and engine state.
+- **All-Rust:** the renderer (wgpu), the capture layer (objc2/windows-rs), the media pipeline (GStreamer via `gstreamer-rs` bindings), the project format (serde), and the UI all share types. No FFI between UI state and engine state.
 - **Reactivity model maps cleanly onto a timeline + inspector:** signals/effects are exactly what you need for "scrubbing the playhead causes the inspector to re-read X".
 - **Hot-reload via `cargo-leptos`** is workable (not Vite-fast, but acceptable).
 - **Bundle size** is excellent (compiled WASM for SSR/CSR depending on choice).
@@ -393,7 +393,7 @@ The render layer is PixiJS in the webview. Native `wgpu` is **not** in the MVP p
 
 What stays native Rust:
 - All capture (ScreenCaptureKit, Windows.Graphics.Capture, PipeWire).
-- All encode/decode/mux (ffmpeg-next; later VideoToolbox/Media Foundation HW paths).
+- All encode/decode/mux (GStreamer; platform HW encoders selected via element name swap — `vtenc_h264_hw` / `mfh264enc` / `vaapih264enc` / `nvh264enc`).
 - All cursor telemetry capture (CGEventTap / SetWinEventHook / libinput).
 - All audio capture and mixing (cpal).
 - All file I/O, project format, autosave, recovery.
@@ -435,7 +435,7 @@ Same PixiJS scene graph, same render code, same effects. The only change is the 
 | **Linux capture** | `pipewire-rs`, `ashpd` (XDG portal), `wayland-protocols` | PipeWire screencast portal |
 | **Click hooks** | `rdev` (cross-platform) or platform-native (`CGEventTap`, `SetWindowsHookEx`, `evdev`) | Global mouse click capture |
 | **Audio capture** | `cpal`, `coreaudio-rs` | Mic + system audio fallback |
-| **Encode/Decode/Mux** | `ffmpeg-next` (or `ac-ffmpeg`), `mp4` (mux only), `symphonia` (audio decode) | The reliability story |
+| **Decode / Playback / Encode / Mux** | GStreamer (`gst-launch-1.0` subprocess today for decode + playback; `gstreamer-rs` bindings + `appsrc` for encode in M-EXPORT). Single stack — no `ffmpeg-next`, no `ac-ffmpeg` (see [AUT-144](https://linear.app/harwood/issue/AUT-144)). | The reliability story |
 | **HW encode (later)** | direct `objc2` bindings to `VTCompressionSession`, `windows-rs` Media Foundation | Beat SS on export speed |
 | **GIF** | `gifski`, `image::codecs::gif` | High-quality GIF |
 | **Transcription** | `whisper-rs` + bundled GGML model; `objc2` Speech framework on macOS | On-device |
@@ -476,7 +476,7 @@ Cite MIT in `LICENSES/` and a `CREDITS.md`.
 4. **Video texture battle-testing burden is now ours.** The "video frame uploads work" is API-level; the system-level "real-time scrub + filter + export" is the unproven part. Mitigation: build a synthetic stress test early — generate 30 minutes of dummy ScreenCaptureKit-shaped frames, scrub them at random with all filters enabled, log frame drops.
 5. **Filter correctness.** Motion blur, drop shadow, gaussian blur in WGSL each have subtle bugs (premultiplied alpha, edge clamping, separable-pass kernel sizes). Plan for visual regression tests against reference images per filter.
 6. **`screencapturekit-rs` maturity.** As of 2026-05, the wrapper crates are usable but evolving. You may write your own `objc2` bindings for the `SCStream` lifecycle. Plan for that.
-7. **VideoToolbox bindings for HW H.264 encode.** No mature Rust crate; you'll write `objc2` glue. MVP can use software libx264 via `ffmpeg-next` and still beat OpenScreen on reliability; HW encode is a v2 perf milestone.
+7. **HW H.264 encode is a one-line element swap in GStreamer.** Software path is `x264enc`; the HW path is `vtenc_h264_hw` on macOS (wraps VideoToolbox), `mfh264enc` on Windows (Media Foundation), `vaapih264enc`/`nvh264enc` on Linux. No `objc2` glue, no second toolchain — just element selection. MVP ships software; HW is a v2 perf milestone with no architectural change.
 8. **Whisper bundle size.** Base model = 75 MB, Small = 460 MB. Bundle Base, download larger models on demand.
 9. **Cross-platform click capture latency.** `rdev` is fine for desktop apps but check Windows kernel-hook latency with a click-burst test before committing.
 10. **Export reliability is the differentiation pitch.** Make the headless export pipeline (`screen render in.json out.mp4`) the first integrated milestone after the renderer works. If it can render 1000 random project files without hangs/crashes/desync, you've already beaten OpenScreen.
@@ -499,10 +499,10 @@ Before committing to the full architecture, prove the three load-bearing assumpt
 **Week 2 — Filter chain + video texture:**
 - Implement `MotionBlur` filter in WGSL (velocity-driven kernel; lift OpenScreen's `PEAK_VELOCITY_PPS=1400`, `MAX_BLUR_PX=14` constants). Test against a reference frame.
 - Implement `DropShadow` filter (separable Gaussian + offset composite).
-- `objc2` + ScreenCaptureKit: record 5 seconds of screen → `CMSampleBuffer` → `ffmpeg-next` decode → `wgpu::Queue::write_texture` → render textured quad with motion blur applied.
+- `objc2` + ScreenCaptureKit: record 5 seconds of screen → `CMSampleBuffer` → GStreamer pipeline (`appsrc → videoconvert → vtenc_h264_hw → h264parse → mp4mux → filesink`) → re-decode + upload to `wgpu::Queue::write_texture` → render textured quad with motion blur applied.
 - `CGEventTap` cursor stream → JSON file with sub-frame timestamps.
 - **Deterministic-from-state demo:** load the recorded video as a `VideoTexture`, render with a moving cursor `Sprite` re-derived from the JSON stream, with motion blur on the cursor and drop shadow on the recording quad. This is the smallest end-to-end proof.
-- Headless export benchmark: render 60 frames of 1080p into `RenderTexture`, hand to `ffmpeg-next` H.264 encoder. Target: ≥30 fps export on M-series Mac.
+- Headless export benchmark: render 60 frames of 1080p into `RenderTexture`, push BGRA into GStreamer `appsrc → vtenc_h264_hw → mp4mux → filesink`. Target: ≥30 fps export on M-series Mac.
 
 If those work, the architecture is sound. The hardest unknown is the **native preview window under Tauri webview** on Linux/Wayland — if that fights us, fall back to rendering offscreen and streaming RGBA frames into a `<canvas>` in the webview via shared memory (slower but ships everywhere).
 
@@ -543,7 +543,7 @@ screen/
 │  ├─ capture-macos/         # ScreenCaptureKit + AVFoundation bindings
 │  ├─ capture-windows/       # Windows.Graphics.Capture
 │  ├─ capture-linux/         # PipeWire portal
-│  ├─ encode/                # ffmpeg-next wrapper
+│  ├─ encode/                # GStreamer-rs encoder pipeline (appsrc-fed)
 │  ├─ telemetry/             # cursor + click event capture
 │  └─ app/                   # Tauri 2 + Leptos shell, integrates everything
 └─ examples/                 # cross-crate examples (e.g., end-to-end record→render→export)
@@ -554,7 +554,7 @@ Build order (critical path):
 2. **Weeks 1–2 spike** (§8): renderer + filter chain + video texture + capture probe.
 3. Render library MVP (weeks 3–8): finish all required filters, scene graph polish, text rendering, RenderTexture orchestration. Ship 3–4 standalone examples in `crates/render/examples/`.
 4. Native capture for macOS (weeks 9–10): cleanly wrap ScreenCaptureKit + AVFoundation behind a `capture` crate trait.
-5. Encode pipeline (week 11): ffmpeg-next wrapper crate, headless `screen render` CLI works end-to-end.
+5. Encode pipeline (week 11): `gstreamer-rs` `appsrc → vtenc_h264_hw → mp4mux` wrapper crate, headless `screen render` CLI works end-to-end.
 6. Tauri+Leptos shell (weeks 12+): timeline UI, inspector, integration with render+capture+encode.
 
 If the spike reveals a blocker (most likely: native preview window compositing under Tauri webview on Wayland), the fallback is rendering offscreen and streaming RGBA frames into a webview `<canvas>` via shared memory — slower but ships.

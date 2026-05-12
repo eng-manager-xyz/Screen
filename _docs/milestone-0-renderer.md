@@ -280,7 +280,7 @@ After M0:
 - M1 (drop zone + player) can ship without needing `wisp` (uses HTML5 video), but the renderer is ready to slot in for M2.
 - M2 (capture pipeline) integrates `wisp` for the recording HUD overlay and live preview.
 - M3 (editor) wires `wisp` into the Leptos UI as the preview canvas (sibling native window strategy from synthesis doc §4).
-- M4 (export) reuses the `recorder_mock` scene-tree pattern with real data, rendered to `RenderTexture`, fed to `ffmpeg-next`.
+- M4 (export) reuses the `recorder_mock` scene-tree pattern with real data, rendered to `RenderTexture`, pushed into GStreamer's `appsrc → vtenc_h264_hw → mp4mux → filesink` (see [AUT-144](https://linear.app/harwood/issue/AUT-144) — the project switched to GStreamer-only before any encode code shipped).
 
 ---
 
@@ -320,6 +320,6 @@ M2 (capture) onward. Pending docs:
 - `_docs/milestone-3-recording-hud.md` — floating frameless HUD, pause/resume.
 - `_docs/milestone-4-editor.md` — replace HTML5 video with wisp-rendered
   preview in a winit child window of Tauri.
-- `_docs/milestone-5-encode.md` — `ffmpeg-next` software H.264 path +
+- `_docs/milestone-5-encode.md` — GStreamer `gstreamer-rs` + `appsrc → x264enc → mp4mux` software H.264 path (HW path is a one-line element swap to `vtenc_h264_hw` / `mfh264enc` / `vaapih264enc`) +
   headless `screen render in.json out.mp4` (the export pipeline this M0
-  was rehearsal for).
+  was rehearsal for). See [AUT-144](https://linear.app/harwood/issue/AUT-144) — **no `ffmpeg-next`**.

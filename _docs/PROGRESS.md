@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Media stack lockdown — drop ffmpeg-next, GStreamer-only (AUT-144)
+- **Date:** 2026-05-12
+- **Status:** ✅ done — refactor + documentation lockdown. No encode code was written for ffmpeg-next (the path was retired before implementation), so this is a planning/docs cleanup, not a code migration. Decode + playback already use GStreamer (`gstreamer_pipe`, `media::gstreamer`).
+- **Linear:** [AUT-144](https://linear.app/harwood/issue/AUT-144).
+- **Files:** `CLAUDE.md` (Stack section flipped to "Media — single GStreamer stack" + new admonish-important block forbidding `ffmpeg-next`/`ac-ffmpeg`/`ffmpeg-sys-next`). `crates/decode/Cargo.toml` description. `crates/decode/src/lib.rs` doc header rewritten. `crates/wisp/examples/headless_export.rs` doc header. mdBook chapters: `_docs/book/src/orientation/stack.md` (table row + admonish block), `_docs/book/src/decode/overview.md` (Why-a-trait section), `_docs/book/src/wisp/chunks/example-headless-export.md` + `example-filter-chain.md`. Planning docs: `_docs/synthesis-and-stack.md` (12 lines updated — all "our stack" recommendations flipped; competitor-fact lines preserved), `_docs/recorder-features-and-render-api.md` §1.7.1 encode owner, `_docs/openscreen-research.md` (5 recommendation lines flipped; OpenScreen factual descriptions preserved), `_docs/screen-studio-research.md` (3 recommendation lines flipped; Screen Studio factual descriptions preserved), `_docs/milestone-0-renderer.md` (M4 + future-milestone-5 references).
+- **Verified:** `grep -rn ffmpeg crates/ --include='*.rs' --include='Cargo.toml'` returns no matches in shipping code. Remaining ffmpeg mentions are in (a) competitor research factual descriptions, (b) PROGRESS.md historical journal entries, (c) the new "do not add" admonition blocks themselves. Full `just gate` green.
+- **The hard rule.** CLAUDE.md now carries an admonish-important block on the Stack section: "Do not add `ffmpeg-next`, `ac-ffmpeg`, `ffmpeg-sys-next`, or any other ffmpeg binding crate to this workspace." Future sessions starting cold land in CLAUDE.md auto-load and will see the rule before touching any encode work.
+
+---
+
 ## UI-23 — Presentational + state-free guardrail (AUT-143)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — three mdBook pages document the contract, the state boundary diagram, and the PR review checklist. A grep-based integration test (`crates/ui-storybook/tests/presentational_contract.rs`) walks every file under `components/` and rejects forbidden patterns (`RwSignal::new`, `Effect::new`, `Action::new`, `tauri::`, `invoke(`, `set_interval`, `local_storage`, `std::fs::`, etc.). An `ALLOWED_FILES` allowlist exists for future feature-gated exceptions but is empty today.

@@ -3,10 +3,11 @@
 ![headless export · frame 30 of 60 at 1080p](../../assets/wisp/example-headless-export.png)
 
 The M0.21 closing proof point: **60 frames at 1920×1080**, fully
-headless, dumped as PNGs. This is the path the M2+ export pipeline
+headless, dumped as PNGs. This is the path the M-EXPORT pipeline
 inherits — render the project file's scene graph for each frame's
-timeline tick, dump pixels, feed `ffmpeg-next` (or the future
-`encode` crate's HW path) for video encoding.
+timeline tick, dump pixels, push BGRA into GStreamer's
+`appsrc → vtenc_h264_hw → mp4mux → filesink` (or its
+`mfh264enc` / `vaapih264enc` / `x264enc` platform variants).
 
 The example renders the same recorder-mock-shaped scene but animates it:
 
@@ -32,19 +33,23 @@ when the encode crate lands.
   GPU-bound for typical recording scenes.
 - **Rules in:** the `RenderTexture` → `read_pixels` path is allocation-
   free per frame after warmup (the texture pool persists across frames).
-- **Rules out (deferred to M2+):** real per-frame timeline data
+- **Rules out (deferred to M-EXPORT):** real per-frame timeline data
   (currently parameters are computed from `frame / 60.0`); the export
-  format negotiation (we write PNG-per-frame; production pipeline pipes
-  raw BGRA into `ffmpeg-next`'s yuv420p path).
+  format negotiation (we write PNG-per-frame; production pipeline
+  pushes raw BGRA into GStreamer's `appsrc` and converts to `yuv420p`
+  inline with `videoconvert ! video/x-raw,format=I420`).
 
-## Gstreamer pivot — note on the original spec
+## GStreamer is the single media stack
 
-The M0.21 spec called for `examples/video_texture.rs` to "loop an MP4
-decoded via `ffmpeg-next`." During M-DEC we pivoted to GStreamer (CLI-pipe
-+ `decode` crate); the equivalent path now lives at
+The M0.21 spec originally called for `examples/video_texture.rs` to
+"loop an MP4 decoded via `ffmpeg-next`." During M-DEC the project
+locked in GStreamer as the only media library (see [AUT-144](https://linear.app/harwood/issue/AUT-144)
+and the [stack reference](../../orientation/stack.md#stack)); the
+equivalent decode path now lives at
 [`crates/playback/examples/play_file.rs`](../../playback/play-file.md).
 The headless side that M0.21 cared about — render-loop-to-PNG — is
-exactly what `headless_export` ships.
+exactly what `headless_export` ships, and the eventual encode side
+will push the same BGRA frames into a GStreamer `appsrc` pipeline.
 
 [`Renderer::render_stage`](../../api/wisp/render/struct.Renderer.html#method.render_stage) ·
 [`RenderTexture::read_pixels`](../../api/wisp/struct.RenderTexture.html#method.read_pixels) ·

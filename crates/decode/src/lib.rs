@@ -2,11 +2,14 @@
 //!
 //! # Why a trait
 //!
-//! The recorder will eventually decode MP4s through `AVFoundation` (macOS),
-//! `MediaFoundation` (Windows), or `ffmpeg-next` (cross-platform). Each
-//! codec backend is its own non-trivial integration, but the *consumer*
-//! (wisp's `VideoTexture::upload_bgra` path) is uniform: it wants a stream
-//! of BGRA frames at known dimensions, ticked at known timestamps.
+//! The recorder decodes MP4s through `GStreamer` today (the workspace's
+//! single media stack — see CLAUDE.md "Stack" section and AUT-144).
+//! Multiple backends still exist as a contract: the [`gstreamer_pipe`]
+//! CLI-subprocess implementation, a future in-process `gstreamer-rs`
+//! bindings implementation for encode (`appsrc`-fed), and the [`mock`]
+//! deterministic test source. The *consumer* (wisp's
+//! `VideoTexture::upload_bgra` path) is uniform: it wants a stream of
+//! BGRA frames at known dimensions, ticked at known timestamps.
 //!
 //! [`VideoStream`] is that uniform contract. Any implementation can be
 //! swapped in at runtime without changing the player loop.

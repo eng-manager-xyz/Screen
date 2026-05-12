@@ -6,24 +6,33 @@ ScreenCaptureKit captures, …) into a stream of BGRA frames that wisp's
 
 ## Why a trait
 
-The recorder needs at least three different decoder backends:
+The recorder uses **GStreamer** as the single media stack (see
+[`stack`](../orientation/stack.md) — and AUT-144 for the
+"no ffmpeg-next" decision). Multiple implementations still hide
+behind the trait:
 
-- **AVFoundation** (macOS) — for both editor playback and the screen
-  capture path.
-- **Media Foundation / windows-rs** (Windows) — same.
-- **`ffmpeg-next`** — fallback / Linux / non-Apple-Silicon paths.
+- **`gstreamer_pipe`** — CLI-subprocess via `gst-launch-1.0`. Ships
+  today; powers both the decode integration tests and the playback
+  player.
+- **`gstreamer-rs` Rust bindings** (future, encode-side) — needed
+  for the `appsrc`-fed encoder pipeline where wisp pushes BGRA
+  frames into the encoder in-process.
+- **`MockVideoStream`** — deterministic synthesized frames; no
+  external deps. Used by `playback_demo` and the wisp story
+  harnesses.
 
-Each is a non-trivial integration. But the *consumer* — wisp's
-per-frame upload path — is uniform: it wants `Vec<u8>` BGRA at known
-dimensions, ticked at known timestamps. [`VideoStream`](../api/decode/trait.VideoStream.html)
-is that uniform contract.
+Each backend is a non-trivial integration, but the *consumer* —
+wisp's per-frame upload path — is uniform: it wants `Vec<u8>` BGRA
+at known dimensions, ticked at known timestamps.
+[`VideoStream`](../api/decode/trait.VideoStream.html) is that
+uniform contract.
 
 ## Current state
 
 - ✅ **M-DEC.1** — trait + `MockVideoStream` (synthesizes scrolling
   gradient, no external deps, drives the `playback_demo` example).
-- ⏳ **M-DEC.2** — real MP4 decode (AVFoundation via `objc2`, then
-  `ffmpeg-next` as fallback).
+- ✅ **M-DEC.2** — real MP4 decode via GStreamer CLI-subprocess
+  (`gstreamer_pipe`).
 
 ## End-to-end proof point
 

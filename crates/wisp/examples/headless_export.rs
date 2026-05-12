@@ -1,6 +1,8 @@
 //! Headless render-to-PNG over **60 frames at 1080p** — the M0.21 proof
 //! point that wisp can drive a future export pipeline (encode crate
-//! consumes these PNGs, or feeds the same scene to ffmpeg-next directly).
+//! consumes these PNGs, or feeds the same scene to a
+//! [`GStreamer`](https://gstreamer.freedesktop.org/) `appsrc →
+//! vtenc_h264_hw → mp4mux → filesink` pipeline directly).
 //!
 //! Builds the recorder-mock-shaped scene (background gradient, recording
 //! quad, cursor sprite, text label) and animates it for 60 frames:

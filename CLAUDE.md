@@ -571,7 +571,17 @@ Library is means; the app is the goal.
 - **Renderer:** `wisp` (in-repo, `crates/wisp`) — wgpu + WGSL
 - **Editor preview:** native `winit` sibling window rendered by `wisp`
 - **Capture:** `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux)
-- **Encode:** `ffmpeg-next` for MVP; VideoToolbox / Media Foundation HW paths in v2
+- **Media (decode + playback + encode + mux):** GStreamer is the single media stack. Decode + playback ship today as a `gst-launch-1.0` CLI subprocess (see [GStreamer integration choice](#gstreamer-integration-choice) below); encode lands in M-EXPORT via `gstreamer-rs` Rust bindings + `appsrc` (so wisp's render-target frames push into the pipeline) with platform HW encoders (`vtenc_h264_hw` macOS, `mfh264enc` Windows, `vaapih264enc`/`nvh264enc` Linux).
+
+```admonish important title="GStreamer is the only media library — do NOT add ffmpeg-next"
+This project deliberately uses **only GStreamer** for decode, playback, encode, and mux. Earlier planning docs (now corrected) listed `ffmpeg-next` as a transitional MVP option; that path was dropped before any encode code shipped. Reasons captured in [AUT-144](https://linear.app/harwood/issue/AUT-144):
+
+- One media stack instead of two — single build dependency, single license story (GStreamer LGPL vs. ffmpeg's GPL/LGPL split), one `deny.toml` entry, one mental model.
+- GStreamer's element graph (`appsrc → encoder → mux → filesink`) is a strictly better fit for the "capture → wgpu compose → encode" live pipeline than ffmpeg's libavformat. The HW-encode coverage is equivalent across macOS/Windows/Linux.
+- Decode + playback already use GStreamer (see `decode::gstreamer_pipe`, `media::gstreamer`). Adding ffmpeg would re-introduce a second toolchain for no product gain.
+
+**Do not add `ffmpeg-next`, `ac-ffmpeg`, `ffmpeg-sys-next`, or any other ffmpeg binding crate to this workspace.** If you find yourself wanting one, the answer is a GStreamer element — open AUT-144 for the mapping table or extend it. Historical PROGRESS.md entries that mention ffmpeg are journal entries documenting the M0.21 pivot; they describe what happened and are not directives.
+```
 
 ## Current milestone
 
