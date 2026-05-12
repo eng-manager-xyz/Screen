@@ -35,8 +35,8 @@ pub struct SystemAudioView {
     /// How many apps are available in total.
     pub total_count: usize,
     /// Apps to render in the overlapping leading-icon stack. The list
-    /// can be longer than [`SystemAudioRow::ICON_STACK_MAX`] — the
-    /// row truncates and shows an overflow pill.
+    /// can be longer than [`ICON_STACK_MAX`] — the row truncates and
+    /// shows an overflow pill.
     pub icon_stack: Vec<AppIconView>,
 }
 

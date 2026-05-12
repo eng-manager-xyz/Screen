@@ -6,6 +6,146 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-23 — Presentational + state-free guardrail (AUT-143)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — three mdBook pages document the contract, the state boundary diagram, and the PR review checklist. A grep-based integration test (`crates/ui-storybook/tests/presentational_contract.rs`) walks every file under `components/` and rejects forbidden patterns (`RwSignal::new`, `Effect::new`, `Action::new`, `tauri::`, `invoke(`, `set_interval`, `local_storage`, `std::fs::`, etc.). An `ALLOWED_FILES` allowlist exists for future feature-gated exceptions but is empty today.
+- **Linear:** [AUT-143](https://linear.app/harwood/issue/AUT-143).
+- **Files:** new `_docs/book/src/ui/state-boundaries.md` (Mermaid sequence diagram of the callback-up/view-model-down flow + per-concern lives-in table + good/bad code samples). New `_docs/book/src/ui/review-checklist.md` (file-scan / props / story / mdBook / gate / canvas / foot-gun sections). New `crates/ui-storybook/tests/presentational_contract.rs` integration test. `SUMMARY.md` indexes both new pages under the `ui-storybook` book section.
+- **Verified:** 81 ui-storybook tests pass (was 80; +1 guardrail). Full `just gate` green.
+- **Allowlist is empty today.** Every existing component is compliant. A future feature-gated browser-side component can add its path to `ALLOWED_FILES` with a comment explaining why — but the *default* must remain stateless.
+
+---
+
+## UI-22 — Shared fixture library + contact sheet (AUT-142)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `default_ui_fixtures()` aggregates every per-surface canonical sample (workspaces, displays, devices, audio apps, recordings, cursor presets) into a single deterministic `UiFixtureSet`. New fixture-gallery story renders a contact sheet of every major domain for design review.
+- **Linear:** [AUT-142](https://linear.app/harwood/issue/AUT-142).
+- **Files:** new `fixtures/contact_sheet.rs` (`UiFixtureSet`, `DeviceFixtureSet`, `default_ui_fixtures` + 2 unit tests). `fixtures/mod.rs` re-exports. New `stories/fixtures_gallery.rs` (4 stories: contact sheet + 3 per-surface filters). `stories/mod.rs` registers. `tests/story_registry.rs` adds `"Fixtures"` category. `assets/style.css` adds `.contact-sheet*`. New `_docs/book/src/ui/fixtures.md` chapter with the "why fixtures matter" explanation + module index. `SUMMARY.md` indexes it as a top-level page under the `ui-storybook` book section.
+- **Verified:** 80 ui-storybook tests pass (was 78; +2 unit). Deterministic equality test for `default_ui_fixtures()` confirms cross-machine stability. 4 new asset HTMLs exported. Full `just gate` green.
+- **One source of truth, swapped for real DTOs later.** When the runtime crate lands a real `Recording` / `Workspace` struct, the fixtures get replaced (not rewritten) by mappers. Today's snapshot diffs stay quiet because the canonical samples never drift.
+
+---
+
+## UI-21 — CursorPreviewCanvas + appearance controls (AUT-141)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CursorPreviewCanvas` follows the same three-backend pattern as the editor canvas (`CssFallback` / `WispAsset` / `RuntimeUnavailable`). `CursorAppearancePanel` composes UI-18 inspector primitives into APPEARANCE / CLICK EFFECT / MOTION / BEHAVIOR sections + a Reset/Apply footer. 6 stories cover preview light/dark + 4 appearance permutations.
+- **Linear:** [AUT-141](https://linear.app/harwood/issue/AUT-141).
+- **Files:** new `components/cursor/cursor_preview_canvas.rs` (`CursorPreviewCanvas`, `CursorPreviewBackend`, `CursorAppearancePanel`, `CursorAppearanceView`, `CursorColor`, `ClickEffect`, `CursorBehaviorView` + 2 unit tests). `components/cursor/mod.rs` re-exports. `fixtures/cursor.rs` adds `sample_cursor_appearance()` + `_pulse()` / `_spotlight()` / `_trail_on()` variants. `stories/cursor.rs` extends. `assets/style.css` adds `.cursor-preview-*`, `.cursor-appearance-*` + `@keyframes cursor-ring-pulse`. New `_docs/book/src/ui/chunks/cursor-preview-canvas.md`. `SUMMARY.md` indexes it.
+- **Verified:** 78 ui-storybook tests pass. 6 new asset HTMLs exported. Full `just gate` green.
+- **Halo strength dims when halo is off.** The appearance panel encodes per-row enable/disable in the view model so the parent doesn't have to disable individual controls inline.
+
+---
+
+## UI-20 — CursorStudioShell + cursor style picker (AUT-140)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CursorStyle { System, Arrow, Soft, Dot, Ring, Reticle, Tactile, Hide }`. `CursorStylePicker` renders a tile grid; `CursorStudioShell` composes preview slot + inspector slot + picker into the full studio screen layout. 4 stories: default picker, arrow-selected, all-disabled, full shell.
+- **Linear:** [AUT-140](https://linear.app/harwood/issue/AUT-140).
+- **Files:** new `components/cursor/cursor_studio_shell.rs` (`CursorStudioShell`, `CursorStudioShellView`, `CursorStyle`, `CursorStylePicker`, `CursorStylePickerView`, `CursorStyleTile`, `CursorStyleTileView` + 2 unit tests). `components/cursor/mod.rs` re-exports. `fixtures/cursor.rs` adds `sample_cursor_style_picker(selected)`, `_disabled()`, `sample_cursor_studio_shell()`. `stories/cursor.rs` populated (4 stories). `tests/story_registry.rs` adds `"Cursor"` category. `assets/style.css` adds `.cursor-studio-*` + `.cursor-style-*`. New `_docs/book/src/ui/chunks/cursor-style-picker.md`. `SUMMARY.md` indexes it.
+- **Verified:** 76 ui-storybook tests pass. 4 new asset HTMLs exported. Full `just gate` green.
+- **Tactile is disabled by default.** It's a placeholder for a future cursor backend; the parent flips `disabled = false` when the runtime lands.
+
+---
+
+## UI-19 — TimelineSkeleton + track rows (AUT-139)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `TimelineSkeleton` lays out a transport row (play/pause + playhead/duration timecode) + per-track rows with optional dashed placeholders. Selection + playing are controlled props. 4 stories cover empty / placeholders / playing / selected-track.
+- **Linear:** [AUT-139](https://linear.app/harwood/issue/AUT-139).
+- **Files:** new `components/editor/timeline_skeleton.rs` (`TimelineSkeleton`, `TimelineTransport`, `TimelineTrackRow`, `TimelineView`, `TimelineTrackView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_timeline_skeleton()`, `_playing()`, `_empty()`. `stories/editor.rs` adds `timeline_stories()` bucket. `assets/style.css` adds `.timeline-*` classes. New `_docs/book/src/ui/chunks/timeline-skeleton.md`. `SUMMARY.md` indexes it.
+- **Verified:** 74 ui-storybook tests pass. 4 new `timeline-*.html` assets exported. Full `just gate` green.
+- **Skeleton, not editing.** Real keyframe editing stays in `DopeSheet` + the future editing controller. The skeleton is a layout primitive only.
+
+---
+
+## UI-18 — InspectorPanel + property rows (AUT-138)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `InspectorPanel` composes `InspectorTabs` (Style / Cursor / Audio / Captions / AI) + a list of `PropertySection`s. Five built-in property controls via `PropertyControlView` enum: `ValueOnly`, `SliderPercent`, `Toggle`, `ColorSwatches`, `SelectPill`. 6 stories sweep style tab, cursor tab, disabled section, and individual control rows.
+- **Linear:** [AUT-138](https://linear.app/harwood/issue/AUT-138).
+- **Files:** new `components/editor/inspector_panel.rs` (`InspectorPanel`, `InspectorPanelView`, `InspectorTab`, `InspectorTabs`, `PropertySection`, `PropertySectionView`, `PropertyRowView`, `PropertyControlView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_inspector_style_tab()`, `_cursor_tab()`, `_disabled_section()`. `stories/editor.rs` adds `inspector_stories()` bucket. `tests/story_registry.rs` adds `"Inspector"` category. `assets/style.css` adds `.inspector-*` + `.property-*` classes. New `_docs/book/src/ui/chunks/inspector-panel.md`. `SUMMARY.md` indexes it.
+- **Verified:** 73 ui-storybook tests pass. 6 new `inspector-*` / `property-row-*` asset HTMLs exported. Full `just gate` green.
+- **Controls as enum, not children slot.** `PropertyControlView` is an enum so every row goes through the same layout path. Adding a new control type means adding an enum variant — the parent never has to ship its own row markup.
+
+---
+
+## UI-17 — WispCanvasHost + editor drop-zone canvas (AUT-137)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `WispCanvasHost` is a backend-agnostic host that renders one of three modes: `CssFallback` (checkered fallback used by SSR + mdBook), `WispAsset { asset_path }` (committed PNG via `<img>`), or `WispRuntimeUnavailable` (warning banner). `EditorDropZoneCanvas` wraps the host in the dotted drop overlay + action cards (Record screen / Open library / Import file) + recent-clips strip.
+- **Linear:** [AUT-137](https://linear.app/harwood/issue/AUT-137).
+- **Files:** new `components/editor/wisp_canvas_host.rs` (`WispCanvasHost`, `EditorDropZoneCanvas`, `CanvasBackendView`, `DropZoneActionView`, `RecentClipView`, `EditorDropZoneView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_editor_drop_zone(drag_active)` / `_no_recent()` + private `sample_recent_clips()`. `stories/editor.rs` extends (5 new stories) — story list refactored into per-bucket helpers (`legacy_editor_stories` / `editor_shell_stories` / `editor_canvas_stories`) to stay under clippy's 100-line cap. `assets/style.css` adds `.wisp-canvas-host*`, `.editor-drop-zone*`, `.editor-recent-clip*`. New `_docs/book/src/ui/chunks/editor-drop-zone-canvas.md`. `SUMMARY.md` indexes it.
+- **Verified:** 72 ui-storybook tests pass. 5 new asset HTMLs exported. Full `just gate` green.
+- **No wgpu dependency in this component.** The host never touches the renderer — it just renders whichever backend the parent picked. Future runtime Wisp embedding can swap the `WispAsset` branch for a `<canvas>` mount without changing the component contract.
+
+---
+
+## UI-16 — EditorShell + top toolbar (AUT-136)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — structural shell with macOS title bar, top toolbar (16:9 / Crop / Annotate / Trim + Share / Export), and `canvas` / `inspector` / `timeline` slots as `Option<Children>`. `EditorToolbar` reusable standalone. 4 stories: empty, clip-loaded, toolbar-states, export-disabled.
+- **Linear:** [AUT-136](https://linear.app/harwood/issue/AUT-136).
+- **Files:** new `components/editor/editor_shell.rs` (`EditorShell`, `EditorShellView`, `EditorTitleBar`, `EditorToolbar`, `ToolbarActionView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_editor_shell(has_clip_loaded)` / `_export_disabled()`. `stories/editor.rs` extends (4 new stories). `assets/style.css` adds `.editor-shell*`, `.editor-titlebar*`, `.editor-toolbar*`, `.editor-action*`, `.editor-canvas`, `.editor-inspector`, `.editor-timeline` + `.traffic-*` dots. New `_docs/book/src/ui/chunks/editor-shell.md`. `SUMMARY.md` indexes it.
+- **Verified:** 71 ui-storybook tests pass. 4 new asset HTMLs exported. Full `just gate` green.
+- **Slots are structural.** UI-17/18/19 fill `canvas` / `inspector` / `timeline` as `Option<Children>` — the shell itself doesn't know or care what each renders.
+
+---
+
+## UI-15 — RecordingCard + LibraryGrid (AUT-135)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `RecordingCard` covers Ready / Processing(percent) / Failed. `LibraryGrid` composes a `LibraryToolbar` (filter chips + sort + grid/list toggle) above the card collection. Empty grid renders a centered placeholder. 6 stories ship.
+- **Linear:** [AUT-135](https://linear.app/harwood/issue/AUT-135).
+- **Files:** new `components/library/recording_card.rs` (`RecordingCard`, `RecordingCardView`, `RecordingCardState`, `ThumbnailView`, `RecordingMetricsView`, `LibraryToolbar`, `LibraryToolbarView`, `LibraryGrid`, `LibraryGridView`, `LibraryLayoutMode`, `RecordingFilterView` + 2 unit tests). `components/library/mod.rs` re-exports. `fixtures/library.rs` adds `sample_recording_cards()`, `sample_library_grid()`, `_empty()`, `_list_mode()`. `stories/library.rs` extends (6 new stories). `assets/style.css` adds `.recording-card*`, `.library-toolbar*`, `.library-grid*`, `.library-empty*`, `.library-filter*`, `.library-sort`, `.library-layout*` classes. New `_docs/book/src/ui/chunks/recording-card.md`. `SUMMARY.md` indexes it.
+- **Verified:** 70 ui-storybook tests pass (was 68; +2 unit). 6 new asset HTMLs exported (`recording-card-*` + `library-grid-*`). Full `just gate` green.
+- **`ThumbnailView` is a CSS gradient.** Real video posters land later when the encoder writes them to disk; for SSR + mdBook we render deterministic gradients so snapshots are stable across machines.
+
+---
+
+## UI-14 — LibrarySidebar + storage meter (AUT-134)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `LibrarySidebar` is a controlled left rail: primary rows (New / All / Starred / Shared / Inbox), arbitrary `SPACES` / `TAGS` sections, and a `StorageMeter` that turns red past 85%. Five stories sweep default, inbox-active, 95%-storage, empty-spaces, and long-labels.
+- **Linear:** [AUT-134](https://linear.app/harwood/issue/AUT-134).
+- **Files:** new `components/library/library_sidebar.rs` (`LibrarySidebar`, `LibrarySidebarView`, `LibraryNavItemView`, `LibrarySectionView`, `StorageMeter`, `StorageMeterView`, `storage_percent` + 1 unit test). `components/library/mod.rs` re-exports. `fixtures/library.rs` adds `sample_library_sidebar(inbox_unread)` / `_inbox_active()` / `_high_storage()` + 2 unit tests; split into helpers to keep each function under the 100-line clippy threshold. `stories/library.rs` populated (5 stories). `tests/story_registry.rs` adds `"Library"` to the known-categories list. `assets/style.css` adds `.library-*` + `.storage-meter*`. New `_docs/book/src/ui/chunks/library-sidebar.md`. `SUMMARY.md` indexes it.
+- **Verified:** 68 ui-storybook tests pass (was 65; +3 unit + 5 stories). All 5 `library-sidebar-*.html` assets exported. Full `just gate` green.
+- **`StorageMeter` is reusable standalone.** Even though it currently lives only inside `LibrarySidebar`, it has its own component + view-model so future "storage" surfaces (preferences page, export dialog) can use it without dragging the whole sidebar along.
+
+---
+
+## UI-13 — RecordingStatusButton (AUT-133)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — compact tray/menu-bar status pill. `CompactRecordingState { Countdown, Recording, Paused, Stopping, Stopped, Error }` covers all post-Start lifecycle visuals. Pulsing live dot in `Recording`, frozen elapsed label in `Paused`, amber background, optional pause/resume/stop action buttons. `CountdownBadge` is a tiny standalone primitive for the countdown digit; reusable inside an overlay/banner.
+- **Linear:** [AUT-133](https://linear.app/harwood/issue/AUT-133).
+- **Files:** new `components/recorder/recording_status_button.rs` (`RecordingStatusButton`, `CompactRecordingState`, `CountdownBadge`, `format_countdown_seconds` + 3 unit tests). `components/recorder/mod.rs` re-exports. New `stories/recording_status.rs` (6 stories). `stories/mod.rs` registers. `assets/style.css` adds `.recording-status-*` + `.countdown-badge*` + `@keyframes status-pulse`. New `_docs/book/src/ui/chunks/recording-status-button.md`. `SUMMARY.md` indexes it.
+- **Verified:** 65 ui-storybook tests pass (was 62; +3 unit). 6 `recording-status-*.html` assets exported. Full `just gate` green.
+- **No timers inside the component.** Parent passes `elapsed_label` + `seconds_remaining` each frame. No `Effect::new`, no `set_interval`, no `setTimeout`. App-side state in `app-ui` owns the clock.
+
+---
+
+## UI-12 — TrayRecordPopover composition (AUT-132)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `TrayRecordPopover` composes UI-02..UI-11 into the floating tray-record window. `OpenRecorderPopoverKind` enum drives which secondary surface (workspace menu / camera / microphone / system-audio / on-screen-options) is rendered as an overlay over the popover. State remains entirely external; the popover only renders what props say to render.
+- **Linear:** [AUT-132](https://linear.app/harwood/issue/AUT-132).
+- **Files:** new `components/recorder/tray_record_popover.rs` (`TrayRecordPopover`, `TrayRecordPopoverView`, `OpenRecorderPopoverKind`, `WorkspaceSwitcherView`, `OnScreenSummaryView`, `format_on_screen_summary`, `format_system_audio_summary` + 5 unit tests). `components/recorder/mod.rs` re-exports. `fixtures/recorder.rs` adds `sample_tray_record_popover(open)` + `_start_disabled()` + 1 unit test. New `stories/tray_record_popover.rs` (7 stories). `stories/mod.rs` registers. `assets/style.css` adds `.tray-record-popover*` and `.tray-popover-overlay*`. New `_docs/book/src/ui/chunks/tray-record-popover.md`. `SUMMARY.md` indexes it.
+- **Verified:** 62 ui-storybook tests pass (was 56; +6: 5 tray unit + 1 fixture). All 7 `tray-record-popover-*.html` assets exported. Full `just gate` green.
+- **Overlay positioning.** Each open overlay lives in `.tray-popover-overlay-<kind>` and is positioned absolutely relative to the popover container — the parent decides which one is active by passing `open`, so the popover doesn't track its own menu state. This keeps the SSR snapshot deterministic across menu transitions.
+
+---
+
+## UI-11 — RecordingControlsFooter (AUT-131)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `RecordingControlsFooter` composes `AutoZoomSelect` + `CountdownSelect` + `StartRecordingButton`. `StartRecordingState { Ready, Disabled, Loading, PermissionBlocked }` covers the four lifecycle visuals; `Ready` renders the ⌘⇧2 shortcut chip inside the red button, `PermissionBlocked` swaps to amber + warning glyph and stays interactive (so the parent can open the permission prompt). `ShortcutBadgeGroup` is a new dedicated chip set (inverted color treatment vs. UI-01 `Kbd`).
+- **Linear:** [AUT-131](https://linear.app/harwood/issue/AUT-131).
+- **Files:** new `crates/ui-storybook/src/components/recorder/recording_selects.rs` (`AutoZoomSelect`, `CountdownSelect`, `ShortcutBadgeGroup`, `format_auto_zoom_label`, `format_countdown_label` + 2 unit tests). New `recording_controls_footer.rs` (`StartRecordingState`, `StartRecordingButton`, `RecordingControlsView`, `RecordingControlsFooter` + 2 unit tests). `components/recorder/mod.rs` re-exports. `fixtures/recorder.rs` adds `sample_recording_controls(state)` + `_compact()` + 2 unit tests. New `stories/recorder_footer.rs` (5 stories). `stories/mod.rs` registers. `assets/style.css` adds `.recording-controls-footer*`, `.start-recording-btn*`, `.shortcut-badges*`. New `_docs/book/src/ui/chunks/recording-controls-footer.md`. `SUMMARY.md` indexes it. Also patched 2 pre-existing rustdoc intra-doc-link warnings while the gate was open (`StartRecordingButton::on_start`, `SystemAudioRow::ICON_STACK_MAX` — components are fns, not types).
+- **Verified:** 56 ui-storybook tests pass (was 50; +6: 4 fixture/component unit + 2 unit on `StartRecordingState`). Full `just gate` green. All five `recording-footer-*.html` assets exported.
+- **Pass-through pattern for `Option<Callback<()>>`.** Leptos's `#[prop(optional)]` macro wraps a passed value in `Some(...)` internally — `on_start=Some(cb)` produces `Option<Option<Callback>>` and won't compile. To forward an `Option<Callback<()>>` from a parent to a child component, branch in the view! macro: `match on_start { Some(cb) => view! { <Child on_start=cb /> }, None => view! { <Child /> } }`. Documented inline.
+
+---
+
+## UI-10 — OnScreenOptionsPopover (AUT-130)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `OnScreenOptionsPopover` composes UI-03 `PopoverSurface` + UI-04 `ToggleSwitch`. `OnScreenOptionKind { CleanDesktop, ShowKeys, BlurSensitiveInfo }` stable enum. Four stories cover default + all-on + sensitive-disabled + long-copy.
+- **Linear:** [AUT-130](https://linear.app/harwood/issue/AUT-130).
+- **Files:** new `crates/ui-storybook/src/components/recorder/on_screen_options.rs` (`OnScreenOptionsPopover`, `OnScreenOptionView`, `OnScreenOptionKind` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `fixtures/recorder.rs` extended with `sample_on_screen_options(sensitive_disabled)` / `_all_on()` / `_long_copy()` + a one-per-kind unit test. New `stories/recorder_on_screen.rs`. `stories/mod.rs` aggregates. `assets/style.css` adds `.on-screen-option-row*` classes. New `_docs/book/src/ui/chunks/on-screen-options.md`. `SUMMARY.md` indexes it (and closes a gap — UI-09's `system-audio-picker` chapter was created earlier but never linked from SUMMARY).
+- **Verified:** 50 ui-storybook tests pass (was 47; +3 unit/fixture tests + 4 new stories). Full `just gate` green.
+- **`disabled` is per-row.** Pending features (auto-blur) ship the row with `disabled = true`; the parent flips it `false` when the runtime backend lands. The popover doesn't need to know anything about feature flags — it just renders what it's told.
+
+---
+
 ## UI-08 — CaptureSourceRow + device picker rows (AUT-128)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `CaptureSourceRow` (collapsed row, 5-col grid), `DevicePickerMenu` (composes UI-03 popover), `DevicePickerRow` (custom shape with thumbnail + meter + selected check). Six new stories cover collapsed camera/mic + open camera/mic pickers + empty + permission-needed states.

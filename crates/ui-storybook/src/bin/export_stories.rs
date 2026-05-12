@@ -1,12 +1,14 @@
 //! `cargo run -p ui-storybook --bin export-stories`
 //!
-//! Headlessly renders every shipped UI story to a standalone HTML file under
+//! Headlessly renders every shipped UI story to an HTML file under
 //! `_docs/book/src/assets/ui/<id>.html`. The mdBook site embeds them either
 //! inline (`<iframe src="...">`) or links to them as live demos.
 //!
-//! Each output is a complete `<html>` document with the storybook stylesheet
-//! inlined, so it opens correctly in a browser tab without any external
-//! resources. A future upgrade swaps these for PNGs via `headless_chrome`.
+//! Stories share a single sibling stylesheet (`./style.css` in the same
+//! directory) rather than inlining the full CSS into every HTML file —
+//! that change cut the committed asset payload from ~117k lines of
+//! duplicated CSS to ~1.7k. The exporter writes `style.css` once at the
+//! start of the run, then every story HTML `<link>`s to it.
 
 use std::path::Path;
 
@@ -18,9 +20,14 @@ fn main() {
     let out_dir = Path::new("_docs/book/src/assets/ui");
     std::fs::create_dir_all(out_dir).expect("create assets dir");
 
+    // Write the shared stylesheet once. Every story HTML links to this
+    // file via a relative `./style.css` href.
+    let style_path = out_dir.join("style.css");
+    std::fs::write(&style_path, STYLE).expect("write shared style.css");
+
     let stories = all_stories();
     println!(
-        "exporting {} stories → {}",
+        "exporting {} stories + shared style.css → {}",
         stories.len(),
         out_dir.display()
     );
@@ -33,7 +40,7 @@ fn main() {
   <head>
     <meta charset="utf-8" />
     <title>{title}</title>
-    <style>{style}</style>
+    <link rel="stylesheet" href="./style.css" />
     <style>
       body {{ padding: 24px; }}
     </style>
@@ -44,7 +51,6 @@ fn main() {
 </html>
 "#,
             title = story.title,
-            style = STYLE,
             body = body,
         );
 

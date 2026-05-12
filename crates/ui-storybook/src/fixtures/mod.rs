@@ -11,6 +11,7 @@
 //! components.
 
 pub mod audio_apps;
+pub mod contact_sheet;
 pub mod cursor;
 pub mod devices;
 pub mod editor;
@@ -18,3 +19,5 @@ pub mod library;
 pub mod recorder;
 pub mod shell;
 pub mod workspaces;
+
+pub use contact_sheet::{DeviceFixtureSet, UiFixtureSet, default_ui_fixtures};
