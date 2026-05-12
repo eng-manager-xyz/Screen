@@ -122,6 +122,7 @@
   - [Menu row](./ui/chunks/menu-row.md)
   - [Workspace switcher](./ui/chunks/workspace-switcher.md)
   - [Controls](./ui/chunks/controls.md)
+  - [Capture mode tabs](./ui/chunks/capture-mode-tabs.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

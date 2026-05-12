@@ -67,7 +67,7 @@ pub use primitives::{
     Divider, DividerOrientation, IconButton, IconButtonVariant, IconTile, IconTileKind, Kbd, Meter,
     Segment, SegmentedControl, SelectPill, Slider, Surface, SurfaceKind, ToggleSwitch,
 };
-pub use recorder::{RecordingState, RecordingToolbar};
+pub use recorder::{CaptureModeTabs, RecordingState, RecordingToolbar};
 pub use shell::{
     AppSection, AppShell, DropZone, DropZoneState, NavItemView, NavigationRail, StatusBar,
     StatusKind, UserAvatar, UserAvatarView, WorkspaceBadge, WorkspaceBadgeView,

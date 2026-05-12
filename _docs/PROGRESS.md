@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-06 — CaptureModeTabs (AUT-126)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CaptureModeTabs` wraps UI-04's `SegmentedControl`, mapping the three `CaptureMode` variants to `Segment`s. Four stories cover each selection + a disabled-Area variant for permissions-pending.
+- **Linear:** [AUT-126](https://linear.app/harwood/issue/AUT-126).
+- **Files:** new `crates/ui-storybook/src/components/recorder/capture_mode_tabs.rs` (+ `CaptureMode::slug()` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `stories/recorder.rs` adds 4 capture-mode stories. New `_docs/book/src/ui/chunks/capture-mode-tabs.md`. `SUMMARY.md`.
+- **Verified:** 40 ui-storybook tests pass. Full `just gate` green.
+- **Composition over duplication.** `CaptureModeTabs` is ~50 lines because `SegmentedControl` carries all the chrome.
+
+---
+
 ## UI-05 — WorkspaceSwitcherMenu (AUT-125)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `WorkspaceSwitcherMenu` is a pure composition of UI-03 menu primitives + UI-01 surface tokens. Takes `Vec<WorkspaceView>` + `selected_id: String`, renders the popover the rail's `WorkspaceBadge` opens. Four stories cover default / many / long-names / no-selection.
