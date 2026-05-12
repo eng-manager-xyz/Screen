@@ -19,6 +19,7 @@ pub mod library;
 pub mod menus;
 pub mod primitives;
 pub mod recorder;
+pub mod recorder_display;
 pub mod shell;
 pub mod workspace_menu;
 
@@ -89,6 +90,7 @@ pub fn all_stories() -> Vec<Story> {
     out.extend(editor::stories());
     out.extend(shell::stories());
     out.extend(recorder::stories());
+    out.extend(recorder_display::stories());
     // Menus is populated by UI-03 / UI-05; library + cursor land later
     // (UI-14 / UI-15 / UI-20 / UI-21).
     out.extend(menus::stories());

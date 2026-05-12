@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-07 — DisplaySourceCard + canvas fallback (AUT-127)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `DisplaySourceCard` shows the selected screen with name + size + favourite + resolution pill + chevron header and a `DisplayPreviewFrame` body. Preview is a CSS-positioned mock (deterministic SSR fallback per the contract); a Wisp-backed PNG can land later via `wisp-export-stories` without touching the component API.
+- **Linear:** [AUT-127](https://linear.app/harwood/issue/AUT-127).
+- **Files:** new `crates/ui-storybook/src/components/recorder/display_source.rs` (`DisplaySourceView`, `DisplayPreviewView`, `PreviewWindowChip`, `DisplaySourceCard`, `DisplayPreviewFrame`, `aspect_ratio_css` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `fixtures/devices.rs` extended with `sample_display_source(selected)` / `_wide()` / `_small()`. New `stories/recorder_display.rs`. `stories/mod.rs` aggregates. `assets/style.css` adds `.display-source-card*` + `.display-preview*` classes. New `_docs/book/src/ui/chunks/display-source-card.md`. `SUMMARY.md`.
+- **Verified:** 42 ui-storybook tests pass (was 40; +2 unit tests + 5 new stories in snapshot). Full `just gate` green.
+- **CSS-positioned preview chips, not `<canvas>`.** SSR renders identical bytes every export. Each `PreviewWindowChip` is `(left_pct, top_pct, width_pct, height_pct, color, label)` — a future ScreenCaptureKit thumbnail can land as a Wisp `Texture` without changing the prop surface.
+
+---
+
 ## UI-06 — CaptureModeTabs (AUT-126)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `CaptureModeTabs` wraps UI-04's `SegmentedControl`, mapping the three `CaptureMode` variants to `Segment`s. Four stories cover each selection + a disabled-Area variant for permissions-pending.
