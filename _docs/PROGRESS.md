@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-14 — LibrarySidebar + storage meter (AUT-134)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `LibrarySidebar` is a controlled left rail: primary rows (New / All / Starred / Shared / Inbox), arbitrary `SPACES` / `TAGS` sections, and a `StorageMeter` that turns red past 85%. Five stories sweep default, inbox-active, 95%-storage, empty-spaces, and long-labels.
+- **Linear:** [AUT-134](https://linear.app/harwood/issue/AUT-134).
+- **Files:** new `components/library/library_sidebar.rs` (`LibrarySidebar`, `LibrarySidebarView`, `LibraryNavItemView`, `LibrarySectionView`, `StorageMeter`, `StorageMeterView`, `storage_percent` + 1 unit test). `components/library/mod.rs` re-exports. `fixtures/library.rs` adds `sample_library_sidebar(inbox_unread)` / `_inbox_active()` / `_high_storage()` + 2 unit tests; split into helpers to keep each function under the 100-line clippy threshold. `stories/library.rs` populated (5 stories). `tests/story_registry.rs` adds `"Library"` to the known-categories list. `assets/style.css` adds `.library-*` + `.storage-meter*`. New `_docs/book/src/ui/chunks/library-sidebar.md`. `SUMMARY.md` indexes it.
+- **Verified:** 68 ui-storybook tests pass (was 65; +3 unit + 5 stories). All 5 `library-sidebar-*.html` assets exported. Full `just gate` green.
+- **`StorageMeter` is reusable standalone.** Even though it currently lives only inside `LibrarySidebar`, it has its own component + view-model so future "storage" surfaces (preferences page, export dialog) can use it without dragging the whole sidebar along.
+
+---
+
 ## UI-13 — RecordingStatusButton (AUT-133)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — compact tray/menu-bar status pill. `CompactRecordingState { Countdown, Recording, Paused, Stopping, Stopped, Error }` covers all post-Start lifecycle visuals. Pulsing live dot in `Recording`, frozen elapsed label in `Paused`, amber background, optional pause/resume/stop action buttons. `CountdownBadge` is a tiny standalone primitive for the countdown digit; reusable inside an overlay/banner.

@@ -97,9 +97,172 @@ pub const fn sample_storage_meter() -> StorageMeter {
     }
 }
 
+fn library_primary_nav(inbox_unread: u32) -> Vec<crate::components::library::LibraryNavItemView> {
+    use crate::components::library::LibraryNavItemView;
+    vec![
+        LibraryNavItemView {
+            id: "new",
+            label: "New recording",
+            icon: "＋",
+            count: None,
+            badge: None,
+            selected: false,
+            disabled: false,
+        },
+        LibraryNavItemView {
+            id: "all",
+            label: "All recordings",
+            icon: "▦",
+            count: Some(42),
+            badge: None,
+            selected: true,
+            disabled: false,
+        },
+        LibraryNavItemView {
+            id: "starred",
+            label: "Starred",
+            icon: "★",
+            count: Some(7),
+            badge: None,
+            selected: false,
+            disabled: false,
+        },
+        LibraryNavItemView {
+            id: "shared",
+            label: "Shared with me",
+            icon: "↗",
+            count: Some(3),
+            badge: None,
+            selected: false,
+            disabled: false,
+        },
+        LibraryNavItemView {
+            id: "inbox",
+            label: "Inbox",
+            icon: "✉",
+            count: None,
+            badge: (inbox_unread > 0).then_some(inbox_unread),
+            selected: false,
+            disabled: false,
+        },
+    ]
+}
+
+fn library_spaces_and_tags() -> Vec<crate::components::library::LibrarySectionView> {
+    use crate::components::library::{LibraryNavItemView, LibrarySectionView};
+    let spaces = LibrarySectionView {
+        heading: "SPACES",
+        items: vec![
+            LibraryNavItemView {
+                id: "space-team",
+                label: "Northwind Studio",
+                icon: "🟢",
+                count: Some(24),
+                badge: None,
+                selected: false,
+                disabled: false,
+            },
+            LibraryNavItemView {
+                id: "space-product",
+                label: "Product reviews",
+                icon: "🟣",
+                count: Some(8),
+                badge: None,
+                selected: false,
+                disabled: false,
+            },
+        ],
+    };
+    let tags = LibrarySectionView {
+        heading: "TAGS",
+        items: vec![
+            LibraryNavItemView {
+                id: "tag-tutorial",
+                label: "Tutorials",
+                icon: "🟦",
+                count: Some(12),
+                badge: None,
+                selected: false,
+                disabled: false,
+            },
+            LibraryNavItemView {
+                id: "tag-bug",
+                label: "Bug repros",
+                icon: "🟥",
+                count: Some(6),
+                badge: None,
+                selected: false,
+                disabled: false,
+            },
+            LibraryNavItemView {
+                id: "tag-demo",
+                label: "Customer demos",
+                icon: "🟨",
+                count: Some(3),
+                badge: None,
+                selected: false,
+                disabled: false,
+            },
+        ],
+    };
+    vec![spaces, tags]
+}
+
+/// Sample sidebar view for UI-14. `inbox_unread` lets stories
+/// sweep the badge count.
+#[must_use]
+pub fn sample_library_sidebar(inbox_unread: u32) -> crate::components::library::LibrarySidebarView {
+    use crate::components::library::{LibrarySidebarView, StorageMeterView};
+    LibrarySidebarView {
+        primary: library_primary_nav(inbox_unread),
+        sections: library_spaces_and_tags(),
+        storage: StorageMeterView {
+            used_bytes_label: "12.4 GB".to_owned(),
+            quota_label: "50 GB".to_owned(),
+            percent_used: sample_storage_meter().fraction(),
+            plan_label: Some("Free"),
+        },
+    }
+}
+
+/// Variant — inbox selected (not "all"). Drives the `inbox-active`
+/// story.
+#[must_use]
+pub fn sample_library_sidebar_inbox_active() -> crate::components::library::LibrarySidebarView {
+    let mut v = sample_library_sidebar(3);
+    for item in &mut v.primary {
+        item.selected = item.id == "inbox";
+    }
+    v
+}
+
+/// Variant — near-full storage drives the warning style.
+#[must_use]
+pub fn sample_library_sidebar_high_storage() -> crate::components::library::LibrarySidebarView {
+    let mut v = sample_library_sidebar(0);
+    "47.6 GB".clone_into(&mut v.storage.used_bytes_label);
+    v.storage.percent_used = 0.95;
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn library_sidebar_has_primary_and_sections() {
+        let v = sample_library_sidebar(3);
+        assert!(v.primary.iter().any(|i| i.id == "inbox"));
+        assert_eq!(v.sections.len(), 2);
+        assert_eq!(v.sections[0].heading, "SPACES");
+        assert_eq!(v.sections[1].heading, "TAGS");
+    }
+
+    #[test]
+    fn high_storage_variant_passes_warn_threshold() {
+        let v = sample_library_sidebar_high_storage();
+        assert!(v.storage.percent_used >= 0.85);
+    }
 
     #[test]
     fn recordings_non_empty_with_one_selected() {
