@@ -1,15 +1,21 @@
 # Docs site → GitHub Pages.
 #
-# Builds the mdBook prose site + the rustdoc API reference and publishes
-# them to Pages. On pushes to `main` the build is also deployed; on PRs
-# it runs as a build-only check (no deploy).
+# Builds both mdBooks + the rustdoc API reference and publishes them
+# as a single Pages artifact. Path-based routing (no custom domain):
 #
-# Output structure (mirrors `just site` locally):
-#   target/book/                ← mdBook prose
-#   target/book/api/<crate>/    ← rustdoc per crate
+#   /screen/              ← screen project book (mdBook)
+#   /screen/wisp/         ← wisp library book (mdBook)
+#   /screen/api/          ← rustdoc index (every workspace crate)
 #
-# Pages source: GitHub-hosted artifact (the official actions/upload-pages-artifact
-# pattern). No `gh-pages` branch needed — pure artifact-based deploy.
+# The wisp book is composed under `target/book/wisp/` so the
+# resulting directory tree maps 1:1 to the deployed URL space. Both
+# books go through the in-repo `mdbook-preprocessor-cross` so
+# `{{wisp-link …}}` and `{{shared …}}` tags resolve correctly per
+# book.
+#
+# On `push: main` the build is also deployed; on PRs it runs as a
+# build-only check (no deploy). The `concurrency` group serializes
+# Pages deploys so two `main` pushes don't race.
 
 name: docs
 
@@ -25,25 +31,19 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping queued runs in between.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
-  # Compatible quartet — verified locally. mdbook 0.5.x reshapes the
-  # JSON preprocessor protocol in ways admonish 1.20 doesn't accept;
-  # mermaid 0.17 then assumes 0.5's shape. Sticking on 0.4.52 +
-  # matching preprocessor versions keeps the chain green.
+  # Pinned quartet — see `_docs/QA.md` for the rationale. mdbook 0.5.x
+  # reshapes the preprocessor JSON in ways admonish 1.20 doesn't
+  # accept; 0.4.52 is the verified-green combo.
   MDBOOK_VERSION: "0.4.52"
   MDBOOK_MERMAID_VERSION: "0.15.0"
   MDBOOK_ADMONISH_VERSION: "1.20.0"
   MDBOOK_CMDRUN_VERSION: "0.7.3"
-  # Note: do NOT set `RUSTFLAGS: -D warnings` globally — it promotes
-  # transitive-crate future-incompat warnings (e.g. `block v0.1.6`,
-  # `proc-macro-error2`) into hard failures. Use `RUSTDOCFLAGS` only,
-  # scoped to the strict-docs path (`just docs-strict`).
 
 jobs:
   build:
@@ -52,17 +52,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Rust nightly per `rust-toolchain.toml` is auto-installed by rustup
-      # on first cargo invocation; we just install rustup itself.
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
-      # `cargo doc --workspace` compiles every crate, including screen-app
-      # which transitively pulls Tauri 2's gtk-rs / glib / webkit2gtk
-      # toolchain. Without these dev headers `glib-sys`'s build script
-      # aborts at pkg-config.
+      # `cargo doc --workspace` compiles every crate, including
+      # screen-app which transitively pulls Tauri 2's gtk-rs / glib /
+      # webkit2gtk toolchain. Without these dev headers `glib-sys`'s
+      # build script aborts at pkg-config.
       - name: Install Linux build deps (Tauri 2)
         run: |
           sudo apt-get update
@@ -95,41 +93,43 @@ jobs:
       - name: Install mdBook + preprocessors (prebuilt)
         run: |
           mkdir -p "$HOME/.local/bin"
-          # mdBook itself.
           curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin"
-          # mdbook-mermaid — sequence + flowchart diagrams in chapters.
           curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v${MDBOOK_MERMAID_VERSION}/mdbook-mermaid-v${MDBOOK_MERMAID_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin"
-          # mdbook-admonish — colored note/warning/tip callout blocks.
           curl -sSL "https://github.com/tommilligan/mdbook-admonish/releases/download/v${MDBOOK_ADMONISH_VERSION}/mdbook-admonish-v${MDBOOK_ADMONISH_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # mdbook-cmdrun has no GitHub releases — install from crates.io.
-      # `--locked` keeps the build reproducible; the cargo cache from
-      # the earlier step makes this a no-op on cache hit.
       - name: Install mdbook-cmdrun (from crates.io)
         run: cargo install --locked mdbook-cmdrun --version "${MDBOOK_CMDRUN_VERSION}"
+
+      # In-repo preprocessor (DOCS-00). Built first so both `mdbook
+      # build` invocations below can find it on PATH.
+      - name: Build mdbook-preprocessor-cross
+        run: |
+          cargo build -p mdbook-preprocessor-cross
+          echo "$PWD/target/debug" >> "$GITHUB_PATH"
 
       - name: Sanity-check preprocessor binaries
         run: |
           mdbook --version
           mdbook-mermaid --version
           mdbook-admonish --version
-          # mdbook-cmdrun's CLI rejects `--version`; `--help` exits 0
-          # if the binary is callable, which is all we need here.
           mdbook-cmdrun --help >/dev/null
+          mdbook-preprocessor-cross supports html
 
-      # cargo doc needs `missing_docs` to stay a warn-level lint (already
-      # the case in workspace lints) so this won't fail on a clean tree.
       - name: cargo doc
         run: cargo doc --workspace --no-deps --document-private-items
 
-      - name: mdBook build
+      - name: mdBook build — screen project book
         run: |
           mkdir -p target/book
           mdbook build _docs/book --dest-dir "$PWD/target/book"
+
+      - name: mdBook build — wisp library book (mounted at /screen/wisp/)
+        run: |
+          mdbook build _docs/wisp-book --dest-dir "$PWD/target/book/wisp"
 
       - name: Splice rustdoc into the book under /api
         run: |
@@ -147,17 +147,48 @@ jobs:
           HTML
           fi
 
+      # Drift gate: the in-repo `just shared-check` would catch
+      # missing `{{shared X}}` references and runtime error
+      # comments in rendered HTML. Run the inline equivalent here
+      # so a deploy can't ship pages with broken shared fragments
+      # even if a contributor pushes without running `just gate`
+      # locally.
+      - name: Drift gate (no preprocessor error comments in rendered HTML)
+        run: |
+          if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
+            echo "::error::rendered HTML contains preprocessor error sentinel — see above"
+            exit 1
+          fi
+
+      - name: Verify both books mounted at expected paths
+        run: |
+          test -f target/book/index.html         || (echo "missing screen book root";  exit 1)
+          test -f target/book/wisp/index.html    || (echo "missing wisp book root";    exit 1)
+          test -d target/book/api                || (echo "missing rustdoc tree";      exit 1)
+          # The wisp book references must resolve to actual files
+          # post-deploy. Smoke-test a couple of well-known paths.
+          test -f target/book/wisp/wisp/overview.html        || (echo "missing wisp overview"; exit 1)
+          test -f target/book/wisp/wisp/chunks/filter-blur.html \
+                                                             || (echo "missing wisp filter-blur"; exit 1)
+          test -f target/book/wisp-overview.html             || (echo "missing screen-side wisp summary"; exit 1)
+
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: target/book
 
-      # On PRs we just want the build to pass — no deploy.
       - name: Build summary
         run: |
-          echo "::notice::mdBook + rustdoc built successfully."
-          echo "::notice::Prose pages under target/book/, rustdoc under target/book/api/."
+          {
+            echo "## docs build"
+            echo ""
+            echo "- screen book: ``target/book/index.html``"
+            echo "- wisp book:   ``target/book/wisp/index.html``"
+            echo "- rustdoc:     ``target/book/api/``"
+            echo ""
+            echo "Both books composed into a single Pages artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     needs: build
