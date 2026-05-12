@@ -7,13 +7,14 @@ use leptos::prelude::*;
 use crate::components::editor::{
     CanvasBackendView, DopeSheet, EditorDropZoneCanvas, EditorShell, InspectorPanel, PlayState,
     PlayerControls, PropertyControlView, PropertyRowView, PropertySection, PropertySectionView,
-    WispCanvasHost,
+    TimelineSkeleton, WispCanvasHost,
 };
 use crate::components::primitives::{Card, CardBody, CardHeader};
 use crate::fixtures::editor::{
     sample_dope_sheet_dense, sample_dope_sheet_tracks, sample_editor_drop_zone,
     sample_editor_drop_zone_no_recent, sample_editor_shell, sample_editor_shell_export_disabled,
     sample_inspector_cursor_tab, sample_inspector_disabled_section, sample_inspector_style_tab,
+    sample_timeline_skeleton, sample_timeline_skeleton_empty, sample_timeline_skeleton_playing,
 };
 
 use super::{Story, StoryViewport, render};
@@ -127,6 +128,40 @@ fn editor_shell_stories() -> Vec<Story> {
     ]
 }
 
+fn timeline_stories() -> Vec<Story> {
+    let strip = fixed(960, 200);
+    vec![
+        s(
+            "timeline-empty",
+            "Editor",
+            "Timeline — empty (no placeholders)",
+            strip,
+            render_timeline_empty,
+        ),
+        s(
+            "timeline-with-placeholders",
+            "Editor",
+            "Timeline — with placeholders",
+            strip,
+            render_timeline_with_placeholders,
+        ),
+        s(
+            "timeline-playing",
+            "Editor",
+            "Timeline — playing",
+            strip,
+            render_timeline_playing,
+        ),
+        s(
+            "timeline-selected-track",
+            "Editor",
+            "Timeline — selected video track",
+            strip,
+            render_timeline_selected,
+        ),
+    ]
+}
+
 fn inspector_stories() -> Vec<Story> {
     let panel = fixed(320, 480);
     vec![
@@ -224,6 +259,7 @@ pub fn stories() -> Vec<Story> {
     out.extend(editor_shell_stories());
     out.extend(editor_canvas_stories());
     out.extend(inspector_stories());
+    out.extend(timeline_stories());
     out
 }
 
@@ -356,6 +392,26 @@ fn render_row_toggle() -> String {
         }],
     };
     render(view! { <PropertySection section=section /> })
+}
+
+fn render_timeline_empty() -> String {
+    render(view! { <TimelineSkeleton view=sample_timeline_skeleton_empty() /> })
+}
+
+fn render_timeline_with_placeholders() -> String {
+    render(view! { <TimelineSkeleton view=sample_timeline_skeleton() /> })
+}
+
+fn render_timeline_playing() -> String {
+    render(view! { <TimelineSkeleton view=sample_timeline_skeleton_playing() /> })
+}
+
+fn render_timeline_selected() -> String {
+    let mut v = sample_timeline_skeleton();
+    if let Some(t) = v.tracks.first_mut() {
+        t.selected = true;
+    }
+    render(view! { <TimelineSkeleton view=v /> })
 }
 
 fn render_row_swatches() -> String {

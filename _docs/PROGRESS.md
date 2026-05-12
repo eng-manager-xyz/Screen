@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-19 — TimelineSkeleton + track rows (AUT-139)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `TimelineSkeleton` lays out a transport row (play/pause + playhead/duration timecode) + per-track rows with optional dashed placeholders. Selection + playing are controlled props. 4 stories cover empty / placeholders / playing / selected-track.
+- **Linear:** [AUT-139](https://linear.app/harwood/issue/AUT-139).
+- **Files:** new `components/editor/timeline_skeleton.rs` (`TimelineSkeleton`, `TimelineTransport`, `TimelineTrackRow`, `TimelineView`, `TimelineTrackView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_timeline_skeleton()`, `_playing()`, `_empty()`. `stories/editor.rs` adds `timeline_stories()` bucket. `assets/style.css` adds `.timeline-*` classes. New `_docs/book/src/ui/chunks/timeline-skeleton.md`. `SUMMARY.md` indexes it.
+- **Verified:** 74 ui-storybook tests pass. 4 new `timeline-*.html` assets exported. Full `just gate` green.
+- **Skeleton, not editing.** Real keyframe editing stays in `DopeSheet` + the future editing controller. The skeleton is a layout primitive only.
+
+---
+
 ## UI-18 — InspectorPanel + property rows (AUT-138)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `InspectorPanel` composes `InspectorTabs` (Style / Cursor / Audio / Captions / AI) + a list of `PropertySection`s. Five built-in property controls via `PropertyControlView` enum: `ValueOnly`, `SliderPercent`, `Toggle`, `ColorSwatches`, `SelectPill`. 6 stories sweep style tab, cursor tab, disabled section, and individual control rows.

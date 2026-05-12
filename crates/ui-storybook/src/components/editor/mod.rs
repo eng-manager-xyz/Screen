@@ -6,6 +6,7 @@ pub mod dope_sheet;
 pub mod editor_shell;
 pub mod inspector_panel;
 pub mod player_controls;
+pub mod timeline_skeleton;
 pub mod wisp_canvas_host;
 
 pub use dope_sheet::{DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, TrackKind};
@@ -17,6 +18,9 @@ pub use inspector_panel::{
     PropertyRowView, PropertySection, PropertySectionView,
 };
 pub use player_controls::{PlayState, PlayerControls};
+pub use timeline_skeleton::{
+    TimelineSkeleton, TimelineTrackRow, TimelineTrackView, TimelineTransport, TimelineView,
+};
 pub use wisp_canvas_host::{
     CanvasBackendView, DropZoneActionView, EditorDropZoneCanvas, EditorDropZoneView,
     RecentClipView, WispCanvasHost,

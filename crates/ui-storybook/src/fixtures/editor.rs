@@ -336,6 +336,62 @@ pub fn sample_inspector_disabled_section() -> crate::components::editor::Inspect
     }
     v
 }
+
+/// Sample timeline skeleton view (UI-19).
+#[must_use]
+pub fn sample_timeline_skeleton() -> crate::components::editor::TimelineView {
+    use crate::components::editor::{TimelineTrackView, TimelineView};
+    TimelineView {
+        playhead_label: "00:03",
+        duration_label: "01:24",
+        is_playing: false,
+        tracks: vec![
+            TimelineTrackView {
+                id: "video",
+                label: "Video",
+                placeholder: Some("drop a clip to fill"),
+                disabled: false,
+                selected: false,
+            },
+            TimelineTrackView {
+                id: "auto-zoom",
+                label: "Auto-zoom",
+                placeholder: Some("detected from cursor"),
+                disabled: false,
+                selected: false,
+            },
+            TimelineTrackView {
+                id: "audio",
+                label: "Audio",
+                placeholder: Some("mic + system"),
+                disabled: false,
+                selected: false,
+            },
+        ],
+    }
+}
+
+/// Variant — selected video track + playing.
+#[must_use]
+pub fn sample_timeline_skeleton_playing() -> crate::components::editor::TimelineView {
+    let mut v = sample_timeline_skeleton();
+    v.is_playing = true;
+    if let Some(t) = v.tracks.first_mut() {
+        t.selected = true;
+    }
+    v
+}
+
+/// Variant — placeholders gone (all tracks empty without hints).
+#[must_use]
+pub fn sample_timeline_skeleton_empty() -> crate::components::editor::TimelineView {
+    let mut v = sample_timeline_skeleton();
+    for t in &mut v.tracks {
+        t.placeholder = None;
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
