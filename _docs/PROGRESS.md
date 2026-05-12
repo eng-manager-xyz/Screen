@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-15 — RecordingCard + LibraryGrid (AUT-135)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `RecordingCard` covers Ready / Processing(percent) / Failed. `LibraryGrid` composes a `LibraryToolbar` (filter chips + sort + grid/list toggle) above the card collection. Empty grid renders a centered placeholder. 6 stories ship.
+- **Linear:** [AUT-135](https://linear.app/harwood/issue/AUT-135).
+- **Files:** new `components/library/recording_card.rs` (`RecordingCard`, `RecordingCardView`, `RecordingCardState`, `ThumbnailView`, `RecordingMetricsView`, `LibraryToolbar`, `LibraryToolbarView`, `LibraryGrid`, `LibraryGridView`, `LibraryLayoutMode`, `RecordingFilterView` + 2 unit tests). `components/library/mod.rs` re-exports. `fixtures/library.rs` adds `sample_recording_cards()`, `sample_library_grid()`, `_empty()`, `_list_mode()`. `stories/library.rs` extends (6 new stories). `assets/style.css` adds `.recording-card*`, `.library-toolbar*`, `.library-grid*`, `.library-empty*`, `.library-filter*`, `.library-sort`, `.library-layout*` classes. New `_docs/book/src/ui/chunks/recording-card.md`. `SUMMARY.md` indexes it.
+- **Verified:** 70 ui-storybook tests pass (was 68; +2 unit). 6 new asset HTMLs exported (`recording-card-*` + `library-grid-*`). Full `just gate` green.
+- **`ThumbnailView` is a CSS gradient.** Real video posters land later when the encoder writes them to disk; for SSR + mdBook we render deterministic gradients so snapshots are stable across machines.
+
+---
+
 ## UI-14 — LibrarySidebar + storage meter (AUT-134)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `LibrarySidebar` is a controlled left rail: primary rows (New / All / Starred / Shared / Inbox), arbitrary `SPACES` / `TAGS` sections, and a `StorageMeter` that turns red past 85%. Five stories sweep default, inbox-active, 95%-storage, empty-spaces, and long-labels.

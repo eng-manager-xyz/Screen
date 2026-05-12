@@ -97,6 +97,140 @@ pub const fn sample_storage_meter() -> StorageMeter {
     }
 }
 
+/// Sample card view-models for UI-15. Hand-picked gradients so the
+/// thumbnails read as a contact sheet.
+#[must_use]
+pub fn sample_recording_cards() -> Vec<crate::components::library::RecordingCardView> {
+    use crate::components::library::{
+        RecordingCardState, RecordingCardView, RecordingMetricsView, ThumbnailView,
+    };
+    vec![
+        RecordingCardView {
+            id: "rec-01".into(),
+            title: "Demo · auth login".into(),
+            subtitle: "Captured 2026-05-09 · 1080p".into(),
+            duration_label: "1m 24s".into(),
+            category: Some("Tutorial".into()),
+            metrics: RecordingMetricsView {
+                views: 142,
+                comments: 6,
+                reactions: 12,
+            },
+            thumbnail: ThumbnailView {
+                css_background: "linear-gradient(135deg,#1e3a8a,#7c3aed)".into(),
+            },
+            state: RecordingCardState::Ready,
+            selected: true,
+        },
+        RecordingCardView {
+            id: "rec-02".into(),
+            title: "Standup recap".into(),
+            subtitle: "Captured 2026-05-08 · 4K".into(),
+            duration_label: "4m 02s".into(),
+            category: Some("Demo".into()),
+            metrics: RecordingMetricsView {
+                views: 38,
+                comments: 1,
+                reactions: 4,
+            },
+            thumbnail: ThumbnailView {
+                css_background: "linear-gradient(135deg,#0f766e,#facc15)".into(),
+            },
+            state: RecordingCardState::Processing { percent: 64 },
+            selected: false,
+        },
+        RecordingCardView {
+            id: "rec-03".into(),
+            title: "Bug repro · payments".into(),
+            subtitle: "Captured 2026-05-07".into(),
+            duration_label: "0m 38s".into(),
+            category: Some("Bug".into()),
+            metrics: RecordingMetricsView {
+                views: 7,
+                comments: 3,
+                reactions: 0,
+            },
+            thumbnail: ThumbnailView {
+                css_background: "linear-gradient(135deg,#7f1d1d,#f97316)".into(),
+            },
+            state: RecordingCardState::Ready,
+            selected: false,
+        },
+        RecordingCardView {
+            id: "rec-04".into(),
+            title: "Onboarding tour".into(),
+            subtitle: "Captured 2026-05-06 · 1080p".into(),
+            duration_label: "2m 11s".into(),
+            category: None,
+            metrics: RecordingMetricsView {
+                views: 88,
+                comments: 0,
+                reactions: 9,
+            },
+            thumbnail: ThumbnailView {
+                css_background: String::new(),
+            },
+            state: RecordingCardState::Ready,
+            selected: false,
+        },
+    ]
+}
+
+/// Default `LibraryGridView` — toolbar + four cards.
+#[must_use]
+pub fn sample_library_grid() -> crate::components::library::LibraryGridView {
+    use crate::components::library::{
+        LibraryGridView, LibraryLayoutMode, LibraryToolbarView, RecordingFilterView,
+    };
+    LibraryGridView {
+        toolbar: LibraryToolbarView {
+            filters: vec![
+                RecordingFilterView {
+                    id: "all",
+                    label: "All",
+                    active: true,
+                },
+                RecordingFilterView {
+                    id: "tutorial",
+                    label: "Tutorials",
+                    active: false,
+                },
+                RecordingFilterView {
+                    id: "demo",
+                    label: "Demos",
+                    active: false,
+                },
+                RecordingFilterView {
+                    id: "bug",
+                    label: "Bug repros",
+                    active: false,
+                },
+            ],
+            sort_label: "Most recent",
+            layout: LibraryLayoutMode::Grid,
+        },
+        recordings: sample_recording_cards(),
+        empty_message: "No recordings yet — press ⌘⇧2 to start one.",
+    }
+}
+
+/// Variant — empty grid (drives the empty-state story).
+#[must_use]
+pub fn sample_library_grid_empty() -> crate::components::library::LibraryGridView {
+    let mut v = sample_library_grid();
+    v.recordings.clear();
+    v
+}
+
+/// Variant — list layout.
+#[must_use]
+pub fn sample_library_grid_list_mode() -> crate::components::library::LibraryGridView {
+    use crate::components::library::LibraryLayoutMode;
+    let mut v = sample_library_grid();
+    v.toolbar.layout = LibraryLayoutMode::List;
+    v
+}
+
 fn library_primary_nav(inbox_unread: u32) -> Vec<crate::components::library::LibraryNavItemView> {
     use crate::components::library::LibraryNavItemView;
     vec![

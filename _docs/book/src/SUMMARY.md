@@ -132,6 +132,7 @@
   - [Tray record popover](./ui/chunks/tray-record-popover.md)
   - [Recording status button](./ui/chunks/recording-status-button.md)
   - [Library sidebar](./ui/chunks/library-sidebar.md)
+  - [Recording card + grid](./ui/chunks/recording-card.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)
