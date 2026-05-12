@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Capture mode — Area</title>
+    <title>Recording footer — loading</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1767,6 +1767,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div style="padding:14px;"><div role="radiogroup" aria-label="Capture mode" class="segmented"><button role="radio" data-id="screen" class="segment"><span aria-hidden="true" class="segment-icon">▢</span><span class="segment-label">Screen</span></button><button role="radio" data-id="window" class="segment"><span aria-hidden="true" class="segment-icon">◫</span><span class="segment-label">Window</span></button><button role="radio" aria-checked data-id="area" class="segment segment-active"><span aria-hidden="true" class="segment-icon">⊞</span><span class="segment-label">Area</span></button><!></div></div>
+    <div data-state="loading" class="recording-controls-footer"><div class="recording-controls-selects"><span class="recording-controls-zoom"><button aria-haspopup="listbox" class="select-pill"><span aria-hidden="true" class="select-pill-icon">⊙</span><span class="select-pill-label">Auto-zoom 2.0×</span><span class="select-pill-chevron" aria-hidden="true">▾</span></button></span><span class="recording-controls-countdown"><button aria-haspopup="listbox" class="select-pill"><span aria-hidden="true" class="select-pill-icon">⏱</span><span class="select-pill-label">3s Countdown</span><span class="select-pill-chevron" aria-hidden="true">▾</span></button></span></div><div class="recording-controls-action"><button type="button" aria-label="Starting…" data-state="loading" disabled class="start-recording-btn start-recording-loading"><span aria-hidden="true" class="start-recording-glyph">◌</span><span class="start-recording-label">Starting…</span><!></button></div></div>
   </body>
 </html>

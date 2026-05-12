@@ -1669,6 +1669,98 @@ kbd {
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+/* ───── UI-11 — Recording-controls footer ───── */
+.recording-controls-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-popover);
+  border-top: 1px solid var(--line-subtle);
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+}
+.recording-controls-selects {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.recording-controls-zoom,
+.recording-controls-countdown {
+  display: inline-flex;
+}
+
+/* Inverted shortcut chips for the red Start button. */
+.shortcut-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+}
+.shortcut-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.32);
+  min-width: 14px;
+  text-align: center;
+}
+.shortcut-badges-on-action .shortcut-badge {
+  background: rgba(0, 0, 0, 0.32);
+  border-color: rgba(0, 0, 0, 0.42);
+}
+
+/* Start recording button. */
+.start-recording-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--action-record);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset,
+              0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: background 80ms ease;
+}
+.start-recording-btn:hover:not(:disabled) {
+  background: var(--action-record-hover);
+}
+.start-recording-btn:disabled,
+.start-recording-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.start-recording-loading {
+  cursor: progress;
+}
+.start-recording-permission-blocked {
+  background: #f59e0b; /* amber-500 */
+  color: #111;
+}
+.start-recording-permission-blocked .shortcut-badge {
+  background: rgba(0, 0, 0, 0.18);
+  color: #111;
+  border-color: rgba(0, 0, 0, 0.28);
+}
+.start-recording-glyph {
+  font-size: 12px;
+  line-height: 1;
+}
+.start-recording-label {
+  font-size: 13px;
+}
 </style>
     <style>
       body { padding: 24px; }

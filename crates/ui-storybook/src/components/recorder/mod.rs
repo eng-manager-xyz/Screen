@@ -7,6 +7,8 @@ pub mod capture_source_row;
 pub mod device_picker;
 pub mod display_source;
 pub mod on_screen_options;
+pub mod recording_controls_footer;
+pub mod recording_selects;
 pub mod recording_toolbar;
 pub mod system_audio;
 
@@ -18,6 +20,13 @@ pub use display_source::{
     PreviewWindowChip, aspect_ratio_css,
 };
 pub use on_screen_options::{OnScreenOptionKind, OnScreenOptionView, OnScreenOptionsPopover};
+pub use recording_controls_footer::{
+    RecordingControlsFooter, RecordingControlsView, StartRecordingButton, StartRecordingState,
+};
+pub use recording_selects::{
+    AutoZoomSelect, CountdownSelect, ShortcutBadgeGroup, format_auto_zoom_label,
+    format_countdown_label,
+};
 pub use recording_toolbar::{RecordingState, RecordingToolbar};
 pub use system_audio::{
     AppIconView, AudioAppView, AudioFilter, SystemAudioAppList, SystemAudioRow, SystemAudioView,

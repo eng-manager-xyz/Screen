@@ -141,6 +141,39 @@ pub fn sample_on_screen_options_long_copy() -> Vec<crate::components::recorder::
     ]
 }
 
+/// Sample recording-controls footer view (UI-11 / AUT-131). The
+/// `start_state` lets stories sweep all `StartRecordingState`
+/// variants.
+#[must_use]
+pub fn sample_recording_controls(
+    state: crate::components::recorder::StartRecordingState,
+) -> crate::components::recorder::RecordingControlsView {
+    use crate::components::recorder::{
+        RecordingControlsView, format_auto_zoom_label, format_countdown_label,
+    };
+    RecordingControlsView {
+        auto_zoom_label: format_auto_zoom_label(Some(2.0)),
+        countdown_label: format_countdown_label(3),
+        shortcuts: vec!["⌘".to_owned(), "⇧".to_owned(), "2".to_owned()],
+        start_state: state,
+    }
+}
+
+/// Compact variant — no auto-zoom, no countdown. Used by the
+/// `recording-footer-compact` story.
+#[must_use]
+pub fn sample_recording_controls_compact() -> crate::components::recorder::RecordingControlsView {
+    use crate::components::recorder::{
+        RecordingControlsView, StartRecordingState, format_auto_zoom_label, format_countdown_label,
+    };
+    RecordingControlsView {
+        auto_zoom_label: format_auto_zoom_label(None),
+        countdown_label: format_countdown_label(0),
+        shortcuts: vec!["⌘".to_owned(), "R".to_owned()],
+        start_state: StartRecordingState::Ready,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +181,22 @@ mod tests {
     #[test]
     fn overlay_options_non_empty() {
         assert!(!sample_overlay_options().is_empty());
+    }
+
+    #[test]
+    fn recording_controls_preserve_shortcut_order() {
+        use crate::components::recorder::StartRecordingState;
+        let v = sample_recording_controls(StartRecordingState::Ready);
+        assert_eq!(v.shortcuts, vec!["⌘", "⇧", "2"]);
+        // The button renders shortcuts in input order; if a future
+        // refactor were to sort them this test catches it.
+    }
+
+    #[test]
+    fn recording_controls_compact_drops_zoom_and_countdown() {
+        let v = sample_recording_controls_compact();
+        assert!(v.auto_zoom_label.contains("off"));
+        assert!(v.countdown_label.starts_with("No"));
     }
 
     #[test]

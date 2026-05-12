@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-11 — RecordingControlsFooter (AUT-131)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `RecordingControlsFooter` composes `AutoZoomSelect` + `CountdownSelect` + `StartRecordingButton`. `StartRecordingState { Ready, Disabled, Loading, PermissionBlocked }` covers the four lifecycle visuals; `Ready` renders the ⌘⇧2 shortcut chip inside the red button, `PermissionBlocked` swaps to amber + warning glyph and stays interactive (so the parent can open the permission prompt). `ShortcutBadgeGroup` is a new dedicated chip set (inverted color treatment vs. UI-01 `Kbd`).
+- **Linear:** [AUT-131](https://linear.app/harwood/issue/AUT-131).
+- **Files:** new `crates/ui-storybook/src/components/recorder/recording_selects.rs` (`AutoZoomSelect`, `CountdownSelect`, `ShortcutBadgeGroup`, `format_auto_zoom_label`, `format_countdown_label` + 2 unit tests). New `recording_controls_footer.rs` (`StartRecordingState`, `StartRecordingButton`, `RecordingControlsView`, `RecordingControlsFooter` + 2 unit tests). `components/recorder/mod.rs` re-exports. `fixtures/recorder.rs` adds `sample_recording_controls(state)` + `_compact()` + 2 unit tests. New `stories/recorder_footer.rs` (5 stories). `stories/mod.rs` registers. `assets/style.css` adds `.recording-controls-footer*`, `.start-recording-btn*`, `.shortcut-badges*`. New `_docs/book/src/ui/chunks/recording-controls-footer.md`. `SUMMARY.md` indexes it. Also patched 2 pre-existing rustdoc intra-doc-link warnings while the gate was open (`StartRecordingButton::on_start`, `SystemAudioRow::ICON_STACK_MAX` — components are fns, not types).
+- **Verified:** 56 ui-storybook tests pass (was 50; +6: 4 fixture/component unit + 2 unit on `StartRecordingState`). Full `just gate` green. All five `recording-footer-*.html` assets exported.
+- **Pass-through pattern for `Option<Callback<()>>`.** Leptos's `#[prop(optional)]` macro wraps a passed value in `Some(...)` internally — `on_start=Some(cb)` produces `Option<Option<Callback>>` and won't compile. To forward an `Option<Callback<()>>` from a parent to a child component, branch in the view! macro: `match on_start { Some(cb) => view! { <Child on_start=cb /> }, None => view! { <Child /> } }`. Documented inline.
+
+---
+
 ## UI-10 — OnScreenOptionsPopover (AUT-130)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `OnScreenOptionsPopover` composes UI-03 `PopoverSurface` + UI-04 `ToggleSwitch`. `OnScreenOptionKind { CleanDesktop, ShowKeys, BlurSensitiveInfo }` stable enum. Four stories cover default + all-on + sensitive-disabled + long-copy.
