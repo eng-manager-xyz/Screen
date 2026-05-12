@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-23 — Presentational + state-free guardrail (AUT-143)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — three mdBook pages document the contract, the state boundary diagram, and the PR review checklist. A grep-based integration test (`crates/ui-storybook/tests/presentational_contract.rs`) walks every file under `components/` and rejects forbidden patterns (`RwSignal::new`, `Effect::new`, `Action::new`, `tauri::`, `invoke(`, `set_interval`, `local_storage`, `std::fs::`, etc.). An `ALLOWED_FILES` allowlist exists for future feature-gated exceptions but is empty today.
+- **Linear:** [AUT-143](https://linear.app/harwood/issue/AUT-143).
+- **Files:** new `_docs/book/src/ui/state-boundaries.md` (Mermaid sequence diagram of the callback-up/view-model-down flow + per-concern lives-in table + good/bad code samples). New `_docs/book/src/ui/review-checklist.md` (file-scan / props / story / mdBook / gate / canvas / foot-gun sections). New `crates/ui-storybook/tests/presentational_contract.rs` integration test. `SUMMARY.md` indexes both new pages under the `ui-storybook` book section.
+- **Verified:** 81 ui-storybook tests pass (was 80; +1 guardrail). Full `just gate` green.
+- **Allowlist is empty today.** Every existing component is compliant. A future feature-gated browser-side component can add its path to `ALLOWED_FILES` with a comment explaining why — but the *default* must remain stateless.
+
+---
+
 ## UI-22 — Shared fixture library + contact sheet (AUT-142)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `default_ui_fixtures()` aggregates every per-surface canonical sample (workspaces, displays, devices, audio apps, recordings, cursor presets) into a single deterministic `UiFixtureSet`. New fixture-gallery story renders a contact sheet of every major domain for design review.

@@ -113,6 +113,8 @@
 
 - [Overview](./ui/overview.md)
 - [Presentational contract](./ui/presentational-contract.md)
+- [State boundaries](./ui/state-boundaries.md)
+- [Review checklist](./ui/review-checklist.md)
 - [Shared fixture library](./ui/fixtures.md)
 - [Components](./ui/components.md)
   - [Design tokens](./ui/chunks/tokens.md)
