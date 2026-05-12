@@ -19,20 +19,21 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_owned()
-}
-
+/// Cargo guarantees integration tests in the same crate as a
+/// `[[bin]]` see `CARGO_BIN_EXE_<name>` at compile time — the
+/// absolute path to the freshly-built binary with the
+/// platform-correct extension (`dev-server` on Unix,
+/// `dev-server.exe` on Windows).
+///
+/// **Anti-regression:** earlier iterations of this file hand-rolled
+/// `target/debug/dev-server`, which (a) missed the `.exe` suffix on
+/// Windows (the Windows CI panic that surfaced this comment) and
+/// (b) silently relied on a prior `cargo build` having populated
+/// the target dir — nextest does NOT build sibling-binaries as a
+/// dep of test execution. `CARGO_BIN_EXE_*` is both
+/// platform-correct AND guaranteed-built by cargo.
 fn binary_path() -> PathBuf {
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace_root().join("target"), PathBuf::from);
-    // Nextest defaults the build profile to `debug`.
-    target.join("debug").join("dev-server")
+    PathBuf::from(env!("CARGO_BIN_EXE_dev-server"))
 }
 
 /// Pick a port the OS just confirmed is free by binding briefly and
