@@ -1,6 +1,6 @@
 ---
 name: leptos-migration
-description: Maps every prior Leptos API (0.1 → 0.7) to the current 0.8 surface, with "strive to use" callouts for the modern idioms. Invoke when upgrading old Leptos code, when an example/StackOverflow snippet uses pre-0.8 patterns, or when picking the right primitive for new code.
+description: MANDATORY — invoke BEFORE writing, editing, or reviewing ANY Leptos code in this project (`leptos::`, `#[component]`, `view!{}`, signals, effects, resources, actions, server fns, anything reactive). Maps every prior Leptos API (0.1 → 0.7) to the project's pinned 0.8 surface; lists the "strive to use" 0.8 idioms (`signal()`, `RwSignal::new()`, `Effect::watch`, `Action::new`, `FromServerFnError`, `Websocket` server fns, `Either!` / `ShowLet`, `--cfg=erase_components`); documents project-specific landmines (`Show`'s 'static-`when` rule, `Option<Children>` macro behavior, `#[component]` clippy on generated code, `+y` glyphon flip). CLAUDE.md "Leptos discipline" section flags this as a hard rule.
 ---
 
 # Leptos migration — every version → 0.8
