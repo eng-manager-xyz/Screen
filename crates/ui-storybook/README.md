@@ -13,7 +13,7 @@ Two concerns in one crate:
 1. **Component library** — the *presentational* layer consumed by
    `app-ui`. Components take controlled props + emit callbacks; no
    signals, no Tauri, no IPC. Strict
-   [presentational contract](https://eng-manager-xyz.github.io/screen/ui/presentational-contract.html).
+   [presentational contract](https://eng-manager-xyz.github.io/Screen/ui/presentational-contract.html).
 2. **Story gallery + snapshot gate** — each `Story` in
    `src/stories.rs` is a server-side rendered HTML snippet. Two
    binaries consume them:
@@ -97,7 +97,7 @@ INSTA_UPDATE=auto cargo nextest run -p ui-storybook --test snapshots
 > [!IMPORTANT]
 > **No signals, no effects, no Tauri calls in components.** That's
 > the presentational contract — see
-> [State boundaries](https://eng-manager-xyz.github.io/screen/ui/state-boundaries.html)
+> [State boundaries](https://eng-manager-xyz.github.io/Screen/ui/state-boundaries.html)
 > for what each side owns. A regression in either direction breaks
 > the snapshot determinism that the SSR gate depends on.
 
@@ -115,10 +115,10 @@ INSTA_UPDATE=auto cargo nextest run -p ui-storybook --test snapshots
 
 ## Deep dive
 
-- **[ui-storybook overview](https://eng-manager-xyz.github.io/screen/ui/overview.html)**
-- **[Presentational contract](https://eng-manager-xyz.github.io/screen/ui/presentational-contract.html)**
-- **[State boundaries](https://eng-manager-xyz.github.io/screen/ui/state-boundaries.html)**
-- **[Review checklist](https://eng-manager-xyz.github.io/screen/ui/review-checklist.html)**
+- **[ui-storybook overview](https://eng-manager-xyz.github.io/Screen/ui/overview.html)**
+- **[Presentational contract](https://eng-manager-xyz.github.io/Screen/ui/presentational-contract.html)**
+- **[State boundaries](https://eng-manager-xyz.github.io/Screen/ui/state-boundaries.html)**
+- **[Review checklist](https://eng-manager-xyz.github.io/Screen/ui/review-checklist.html)**
 - **[`app-ui`](../app-ui/README.md)** — the runtime consumer.
 - **[CLAUDE.md](../../CLAUDE.md)** — "Leptos discipline".
 

@@ -4,7 +4,7 @@
 > + wisp books can share content and link to each other without
 > drift: `{{shared X}}` inlines a fragment from `_docs/shared/`;
 > `{{wisp-link Y}}` emits a per-book URL (relative inside the wisp
-> book, absolute `/screen/wisp/Y.html` from the screen book).
+> book, absolute `/Screen/wisp/Y.html` from the screen book).
 
 ## What it does
 
@@ -40,7 +40,7 @@ sequenceDiagram
             Note over Pre: substitute, then re-scan for nested tags
         end
         opt {{wisp-link Y}}
-            Note over Pre: emit ./Y.html (wisp book)<br/>or /screen/wisp/Y.html (screen book)
+            Note over Pre: emit ./Y.html (wisp book)<br/>or /Screen/wisp/Y.html (screen book)
         end
     end
     Pre-->>Mdbook: mutated book JSON on stdout
@@ -55,7 +55,7 @@ In a book's `book.toml`:
 command = "mdbook-preprocessor-cross"
 target = "wisp"               # or "screen"
 shared-root = "../shared"     # relative to the book's root
-wisp-base = "/screen/wisp"    # absolute URL of the wisp book
+wisp-base = "/Screen/wisp"    # absolute URL of the wisp book
 ```
 
 Then in any chapter:
@@ -78,7 +78,7 @@ See {{wisp-link wisp/chunks/filter-blur}} for the deep dive.
 | `MAX_PASSES = 4` | Expansion-pass limit |
 
 Full rustdoc:
-[`api/mdbook_preprocessor_cross/`](https://eng-manager-xyz.github.io/screen/api/mdbook_preprocessor_cross/index.html).
+[`api/mdbook_preprocessor_cross/`](https://eng-manager-xyz.github.io/Screen/api/mdbook_preprocessor_cross/index.html).
 
 ## Runbook
 

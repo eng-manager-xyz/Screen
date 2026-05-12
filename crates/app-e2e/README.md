@@ -77,7 +77,7 @@ a skip message; Windows ditto.
 4. Observe state via `evaluate_script` to read Leptos signal values.
 
 See existing tests for patterns. The
-[Testing tiers chapter](https://eng-manager-xyz.github.io/screen/app-ui/testing.html)
+[Testing tiers chapter](https://eng-manager-xyz.github.io/Screen/app-ui/testing.html)
 documents what each tier catches.
 
 ### Troubleshooting
@@ -96,7 +96,7 @@ documents what each tier catches.
 
 ## Deep dive
 
-- **[Testing tiers chapter](https://eng-manager-xyz.github.io/screen/app-ui/testing.html)**
+- **[Testing tiers chapter](https://eng-manager-xyz.github.io/Screen/app-ui/testing.html)**
   — Tier 0 / Tier 1 / Tier 2 distinctions + when to add a test where.
 - **[`screen-app`](../app/README.md)** — the binary under test.
 

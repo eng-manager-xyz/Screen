@@ -148,10 +148,10 @@ just dev-remote-book
 Both books pass through `mdbook-preprocessor-cross` on every
 rebuild, so `\{\{shared X\}\}` and `\{\{wisp-link Y\}\}` tags get
 re-resolved live as you edit. The cross-book links work because
-the production base path (`/screen/wisp/`) doesn't match the
+the production base path (`/Screen/wisp/`) doesn't match the
 local path (`/wisp/`) — but mdbook's `site-url` is configured for
 production, so on local you'll see the cross-links pointing at
-`/screen/wisp/...` which won't resolve. **For local cross-book
+`/Screen/wisp/...` which won't resolve. **For local cross-book
 nav, use the book's own TOC**; for production-shape verification,
 deploy preview or `just site` + open `target/book/`.
 

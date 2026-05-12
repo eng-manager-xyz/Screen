@@ -57,7 +57,7 @@ gives Trunk a `cdylib` for wasm-bindgen + an `rlib` so `cargo check
 | `install_file_drop_listener()` | Hooks the Tauri `file-dropped` `CustomEvent` |
 | `install_player_status_listener()` | Hooks `player-status` events from `screen-app` |
 
-Full rustdoc: [`api/app_ui/`](https://eng-manager-xyz.github.io/screen/api/app_ui/index.html).
+Full rustdoc: [`api/app_ui/`](https://eng-manager-xyz.github.io/Screen/api/app_ui/index.html).
 
 ## Runbook
 
@@ -117,9 +117,9 @@ for the reference.
 
 ## Deep dive
 
-- **[`app-ui` overview chapter](https://eng-manager-xyz.github.io/screen/app-ui/overview.html)**
-- **[Tauri ↔ Leptos integration](https://eng-manager-xyz.github.io/screen/app-ui/integration.html)**
-- **[Player IPC](https://eng-manager-xyz.github.io/screen/app-ui/player-ipc.html)**
+- **[`app-ui` overview chapter](https://eng-manager-xyz.github.io/Screen/app-ui/overview.html)**
+- **[Tauri ↔ Leptos integration](https://eng-manager-xyz.github.io/Screen/app-ui/integration.html)**
+- **[Player IPC](https://eng-manager-xyz.github.io/Screen/app-ui/player-ipc.html)**
 - **[`ui-storybook`](../ui-storybook/README.md)** — the components this
   crate composes.
 - **[CLAUDE.md](../../CLAUDE.md)** — "Leptos discipline".

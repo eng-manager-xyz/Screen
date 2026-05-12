@@ -37,10 +37,10 @@
 
 ## Why it exists
 
-It's the renderer behind [Screen Studio](/screen/) — a native Rust
+It's the renderer behind [Screen Studio](/Screen/) — a native Rust
 screen recorder. The full project is in the `screen` monorepo; this
 book is the renderer-only deep dive. If you want context on how the
-recorder uses wisp, the project book at [/screen/](/screen/) has the
+recorder uses wisp, the project book at [/Screen/](/Screen/) has the
 integration story.
 
 {{shared architecture-boundary.md}}

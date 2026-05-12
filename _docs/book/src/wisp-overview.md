@@ -26,7 +26,7 @@ window surface, export to a `RenderTexture`.
 The deep dive lives in its own book — every chunk chapter, filter
 pass, mask permutation, and text variant is documented there:
 
-→ **[Wisp book](/screen/wisp/)** — Pixi-shaped API tour,
+→ **[Wisp book](/Screen/wisp/)** — Pixi-shaped API tour,
 ~50 chunk chapters, text architecture, mask system, headless
 export, full quickstart.
 
