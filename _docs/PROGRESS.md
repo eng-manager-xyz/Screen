@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-17 — WispCanvasHost + editor drop-zone canvas (AUT-137)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `WispCanvasHost` is a backend-agnostic host that renders one of three modes: `CssFallback` (checkered fallback used by SSR + mdBook), `WispAsset { asset_path }` (committed PNG via `<img>`), or `WispRuntimeUnavailable` (warning banner). `EditorDropZoneCanvas` wraps the host in the dotted drop overlay + action cards (Record screen / Open library / Import file) + recent-clips strip.
+- **Linear:** [AUT-137](https://linear.app/harwood/issue/AUT-137).
+- **Files:** new `components/editor/wisp_canvas_host.rs` (`WispCanvasHost`, `EditorDropZoneCanvas`, `CanvasBackendView`, `DropZoneActionView`, `RecentClipView`, `EditorDropZoneView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_editor_drop_zone(drag_active)` / `_no_recent()` + private `sample_recent_clips()`. `stories/editor.rs` extends (5 new stories) — story list refactored into per-bucket helpers (`legacy_editor_stories` / `editor_shell_stories` / `editor_canvas_stories`) to stay under clippy's 100-line cap. `assets/style.css` adds `.wisp-canvas-host*`, `.editor-drop-zone*`, `.editor-recent-clip*`. New `_docs/book/src/ui/chunks/editor-drop-zone-canvas.md`. `SUMMARY.md` indexes it.
+- **Verified:** 72 ui-storybook tests pass. 5 new asset HTMLs exported. Full `just gate` green.
+- **No wgpu dependency in this component.** The host never touches the renderer — it just renders whichever backend the parent picked. Future runtime Wisp embedding can swap the `WispAsset` branch for a `<canvas>` mount without changing the component contract.
+
+---
+
 ## UI-16 — EditorShell + top toolbar (AUT-136)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — structural shell with macOS title bar, top toolbar (16:9 / Crop / Annotate / Trim + Share / Export), and `canvas` / `inspector` / `timeline` slots as `Option<Children>`. `EditorToolbar` reusable standalone. 4 stories: empty, clip-loaded, toolbar-states, export-disabled.

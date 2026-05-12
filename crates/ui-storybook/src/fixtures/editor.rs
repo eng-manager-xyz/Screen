@@ -148,6 +148,72 @@ pub fn sample_editor_shell_export_disabled() -> crate::components::editor::Edito
     v
 }
 
+/// Sample drop-zone view (UI-17). The backend defaults to `CssFallback`
+/// so SSR snapshots stay stable.
+#[must_use]
+pub fn sample_editor_drop_zone(drag_active: bool) -> crate::components::editor::EditorDropZoneView {
+    use crate::components::editor::{CanvasBackendView, DropZoneActionView, EditorDropZoneView};
+    EditorDropZoneView {
+        backend: CanvasBackendView::CssFallback,
+        headline: "Drop a clip to start editing",
+        subtext: "or press ⌘⇧2 to record one now",
+        actions: vec![
+            DropZoneActionView {
+                id: "record",
+                label: "Record screen",
+                description: "Open the tray recorder",
+                icon: "●",
+            },
+            DropZoneActionView {
+                id: "library",
+                label: "Open library",
+                description: "Pick a recent recording",
+                icon: "▦",
+            },
+            DropZoneActionView {
+                id: "file",
+                label: "Import file",
+                description: "Choose an MP4 / MOV",
+                icon: "📁",
+            },
+        ],
+        recent_clips: sample_recent_clips(),
+        drag_active,
+    }
+}
+
+fn sample_recent_clips() -> Vec<crate::components::editor::RecentClipView> {
+    use crate::components::editor::RecentClipView;
+    vec![
+        RecentClipView {
+            id: "rec-01",
+            title: "Demo · auth login",
+            duration_label: "1m 24s",
+            thumbnail_css: "linear-gradient(135deg,#1e3a8a,#7c3aed)",
+        },
+        RecentClipView {
+            id: "rec-02",
+            title: "Standup recap",
+            duration_label: "4m 02s",
+            thumbnail_css: "linear-gradient(135deg,#0f766e,#facc15)",
+        },
+        RecentClipView {
+            id: "rec-03",
+            title: "Bug repro · payments",
+            duration_label: "0m 38s",
+            thumbnail_css: "linear-gradient(135deg,#7f1d1d,#f97316)",
+        },
+    ]
+}
+
+/// Variant — empty recent strip.
+#[must_use]
+pub fn sample_editor_drop_zone_no_recent() -> crate::components::editor::EditorDropZoneView {
+    let mut v = sample_editor_drop_zone(false);
+    v.recent_clips.clear();
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

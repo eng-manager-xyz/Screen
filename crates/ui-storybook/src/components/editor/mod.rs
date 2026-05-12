@@ -5,9 +5,14 @@
 pub mod dope_sheet;
 pub mod editor_shell;
 pub mod player_controls;
+pub mod wisp_canvas_host;
 
 pub use dope_sheet::{DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, TrackKind};
 pub use editor_shell::{
     EditorShell, EditorShellView, EditorTitleBar, EditorToolbar, ToolbarActionView,
 };
 pub use player_controls::{PlayState, PlayerControls};
+pub use wisp_canvas_host::{
+    CanvasBackendView, DropZoneActionView, EditorDropZoneCanvas, EditorDropZoneView,
+    RecentClipView, WispCanvasHost,
+};
