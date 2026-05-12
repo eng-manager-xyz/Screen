@@ -1,6 +1,6 @@
 //! Animated rotating sprite with a drop shadow. M0.20 verification.
 //!
-//! Run with: `cargo run -p wisp --example hello_sprite`. Esc / window close to exit.
+//! Run with: `cargo run -p screen-wisp --example hello_sprite`. Esc / window close to exit.
 
 use std::sync::Arc;
 use std::time::Instant;

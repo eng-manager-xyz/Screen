@@ -46,6 +46,28 @@ flowchart LR
 > Any change that makes wisp pull from a higher-level crate breaks
 > the ability to publish wisp to crates.io standalone.
 
+## Install
+
+```bash
+cargo add screen-wisp
+```
+
+> [!IMPORTANT]
+> The published crate name on crates.io is **`screen-wisp`** (the
+> bare name `wisp` is taken by an unrelated project). The library
+> name in your Rust code is still `wisp` — so add `screen-wisp` to
+> your `Cargo.toml` and `use wisp::...` in code. No package alias
+> needed; cargo handles the decoupling via `[lib].name`.
+
+```toml
+[dependencies]
+screen-wisp = "0.1"
+```
+
+```rust
+use wisp::prelude::*;  // imports work via the `[lib].name = "wisp"` setting
+```
+
 ## Quickstart
 
 ```rust
@@ -101,11 +123,11 @@ Full rustdoc: [`api/wisp/`](https://eng-manager-xyz.github.io/Screen/api/wisp/in
 ### Build + test
 
 ```bash
-cargo nextest run -p wisp                # unit + integration tests
-cargo test -p wisp --doc                 # doctests (nextest skips these)
-cargo clippy -p wisp --all-targets --all-features -- -D warnings
-cargo fmt -p wisp -- --check
-cargo doc -p wisp --no-deps              # rustdoc
+cargo nextest run -p screen-wisp                # unit + integration tests
+cargo test -p screen-wisp --doc                 # doctests (nextest skips these)
+cargo clippy -p screen-wisp --all-targets --all-features -- -D warnings
+cargo fmt -p screen-wisp -- --check
+cargo doc -p screen-wisp --no-deps              # rustdoc
 ```
 
 The full workspace gate (`just gate` from the repo root) runs all of
@@ -115,14 +137,14 @@ the above plus `snapshots-check`, `shared-check`,
 ### Run an example
 
 ```bash
-cargo run -p wisp --example hello_triangle
-cargo run -p wisp --example hello_quad
-cargo run -p wisp --example hello_sprite
-cargo run -p wisp --example video_texture
-cargo run -p wisp --example playback_demo      # decode → VideoTexture → render
-cargo run -p wisp --example recorder_mock
-cargo run -p wisp --example headless_export
-cargo run -p wisp --example adapter_info       # which wgpu adapter is active
+cargo run -p screen-wisp --example hello_triangle
+cargo run -p screen-wisp --example hello_quad
+cargo run -p screen-wisp --example hello_sprite
+cargo run -p screen-wisp --example video_texture
+cargo run -p screen-wisp --example playback_demo      # decode → VideoTexture → render
+cargo run -p screen-wisp --example recorder_mock
+cargo run -p screen-wisp --example headless_export
+cargo run -p screen-wisp --example adapter_info       # which wgpu adapter is active
 ```
 
 For the interactive feature gallery, see

@@ -231,6 +231,33 @@ site-check: site shared-check
 # supported CI runner (macOS, Ubuntu, Windows) and locally.
 gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check required-files-check pages-url-check
 
+# ─── Crate publishing (wisp → screen-wisp on crates.io) ───────────────────────
+
+# Dry-run publish of the wisp crate (published as `screen-wisp` on
+# crates.io because the bare name `wisp` is taken by an unrelated
+# project). Verifies the crate is packageable without actually
+# uploading. Run this locally before opening a release-plz Release
+# PR if you want sanity ahead of the GHA run.
+#
+# `--allow-dirty` is OK for the dry-run since we're not actually
+# uploading — real publishes happen via release-plz from clean git.
+publish-wisp-dry:
+    cargo publish -p screen-wisp --dry-run --allow-dirty
+
+# List every file that would land in the .crate file uploaded to
+# crates.io. Useful when reviewing the `include = [...]` list in
+# `crates/wisp/Cargo.toml` — anything not in `include` is silently
+# dropped, even if it's tracked in git.
+publish-wisp-files:
+    cargo package -p screen-wisp --list
+
+# Build the wisp crate exactly the way crates.io will. Verifies the
+# `[package].include` glob is right + the README + LICENSE land in
+# the package + no unexpected files leak. Output:
+# `target/package/screen-wisp-<version>.crate`.
+publish-wisp-package:
+    cargo package -p screen-wisp --allow-dirty
+
 # ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
 
 # Local-only storybook dev loop. Watches ui-storybook src + assets,

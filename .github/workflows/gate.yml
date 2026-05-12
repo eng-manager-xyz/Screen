@@ -200,12 +200,12 @@ jobs:
       # storybook, and the cross-book preprocessor. No Tauri, no
       # GStreamer, no Leptos — faster wheels-up.
       - name: cargo fmt (wisp subset)
-        run: cargo fmt -p wisp -p wisp-storybook -p mdbook-preprocessor-cross -- --check
+        run: cargo fmt -p screen-wisp -p wisp-storybook -p mdbook-preprocessor-cross -- --check
 
       - name: cargo clippy (wisp subset)
         run: |
           cargo clippy \
-            -p wisp \
+            -p screen-wisp \
             -p wisp-storybook \
             -p mdbook-preprocessor-cross \
             --all-targets --all-features \
@@ -214,7 +214,7 @@ jobs:
       - name: cargo nextest (wisp subset)
         run: |
           cargo nextest run \
-            -p wisp \
+            -p screen-wisp \
             -p wisp-storybook \
             -p mdbook-preprocessor-cross \
             --all-features
@@ -222,7 +222,7 @@ jobs:
       - name: cargo doctest (wisp subset)
         run: |
           cargo test --doc \
-            -p wisp \
+            -p screen-wisp \
             -p wisp-storybook \
             -p mdbook-preprocessor-cross
 

@@ -945,7 +945,71 @@ fine on lavapipe — **don't guard them**.
 - **Axum 0.7 HTML-injection middleware lives at the crate root, not the route layer.** The pattern: `Router::new().route(...).fallback_service(ServeDir).with_state(...).layer(middleware::from_fn(inject_live_reload))`. `to_bytes(body, MAX)` collects the streaming `ServeDir` body so the middleware can splice in the live-reload script before `</body>`. Always update `Content-Length` after splicing.
 - **`notify-debouncer-mini` calls your handler from its own thread, not the tokio runtime.** Forward batched events to a `tokio::sync::mpsc::unbounded_channel` and process them in a tokio task. Forgetting this gives a runtime panic on the first `tokio::spawn` from inside the handler.
 - **`tailscale serve` (private) vs `tailscale funnel` (public) is the single decision** for remote dev. We use Serve. Don't flip to Funnel — it exposes the storybook to the open internet.
+- **Tailscale Serve requires one-time enablement on the tailnet.** First `tailscale serve --bg ...` returns *"Serve is not enabled on your tailnet. To enable, visit: https://login.tailscale.com/f/serve?node=..."*. The URL approval is per-tailnet, not per-machine — once approved, every machine in the tailnet can register Serve routes. Document the URL clearly in the dev-remote runbook.
+- **Binary-level integration tests catch what library tests can't.** The dev-server shutdown-signal bug (`.map(|s| async move { s.recv().await })` form dropped the inner Future and tripped self-shutdown at startup) was invisible to the lib `smoke.rs` tests because they bypassed `main.rs`. The fix: every binary should have a test that spawns the actual built binary (not the lib) and pokes it over its real I/O surface. `crates/dev-server/tests/binary_smoke.rs` is the reference pattern: `Command::new(binary_path())` + RAII `ServerChild` guard for kill-on-drop + `reqwest` over `127.0.0.1:<free_port()>`. Pair with `book_render_smoke.rs` which spawns `mdbook serve` and validates the books render — that's the "Tailscale doesn't regress" integration test: if mdbook serves locally, Tailscale Serve will tunnel it.
 - **Linker config (`.cargo/config.toml`) belongs in `.gitignore`.** `-fuse-ld=lld` errors at link time if lld isn't installed; committing the config breaks fresh clones. Ship `.cargo/config.toml.example` as the template, document `brew install lld` in CLAUDE.md, let each dev opt in.
+
+### Publishing crates to crates.io
+
+- **`wisp` is the only crate published.** Everything else has
+  `publish = false` (workspace default). To publish a new crate:
+  override `publish = true` in its Cargo.toml, add a `[[package]]`
+  block to `release-plz.toml`, create
+  `crates/<name>/CHANGELOG.md`, copy `LICENSE` into the crate dir.
+- **Published name `screen-wisp` ≠ library name `wisp`.** crates.io's
+  `wisp` is claimed by an unrelated tmux project; we publish as
+  `screen-wisp` but keep `[lib].name = "wisp"` so internal +
+  downstream code keeps `use wisp::...` working. Cargo handles the
+  decoupling: `[package].name` is what `cargo -p <name>` and
+  crates.io see; `[lib].name` is what Rust import statements see.
+  Downstream consumers: `screen-wisp = "0.1"` in Cargo.toml, then
+  `use wisp::...` in code.
+- **`cargo -p <pkg>` takes the package name, not the workspace dep
+  alias.** Once you rename to `screen-wisp`, every workflow + README
+  + book chapter referencing `cargo run -p wisp` needs `-p
+  screen-wisp`. Workspace-internal `wisp.workspace = true` deps
+  still work via the alias `wisp = { package = "screen-wisp", ... }`
+  in `[workspace.dependencies]`.
+- **`release-plz` drives the publishing flow.** Configured via
+  `release-plz.toml` at repo root. Two GHA jobs in
+  `.github/workflows/release-plz.yml`: `release-plz-pr` opens / updates
+  a "Release PR" on every push to main; `release-plz-release` runs
+  on the Release PR merge → tags + publishes. The Release PR is the
+  CD opt-in moment — main is "ready to release, not yet released."
+- **First publish is by hand.** release-plz can't claim an
+  unreserved crate name; the initial `cargo publish -p screen-wisp`
+  has to happen from a logged-in dev box with the
+  `CARGO_REGISTRY_TOKEN` in `~/.cargo/credentials.toml`. After that,
+  every release flows through release-plz.
+- **Required secrets:** `CARGO_REGISTRY_TOKEN` (from
+  https://crates.io/settings/tokens, publish-scope) under Settings →
+  Secrets → Actions. `GITHUB_TOKEN` is provided by the runner; the
+  workflow's `permissions:` block grants `contents: write` +
+  `pull-requests: write`.
+- **Conventional commits drive the semver bump.** `feat(wisp): …` →
+  minor; `fix(wisp): …` → patch; `feat(wisp)!: …` or `BREAKING
+  CHANGE:` footer → major. `chore:` / `docs:` / `ci:` / `refactor:`
+  / `test:` don't trip a release. release-plz's `commit_parsers`
+  list in `release-plz.toml` is the canonical mapping.
+- **`include` field in Cargo.toml.** Defines exactly what lands in
+  the .crate file. We list `src/`, `shaders/`, `examples/`,
+  `tests/`, `Cargo.toml`, `README.md`, `CHANGELOG.md`, `LICENSE`.
+  Things NOT in `include` (like local benchmark outputs, scratch
+  files) are silently dropped — that's a feature. Verify with
+  `just publish-wisp-files`.
+- **Dry-run before opening a Release PR.** `just publish-wisp-dry`
+  runs `cargo publish --dry-run` to catch metadata issues
+  (missing fields, version collisions, dirty tree, unknown
+  categories) before the workflow does.
+- **`cargo semver-checks` runs as part of release-plz** (see
+  `semver_check = true` in `release-plz.toml`). Catches API breaks
+  that should have been `feat!:` but were committed as a minor
+  `feat:`. Installed via taiki-e/install-action in the workflow.
+- **Repository name case affects rustdoc deploy URL but not
+  crates.io.** crates.io is its own DNS; the `repository = "..."`
+  field is what crates.io shows. Use the case-exact GitHub URL
+  (`https://github.com/eng-manager-xyz/Screen`); the GitHub Pages
+  case mismatch (which 404s) is irrelevant to crates.io.
 
 ### Linear MCP / Cloudflare WAF
 

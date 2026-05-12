@@ -1,7 +1,7 @@
 //! Renders a procedurally-generated 64×64 checker pattern as a textured quad.
 //! M0.6 verification example.
 //!
-//! Run with: `cargo run -p wisp --example hello_quad`
+//! Run with: `cargo run -p screen-wisp --example hello_quad`
 //! Press Esc or close the window to exit.
 
 use std::sync::Arc;

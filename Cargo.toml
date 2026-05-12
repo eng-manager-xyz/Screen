@@ -3,7 +3,11 @@ resolver = "3"
 members = ["crates/*", "tools/*"]
 
 [workspace.dependencies]
-wisp = { path = "crates/wisp", version = "0.1.0" }
+# Alias the published name `screen-wisp` to the internal `wisp` so
+# downstream crates in this workspace keep `use wisp::...` without
+# the publication-name leak. See `crates/wisp/Cargo.toml` for why
+# the published name diverges from the directory + import name.
+wisp = { package = "screen-wisp", path = "crates/wisp", version = "0.1.0" }
 glam = "0.29"
 wgpu = "24"
 pollster = "0.4"

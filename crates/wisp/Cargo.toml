@@ -1,13 +1,66 @@
 [package]
-name = "wisp"
+# Published to crates.io as `screen-wisp` because the bare name
+# `wisp` is already claimed by an unrelated project (a tmux
+# workspace navigator). Internal code keeps `use wisp::...` via
+# the workspace-dep alias (`wisp = { package = "screen-wisp", ... }`
+# in the root `Cargo.toml`'s `[workspace.dependencies]`) so calls
+# inside the monorepo never have to change.
+#
+# Downstream crates.io consumers either:
+#  - call `use screen_wisp::...` directly, OR
+#  - alias on their dep line:
+#      `wisp = { package = "screen-wisp", version = "0.1" }`
+#    and then `use wisp::...`.
+name = "screen-wisp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
-description = "2D scene graph + filter chain on wgpu, Pixi-shaped."
+# Override the workspace default (`publish = false`) — wisp is the
+# only crate in this workspace published to crates.io. Releases are
+# driven by `release-plz` (see `.github/workflows/release-plz.yml`);
+# do NOT run `cargo publish -p screen-wisp` by hand on main.
+publish = true
+description = "Pixi-shaped 2D scene graph + filter chain + mask system + text rendering on wgpu. Native Rust, no JS, no DOM. Used by the Screen Studio-style recorder."
+repository = "https://github.com/eng-manager-xyz/Screen"
+homepage = "https://eng-manager-xyz.github.io/Screen/wisp/"
+documentation = "https://docs.rs/wisp"
+readme = "README.md"
+keywords = ["wgpu", "graphics", "2d", "scene-graph", "renderer"]
+categories = ["graphics", "rendering", "rendering::graphics-api"]
+# Bundle the LICENSE alongside the crate so crates.io / docs.rs show
+# it inline and downstream consumers don't have to navigate to the
+# monorepo. cargo publish includes the workspace root LICENSE only if
+# we explicitly list it via `include`; the more idiomatic path is a
+# crate-local copy.
+include = [
+    "/src/**/*.rs",
+    "/src/**/*.wgsl",
+    "/shaders/**/*.wgsl",
+    "/examples/**/*.rs",
+    "/tests/**/*.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [lints]
 workspace = true
+
+# Decouple the LIBRARY name from the PACKAGE name. The package
+# `screen-wisp` is what crates.io / `cargo -p screen-wisp` see;
+# the library `wisp` is what Rust code sees in `use wisp::...`.
+# This lets internal examples + external consumers both write
+# idiomatic `use wisp::...` regardless of the crates.io collision
+# that forced the `screen-wisp` package rename.
+#
+# Downstream Cargo.toml form:
+#     screen-wisp = "0.1"
+# and then in the .rs file:
+#     use wisp::prelude::*;
+[lib]
+name = "wisp"
+path = "src/lib.rs"
 
 [dependencies]
 wgpu = "24"

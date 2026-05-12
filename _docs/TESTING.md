@@ -105,7 +105,7 @@ For chunks that ship runnable examples (M0.5 `hello_triangle`, M0.6 `hello_quad`
 
 - The example **must** build clean as part of `just gate` (it does — `clippy --all-targets` includes examples).
 - The example **must** run without panicking on a working host. If the chunk references a visible example and a snapshot or pixel-readback test isn't feasible, the example serves as the integration test, with the user's manual run logged in PROGRESS as "visual confirmation pending user run."
-- For headless examples (M0.21 `headless_export`), the example **is** a runnable test — `cargo run -p wisp --example headless_export` should produce expected output files. Add an `assert_fs` test that runs it programmatically once the pattern is set.
+- For headless examples (M0.21 `headless_export`), the example **is** a runnable test — `cargo run -p screen-wisp --example headless_export` should produce expected output files. Add an `assert_fs` test that runs it programmatically once the pattern is set.
 
 ---
 
@@ -152,7 +152,7 @@ Configure exclusions in `Cargo.toml` `[package.metadata.llvm-cov]` or via `.conf
 This is the recursive-fix loop in operational form:
 
 1. **Read the failure carefully.** What was expected, what was observed, where in the code.
-2. **Reproduce minimally.** Can you isolate the failing case? `cargo nextest run -p wisp --filter <test_name>`.
+2. **Reproduce minimally.** Can you isolate the failing case? `cargo nextest run -p screen-wisp --filter <test_name>`.
 3. **Diagnose.** Is the test wrong, the code wrong, or the spec wrong?
 4. **Fix.**
    - Code wrong → fix the code.

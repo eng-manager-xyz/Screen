@@ -11,7 +11,7 @@
 //! - Cursor oscillates horizontally.
 //! - Text label pulses scale 1.0 → 1.15 → 1.0.
 //!
-//! Run: `cargo run -p wisp --example headless_export`. Output: 60 PNGs
+//! Run: `cargo run -p screen-wisp --example headless_export`. Output: 60 PNGs
 //! at `target/headless_export/frame_NN.png`. Also writes a single
 //! representative frame (#30, the mid-animation peak) to
 //! `_docs/book/src/assets/wisp/example-headless-export.png` so the

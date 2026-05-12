@@ -1,0 +1,103 @@
+# release-plz workspace configuration.
+#
+# Drives the `wisp` → crates.io publishing flow via the
+# `release-plz` GitHub Action (`.github/workflows/release-plz.yml`).
+# The flow:
+#
+# 1. PR merges to main with conventional-commit messages
+#    (`feat(wisp): …`, `fix(wisp): …`, `feat(wisp)!: …` for
+#    breaking changes).
+# 2. release-plz GHA on every push to main reads the new commits
+#    since the last release tag, then opens (or updates) a
+#    "Release PR" titled `chore(release): wisp v0.x.y` that bumps
+#    the version + folds the commits into `CHANGELOG.md`.
+# 3. A human reviews + merges the Release PR.
+# 4. release-plz GHA on that merge event tags the commit
+#    (`wisp-v0.x.y`), creates a GitHub Release with the changelog
+#    delta as body, and runs `cargo publish -p screen-wisp` against
+#    crates.io using the `CARGO_REGISTRY_TOKEN` secret.
+#
+# main is therefore "ready to release, not yet released" between
+# Release PR merges — the user explicitly opts into each crates.io
+# publication.
+#
+# # Adding a new publishable crate
+#
+# 1. Flip `publish = true` in the crate's `Cargo.toml` (override
+#    the workspace `publish = false` default).
+# 2. Add a `[[package]] name = "<crate>"` block here mirroring the
+#    `wisp` one. Default behaviour for every workspace member with
+#    `publish = true` is "release alongside wisp"; the explicit
+#    block lets us configure per-crate changelog paths +
+#    git-release naming.
+# 3. Create `crates/<name>/CHANGELOG.md` with the standard header.
+# 4. Add `cargo publish -p <crate>` to the release workflow's
+#    publish step if not handled by release-plz automatically.
+
+[workspace]
+# Don't auto-release every commit — only release when commits since
+# the last tag include `feat:` / `fix:` / `feat!:` etc.
+# Documentation-only / chore commits don't trip a release on their
+# own.
+release_always = false
+
+# Refuse to publish from a dirty working tree. Catches the case where
+# a generated file changed locally and the operator didn't notice.
+publish_allow_dirty = false
+
+# Create a GitHub Release after publish (so the tag has a body with
+# the changelog delta + cargo-deny is bypassed in favour of human
+# eyeballs reading the diff).
+git_release_enable = true
+
+# Run `cargo semver-checks` before bumping. Catches API-breaking
+# changes that should have been `feat!:` but were committed as a
+# minor `feat:`. Requires `cargo install cargo-semver-checks`; the
+# release-plz GHA installs it.
+semver_check = true
+
+# Use the conventional-commit type to determine the semver bump.
+# `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE:` →
+# major. Anything else (chore, docs, ci, refactor) → no bump.
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+
+# Only commits whose scope includes the crate name (e.g.
+# `feat(wisp): …`) or which have no scope (workspace-wide commits)
+# count toward a crate's changelog. This prevents `feat(media): …`
+# commits from inflating the wisp changelog.
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^style", skip = true },
+    { message = "^test", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^build", skip = true },
+]
+
+# Per-package overrides.
+[[package]]
+# Match the `[package].name` in `crates/wisp/Cargo.toml`, NOT the
+# directory name. release-plz keys per-crate config by package
+# name; the directory is `crates/wisp/` but the published name is
+# `screen-wisp` (see that Cargo.toml for the rationale).
+name = "screen-wisp"
+# Crate-local CHANGELOG so the file lives next to the published
+# code. crates.io bundles it automatically (already listed in
+# `Cargo.toml`'s `include`).
+changelog_path = "crates/wisp/CHANGELOG.md"
+# Tag format: `screen-wisp-v0.1.0` so a future multi-crate
+# workspace can disambiguate per-crate tags.
+git_tag_name = "screen-wisp-v{{ version }}"
+# GitHub Release shape.
+git_release_name = "screen-wisp v{{ version }}"

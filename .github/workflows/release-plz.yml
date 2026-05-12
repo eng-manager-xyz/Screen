@@ -1,0 +1,123 @@
+# crates.io publishing for `wisp`, driven by release-plz.
+#
+# # Flow
+#
+# 1. PR merges to main with conventional-commit messages.
+# 2. `release-plz-pr` reads commits since the last tag and opens
+#    (or updates) a "Release PR" that bumps the wisp version +
+#    folds commits into `crates/wisp/CHANGELOG.md`.
+# 3. A human reviews + merges that Release PR.
+# 4. `release-plz-release` runs on the Release PR merge, tags the
+#    commit `wisp-v0.x.y`, creates a GitHub Release with the
+#    changelog delta as body, and runs `cargo publish -p screen-wisp`.
+#
+# `release-plz-pr` and `release-plz-release` both run on every push
+# to main; `release-plz` decides internally which action to take
+# based on whether there are unreleased commits AND whether the
+# triggering commit is the merge of a Release PR.
+#
+# # Required secrets
+#
+# - `CARGO_REGISTRY_TOKEN` — create on
+#   https://crates.io/settings/tokens (Account → API Tokens → New
+#   Token). Scope to publish-only if possible. Add to the repo
+#   settings under Settings → Secrets and variables → Actions.
+# - `GITHUB_TOKEN` — provided by the runner; the workflow needs
+#   `contents: write` + `pull-requests: write` permissions to open
+#   the Release PR and push the tag.
+#
+# # Required setup (one-time, by repo owner)
+#
+# 1. Publish wisp to crates.io for the first time by hand:
+#       cd crates/wisp && cargo publish
+#    Cannot use release-plz for the initial publish because the
+#    crate name has to be claimed.
+# 2. Add `CARGO_REGISTRY_TOKEN` to repo secrets.
+# 3. Settings → Actions → General → Workflow permissions: ensure
+#    "Read and write permissions" + "Allow GitHub Actions to create
+#    and approve pull requests".
+#
+# After that, every conventional-commit PR merged to main flows
+# through the Release PR pattern automatically.
+
+name: release-plz
+
+on:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  pull-requests: write
+  contents: write
+
+# Serialize release-plz runs to avoid two pushes racing on the same
+# Release PR / tag.
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Job 1: Maintain the Release PR.
+  # Runs on every push to main. If there are commits since the last
+  # release tag, opens or updates a "Release PR" with the version
+  # bump + CHANGELOG update. No publishing happens here.
+  release-plz-pr:
+    name: Release PR (wisp)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # release-plz needs full git history to read commits since
+          # the last tag.
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release-plz (open / update Release PR)
+        uses: MarcoIeni/release-plz-action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # Job 2: Publish on Release PR merge.
+  # Runs on every push to main but only takes action when the
+  # triggering commit is the merge of a release-plz-authored
+  # Release PR. Tags the commit, creates a GitHub Release, and runs
+  # `cargo publish -p screen-wisp` against crates.io.
+  release-plz-release:
+    name: Publish (wisp → crates.io)
+    runs-on: ubuntu-latest
+    # Don't release while a Release PR is mid-update. Same group as
+    # the PR job above.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # release-plz uses cargo-semver-checks if semver_check = true
+      # in release-plz.toml. Install it so the check runs.
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+
+      - name: Run release-plz (publish if Release PR was merged)
+        uses: MarcoIeni/release-plz-action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
