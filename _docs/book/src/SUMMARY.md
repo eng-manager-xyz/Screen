@@ -138,6 +138,7 @@
   - [Inspector panel](./ui/chunks/inspector-panel.md)
   - [Timeline skeleton](./ui/chunks/timeline-skeleton.md)
   - [Cursor style picker](./ui/chunks/cursor-style-picker.md)
+  - [Cursor preview canvas](./ui/chunks/cursor-preview-canvas.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

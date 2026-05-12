@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-21 — CursorPreviewCanvas + appearance controls (AUT-141)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CursorPreviewCanvas` follows the same three-backend pattern as the editor canvas (`CssFallback` / `WispAsset` / `RuntimeUnavailable`). `CursorAppearancePanel` composes UI-18 inspector primitives into APPEARANCE / CLICK EFFECT / MOTION / BEHAVIOR sections + a Reset/Apply footer. 6 stories cover preview light/dark + 4 appearance permutations.
+- **Linear:** [AUT-141](https://linear.app/harwood/issue/AUT-141).
+- **Files:** new `components/cursor/cursor_preview_canvas.rs` (`CursorPreviewCanvas`, `CursorPreviewBackend`, `CursorAppearancePanel`, `CursorAppearanceView`, `CursorColor`, `ClickEffect`, `CursorBehaviorView` + 2 unit tests). `components/cursor/mod.rs` re-exports. `fixtures/cursor.rs` adds `sample_cursor_appearance()` + `_pulse()` / `_spotlight()` / `_trail_on()` variants. `stories/cursor.rs` extends. `assets/style.css` adds `.cursor-preview-*`, `.cursor-appearance-*` + `@keyframes cursor-ring-pulse`. New `_docs/book/src/ui/chunks/cursor-preview-canvas.md`. `SUMMARY.md` indexes it.
+- **Verified:** 78 ui-storybook tests pass. 6 new asset HTMLs exported. Full `just gate` green.
+- **Halo strength dims when halo is off.** The appearance panel encodes per-row enable/disable in the view model so the parent doesn't have to disable individual controls inline.
+
+---
+
 ## UI-20 — CursorStudioShell + cursor style picker (AUT-140)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `CursorStyle { System, Arrow, Soft, Dot, Ring, Reticle, Tactile, Hide }`. `CursorStylePicker` renders a tile grid; `CursorStudioShell` composes preview slot + inspector slot + picker into the full studio screen layout. 4 stories: default picker, arrow-selected, all-disabled, full shell.

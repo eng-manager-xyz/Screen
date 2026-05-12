@@ -86,6 +86,54 @@ pub fn sample_cursor_studio_shell() -> crate::components::cursor::CursorStudioSh
     }
 }
 
+/// Sample appearance view (UI-21).
+#[must_use]
+pub fn sample_cursor_appearance() -> crate::components::cursor::CursorAppearanceView {
+    use crate::components::cursor::{
+        ClickEffect, CursorAppearanceView, CursorBehaviorView, CursorColor,
+    };
+    CursorAppearanceView {
+        size_percent: 120,
+        selected_color: CursorColor {
+            label: "Sky",
+            css: "#38bdf8",
+        },
+        halo_enabled: true,
+        halo_strength_percent: 60,
+        click_effect: ClickEffect::Ring,
+        smoothing_percent: 30,
+        trail_enabled: false,
+        behavior: CursorBehaviorView::Natural,
+    }
+}
+
+/// Variant — Pulse click effect.
+#[must_use]
+pub fn sample_cursor_appearance_pulse() -> crate::components::cursor::CursorAppearanceView {
+    use crate::components::cursor::ClickEffect;
+    let mut v = sample_cursor_appearance();
+    v.click_effect = ClickEffect::Pulse;
+    v
+}
+
+/// Variant — Spotlight click effect.
+#[must_use]
+pub fn sample_cursor_appearance_spotlight() -> crate::components::cursor::CursorAppearanceView {
+    use crate::components::cursor::ClickEffect;
+    let mut v = sample_cursor_appearance();
+    v.click_effect = ClickEffect::Spotlight;
+    v
+}
+
+/// Variant — trail on, smoothing high.
+#[must_use]
+pub fn sample_cursor_appearance_trail_on() -> crate::components::cursor::CursorAppearanceView {
+    let mut v = sample_cursor_appearance();
+    v.trail_enabled = true;
+    v.smoothing_percent = 85;
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
