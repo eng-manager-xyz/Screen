@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-08 — CaptureSourceRow + device picker rows (AUT-128)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CaptureSourceRow` (collapsed row, 5-col grid), `DevicePickerMenu` (composes UI-03 popover), `DevicePickerRow` (custom shape with thumbnail + meter + selected check). Six new stories cover collapsed camera/mic + open camera/mic pickers + empty + permission-needed states.
+- **Linear:** [AUT-128](https://linear.app/harwood/issue/AUT-128).
+- **Files:** new `crates/ui-storybook/src/components/recorder/{capture_source_row,device_picker}.rs` (`CaptureSourceKind`, `CaptureSourceView`, `DeviceOptionView`, `DevicePickerMenu`, `DevicePickerState`, `DeviceThumb` + 2 unit tests on `CaptureSourceKind`). `components/recorder/mod.rs` + `components/mod.rs` re-export. `fixtures/devices.rs` extended with `sample_capture_source_camera`/`_microphone` + `sample_camera_options` + `sample_microphone_options`. New `stories/recorder_devices.rs`; `stories/mod.rs` registers. `assets/style.css` adds `.capture-source-row*`, `.device-picker-*` classes. New `_docs/book/src/ui/chunks/{capture-source-row,device-picker-menu}.md`. `SUMMARY.md` indexes both (and fixes a missing UI-07 link for `display-source-card.md` while there).
+- **Verified:** 44 ui-storybook tests pass (was 42; +2 unit tests + 6 new stories in snapshot). Full `just gate` green.
+- **Empty/permission paths bypass the device list.** When `state != Populated`, the picker renders a centered icon + headline + subtitle from a fixed template and ignores `devices`. Parent always passes the real list — no kind-specific branching in `app-ui`.
+
+---
+
 ## UI-07 — DisplaySourceCard + canvas fallback (AUT-127)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `DisplaySourceCard` shows the selected screen with name + size + favourite + resolution pill + chevron header and a `DisplayPreviewFrame` body. Preview is a CSS-positioned mock (deterministic SSR fallback per the contract); a Wisp-backed PNG can land later via `wisp-export-stories` without touching the component API.

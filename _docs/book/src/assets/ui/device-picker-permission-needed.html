@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Recording toolbar — recording</title>
+    <title>Device picker — permission needed</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1456,6 +1456,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="toolbar" aria-label="Recording controls" class="recording-toolbar rec-recording"><div class="rec-status"><span class="rec-dot"></span><span class="rec-status-label">Recording</span></div><div class="rec-timer">02:17</div><div class="rec-source"><span class="rec-source-glyph">⌬</span><span class="rec-source-label">Built-in Display</span></div><div class="rec-actions"><button type="button" class="rec-action rec-action-secondary">Pause</button><button type="button" class="rec-action rec-action-stop">Stop</button></div></div>
+    <div role="dialog" class="popover-surface popover-bl" style="width:320px;"><header class="popover-header"><div class="popover-title">Microphones</div><!></header><div class="popover-body"><div class="device-picker-state"><div class="device-picker-state-glyph device-picker-state-glyph-warn" aria-hidden="true">⚠</div><div class="device-picker-state-title">Microphone access required</div><div class="device-picker-state-subtitle">Grant access in System Settings → Privacy &amp; Security, then re-open this menu.</div></div></div><footer class="popover-footer"><div class="menu-footer"><span style="font-size:11px;color:var(--text-tertiary);">Devices update live.</span><button class="btn btn-default btn-sm">Pair Bluetooth microphone</button></div></footer></div>
   </body>
 </html>

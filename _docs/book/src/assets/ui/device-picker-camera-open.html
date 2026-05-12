@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Recording toolbar — recording</title>
+    <title>Device picker — cameras (open)</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1456,6 +1456,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="toolbar" aria-label="Recording controls" class="recording-toolbar rec-recording"><div class="rec-status"><span class="rec-dot"></span><span class="rec-status-label">Recording</span></div><div class="rec-timer">02:17</div><div class="rec-source"><span class="rec-source-glyph">⌬</span><span class="rec-source-label">Built-in Display</span></div><div class="rec-actions"><button type="button" class="rec-action rec-action-secondary">Pause</button><button type="button" class="rec-action rec-action-stop">Stop</button></div></div>
+    <div role="dialog" class="popover-surface popover-bl" style="width:320px;"><header class="popover-header"><div class="popover-title">Cameras</div><!></header><div class="popover-body"><ul role="menu" aria-label="Cameras" class="menu-list"><li role="presentation" class="menu-section"><div class="menu-section-heading">Available</div><ul role="group" class="menu-section-rows"><li role="none" class="device-picker-row-item"><button role="menuitem" aria-pressed class="device-picker-row device-picker-row-selected"><span aria-hidden="true" class="device-picker-thumb" style="background:linear-gradient(135deg, #4338ca, #db2777);"><span class="device-picker-thumb-glyph">PE</span></span><span class="device-picker-row-text"><span class="device-picker-row-name">FaceTime HD Camera</span><span class="device-picker-row-detail">MacBook · 1080p</span></span><!><!><span aria-hidden="true" class="device-picker-row-check">✓</span></button></li><li role="none" class="device-picker-row-item"><button role="menuitem" class="device-picker-row"><span aria-hidden="true" class="device-picker-thumb" style="background:linear-gradient(135deg, #0ea5e9, #1e293b);"><span class="device-picker-thumb-glyph">iP</span></span><span class="device-picker-row-text"><span class="device-picker-row-name">iPhone 15 Pro</span><span class="device-picker-row-detail">Continuity · 4K</span></span><span class="badge badge-plan">Wireless</span><!><!></button></li><li role="none" class="device-picker-row-item"><button role="menuitem" class="device-picker-row"><span aria-hidden="true" class="device-picker-thumb" style="background:linear-gradient(135deg, #525252, #1f1f23);"><span class="device-picker-thumb-glyph">OB</span></span><span class="device-picker-row-text"><span class="device-picker-row-name">OBS Virtual Camera</span><span class="device-picker-row-detail">Not connected</span></span><!><!><!></button></li><!></ul></li></ul></div><footer class="popover-footer"><div class="menu-footer"><span style="font-size:11px;color:var(--text-tertiary);">Devices update live.</span><button class="btn btn-default btn-sm">Connect new camera</button></div></footer></div>
   </body>
 </html>
