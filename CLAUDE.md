@@ -387,6 +387,59 @@ live in the three subsections below it.
   `[macos-latest, ubuntu-latest, windows-latest]` with
   `fail-fast: false`. See the per-OS subsections below for what
   to install and what env vars to set on each.
+- **macOS is the truth runner for everything visual.** Real Apple
+  Silicon Metal renders every wgpu test without skips, AND it's
+  the OS where the canonical visual snapshots
+  (`story_fingerprints_match_snapshot`) are captured. Ubuntu
+  (lavapipe software Vulkan) and Windows (DX12) produce slightly
+  different pixels — fine for build-path validation but they can't
+  match macOS's bucketed-fingerprint snapshots, so visual-pixel
+  tests skip on non-macOS. Per-OS snapshot files are explicitly
+  rejected: they drift independently and double maintenance for
+  zero new signal. **Cross-OS gates validate the build path +
+  non-visual correctness; visual correctness is macOS's job.**
+- **Lavapipe env vars (`WGPU_BACKEND`, `WGPU_POWER_PREF`,
+  `WISP_SKIP_GPU_FILTER_TESTS`) are Ubuntu-only.** They exist to
+  pin wgpu to lavapipe and to skip the 3 multi-bind-group filter
+  tests that mesa's software Vulkan loses the device on. Don't
+  set them on macOS or Windows — those have real GPUs and the
+  skip env silently drops coverage of pipelines that run fine
+  natively.
+- **CI skip-pattern catalog.** Three flavours of skip, in
+  increasing strength. Pick the weakest one that fits your
+  failure mode.
+
+  1. **Runtime probe** (`gstreamer_available()`,
+     `skip_on_software_adapter()`). Test code probes the
+     environment at runtime and early-returns with `eprintln!`
+     if the prereq isn't there. **Use when** the binary loads
+     fine but a runtime dependency might be absent (GStreamer
+     CLI on Windows, lavapipe adapter on a non-Vulkan box).
+     Cheapest to maintain — same test binary across OSes,
+     skipping is data-driven.
+
+  2. **Env-var gate**
+     (`if std::env::var_os("WISP_SKIP_GPU_FILTER_TESTS").is_some()`).
+     Test code checks an env var the CI workflow sets per-OS.
+     **Use when** the prereq IS available but produces incorrect
+     output on a specific runner — lavapipe builds the pipeline
+     but corrupts the device, so we skip the test on Ubuntu CI
+     while keeping it active on macOS / local-dev Linux with
+     real GPU. The env var is the explicit opt-out signal.
+
+  3. **Compile-time cfg** (`#![cfg(not(target_os = "windows"))]`
+     at the top of a test file, or `cfg!(target_os = "windows")`
+     inside a `#[test]` body). Test doesn't compile / doesn't
+     run on the excluded OS. **Use when** the test binary can't
+     even load — Tauri 2's `mock_builder` on Windows aborts
+     with `STATUS_ENTRYPOINT_NOT_FOUND` because WebView2 SDK /
+     loader DLL versions mismatch, so nextest can't even list
+     tests. Cfg-skip is the only option when the binary itself
+     won't initialise.
+
+  **Don't mix flavours unnecessarily.** A test that runtime-probes
+  AND env-var-gates AND cfg-skips for the same condition is
+  unmaintainable; pick the one closest to the actual constraint.
 - **Two-book Pages deploy composes into one artifact.**
   `actions/upload-pages-artifact@v3` accepts a single directory.
   Mount the wisp book at `target/book/wisp/` via
@@ -428,25 +481,24 @@ live in the three subsections below it.
 
 ### CI — macOS (`macos-latest`)
 
-- **Truth runner for wgpu.** Real Apple Silicon Metal — same
-  backend as the dev box — runs every wgpu test without skips.
-  macos-latest minutes are free on public repos; 10× multiplier
-  on private. Use the matrix judiciously.
+The truth runner — see the universal rules above. This subsection
+captures macOS-specific install + skip facts only.
+
 - **Brew installs GStreamer for the screen gate:**
-  `brew install gstreamer`. No further env vars.
-- **No `WGPU_BACKEND` / `WGPU_POWER_PREF` / `WISP_SKIP_GPU_FILTER_TESTS`.**
-  Those are lavapipe-specific (see Ubuntu). Setting them on macOS
-  silently drops coverage of pipelines that work fine on Metal.
+  `brew install gstreamer`. No further env vars (see universal
+  rules — lavapipe env vars are Ubuntu-only).
 - **e2e (Tier-2) tests are intentionally skipped.** `tauri-driver`
   + WKWebView support is incomplete upstream; the suite prints a
   clear skip message and exits 0 on macOS.
 
 ### CI — Ubuntu (`ubuntu-latest`)
 
-- **Validates the Linux build path.** Lavapipe (mesa's software
-  Vulkan) loses the device on multi-bind-group filter pipelines,
-  so the 3 affected wgpu tests skip via env var. Everything else
-  runs.
+Validates the Linux build path. This subsection captures the
+Ubuntu-specific install + env + dep-pin facts — see the universal
+rules above for the macOS-as-visual-truth and lavapipe-env-vars-
+are-Ubuntu-only principles, and the "Lavapipe filter-test skip
+pattern" section below for the guard discipline.
+
 - **apt install — Tauri 2 toolchain:** `pkg-config libglib2.0-dev
   libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev
   libayatana-appindicator3-dev librsvg2-dev build-essential`.
@@ -468,9 +520,9 @@ live in the three subsections below it.
   `libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev
   libxcursor-dev libxrandr-dev libxi-dev` (winit 0.30 x11/wayland
   backend headers).
-- **Set wgpu env so adapter probing doesn't churn:**
-  `WGPU_BACKEND=vulkan`, `WGPU_POWER_PREF=low`, and
-  `WISP_SKIP_GPU_FILTER_TESTS=1` (for the lavapipe filter skips).
+- **Lavapipe env vars:** `WGPU_BACKEND=vulkan`,
+  `WGPU_POWER_PREF=low`, and `WISP_SKIP_GPU_FILTER_TESTS=1`
+  (skip-pattern catalog #2 — see universal rules).
 - **winit 0.30 feature pin.** A transitive dep with
   `default-features = false` strips winit's `x11`/`wayland`
   features and cargo's feature unification can leave Linux
@@ -489,40 +541,49 @@ live in the three subsections below it.
   `tauri-driver` + WebKitGTK under xvfb proved flaky enough that
   the signal stopped being useful. Contributors run it locally
   before opening Tauri shell PRs (`_docs/book/src/app-ui/testing.md`).
-- **Lavapipe is the software emulator, not real GPU.** Don't
-  rely on it for GPU-correctness signals — see the dedicated
-  "Lavapipe filter-test skip pattern" section below for the
-  guard discipline.
 
 ### CI — Windows (`windows-latest`)
 
-- **Validates the Windows build path** (MSVC, WebView2, native
-  DX12 for wgpu). All preinstalled on `windows-latest`; no extra
-  install steps for cargo to compile screen-app + run wisp tests.
-- **DX12 native — no lavapipe skip env vars.** Don't set
-  `WGPU_BACKEND` / `WGPU_POWER_PREF` / `WISP_SKIP_GPU_FILTER_TESTS`
-  on Windows. wgpu picks DX12 automatically and runs the
-  multi-bind-group filter pipelines that lavapipe can't.
-- **Git Bash preinstalled — set `defaults.run.shell: bash`** at
-  the workflow level (see universal rules above). Recipes with
-  `#!/usr/bin/env bash` shebangs route through Git Bash
-  automatically. Add a `bash --version` smoke step before
-  `just gate` so a future runner image change that drops Git
-  Bash fails with a clear error.
-- **GStreamer intentionally NOT installed.** Choco-install
-  GStreamer takes ~5 min per CI run for marginal coverage; the
-  `gstreamer_available()` runtime guard in `decode`, `preview`,
-  and `screen-app` integration tests skips them cleanly when the
-  binary is absent. If you ever want full GStreamer coverage on
-  Windows, install via
-  `choco install gstreamer gstreamer-devel --no-progress` and
+Validates the Windows build path (MSVC, WebView2, native DX12).
+This subsection captures Windows-specific install + skip facts
+only — see the universal rules above for the
+`defaults.run.shell: bash` workflow setting and the
+macOS-is-visual-truth-runner principle.
+
+- **WebView2 + MSVC + Git Bash + Python are preinstalled.** No
+  extra install steps for cargo to compile screen-app + run wisp
+  tests. Bash recipes work via `#!/usr/bin/env bash` shebangs.
+  Add a `bash --version` smoke step before `just gate` so a
+  future runner image change that drops Git Bash fails with a
+  clear error.
+- **GStreamer intentionally NOT installed in CI.** Choco-install
+  takes ~5 min per run for marginal coverage; the
+  `gstreamer_available()` runtime guard (see "skip-pattern
+  catalog" #1) skips the affected tests cleanly. Full Windows
+  GStreamer coverage would use
+  `choco install gstreamer gstreamer-devel --no-progress` +
   prepend `C:\Program Files\gstreamer\1.0\msvc_x86_64\bin` to
   `$GITHUB_PATH`.
+- **Tauri 2's `mock_builder` aborts test discovery with
+  `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`).** The Tauri 2
+  test path links transitively against `WebView2Loader.dll`; the
+  preinstalled Edge WebView2 loader on `windows-latest` is
+  missing an export that our pinned `tauri-runtime-wry` version
+  needs. The binary fails to load AT LIST TIME — nextest can't
+  even enumerate tests in `commands-*.exe`, much less run them.
+  **Skip via cfg** (`#![cfg(not(target_os = "windows"))]` at the
+  top of `crates/app/tests/commands.rs`) — runtime / env-var
+  skips don't help when the binary won't load. Full Windows Tauri
+  test coverage would require pinning a specific WebView2 SDK
+  version; defer until we ship Windows binaries.
 - **Tauri's `tauri-winres` requires `crates/app/icons/icon.ico`.**
-  See the "Tauri 2 specifics" section — without it the
-  screen-app build script aborts on `windows-latest`. Regen via
+  See "Tauri 2 specifics" — without it the screen-app build
+  script aborts. Regen via
   `cargo run -p screen-app --example regen-icons`; commit the
-  output.
+  output. `doc-gates required-files-check` (in `just gate`)
+  asserts both `icon.png` and `icon.ico` are tracked in git, so
+  a future `.gitignore` overreach can't silently drop the file
+  again.
 - **Path separators:** Windows uses `\` natively but bash on
   Windows accepts `/` in cargo paths. Stick to `/` in Justfile
   recipes for cross-platform consistency.

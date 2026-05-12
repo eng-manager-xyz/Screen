@@ -13,6 +13,24 @@
 //! Cost: each `mock_builder().build(...)` boots a real wisp Application
 //! (~200 ms on Apple Silicon) — same as the `player_session` tests, so
 //! we share session boot across cases by building the app once per test.
+//!
+//! # Why this file is skipped on Windows
+//!
+//! `tauri::test::mock_builder` transitively links against `WebView2` via
+//! `tauri-runtime-wry`. On `windows-latest` CI runners, the `WebView2`
+//! runtime is preinstalled but the SDK version that ships with our
+//! pinned Tauri 2 expects an export that the preinstalled `WebView2Loader.dll`
+//! doesn't have — nextest can't even list the tests, aborting with
+//! Windows status `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`). We
+//! skip the file rather than skip individual tests because the
+//! binary can't load at all. Full Windows Tauri-mock coverage would
+//! require pinning a specific `WebView2` SDK version in CI; not worth
+//! the complexity until we ship Windows binaries. macOS + Ubuntu
+//! exercise the IPC surface in CI.
+
+// Cross-platform skip: the file simply doesn't compile (and therefore
+// doesn't get a test binary) on Windows.
+#![cfg(not(target_os = "windows"))]
 
 use decode::gstreamer_pipe::gstreamer_available;
 use serde_json::json;
