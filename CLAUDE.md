@@ -545,6 +545,19 @@ errors. Skill path: `.claude/skills/leptos-migration.md`.
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
 - **`#[allow(clippy::*)]` requires `reason = "..."`** — no exceptions.
 - **Cargo cache can lie when nextest + workspace-check race.** Symptom: `cargo check --workspace --all-targets --all-features` reports `E0599 no variant, associated function, or constant named X` for a method/variant that *is* in the source file (and a per-crate `cargo check -p X` succeeds on the same source). Cause: `cargo nextest run -p crate --test foo` builds the test crate against an older dep snapshot and leaves a stale dep hash; the next workspace check picks up that snapshot. **Fix:** `cargo clean -p <crate>` and rerun. Add a renderer / library new-API change in one stable order: edit source → `cargo check -p <crate>` → run tests → run gate. Don't interleave nextest of an in-flight test against the new API with workspace checks.
+- **`target/` can balloon past 60 GB after pulling in axum/tokio/reqwest/tungstenite trees.** A full `just gate` on the dev-server crate set added ~50 GB on top of an already-warm cache and ran the laptop out of disk mid-link (`ENOSPC: clang -o ...rmeta`). Watch for `du -sh target` creeping past ~30 GB; `cargo clean -p <heaviest>` (`wisp-storybook` is one of the biggest) reclaims a couple of GB without nuking the workspace cache. If the harness itself starts erroring with `ENOSPC` on its task-output writes, only the user can recover — `cargo clean` from a real terminal.
+
+### Dev loop / dev-server
+
+- **`format!` with the same named placeholder repeated inside one big format string can confuse the macro parser** with cryptic "expected `,`, found `{`" errors at high column numbers. Don't try to be clever with `"<a href=\"#{id}\" data-id=\"{id}\">{title}</a>"`. Either split into multiple `format!` calls, switch to `push_str` concatenation, or pre-format into intermediate variables. The exporter's `render_index` is the cautionary tale — see `crates/ui-storybook/src/exporter.rs`.
+- **Axum 0.7 HTML-injection middleware lives at the crate root, not the route layer.** The pattern: `Router::new().route(...).fallback_service(ServeDir).with_state(...).layer(middleware::from_fn(inject_live_reload))`. `to_bytes(body, MAX)` collects the streaming `ServeDir` body so the middleware can splice in the live-reload script before `</body>`. Always update `Content-Length` after splicing.
+- **`notify-debouncer-mini` calls your handler from its own thread, not the tokio runtime.** Forward batched events to a `tokio::sync::mpsc::unbounded_channel` and process them in a tokio task. Forgetting this gives a runtime panic on the first `tokio::spawn` from inside the handler.
+- **`tailscale serve` (private) vs `tailscale funnel` (public) is the single decision** for remote dev. We use Serve. Don't flip to Funnel — it exposes the storybook to the open internet.
+- **Linker config (`.cargo/config.toml`) belongs in `.gitignore`.** `-fuse-ld=lld` errors at link time if lld isn't installed; committing the config breaks fresh clones. Ship `.cargo/config.toml.example` as the template, document `brew install lld` in CLAUDE.md, let each dev opt in.
+
+### Linear MCP / Cloudflare WAF
+
+- **Linear's MCP edge is behind Cloudflare and rejects POST bodies containing literal `<script>` tags.** Saving an issue with HTML code snippets returns the Cloudflare "blocked" page. Symptom: `Streamable HTTP error: Error POSTing to endpoint: <!DOCTYPE html><html…>Sorry, you have been blocked</html>` in the MCP response. **Workaround:** describe the injection in prose ("inline JS that opens a WebSocket and calls `location.reload()`") or HTML-entity-encode the tags. The narrative content always lands; users can paste the literal code into the Linear UI later.
 
 ### When you hit a NEW mistake
 
@@ -582,6 +595,23 @@ This project deliberately uses **only GStreamer** for decode, playback, encode, 
 
 **Do not add `ffmpeg-next`, `ac-ffmpeg`, `ffmpeg-sys-next`, or any other ffmpeg binding crate to this workspace.** If you find yourself wanting one, the answer is a GStreamer element — open AUT-144 for the mapping table or extend it. Historical PROGRESS.md entries that mention ffmpeg are journal entries documenting the M0.21 pivot; they describe what happened and are not directives.
 ```
+
+## Remote-first UI dev loop
+
+`just dev` runs `dev-server` (axum + WebSocket live reload) against the storybook assets in `_docs/book/src/assets/ui/`, watches `crates/ui-storybook/src` + `assets/style.css`, and broadcasts a reload on every successful rebuild. `just dev-remote` adds `tailscale serve` for phone preview (see the [remote-dev runbook](_docs/book/src/conventions/remote-dev.md) — the ≤5-click setup).
+
+```admonish important title="The dev-server crate is the home for dev-loop tooling"
+Don't add cargo-watch / Trunk / browser-sync / Node tooling for the dev loop. The single Rust crate at `crates/dev-server/` owns: file watching, debouncing, subprocess rebuild, WebSocket live reload, HTML response injection. Each piece has tests in `crates/dev-server/tests/`. The presentational-contract grep (UI-23) already keeps `ui-storybook` honest; the new piece is **never bypass the watcher's coalescing** — rapid-fire saves should produce one rebuild, not N.
+```
+
+**The dev loop's invariants** (gates enforce):
+- `dev_server::live_reload::INLINE_CLIENT` is injected ONLY into `text/html` responses ending in `.html` or `/`. CSS, JSON, PNG, etc. pass through byte-identical. (`tests/smoke.rs::css_response_is_byte_identical`.)
+- `ui_storybook::exporter::export_all` produces `<id>.html` for every story + `index.html` + `style.css`. The cockpit `index.html` contains every story id from `all_stories()`. (`tests/index_html.rs`.)
+- `render-worker` honours the JSON-IPC protocol in `dev_server::worker::{WorkerCommand, WorkerReply}`. The reply schema is part of the contract — don't rename fields. (`tests/render_worker.rs`.)
+
+**Linker speedup is opt-in.** `.cargo/config.toml.example` ships the mold/lld config; users symlink or copy to `.cargo/config.toml` (gitignored) after `brew install lld` or `apt install mold`. Knocks ~30–50 % off warm incremental rebuilds. Don't commit `.cargo/config.toml` itself — would break fresh clones without the linker installed.
+
+---
 
 ## Current milestone
 

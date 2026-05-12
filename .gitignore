@@ -116,3 +116,4 @@ tmp/
 # mdBook + rustdoc outputs land under target/ already, but keep this here
 # in case someone does `mdbook build` without `--dest-dir` (writes to `book/`).
 /_docs/book/book/
+.cargo/config.toml

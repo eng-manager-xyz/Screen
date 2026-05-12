@@ -14,6 +14,8 @@
 - [Testing](./conventions/testing.md)
 - [Documentation gate](./conventions/docs.md)
 - [Story / screenshot pipeline](./conventions/screenshots.md)
+- [Dev loop — local](./conventions/dev-loop.md)
+- [Remote dev — phone over Tailscale](./conventions/remote-dev.md)
 
 # `wisp` — the wgpu renderer
 

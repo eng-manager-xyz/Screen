@@ -6,6 +6,31 @@ Use the template at the bottom for new entries.
 
 ---
 
+## DEV-00..DEV-08 — Remote-first UI dev loop (AUT-145..153)
+- **Date:** 2026-05-12
+- **Status:** ✅ done — all 9 dev-loop tickets in one push on branch `localdev-next`. `just dev` boots the new `dev-server` crate (axum + WebSocket live reload + `notify`-driven rebuild) against the storybook assets; `just dev-remote` exposes it via `tailscale serve` for phone preview in ≤5 setup clicks; `cargo run -p ui-storybook --bin ui-export-stories` now emits `index.html` (cockpit page with sidebar + iframe + URL-hash routing + search filter `/` key); `render-worker` binary keeps a warm rendering process for sub-second incremental rebuilds.
+- **Linear:** [AUT-145](https://linear.app/harwood/issue/AUT-145) DEV-00 foundation · [AUT-152](https://linear.app/harwood/issue/AUT-152) DEV-01 live reload · [AUT-146](https://linear.app/harwood/issue/AUT-146) DEV-02 watcher · [AUT-147](https://linear.app/harwood/issue/AUT-147) DEV-03 index · [AUT-148](https://linear.app/harwood/issue/AUT-148) DEV-04 `just dev` · [AUT-153](https://linear.app/harwood/issue/AUT-153) DEV-05 Tailscale runbook · [AUT-149](https://linear.app/harwood/issue/AUT-149) DEV-06 linker · [AUT-150](https://linear.app/harwood/issue/AUT-150) DEV-07 worker · [AUT-151](https://linear.app/harwood/issue/AUT-151) DEV-08 search.
+- **Files:**
+  - **New crate `crates/dev-server/`** (lib + bin + 3 source modules + 2 test files). `live_reload.rs` = WebSocket fan-out via `tokio::sync::broadcast` + HTML response injection middleware (inserts inline client before `</body>`). `watcher.rs` = `notify-debouncer-mini` with 250 ms debounce + CSS fast path (sub-100 ms direct copy) + full-rebuild subprocess with coalescing. `worker.rs` = JSON-IPC types shared with `render-worker`. `main.rs` = clap CLI. `tests/smoke.rs` = 4 integration tests (HTML injection, CSS byte-identity, WS reload broadcast, 404). Plus 12 unit tests across the modules.
+  - **`crates/ui-storybook/src/exporter.rs`** (new) — refactored rendering library used by both `ui-export-stories` (one-shot) and `render-worker` (long-lived). `export_all` + `export_subset` + `story_count`. 5 unit tests.
+  - **`crates/ui-storybook/src/bin/render_worker.rs`** (new) — JSON-lines stdin/stdout protocol; reads `{"cmd":"rerender","ids":[...]}`, replies `{"reply":"done"|"batch_done"|"error"}`. Worker survives compile errors gracefully (parse errors → `error` reply, no crash).
+  - **`crates/ui-storybook/src/bin/export_stories.rs`** — now a thin wrapper over `exporter::export_all`.
+  - **`crates/ui-storybook/src/bin/index_script.js`** (new) — vanilla-JS cockpit (URL-hash routing, search filter, `/` to focus, Esc to clear, `sessionStorage` persistence). Inlined into the generated `index.html`.
+  - **`crates/ui-storybook/assets/style.css`** — appended `.storybook-index-*` classes (~100 lines).
+  - **`crates/ui-storybook/tests/index_html.rs`** (new) — runs the exporter, asserts every story id + title + category from `all_stories()` appears in `index.html`. Catches "new story added but exporter dropped it" regressions.
+  - **`crates/ui-storybook/tests/render_worker.rs`** (new) — spawns the worker binary, drives it via JSON over stdin, asserts replies + that `button-variants.html` actually got written.
+  - **`Justfile`** — added `dev`, `dev-remote`, `dev-remote-stop` recipes under a "Remote-first UI dev loop" section.
+  - **`.cargo/config.toml.example`** (new) — opt-in mold/lld template. `.gitignore` adds `.cargo/config.toml` so each dev opts in independently after `brew install lld` / `apt install mold`.
+  - **`_docs/book/src/conventions/dev-loop.md`** (new) — local-loop docs.
+  - **`_docs/book/src/conventions/remote-dev.md`** (new) — Tailscale install + 5-click setup + mermaid sequence diagram.
+  - **`_docs/book/src/SUMMARY.md`** — adds both new chapters under Conventions.
+  - **`CLAUDE.md`** — new "Remote-first UI dev loop" section + 5 new rehearsal-notes entries (`format!` brace-collision, axum middleware pattern, notify-thread vs tokio runtime, Tailscale Serve-not-Funnel, `target/` disk blowups).
+- **Verified:** 132 ui-storybook stories pass the SSR snapshot test. 16 dev-server tests pass (4 integration over real localhost+WS, 12 unit). 2 ui-storybook render-worker integration tests pass (spawn worker → write JSON → read replies → assert file written). 1 new ui-storybook index regression test passes. Full `just gate` green.
+- **Loop count:** 4 clippy iterations + 1 disk-full incident + 1 fmt round before final green. Lessons all captured in CLAUDE.md so the next pass goes cleaner.
+- **What's deferred:** persistent-worker integration *inside* dev-server (the watcher still spawns one cargo per rebuild rather than reusing the warm render-worker). The worker binary + IPC + types ship today and prove they work via the integration tests; wiring them into the watcher state machine is a follow-up since (a) the current 3–8 s warm rebuild is fine for ≤132 stories and (b) the worker integration is the riskiest piece. Tracked at the bottom of AUT-150.
+
+---
+
 ## Media stack lockdown — drop ffmpeg-next, GStreamer-only (AUT-144)
 - **Date:** 2026-05-12
 - **Status:** ✅ done — refactor + documentation lockdown. No encode code was written for ffmpeg-next (the path was retired before implementation), so this is a planning/docs cleanup, not a code migration. Decode + playback already use GStreamer (`gstreamer_pipe`, `media::gstreamer`).

@@ -181,6 +181,47 @@ mermaid-check:
 # Per-task gate. Run before marking any task done.
 gate: fmt check lint test doctest docs snapshots-check mermaid-check
 
+# ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
+
+# Local-only storybook dev loop. Watches ui-storybook src + assets,
+# re-runs export-stories on change, browser auto-reloads via WebSocket.
+# Visit http://127.0.0.1:3000/ to see the storybook index.
+#
+# For phone access over Tailscale, see `just dev-remote`.
+dev:
+    cargo run -p dev-server --release -- \
+        --assets _docs/book/src/assets/ui \
+        --watch crates/ui-storybook/src crates/ui-storybook/assets \
+        --port 3000 \
+        --host 127.0.0.1
+
+# Remote-accessible storybook for phone preview. Starts `dev` in the
+# background, exposes the local server via Tailscale Serve, prints the
+# phone-reachable HTTPS URL. Requires Tailscale installed + signed in
+# (see _docs/book/src/conventions/remote-dev.md for one-time setup).
+#
+# Stop with: `just dev-remote-stop`.
+dev-remote:
+    @echo "Booting dev-server in background (logs: /tmp/screen-dev-server.log)…"
+    @nohup just dev > /tmp/screen-dev-server.log 2>&1 &
+    @sleep 4
+    @echo "Exposing via Tailscale Serve…"
+    tailscale serve --bg http://127.0.0.1:3000
+    @echo ""
+    @echo "Phone URL:"
+    @tailscale serve status | grep -Eo 'https://[^ ]+' | head -1 || echo "(check 'tailscale serve status' manually)"
+    @echo ""
+    @echo "Stop with:  just dev-remote-stop"
+
+# Tear down the background dev-server + Tailscale Serve config opened by
+# `just dev-remote`.
+dev-remote-stop:
+    @echo "Stopping Tailscale Serve…"
+    -tailscale serve --https=443 off
+    @echo "Killing background dev-server…"
+    -pkill -f "target/release/dev-server" || true
+    @echo "Done."
+
 # Tier-2 e2e tests. Requires `tauri-driver` and (on Linux) `webkit2gtk-driver`
 # + `xvfb`. Linux runs the suite under `xvfb-run` for headless display;
 # macOS prints a clear skip message because `tauri-driver`'s WKWebView
