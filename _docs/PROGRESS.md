@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-05 — WorkspaceSwitcherMenu (AUT-125)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `WorkspaceSwitcherMenu` is a pure composition of UI-03 menu primitives + UI-01 surface tokens. Takes `Vec<WorkspaceView>` + `selected_id: String`, renders the popover the rail's `WorkspaceBadge` opens. Four stories cover default / many / long-names / no-selection.
+- **Linear:** [AUT-125](https://linear.app/harwood/issue/AUT-125).
+- **Files:** new `crates/ui-storybook/src/components/shell/workspace_menu.rs` (`WorkspaceSwitcherMenu`, `WorkspaceView`, `format_member_count` + 2 unit tests). `components/shell/mod.rs` + `components/mod.rs` re-export. `fixtures/workspaces.rs` extended with `sample_workspace_views()` / `_many()` / `_long_names()`. New `stories/workspace_menu.rs` + `stories/mod.rs` registration. New `_docs/book/src/ui/chunks/workspace-switcher.md`. `SUMMARY.md` indexes it.
+- **Verified:** 38 ui-storybook tests pass (was 36; +2 unit tests for `format_member_count` + snapshot extends for 4 new stories). Full `just gate` green.
+- **No bespoke CSS.** Every visual class on the menu comes from UI-01 / UI-03. The component is ~80 lines because the heavy lifting was done by `PopoverSurface` / `MenuList` / `MenuRow`. UI-08 (device picker), UI-09 (system-audio picker), UI-10 (on-screen options popover) will follow the same composition pattern.
+
+---
+
 ## UI-04 — Shared control primitives (AUT-124)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — seven new control primitives expand the `Button` vocabulary: `IconButton` (Ghost/Filled/Danger + pressed), `ToggleSwitch` (controlled), `SegmentedControl` (radio-tab pills), `Slider` (visual only — no drag), `SelectPill` (popover trigger), `ColorSwatch` (circular tile w/ selected outline), `Meter` (audio level bars w/ danger color). Six new stories.

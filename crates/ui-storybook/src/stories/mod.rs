@@ -20,6 +20,7 @@ pub mod menus;
 pub mod primitives;
 pub mod recorder;
 pub mod shell;
+pub mod workspace_menu;
 
 /// Viewport hint for a story. Drives how the storybook exporter sizes
 /// the surrounding chrome and how mdBook's `<iframe>` height is set.
@@ -88,10 +89,10 @@ pub fn all_stories() -> Vec<Story> {
     out.extend(editor::stories());
     out.extend(shell::stories());
     out.extend(recorder::stories());
-    // Empty for now — UI-03 / UI-05 / UI-10 / UI-12 will populate menus;
-    // UI-14 / UI-15 will populate library; UI-20 / UI-21 will populate
-    // cursor. The empty calls keep the aggregation pattern uniform.
+    // Menus is populated by UI-03 / UI-05; library + cursor land later
+    // (UI-14 / UI-15 / UI-20 / UI-21).
     out.extend(menus::stories());
+    out.extend(workspace_menu::stories());
     out.extend(library::stories());
     out.extend(cursor::stories());
     out

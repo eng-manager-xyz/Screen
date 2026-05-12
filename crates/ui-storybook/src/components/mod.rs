@@ -71,4 +71,5 @@ pub use recorder::{RecordingState, RecordingToolbar};
 pub use shell::{
     AppSection, AppShell, DropZone, DropZoneState, NavItemView, NavigationRail, StatusBar,
     StatusKind, UserAvatar, UserAvatarView, WorkspaceBadge, WorkspaceBadgeView,
+    WorkspaceSwitcherMenu, WorkspaceView, format_member_count,
 };

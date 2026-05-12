@@ -120,6 +120,7 @@
   - [App shell](./ui/chunks/app-shell.md)
   - [Popover surface](./ui/chunks/popover-surface.md)
   - [Menu row](./ui/chunks/menu-row.md)
+  - [Workspace switcher](./ui/chunks/workspace-switcher.md)
   - [Controls](./ui/chunks/controls.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
