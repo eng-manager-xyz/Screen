@@ -135,6 +135,95 @@ Allowed exceptions (do NOT convert):
 
 The `mermaid-check` gate fails on any non-allowlisted chapter containing box-drawing chars (`┌ │ └ ├ ═ ╔ ╗`) or the unicode arrow run `─►` / `──▶` / `◄──`. New violations show the offending file + line.
 
+### README authoring — GitHub-readable, no preprocessing
+
+Every crate has a `README.md` at the GitHub level — separate from
+the mdBook chapters, separate from rustdoc. The README is what
+shows up on `github.com/.../tree/main/crates/<name>/` and (for
+publishable crates) on crates.io.
+
+```admonish important title="READMEs use pure GitHub Flavored Markdown"
+**No `mdbook-preprocessor-cross` tags in READMEs.** `{{shared}}` /
+`{{wisp-link}}` are mdBook-only — GitHub doesn't run a
+preprocessor. READMEs use:
+
+- ` ```mermaid ` blocks (GitHub renders natively).
+- GFM callouts: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`,
+  `> [!WARNING]`, `> [!CAUTION]`.
+- Relative image links to committed assets
+  (`../../_docs/wisp-book/src/assets/wisp/foo.png` from a crate
+  README).
+- Absolute URLs into the published mdBook / rustdoc for deep-dive
+  links (`https://eng-manager-xyz.github.io/screen/...`).
+```
+
+**Canonical sections per README** (skip any that don't apply):
+
+1. **Title + tagline** — `# `crate-name` — <one-line tagline>` then
+   a 2-3 line blockquote summary.
+2. **What it does** — paragraph. Frame the problem the crate
+   solves, not the implementation.
+3. **Where it fits** — a `mermaid flowchart LR` (architecture) or
+   `sequenceDiagram` (lifecycle). One per README. Use the existing
+   class palette (`fill:#7c2d12,stroke:#ea580c,color:#fed7aa` for
+   wisp; `#14532d` for media; `#312e81` for UI; `#1e293b` for
+   shell; `#374151` for other crates) so the crate's role is
+   visually consistent across READMEs.
+4. **Quickstart** — minimal rust / bash that gets a reader to
+   "something visible" in <10 lines.
+5. **Hero output** (where applicable) — `![alt](relative/path.png)`
+   pointing at an existing committed asset. Don't add new images
+   for the README; reuse the storybook / chapter PNGs.
+6. **Public API at a glance** — markdown table of the top 5-10
+   items. Link to the deployed rustdoc, not relative paths
+   (rustdoc isn't checked into the repo).
+7. **Runbook** — `Build + test` / `Run` / `Common tasks` /
+   `Troubleshooting`. Operational, not aspirational.
+8. **Deep dive** — links to the book chapter(s), examples dir,
+   sibling-crate READMEs, CLAUDE.md sections.
+9. **License** — one line. MIT.
+
+**GFM callouts vs mdBook admonish.** Different platforms, different
+syntax, same affordance:
+
+- **`> [!NOTE]` / `[!TIP]` / `[!IMPORTANT]` / `[!WARNING]` /
+  `[!CAUTION]`** — GitHub renders as styled callouts. Use in
+  READMEs.
+- **` ```admonish note ` etc.** — mdbook-admonish renders as styled
+  callouts. Use in book chapters.
+- If you inline a README into a book chapter via
+  `mdbook-cmdrun`, the GFM blockquote renders as a plain
+  blockquote in mdBook — acceptable fidelity loss for the DRY win.
+
+**Mermaid in READMEs** — same `mermaid-check` rules apply
+conceptually (no ASCII art) but no automated gate enforces it on
+READMEs today. Hand-check.
+
+**The five most-cited callouts in our READMEs:**
+
+| Callout | When to use |
+|---|---|
+| `> [!IMPORTANT]` | Architectural boundary that, if violated, breaks publishing or correctness (wisp's no-upward-dep rule; Leptos's presentational contract). |
+| `> [!WARNING]` | Operational footgun that costs a cycle (gtk-rs at compile time, `Icon?` gitignore, Tauri `beforeDevCommand` from parent). |
+| `> [!CAUTION]` | Don't-do-this rules (don't add ffmpeg-next; both `icon.png` AND `icon.ico` must be tracked). |
+| `> [!NOTE]` | Useful side info — env-var skips, OS-specific test skips, encoding gotchas. |
+| `> [!TIP]` | Best-practice nudges — dev-loop choices, opt-in linker config. |
+
+```admonish tip title="DRY README ↔ book content via cmdrun"
+When a crate's README and its book chapter would share the bulk of
+their content (overview + quickstart), use `mdbook-cmdrun` to
+inline the README into the chapter:
+
+\`\`\`markdown
+<!-- cmdrun cat ../../../crates/<name>/README.md -->
+\`\`\`
+
+`cmdrun` runs at build time from the chapter's directory. The
+chapter then wraps the README with book-specific deep-dive content.
+This keeps the README authoritative (GitHub-level reading) and the
+book chapter rich (preprocessed cross-links, deeper architecture).
+```
+
 ### The recursive-fix loop
 
 When `just gate` fails, you **must** loop until it's green. There is no exit other than green:

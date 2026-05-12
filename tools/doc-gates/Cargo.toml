@@ -3,7 +3,8 @@ name = "doc-gates"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "CI/local gates for the screen + wisp mdBooks (shared-check, snapshots-check)."
+description = "CI/local gates for the screen + wisp mdBooks (shared-check, snapshots-check, mermaid-check, required-files-check)."
+readme = "README.md"
 
 [lib]
 name = "doc_gates"
