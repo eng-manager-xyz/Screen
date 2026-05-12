@@ -143,7 +143,7 @@ By the end of M1 the project has:
 
 - Cargo workspace with `crates/app`
 - Tauri 2 dev/build toolchain working
-- Leptos 0.7 hot-reload via Trunk
+- Leptos 0.8 hot-reload via Trunk
 - WASM bundle output from Trunk consumed by Tauri
 - Asset protocol configured for arbitrary local files (tightened later)
 - A clear pattern for: signal-driven UI, Tauri command bridge, drag-drop event handling, conditional view rendering

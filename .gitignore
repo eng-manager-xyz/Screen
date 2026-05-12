@@ -106,6 +106,11 @@ tmp/
 # ─── Local Claude Code harness state ──────────────────────────────────────────
 # `.claude/` holds per-machine session/scheduling state — not project-shared.
 .claude/
+# ...but `.claude/skills/` is intentionally project-shared: skill markdown
+# files (e.g. `leptos-migration.md`) need to ship with the repo so every
+# contributor's Claude session picks them up.
+!.claude/skills/
+!.claude/skills/**
 
 # ─── Project / output scratch ─────────────────────────────────────────────────
 # mdBook + rustdoc outputs land under target/ already, but keep this here

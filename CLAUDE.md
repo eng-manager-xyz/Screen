@@ -251,12 +251,63 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **`tauri::generate_context!` is a procedural macro** that depends on `tauri` at expansion time. `cargo machete` doesn't see this — add `[package.metadata.cargo-machete] ignored = ["tauri"]` to suppress the false positive.
 - **Tauri 2's Linux backend pulls archived gtk-rs crates.** Expect ~16 RustSec advisories on Linux (RUSTSEC-2024-0411..0420 family + 2025-0075..0100). All unmaintained-only, none exploits. Add to `deny.toml` `[advisories].ignore` once. (M1.1, ISS-02.)
 
-### Leptos `#[component]` specifics
+### Leptos discipline
 
-- **`#[component]` rewrites function shape.** It generates a builder-pattern struct + wrapper fn; clippy lints (`must_use_candidate`, `needless_pass_by_value`) fire on the *generated* code regardless of where you put `#[allow]` on the source fn. **Use module-level `#![allow(...)]`** in `components/mod.rs` rather than per-fn pragmas.
-- **`leptos::prelude::*` re-exports `tachys::prelude::*`,** which brings `RenderHtml::to_html()` into scope. SSR test pattern: `view.into_view().to_html()` — synchronous, returns `String`, perfect for `insta`.
-- **`<Show when=…>` requires the `when` closure to be `'static`.** If the `when` reads from a captured `String`, capture a `bool` instead and clone the `String` inside the body.
-- **Plain CSS over Tailwind in this workspace.** Keeps the toolchain Rust-only (no npm / standalone binary fetch). Class names mirror rust-ui's hooks so a future swap is search-and-replace, not a rewrite.
+```admonish important title="MANDATORY: invoke the `leptos-migration` skill BEFORE writing Leptos"
+**Whenever you are about to write, edit, or review code that touches
+`leptos::`, `#[component]`, `view!{ ... }`, signals, effects,
+resources, actions, server fns, or anything Leptos — invoke the
+`leptos-migration` skill first via the `Skill` tool.** It is the
+durable source of truth for: the pinned version, the API name
+changes from every prior major (0.1 → 0.7), the "strive to use"
+0.8 idioms, and the project-specific landmines below. Doing this
+before the first edit takes seconds and prevents the recurring class
+of "this code looks correct for Leptos 0.6 but won't compile"
+errors. Skill path: `.claude/skills/leptos-migration.md`.
+```
+
+- **Pinned version: `leptos = "0.8"` everywhere.** Both
+  `crates/ui-storybook/Cargo.toml` and `crates/app-ui/Cargo.toml`
+  pin to `"0.8"`. New crates that depend on Leptos must also pin to
+  `"0.8"`. **Never** add `leptos = "0.7"` (or earlier) to a new
+  Cargo.toml; never copy a `create_signal(cx, ...)` example from the
+  internet without translating to `signal(...)` /
+  `RwSignal::new(...)` first. The skill has the full name-changes
+  table.
+- **`#[component]` rewrites function shape.** It generates a
+  builder-pattern struct + wrapper fn; clippy lints
+  (`must_use_candidate`, `needless_pass_by_value`) fire on the
+  *generated* code regardless of where you put `#[allow]` on the
+  source fn. **Use module-level `#![allow(...)]`** in
+  `components/mod.rs` rather than per-fn pragmas.
+- **`leptos::prelude::*` re-exports `tachys::prelude::*`,** which
+  brings `RenderHtml::to_html()` into scope. SSR test pattern:
+  `view.into_view().to_html()` — synchronous, returns `String`,
+  perfect for `insta`.
+- **`<Show when=…>` requires the `when` closure to be `'static`.**
+  If the `when` reads from a captured `String`, capture a `bool`
+  instead and clone the `String` inside the body.
+- **`Option<Children>` props take the bare value, NOT `Some(...)`.**
+  The `#[prop(optional)]` macro wraps internally. Passing
+  `Some(ToChildren::to_children(...))` produces `Option<Option<_>>`
+  and you get "expected `Box<dyn FnOnce()…>`, found `Option<_>`".
+  Pass `ToChildren::to_children(...)` directly or omit the prop.
+- **Plain CSS over Tailwind in this workspace.** Keeps the toolchain
+  Rust-only (no npm / standalone binary fetch). Class names mirror
+  rust-ui's hooks so a future swap is search-and-replace, not a
+  rewrite.
+
+```admonish note title="When upgrading Leptos in the future"
+1. Update the skill **first** — read the new version's release notes,
+   add the new "strive to use" idioms + a quick-reference row to the
+   name-changes table.
+2. Bump the version in both `Cargo.toml`s.
+3. Run `cargo update -p leptos@<old> --precise <new>` to push the
+   lockfile.
+4. `just gate`. The presentational contract usually catches
+   breakages at the type-check step.
+5. Update the "Pinned version" bullet above with the new number.
+```
 
 ### Story testing pattern (insta + wgpu error scopes)
 
@@ -516,7 +567,7 @@ Library is means; the app is the goal.
 ## Stack (locked 2026-05-09)
 
 - **Shell:** Tauri 2 (multi-window)
-- **UI:** Leptos 0.7 (Rust → WASM) inside the Tauri webview
+- **UI:** Leptos 0.8 (Rust → WASM) inside the Tauri webview. See `.claude/skills/leptos-migration.md` for version-by-version migration notes and "strive to use" 0.8 idioms.
 - **Renderer:** `wisp` (in-repo, `crates/wisp`) — wgpu + WGSL
 - **Editor preview:** native `winit` sibling window rendered by `wisp`
 - **Capture:** `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux)
@@ -556,6 +607,16 @@ For every task in the task list:
 - **Every chunk gets its own mdBook chapter at `_docs/book/src/<crate>/chunks/<id>.md`** and is linked into `SUMMARY.md` under its milestone heading. The chapter MUST embed the chunk's screenshot/HTML (no asset = empty page = gate fails). Milestone close requires `just site` to render every chapter green and `just docs-strict` to pass without broken intra-doc links.
 - **`just gate` must be green before any task is marked done.** No exceptions.
 - **Recursive-fix loop:** if `just gate` is red, loop until green. Never disable tests, never `#[allow]` clippy without reason, never bypass deny/machete findings.
+- **Leptos work invokes the `leptos-migration` skill first.** Any
+  edit that touches `leptos::`, `#[component]`, `view!{}`, signals,
+  effects, resources, actions, or server fns triggers a
+  `Skill` call to `leptos-migration` (`.claude/skills/leptos-migration.md`)
+  *before* the first edit. The skill has the pinned version
+  (`"0.8"`), the version-by-version name-changes table, the
+  "strive to use" 0.8 idioms (`signal()`, `Effect::watch`,
+  `FromServerFnError`, `Websocket` server fns,
+  `--cfg=erase_components`), and the project-specific landmines.
+  See the **Leptos discipline** section above for full context.
 - **Append to `PROGRESS.md` for every completed task.** It's the only durable record across context windows.
 - **File issues in `ISSUES.md`** for anything you can't fix inside the current chunk.
 - Don't expand task scope. Adjacent work → `ISSUES.md`.
