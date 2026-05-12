@@ -4,9 +4,12 @@
 
 use leptos::prelude::*;
 
-use crate::components::editor::{DopeSheet, PlayState, PlayerControls};
+use crate::components::editor::{DopeSheet, EditorShell, PlayState, PlayerControls};
 use crate::components::primitives::{Card, CardBody, CardHeader};
-use crate::fixtures::editor::{sample_dope_sheet_dense, sample_dope_sheet_tracks};
+use crate::fixtures::editor::{
+    sample_dope_sheet_dense, sample_dope_sheet_tracks, sample_editor_shell,
+    sample_editor_shell_export_disabled,
+};
 
 use super::{Story, StoryViewport, render};
 
@@ -63,6 +66,46 @@ pub fn stories() -> Vec<Story> {
             viewport: StoryViewport::Auto,
             render: render_editor_mock,
         },
+        Story {
+            id: "editor-shell-empty",
+            category: "Editor",
+            title: "Editor shell — empty (no clip)",
+            viewport: StoryViewport::Fixed {
+                width: 960,
+                height: 600,
+            },
+            render: render_editor_shell_empty,
+        },
+        Story {
+            id: "editor-shell-clip-loaded",
+            category: "Editor",
+            title: "Editor shell — clip loaded",
+            viewport: StoryViewport::Fixed {
+                width: 960,
+                height: 600,
+            },
+            render: render_editor_shell_loaded,
+        },
+        Story {
+            id: "editor-toolbar-states",
+            category: "Editor",
+            title: "Editor toolbar — selected + disabled mix",
+            viewport: StoryViewport::Fixed {
+                width: 720,
+                height: 80,
+            },
+            render: render_editor_toolbar_states,
+        },
+        Story {
+            id: "editor-shell-export-disabled",
+            category: "Editor",
+            title: "Editor shell — export disabled",
+            viewport: StoryViewport::Fixed {
+                width: 960,
+                height: 600,
+            },
+            render: render_editor_shell_export_disabled,
+        },
     ]
 }
 
@@ -116,6 +159,26 @@ fn render_player_playing() -> String {
 fn render_player_near_end() -> String {
     render(view! {
         <PlayerControls state=PlayState::Playing position=0.94 duration_seconds=84.0 />
+    })
+}
+
+fn render_editor_shell_empty() -> String {
+    render(view! { <EditorShell view=sample_editor_shell(false) /> })
+}
+
+fn render_editor_shell_loaded() -> String {
+    render(view! { <EditorShell view=sample_editor_shell(true) /> })
+}
+
+fn render_editor_shell_export_disabled() -> String {
+    render(view! { <EditorShell view=sample_editor_shell_export_disabled() /> })
+}
+
+fn render_editor_toolbar_states() -> String {
+    use crate::components::editor::EditorToolbar;
+    let v = sample_editor_shell(true);
+    render(view! {
+        <EditorToolbar actions=v.toolbar_actions export_enabled=true share_enabled=false />
     })
 }
 

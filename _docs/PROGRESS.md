@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-16 — EditorShell + top toolbar (AUT-136)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — structural shell with macOS title bar, top toolbar (16:9 / Crop / Annotate / Trim + Share / Export), and `canvas` / `inspector` / `timeline` slots as `Option<Children>`. `EditorToolbar` reusable standalone. 4 stories: empty, clip-loaded, toolbar-states, export-disabled.
+- **Linear:** [AUT-136](https://linear.app/harwood/issue/AUT-136).
+- **Files:** new `components/editor/editor_shell.rs` (`EditorShell`, `EditorShellView`, `EditorTitleBar`, `EditorToolbar`, `ToolbarActionView` + 1 unit test). `components/editor/mod.rs` re-exports. `fixtures/editor.rs` adds `sample_editor_shell(has_clip_loaded)` / `_export_disabled()`. `stories/editor.rs` extends (4 new stories). `assets/style.css` adds `.editor-shell*`, `.editor-titlebar*`, `.editor-toolbar*`, `.editor-action*`, `.editor-canvas`, `.editor-inspector`, `.editor-timeline` + `.traffic-*` dots. New `_docs/book/src/ui/chunks/editor-shell.md`. `SUMMARY.md` indexes it.
+- **Verified:** 71 ui-storybook tests pass. 4 new asset HTMLs exported. Full `just gate` green.
+- **Slots are structural.** UI-17/18/19 fill `canvas` / `inspector` / `timeline` as `Option<Children>` — the shell itself doesn't know or care what each renders.
+
+---
+
 ## UI-15 — RecordingCard + LibraryGrid (AUT-135)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `RecordingCard` covers Ready / Processing(percent) / Failed. `LibraryGrid` composes a `LibraryToolbar` (filter chips + sort + grid/list toggle) above the card collection. Empty grid renders a centered placeholder. 6 stories ship.

@@ -2162,3 +2162,91 @@ kbd {
 .recording-card-subtitle { font-size: 11px; color: var(--text-secondary); }
 .recording-card-metrics { display: inline-flex; gap: 10px; margin-top: 4px; }
 .recording-card-metric { font-size: 11px; color: var(--text-tertiary); }
+
+/* ───── UI-16 — Editor shell ───── */
+.editor-shell {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+.editor-titlebar {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--line-subtle);
+}
+.editor-titlebar-traffic { display: inline-flex; gap: 6px; }
+.traffic-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.traffic-close { background: #ff5f57; }
+.traffic-min { background: #ffbd2e; }
+.traffic-max { background: #28c840; }
+.editor-titlebar-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
+}
+.editor-titlebar-title { font-size: 13px; font-weight: 600; }
+.editor-titlebar-subtitle { font-size: 11px; color: var(--text-secondary); }
+.editor-titlebar-empty .editor-titlebar-title { color: var(--text-tertiary); font-style: italic; font-weight: 400; }
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--line-subtle);
+}
+.editor-toolbar-actions { display: inline-flex; gap: 4px; }
+.editor-toolbar-end { display: inline-flex; gap: 8px; }
+.editor-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.editor-action:hover { background: var(--surface-elevated); color: var(--text-primary); }
+.editor-action-selected { background: var(--surface-selected); color: var(--text-primary); border-color: var(--line-strong); }
+.editor-action-disabled { opacity: 0.4; cursor: not-allowed; }
+.editor-action-icon { font-size: 13px; }
+
+.editor-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+.editor-canvas {
+  background:
+    repeating-conic-gradient(var(--surface-elevated) 0% 25%, var(--surface-base) 0% 50%) 50% 50% / 24px 24px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line-subtle);
+  min-height: 280px;
+}
+.editor-inspector {
+  background: var(--surface-elevated);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line-subtle);
+  padding: 12px;
+  overflow: auto;
+}
+.editor-timeline {
+  background: var(--surface-elevated);
+  border-top: 1px solid var(--line-subtle);
+  padding: 8px 12px;
+}

@@ -96,6 +96,58 @@ pub fn sample_dope_sheet_dense() -> Vec<DopeSheetTrack> {
     tracks
 }
 
+/// Sample editor-shell view (UI-16).
+#[must_use]
+pub fn sample_editor_shell(has_clip_loaded: bool) -> crate::components::editor::EditorShellView {
+    use crate::components::editor::{EditorShellView, ToolbarActionView};
+    let actions = vec![
+        ToolbarActionView {
+            id: "16-9",
+            label: "16:9",
+            icon: "▭",
+            selected: true,
+            disabled: false,
+        },
+        ToolbarActionView {
+            id: "crop",
+            label: "Crop",
+            icon: "✂",
+            selected: false,
+            disabled: false,
+        },
+        ToolbarActionView {
+            id: "annotate",
+            label: "Annotate",
+            icon: "✎",
+            selected: false,
+            disabled: !has_clip_loaded,
+        },
+        ToolbarActionView {
+            id: "trim",
+            label: "Trim",
+            icon: "⎯",
+            selected: false,
+            disabled: !has_clip_loaded,
+        },
+    ];
+    EditorShellView {
+        document_title: "Demo · auth login".into(),
+        document_subtitle: Some("Captured 2026-05-09 · 1m 24s".into()),
+        has_clip_loaded,
+        toolbar_actions: actions,
+        export_enabled: has_clip_loaded,
+        share_enabled: has_clip_loaded,
+    }
+}
+
+/// Variant — export disabled.
+#[must_use]
+pub fn sample_editor_shell_export_disabled() -> crate::components::editor::EditorShellView {
+    let mut v = sample_editor_shell(true);
+    v.export_enabled = false;
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

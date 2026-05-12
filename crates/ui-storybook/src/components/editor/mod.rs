@@ -3,7 +3,11 @@
 //! through UI-19; pre-existing dope-sheet and player-controls live here.
 
 pub mod dope_sheet;
+pub mod editor_shell;
 pub mod player_controls;
 
 pub use dope_sheet::{DopeSheet, DopeSheetKeyframe, DopeSheetTrack, KeyframeKind, TrackKind};
+pub use editor_shell::{
+    EditorShell, EditorShellView, EditorTitleBar, EditorToolbar, ToolbarActionView,
+};
 pub use player_controls::{PlayState, PlayerControls};
