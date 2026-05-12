@@ -12,6 +12,7 @@
 //! `ui_storybook::tests::snapshots` and the `ui-export-stories` binary
 //! both consume — they don't need to know about the per-surface split.
 
+pub mod controls;
 pub mod cursor;
 pub mod editor;
 pub mod library;
@@ -83,6 +84,7 @@ where
 pub fn all_stories() -> Vec<Story> {
     let mut out = Vec::new();
     out.extend(primitives::stories());
+    out.extend(controls::stories());
     out.extend(editor::stories());
     out.extend(shell::stories());
     out.extend(recorder::stories());

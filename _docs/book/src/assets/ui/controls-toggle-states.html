@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Tokens — semantic surface + text</title>
+    <title>Controls — toggle switch states</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1203,6 +1203,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div class="token-grid"><div class="token-name">--surface-base</div><div class="token-swatch" style="background:var(--surface-base)"></div><div class="token-value">App background</div><div class="token-name">--surface-elevated</div><div class="token-swatch" style="background:var(--surface-elevated)"></div><div class="token-value">Panels + cards</div><div class="token-name">--surface-popover</div><div class="token-swatch" style="background:var(--surface-popover)"></div><div class="token-value">Menus + popovers</div><div class="token-name">--surface-selected</div><div class="token-swatch" style="background:var(--surface-selected)"></div><div class="token-value">Selected row inside a menu</div><div class="token-name">--text-primary</div><div class="token-swatch" style="background:var(--text-primary)"></div><div class="token-value">Default text colour</div><div class="token-name">--text-secondary</div><div class="token-swatch" style="background:var(--text-secondary)"></div><div class="token-value">Muted labels</div><div class="token-name">--text-tertiary</div><div class="token-swatch" style="background:var(--text-tertiary)"></div><div class="token-value">Footnotes + axis labels</div><div class="token-name">--action-record</div><div class="token-swatch" style="background:var(--action-record)"></div><div class="token-value">Record / destructive action</div></div>
+    <div class="story-row" style="padding:14px;gap:20px;"><div class="story-row" style="flex-direction:column;align-items:center;gap:6px;"><button role="switch" aria-label="off" class="toggle"><span class="toggle-track"><span class="toggle-knob"></span></span></button><span style="font-size:11px;color:var(--text-tertiary)">Off</span></div><div class="story-row" style="flex-direction:column;align-items:center;gap:6px;"><button role="switch" aria-checked aria-label="on" class="toggle toggle-on"><span class="toggle-track"><span class="toggle-knob"></span></span></button><span style="font-size:11px;color:var(--text-tertiary)">On</span></div><div class="story-row" style="flex-direction:column;align-items:center;gap:6px;"><button role="switch" aria-label="disabled off" disabled class="toggle toggle-disabled"><span class="toggle-track"><span class="toggle-knob"></span></span></button><span style="font-size:11px;color:var(--text-tertiary)">Disabled off</span></div><div class="story-row" style="flex-direction:column;align-items:center;gap:6px;"><button role="switch" aria-checked aria-label="disabled on" disabled class="toggle toggle-on toggle-disabled"><span class="toggle-track"><span class="toggle-knob"></span></span></button><span style="font-size:11px;color:var(--text-tertiary)">Disabled on</span></div></div>
   </body>
 </html>

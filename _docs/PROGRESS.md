@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-04 — Shared control primitives (AUT-124)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — seven new control primitives expand the `Button` vocabulary: `IconButton` (Ghost/Filled/Danger + pressed), `ToggleSwitch` (controlled), `SegmentedControl` (radio-tab pills), `Slider` (visual only — no drag), `SelectPill` (popover trigger), `ColorSwatch` (circular tile w/ selected outline), `Meter` (audio level bars w/ danger color). Six new stories.
+- **Linear:** [AUT-124](https://linear.app/harwood/issue/AUT-124).
+- **Files:** new `crates/ui-storybook/src/components/primitives/{icon_button,toggle_switch,segmented_control,slider,select_pill,color_swatch,meter}.rs` with per-module unit tests where math applies (`slider_percent` clamps + projects; `lit_segments` rounds-to-nearest). `components/primitives/mod.rs` + `components/mod.rs` re-export. New `stories/controls.rs`. `stories/mod.rs` registers. Extended `assets/style.css` with `.icon-btn*`, `.toggle*`, `.segmented`, `.slider*`, `.select-pill*`, `.color-swatch*`, `.meter*` classes. New `_docs/book/src/ui/chunks/controls.md`. `SUMMARY.md` indexes it.
+- **Verified:** 36 ui-storybook tests pass (was 28; +4 slider unit tests + 4 meter unit tests; snapshot extended for 6 new stories). Full `just gate` green.
+- **All controls obey the contract.** `Slider`'s value is a prop; `ToggleSwitch`'s `checked` is a prop; the segmented control's `active` id is a prop. None of them flip themselves. Callback props (`on_change`, `on_select`) aren't even exposed yet — they'll land in `app-ui` wiring, and the components are SSR-safe today.
+
+---
+
 ## UI-03 — Shared menu + popover primitives (AUT-123)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `PopoverSurface` (header / body / footer + `PopoverPlacement`), `MenuList`, `MenuSection`, `MenuRow` (with `MenuRowKind { Default, Selected, Action, Danger, Disabled }` + `MenuBadgeView`), `MenuFooter`. Six new stories cover the recurring menu shapes used by every later tray / picker / on-screen-options popover.

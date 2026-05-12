@@ -63,8 +63,9 @@ pub use menus::{
     PopoverSurface,
 };
 pub use primitives::{
-    Badge, BadgeKind, Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, Divider,
-    DividerOrientation, IconTile, IconTileKind, Kbd, Surface, SurfaceKind,
+    Badge, BadgeKind, Button, ButtonSize, ButtonVariant, Card, CardBody, CardHeader, ColorSwatch,
+    Divider, DividerOrientation, IconButton, IconButtonVariant, IconTile, IconTileKind, Kbd, Meter,
+    Segment, SegmentedControl, SelectPill, Slider, Surface, SurfaceKind, ToggleSwitch,
 };
 pub use recorder::{RecordingState, RecordingToolbar};
 pub use shell::{
