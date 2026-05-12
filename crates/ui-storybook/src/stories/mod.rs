@@ -24,6 +24,7 @@ pub mod recorder_devices;
 pub mod recorder_display;
 pub mod recorder_footer;
 pub mod recorder_on_screen;
+pub mod recording_status;
 pub mod shell;
 pub mod tray_record_popover;
 pub mod workspace_menu;
@@ -101,6 +102,7 @@ pub fn all_stories() -> Vec<Story> {
     out.extend(recorder_on_screen::stories());
     out.extend(recorder_footer::stories());
     out.extend(tray_record_popover::stories());
+    out.extend(recording_status::stories());
     // Menus is populated by UI-03 / UI-05; library + cursor land later
     // (UI-14 / UI-15 / UI-20 / UI-21).
     out.extend(menus::stories());

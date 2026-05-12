@@ -1840,3 +1840,74 @@ kbd {
 .tray-popover-overlay-camera,
 .tray-popover-overlay-microphone { top: 220px; right: 12px; }
 .tray-popover-overlay-on-screen { bottom: 76px; right: 12px; }
+
+/* ───── UI-13 — Compact recording status pill ───── */
+.recording-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.recording-status-recording { background: var(--action-record); color: #fff; border-color: rgba(0,0,0,0.25); }
+.recording-status-paused { background: #f59e0b; color: #111; border-color: rgba(0,0,0,0.3); }
+.recording-status-stopping { background: var(--surface-elevated); color: var(--text-secondary); }
+.recording-status-stopped { background: #16a34a; color: #fff; border-color: rgba(0,0,0,0.2); }
+.recording-status-error { background: #7f1d1d; color: #fee2e2; border-color: rgba(0,0,0,0.3); }
+.recording-status-countdown { background: var(--action-record); color: #fff; padding: 4px 8px; }
+.recording-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.recording-status-dot-live { background: #fff; box-shadow: 0 0 6px rgba(255,255,255,0.7); animation: status-pulse 1.5s ease-in-out infinite; }
+.recording-status-dot-paused { background: #111; }
+.recording-status-text { font-weight: 600; font-family: var(--font-mono); }
+.recording-status-shortcuts { display: inline-flex; gap: 2px; margin-left: 4px; }
+.recording-status-kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  color: rgba(255,255,255,0.92);
+}
+.recording-status-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: rgba(0,0,0,0.25);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  font-size: 10px;
+}
+.recording-status-action:hover { background: rgba(0,0,0,0.4); }
+.recording-status-action-stop { background: rgba(255,255,255,0.18); }
+.recording-status-action-stop:hover { background: rgba(255,255,255,0.28); }
+.recording-status-glyph { font-size: 13px; }
+
+.countdown-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.32);
+}
+.countdown-badge-digit {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

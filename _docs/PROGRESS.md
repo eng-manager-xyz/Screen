@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-13 — RecordingStatusButton (AUT-133)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — compact tray/menu-bar status pill. `CompactRecordingState { Countdown, Recording, Paused, Stopping, Stopped, Error }` covers all post-Start lifecycle visuals. Pulsing live dot in `Recording`, frozen elapsed label in `Paused`, amber background, optional pause/resume/stop action buttons. `CountdownBadge` is a tiny standalone primitive for the countdown digit; reusable inside an overlay/banner.
+- **Linear:** [AUT-133](https://linear.app/harwood/issue/AUT-133).
+- **Files:** new `components/recorder/recording_status_button.rs` (`RecordingStatusButton`, `CompactRecordingState`, `CountdownBadge`, `format_countdown_seconds` + 3 unit tests). `components/recorder/mod.rs` re-exports. New `stories/recording_status.rs` (6 stories). `stories/mod.rs` registers. `assets/style.css` adds `.recording-status-*` + `.countdown-badge*` + `@keyframes status-pulse`. New `_docs/book/src/ui/chunks/recording-status-button.md`. `SUMMARY.md` indexes it.
+- **Verified:** 65 ui-storybook tests pass (was 62; +3 unit). 6 `recording-status-*.html` assets exported. Full `just gate` green.
+- **No timers inside the component.** Parent passes `elapsed_label` + `seconds_remaining` each frame. No `Effect::new`, no `set_interval`, no `setTimeout`. App-side state in `app-ui` owns the clock.
+
+---
+
 ## UI-12 — TrayRecordPopover composition (AUT-132)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `TrayRecordPopover` composes UI-02..UI-11 into the floating tray-record window. `OpenRecorderPopoverKind` enum drives which secondary surface (workspace menu / camera / microphone / system-audio / on-screen-options) is rendered as an overlay over the popover. State remains entirely external; the popover only renders what props say to render.

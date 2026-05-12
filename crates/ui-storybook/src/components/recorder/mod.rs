@@ -9,6 +9,7 @@ pub mod display_source;
 pub mod on_screen_options;
 pub mod recording_controls_footer;
 pub mod recording_selects;
+pub mod recording_status_button;
 pub mod recording_toolbar;
 pub mod system_audio;
 pub mod tray_record_popover;
@@ -27,6 +28,9 @@ pub use recording_controls_footer::{
 pub use recording_selects::{
     AutoZoomSelect, CountdownSelect, ShortcutBadgeGroup, format_auto_zoom_label,
     format_countdown_label,
+};
+pub use recording_status_button::{
+    CompactRecordingState, CountdownBadge, RecordingStatusButton, format_countdown_seconds,
 };
 pub use recording_toolbar::{RecordingState, RecordingToolbar};
 pub use system_audio::{
