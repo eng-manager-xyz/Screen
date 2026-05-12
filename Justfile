@@ -115,12 +115,13 @@ snapshots-media-video:
       mp4mux ! filesink location=_docs/book/src/assets/media/video-capture.mp4
 
 # Snapshot completeness gate.
-# Every mdBook chapter that references an asset under
-# `_docs/book/src/assets/` MUST have that asset committed. Re-running the
-# storybook exporters across machines is non-deterministic (Metal vs
-# lavapipe etc.), so we don't byte-compare. We DO verify that every
-# referenced file exists — catches "added a chapter, forgot to commit the
-# PNG." Run `just snapshots` locally before committing if you changed a
+# Every mdBook chapter (in either book + the shared fragments)
+# that references an asset under any `assets/` MUST have that asset
+# committed. Re-running the storybook exporters across machines is
+# non-deterministic (Metal vs lavapipe etc.), so we don't
+# byte-compare. We DO verify that every referenced file exists —
+# catches "added a chapter, forgot to commit the PNG." Run
+# `just snapshots` locally before committing if you changed a
 # story's rendered output.
 snapshots-check:
     #!/usr/bin/env bash
@@ -151,13 +152,14 @@ snapshots-check:
         print(f"MISSING ASSET: {c} → {r} (resolved {p})", file=sys.stderr)
     sys.exit(1 if missing else 0)
     PY
-    done < <(find _docs/book/src -name "*.md" -type f)
-    echo "snapshots-check: all referenced assets present."
+    done < <(find _docs/book/src _docs/wisp-book/src _docs/shared -name "*.md" -type f 2>/dev/null)
+    echo "snapshots-check: all referenced assets present (screen + wisp + shared)."
 
 # Diagrams must be mermaid, not ASCII.
-# Rejects any chapter under `_docs/book/src/` containing box-drawing
-# characters (┌ │ └ ├ ═ ╔ ╗) or the unicode arrow runs `─►` / `──▶`
-# / `◄──` outside of allowlisted files. The allowlist covers:
+# Rejects any chapter under `_docs/book/src/`, `_docs/wisp-book/src/`,
+# or `_docs/shared/` containing box-drawing characters
+# (┌ │ └ ├ ═ ╔ ╗) or the unicode arrow runs `─►` / `──▶` / `◄──`
+# outside of allowlisted files. The allowlist covers:
 #   - orientation/stack.md — directory-tree listing (mermaid is poor at file trees)
 # Math formulas, type-signature legends, and shell pipelines that
 # happen to contain `!` etc. are fine because they don't use these
@@ -185,7 +187,7 @@ mermaid-check:
         grep -nP '[┌│└├═╔╗]|─►|──▶|◄──' "$file" >&2 || true
         violations=$((violations + 1))
       fi
-    done < <(find _docs/book/src -name '*.md' -type f)
+    done < <(find _docs/book/src _docs/wisp-book/src _docs/shared -name '*.md' -type f 2>/dev/null)
     if [ $violations -gt 0 ]; then
       echo "" >&2
       echo "Found $violations file(s) with ASCII diagrams." >&2
