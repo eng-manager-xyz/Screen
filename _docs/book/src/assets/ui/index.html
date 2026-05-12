@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ui-storybook · 132 stories</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      body { margin: 0; height: 100vh; overflow: hidden; }
+    </style>
+  </head>
+  <body data-first-story="button-variants">
+    <div class="storybook-index-root">
+      <aside class="storybook-index-sidebar">
+        <div class="storybook-index-topbar">
+          <span class="storybook-index-title">ui-storybook</span>
+          <span class="storybook-index-count">132</span>
+        </div>
+        <div class="storybook-index-search">
+          <input
+            id="storybook-index-filter"
+            type="search"
+            placeholder="Filter (press /)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <nav>
+          <ul class="storybook-index-list">
+          <li class="storybook-index-category" data-category="app surfaces">
+            <span class="storybook-index-heading">App surfaces</span>
+            <ul>
+              <li class="storybook-index-row" data-id="drop-zone-active" data-title="drop zone — active (file dragged)" data-category="app surfaces"><a href="#drop-zone-active" data-id="drop-zone-active">Drop zone — active (file dragged)</a></li>
+              <li class="storybook-index-row" data-id="drop-zone-idle" data-title="drop zone — idle" data-category="app surfaces"><a href="#drop-zone-idle" data-id="drop-zone-idle">Drop zone — idle</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="compositions">
+            <span class="storybook-index-heading">Compositions</span>
+            <ul>
+              <li class="storybook-index-row" data-id="app-shell-three-pane" data-title="app shell — three-pane editor layout" data-category="compositions"><a href="#app-shell-three-pane" data-id="app-shell-three-pane">App shell — three-pane editor layout</a></li>
+              <li class="storybook-index-row" data-id="card-with-dope-sheet" data-title="editor panel — card wrapping dope sheet" data-category="compositions"><a href="#card-with-dope-sheet" data-id="card-with-dope-sheet">Editor panel — card wrapping dope sheet</a></li>
+              <li class="storybook-index-row" data-id="editor-mock" data-title="editor mock — drop zone result + player + dope sheet" data-category="compositions"><a href="#editor-mock" data-id="editor-mock">Editor mock — drop zone result + player + dope sheet</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="cursor">
+            <span class="storybook-index-heading">Cursor</span>
+            <ul>
+              <li class="storybook-index-row" data-id="cursor-appearance-panel-default" data-title="cursor appearance — default" data-category="cursor"><a href="#cursor-appearance-panel-default" data-id="cursor-appearance-panel-default">Cursor appearance — default</a></li>
+              <li class="storybook-index-row" data-id="cursor-appearance-panel-pulse" data-title="cursor appearance — pulse effect" data-category="cursor"><a href="#cursor-appearance-panel-pulse" data-id="cursor-appearance-panel-pulse">Cursor appearance — Pulse effect</a></li>
+              <li class="storybook-index-row" data-id="cursor-appearance-panel-spotlight" data-title="cursor appearance — spotlight effect" data-category="cursor"><a href="#cursor-appearance-panel-spotlight" data-id="cursor-appearance-panel-spotlight">Cursor appearance — Spotlight effect</a></li>
+              <li class="storybook-index-row" data-id="cursor-appearance-panel-trail-on" data-title="cursor appearance — trail on" data-category="cursor"><a href="#cursor-appearance-panel-trail-on" data-id="cursor-appearance-panel-trail-on">Cursor appearance — trail on</a></li>
+              <li class="storybook-index-row" data-id="cursor-preview-arrow-ring" data-title="cursor preview — arrow with ring" data-category="cursor"><a href="#cursor-preview-arrow-ring" data-id="cursor-preview-arrow-ring">Cursor preview — arrow with ring</a></li>
+              <li class="storybook-index-row" data-id="cursor-preview-dark-bg" data-title="cursor preview — dark background" data-category="cursor"><a href="#cursor-preview-dark-bg" data-id="cursor-preview-dark-bg">Cursor preview — dark background</a></li>
+              <li class="storybook-index-row" data-id="cursor-studio-shell" data-title="cursor studio shell" data-category="cursor"><a href="#cursor-studio-shell" data-id="cursor-studio-shell">Cursor Studio shell</a></li>
+              <li class="storybook-index-row" data-id="cursor-style-picker-arrow-selected" data-title="cursor style picker — arrow selected" data-category="cursor"><a href="#cursor-style-picker-arrow-selected" data-id="cursor-style-picker-arrow-selected">Cursor style picker — Arrow selected</a></li>
+              <li class="storybook-index-row" data-id="cursor-style-picker-default" data-title="cursor style picker — default" data-category="cursor"><a href="#cursor-style-picker-default" data-id="cursor-style-picker-default">Cursor style picker — default</a></li>
+              <li class="storybook-index-row" data-id="cursor-style-picker-disabled" data-title="cursor style picker — all disabled" data-category="cursor"><a href="#cursor-style-picker-disabled" data-id="cursor-style-picker-disabled">Cursor style picker — all disabled</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="editor">
+            <span class="storybook-index-heading">Editor</span>
+            <ul>
+              <li class="storybook-index-row" data-id="dope-sheet-basic" data-title="dope sheet — multi-track" data-category="editor"><a href="#dope-sheet-basic" data-id="dope-sheet-basic">Dope sheet — multi-track</a></li>
+              <li class="storybook-index-row" data-id="dope-sheet-dense" data-title="dope sheet — dense keyframes" data-category="editor"><a href="#dope-sheet-dense" data-id="dope-sheet-dense">Dope sheet — dense keyframes</a></li>
+              <li class="storybook-index-row" data-id="editor-drop-zone-drag-active" data-title="editor drop zone — drag active" data-category="editor"><a href="#editor-drop-zone-drag-active" data-id="editor-drop-zone-drag-active">Editor drop zone — drag active</a></li>
+              <li class="storybook-index-row" data-id="editor-drop-zone-empty" data-title="editor drop zone — empty" data-category="editor"><a href="#editor-drop-zone-empty" data-id="editor-drop-zone-empty">Editor drop zone — empty</a></li>
+              <li class="storybook-index-row" data-id="editor-drop-zone-with-recent" data-title="editor drop zone — with recent clips" data-category="editor"><a href="#editor-drop-zone-with-recent" data-id="editor-drop-zone-with-recent">Editor drop zone — with recent clips</a></li>
+              <li class="storybook-index-row" data-id="editor-shell-clip-loaded" data-title="editor shell — clip loaded" data-category="editor"><a href="#editor-shell-clip-loaded" data-id="editor-shell-clip-loaded">Editor shell — clip loaded</a></li>
+              <li class="storybook-index-row" data-id="editor-shell-empty" data-title="editor shell — empty (no clip)" data-category="editor"><a href="#editor-shell-empty" data-id="editor-shell-empty">Editor shell — empty (no clip)</a></li>
+              <li class="storybook-index-row" data-id="editor-shell-export-disabled" data-title="editor shell — export disabled" data-category="editor"><a href="#editor-shell-export-disabled" data-id="editor-shell-export-disabled">Editor shell — export disabled</a></li>
+              <li class="storybook-index-row" data-id="editor-toolbar-states" data-title="editor toolbar — selected + disabled mix" data-category="editor"><a href="#editor-toolbar-states" data-id="editor-toolbar-states">Editor toolbar — selected + disabled mix</a></li>
+              <li class="storybook-index-row" data-id="timeline-empty" data-title="timeline — empty (no placeholders)" data-category="editor"><a href="#timeline-empty" data-id="timeline-empty">Timeline — empty (no placeholders)</a></li>
+              <li class="storybook-index-row" data-id="timeline-playing" data-title="timeline — playing" data-category="editor"><a href="#timeline-playing" data-id="timeline-playing">Timeline — playing</a></li>
+              <li class="storybook-index-row" data-id="timeline-selected-track" data-title="timeline — selected video track" data-category="editor"><a href="#timeline-selected-track" data-id="timeline-selected-track">Timeline — selected video track</a></li>
+              <li class="storybook-index-row" data-id="timeline-with-placeholders" data-title="timeline — with placeholders" data-category="editor"><a href="#timeline-with-placeholders" data-id="timeline-with-placeholders">Timeline — with placeholders</a></li>
+              <li class="storybook-index-row" data-id="wisp-canvas-host-asset" data-title="wisp canvas host — runtime unavailable" data-category="editor"><a href="#wisp-canvas-host-asset" data-id="wisp-canvas-host-asset">Wisp canvas host — runtime unavailable</a></li>
+              <li class="storybook-index-row" data-id="wisp-canvas-host-fallback" data-title="wisp canvas host — css fallback" data-category="editor"><a href="#wisp-canvas-host-fallback" data-id="wisp-canvas-host-fallback">Wisp canvas host — CSS fallback</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="fixtures">
+            <span class="storybook-index-heading">Fixtures</span>
+            <ul>
+              <li class="storybook-index-row" data-id="fixtures-contact-sheet" data-title="fixtures — contact sheet" data-category="fixtures"><a href="#fixtures-contact-sheet" data-id="fixtures-contact-sheet">Fixtures — contact sheet</a></li>
+              <li class="storybook-index-row" data-id="fixtures-cursor" data-title="fixtures — cursor" data-category="fixtures"><a href="#fixtures-cursor" data-id="fixtures-cursor">Fixtures — cursor</a></li>
+              <li class="storybook-index-row" data-id="fixtures-library" data-title="fixtures — library" data-category="fixtures"><a href="#fixtures-library" data-id="fixtures-library">Fixtures — library</a></li>
+              <li class="storybook-index-row" data-id="fixtures-recorder" data-title="fixtures — recorder" data-category="fixtures"><a href="#fixtures-recorder" data-id="fixtures-recorder">Fixtures — recorder</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="inspector">
+            <span class="storybook-index-heading">Inspector</span>
+            <ul>
+              <li class="storybook-index-row" data-id="inspector-cursor-tab" data-title="inspector — cursor tab" data-category="inspector"><a href="#inspector-cursor-tab" data-id="inspector-cursor-tab">Inspector — Cursor tab</a></li>
+              <li class="storybook-index-row" data-id="inspector-disabled-section" data-title="inspector — disabled rows" data-category="inspector"><a href="#inspector-disabled-section" data-id="inspector-disabled-section">Inspector — disabled rows</a></li>
+              <li class="storybook-index-row" data-id="inspector-style-tab" data-title="inspector — style tab" data-category="inspector"><a href="#inspector-style-tab" data-id="inspector-style-tab">Inspector — Style tab</a></li>
+              <li class="storybook-index-row" data-id="property-row-color-swatches" data-title="property row — color swatches" data-category="inspector"><a href="#property-row-color-swatches" data-id="property-row-color-swatches">Property row — color swatches</a></li>
+              <li class="storybook-index-row" data-id="property-row-slider" data-title="property row — slider" data-category="inspector"><a href="#property-row-slider" data-id="property-row-slider">Property row — slider</a></li>
+              <li class="storybook-index-row" data-id="property-row-toggle" data-title="property row — toggle" data-category="inspector"><a href="#property-row-toggle" data-id="property-row-toggle">Property row — toggle</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="library">
+            <span class="storybook-index-heading">Library</span>
+            <ul>
+              <li class="storybook-index-row" data-id="library-grid-default" data-title="library grid — default" data-category="library"><a href="#library-grid-default" data-id="library-grid-default">Library grid — default</a></li>
+              <li class="storybook-index-row" data-id="library-grid-empty" data-title="library grid — empty state" data-category="library"><a href="#library-grid-empty" data-id="library-grid-empty">Library grid — empty state</a></li>
+              <li class="storybook-index-row" data-id="library-grid-list-mode" data-title="library grid — list mode" data-category="library"><a href="#library-grid-list-mode" data-id="library-grid-list-mode">Library grid — list mode</a></li>
+              <li class="storybook-index-row" data-id="library-sidebar-default" data-title="library sidebar — default" data-category="library"><a href="#library-sidebar-default" data-id="library-sidebar-default">Library sidebar — default</a></li>
+              <li class="storybook-index-row" data-id="library-sidebar-empty-spaces" data-title="library sidebar — no spaces" data-category="library"><a href="#library-sidebar-empty-spaces" data-id="library-sidebar-empty-spaces">Library sidebar — no spaces</a></li>
+              <li class="storybook-index-row" data-id="library-sidebar-high-storage" data-title="library sidebar — 95% storage" data-category="library"><a href="#library-sidebar-high-storage" data-id="library-sidebar-high-storage">Library sidebar — 95% storage</a></li>
+              <li class="storybook-index-row" data-id="library-sidebar-inbox-active" data-title="library sidebar — inbox active" data-category="library"><a href="#library-sidebar-inbox-active" data-id="library-sidebar-inbox-active">Library sidebar — inbox active</a></li>
+              <li class="storybook-index-row" data-id="library-sidebar-long-labels" data-title="library sidebar — overflow labels" data-category="library"><a href="#library-sidebar-long-labels" data-id="library-sidebar-long-labels">Library sidebar — overflow labels</a></li>
+              <li class="storybook-index-row" data-id="recording-card-empty-thumbnail" data-title="recording card — missing thumbnail" data-category="library"><a href="#recording-card-empty-thumbnail" data-id="recording-card-empty-thumbnail">Recording card — missing thumbnail</a></li>
+              <li class="storybook-index-row" data-id="recording-card-processing" data-title="recording card — processing" data-category="library"><a href="#recording-card-processing" data-id="recording-card-processing">Recording card — processing</a></li>
+              <li class="storybook-index-row" data-id="recording-card-ready" data-title="recording card — ready" data-category="library"><a href="#recording-card-ready" data-id="recording-card-ready">Recording card — ready</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="menus">
+            <span class="storybook-index-heading">Menus</span>
+            <ul>
+              <li class="storybook-index-row" data-id="menu-long-labels" data-title="menu — long labels truncate cleanly" data-category="menus"><a href="#menu-long-labels" data-id="menu-long-labels">Menu — long labels truncate cleanly</a></li>
+              <li class="storybook-index-row" data-id="menu-row-action" data-title="menu row — action" data-category="menus"><a href="#menu-row-action" data-id="menu-row-action">Menu row — action</a></li>
+              <li class="storybook-index-row" data-id="menu-row-device" data-title="menu row — device with subtitle + kbd" data-category="menus"><a href="#menu-row-device" data-id="menu-row-device">Menu row — device with subtitle + kbd</a></li>
+              <li class="storybook-index-row" data-id="menu-row-selected" data-title="menu row — selected" data-category="menus"><a href="#menu-row-selected" data-id="menu-row-selected">Menu row — selected</a></li>
+              <li class="storybook-index-row" data-id="popover-basic" data-title="popover — header + menu list" data-category="menus"><a href="#popover-basic" data-id="popover-basic">Popover — header + menu list</a></li>
+              <li class="storybook-index-row" data-id="popover-with-footer" data-title="popover — with footer button" data-category="menus"><a href="#popover-with-footer" data-id="popover-with-footer">Popover — with footer button</a></li>
+              <li class="storybook-index-row" data-id="workspace-menu-default" data-title="workspace switcher — default" data-category="menus"><a href="#workspace-menu-default" data-id="workspace-menu-default">Workspace switcher — default</a></li>
+              <li class="storybook-index-row" data-id="workspace-menu-long-names" data-title="workspace switcher — long names truncate" data-category="menus"><a href="#workspace-menu-long-names" data-id="workspace-menu-long-names">Workspace switcher — long names truncate</a></li>
+              <li class="storybook-index-row" data-id="workspace-menu-many" data-title="workspace switcher — many workspaces" data-category="menus"><a href="#workspace-menu-many" data-id="workspace-menu-many">Workspace switcher — many workspaces</a></li>
+              <li class="storybook-index-row" data-id="workspace-menu-no-selection" data-title="workspace switcher — no selection" data-category="menus"><a href="#workspace-menu-no-selection" data-id="workspace-menu-no-selection">Workspace switcher — no selection</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="player">
+            <span class="storybook-index-heading">Player</span>
+            <ul>
+              <li class="storybook-index-row" data-id="player-controls-near-end" data-title="player controls — near end of clip" data-category="player"><a href="#player-controls-near-end" data-id="player-controls-near-end">Player controls — near end of clip</a></li>
+              <li class="storybook-index-row" data-id="player-controls-paused" data-title="player controls — paused at start" data-category="player"><a href="#player-controls-paused" data-id="player-controls-paused">Player controls — paused at start</a></li>
+              <li class="storybook-index-row" data-id="player-controls-playing" data-title="player controls — playing mid-clip" data-category="player"><a href="#player-controls-playing" data-id="player-controls-playing">Player controls — playing mid-clip</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="primitives">
+            <span class="storybook-index-heading">Primitives</span>
+            <ul>
+              <li class="storybook-index-row" data-id="badge-variants" data-title="badge — six kinds" data-category="primitives"><a href="#badge-variants" data-id="badge-variants">Badge — six kinds</a></li>
+              <li class="storybook-index-row" data-id="button-sizes" data-title="button — sizes" data-category="primitives"><a href="#button-sizes" data-id="button-sizes">Button — sizes</a></li>
+              <li class="storybook-index-row" data-id="button-variants" data-title="button — variants" data-category="primitives"><a href="#button-variants" data-id="button-variants">Button — variants</a></li>
+              <li class="storybook-index-row" data-id="card-basic" data-title="card — header + body" data-category="primitives"><a href="#card-basic" data-id="card-basic">Card — header + body</a></li>
+              <li class="storybook-index-row" data-id="controls-buttons-icon-buttons" data-title="controls — icon buttons" data-category="primitives"><a href="#controls-buttons-icon-buttons" data-id="controls-buttons-icon-buttons">Controls — icon buttons</a></li>
+              <li class="storybook-index-row" data-id="controls-color-swatches" data-title="controls — color swatches" data-category="primitives"><a href="#controls-color-swatches" data-id="controls-color-swatches">Controls — color swatches</a></li>
+              <li class="storybook-index-row" data-id="controls-meters" data-title="controls — audio level meters" data-category="primitives"><a href="#controls-meters" data-id="controls-meters">Controls — audio level meters</a></li>
+              <li class="storybook-index-row" data-id="controls-segmented-record-mode" data-title="controls — segmented record mode" data-category="primitives"><a href="#controls-segmented-record-mode" data-id="controls-segmented-record-mode">Controls — segmented record mode</a></li>
+              <li class="storybook-index-row" data-id="controls-slider-values" data-title="controls — slider matrix" data-category="primitives"><a href="#controls-slider-values" data-id="controls-slider-values">Controls — slider matrix</a></li>
+              <li class="storybook-index-row" data-id="controls-toggle-states" data-title="controls — toggle switch states" data-category="primitives"><a href="#controls-toggle-states" data-id="controls-toggle-states">Controls — toggle switch states</a></li>
+              <li class="storybook-index-row" data-id="icon-tile-variants" data-title="icontile — five kinds" data-category="primitives"><a href="#icon-tile-variants" data-id="icon-tile-variants">IconTile — five kinds</a></li>
+              <li class="storybook-index-row" data-id="kbd-shortcuts" data-title="kbd — keyboard shortcut chips" data-category="primitives"><a href="#kbd-shortcuts" data-id="kbd-shortcuts">Kbd — keyboard shortcut chips</a></li>
+              <li class="storybook-index-row" data-id="surface-stack" data-title="surface — five kinds stacked" data-category="primitives"><a href="#surface-stack" data-id="surface-stack">Surface — five kinds stacked</a></li>
+              <li class="storybook-index-row" data-id="tokens-dark-zinc" data-title="tokens — semantic surface + text" data-category="primitives"><a href="#tokens-dark-zinc" data-id="tokens-dark-zinc">Tokens — semantic surface + text</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="recorder">
+            <span class="storybook-index-heading">Recorder</span>
+            <ul>
+              <li class="storybook-index-row" data-id="audio-app-row-live" data-title="audio app row — live with meter + suggested" data-category="recorder"><a href="#audio-app-row-live" data-id="audio-app-row-live">Audio app row — live with meter + Suggested</a></li>
+              <li class="storybook-index-row" data-id="audio-app-row-muted" data-title="audio app row — idle / unselected" data-category="recorder"><a href="#audio-app-row-muted" data-id="audio-app-row-muted">Audio app row — idle / unselected</a></li>
+              <li class="storybook-index-row" data-id="capture-mode-area" data-title="capture mode — area" data-category="recorder"><a href="#capture-mode-area" data-id="capture-mode-area">Capture mode — Area</a></li>
+              <li class="storybook-index-row" data-id="capture-mode-disabled-area" data-title="capture mode — area disabled (permissions)" data-category="recorder"><a href="#capture-mode-disabled-area" data-id="capture-mode-disabled-area">Capture mode — Area disabled (permissions)</a></li>
+              <li class="storybook-index-row" data-id="capture-mode-screen" data-title="capture mode — screen" data-category="recorder"><a href="#capture-mode-screen" data-id="capture-mode-screen">Capture mode — Screen</a></li>
+              <li class="storybook-index-row" data-id="capture-mode-window" data-title="capture mode — window" data-category="recorder"><a href="#capture-mode-window" data-id="capture-mode-window">Capture mode — Window</a></li>
+              <li class="storybook-index-row" data-id="capture-source-camera-collapsed" data-title="capture source — camera (collapsed)" data-category="recorder"><a href="#capture-source-camera-collapsed" data-id="capture-source-camera-collapsed">Capture source — camera (collapsed)</a></li>
+              <li class="storybook-index-row" data-id="capture-source-microphone-collapsed" data-title="capture source — microphone with live meter" data-category="recorder"><a href="#capture-source-microphone-collapsed" data-id="capture-source-microphone-collapsed">Capture source — microphone with live meter</a></li>
+              <li class="storybook-index-row" data-id="device-picker-camera-open" data-title="device picker — cameras (open)" data-category="recorder"><a href="#device-picker-camera-open" data-id="device-picker-camera-open">Device picker — cameras (open)</a></li>
+              <li class="storybook-index-row" data-id="device-picker-empty" data-title="device picker — no devices detected" data-category="recorder"><a href="#device-picker-empty" data-id="device-picker-empty">Device picker — no devices detected</a></li>
+              <li class="storybook-index-row" data-id="device-picker-microphone-open" data-title="device picker — microphones (open)" data-category="recorder"><a href="#device-picker-microphone-open" data-id="device-picker-microphone-open">Device picker — microphones (open)</a></li>
+              <li class="storybook-index-row" data-id="device-picker-permission-needed" data-title="device picker — permission needed" data-category="recorder"><a href="#device-picker-permission-needed" data-id="device-picker-permission-needed">Device picker — permission needed</a></li>
+              <li class="storybook-index-row" data-id="display-preview-small" data-title="display preview — 16:10 single window" data-category="recorder"><a href="#display-preview-small" data-id="display-preview-small">Display preview — 16:10 single window</a></li>
+              <li class="storybook-index-row" data-id="display-preview-wide" data-title="display preview — 21:9 ultrawide" data-category="recorder"><a href="#display-preview-wide" data-id="display-preview-wide">Display preview — 21:9 ultrawide</a></li>
+              <li class="storybook-index-row" data-id="display-source-built-in-retina" data-title="display source — built-in retina (selected)" data-category="recorder"><a href="#display-source-built-in-retina" data-id="display-source-built-in-retina">Display source — Built-in Retina (selected)</a></li>
+              <li class="storybook-index-row" data-id="display-source-selected" data-title="display source — selected outline + open chevron" data-category="recorder"><a href="#display-source-selected" data-id="display-source-selected">Display source — selected outline + open chevron</a></li>
+              <li class="storybook-index-row" data-id="display-source-unavailable" data-title="display source — unavailable (permissions)" data-category="recorder"><a href="#display-source-unavailable" data-id="display-source-unavailable">Display source — unavailable (permissions)</a></li>
+              <li class="storybook-index-row" data-id="on-screen-options-all-on" data-title="on-screen options — all toggles on" data-category="recorder"><a href="#on-screen-options-all-on" data-id="on-screen-options-all-on">On-screen options — all toggles on</a></li>
+              <li class="storybook-index-row" data-id="on-screen-options-default" data-title="on-screen options — default (some on)" data-category="recorder"><a href="#on-screen-options-default" data-id="on-screen-options-default">On-screen options — default (some on)</a></li>
+              <li class="storybook-index-row" data-id="on-screen-options-long-copy" data-title="on-screen options — long copy wraps" data-category="recorder"><a href="#on-screen-options-long-copy" data-id="on-screen-options-long-copy">On-screen options — long copy wraps</a></li>
+              <li class="storybook-index-row" data-id="on-screen-options-sensitive-disabled" data-title="on-screen options — blur sensitive disabled" data-category="recorder"><a href="#on-screen-options-sensitive-disabled" data-id="on-screen-options-sensitive-disabled">On-screen options — Blur sensitive disabled</a></li>
+              <li class="storybook-index-row" data-id="recording-footer-compact" data-title="recording footer — compact (no zoom, no countdown)" data-category="recorder"><a href="#recording-footer-compact" data-id="recording-footer-compact">Recording footer — compact (no zoom, no countdown)</a></li>
+              <li class="storybook-index-row" data-id="recording-footer-disabled" data-title="recording footer — disabled" data-category="recorder"><a href="#recording-footer-disabled" data-id="recording-footer-disabled">Recording footer — disabled</a></li>
+              <li class="storybook-index-row" data-id="recording-footer-loading" data-title="recording footer — loading" data-category="recorder"><a href="#recording-footer-loading" data-id="recording-footer-loading">Recording footer — loading</a></li>
+              <li class="storybook-index-row" data-id="recording-footer-permission-blocked" data-title="recording footer — permission blocked" data-category="recorder"><a href="#recording-footer-permission-blocked" data-id="recording-footer-permission-blocked">Recording footer — permission blocked</a></li>
+              <li class="storybook-index-row" data-id="recording-footer-ready" data-title="recording footer — ready" data-category="recorder"><a href="#recording-footer-ready" data-id="recording-footer-ready">Recording footer — ready</a></li>
+              <li class="storybook-index-row" data-id="recording-status-countdown-1" data-title="compact status — countdown 1s" data-category="recorder"><a href="#recording-status-countdown-1" data-id="recording-status-countdown-1">Compact status — countdown 1s</a></li>
+              <li class="storybook-index-row" data-id="recording-status-countdown-3" data-title="compact status — countdown 3s" data-category="recorder"><a href="#recording-status-countdown-3" data-id="recording-status-countdown-3">Compact status — countdown 3s</a></li>
+              <li class="storybook-index-row" data-id="recording-status-error" data-title="compact status — error" data-category="recorder"><a href="#recording-status-error" data-id="recording-status-error">Compact status — error</a></li>
+              <li class="storybook-index-row" data-id="recording-status-paused" data-title="compact status — paused" data-category="recorder"><a href="#recording-status-paused" data-id="recording-status-paused">Compact status — paused</a></li>
+              <li class="storybook-index-row" data-id="recording-status-recording" data-title="compact status — recording" data-category="recorder"><a href="#recording-status-recording" data-id="recording-status-recording">Compact status — recording</a></li>
+              <li class="storybook-index-row" data-id="recording-status-stopping" data-title="compact status — stopping" data-category="recorder"><a href="#recording-status-stopping" data-id="recording-status-stopping">Compact status — stopping</a></li>
+              <li class="storybook-index-row" data-id="recording-toolbar-idle" data-title="recording toolbar — idle (ready)" data-category="recorder"><a href="#recording-toolbar-idle" data-id="recording-toolbar-idle">Recording toolbar — idle (ready)</a></li>
+              <li class="storybook-index-row" data-id="recording-toolbar-paused" data-title="recording toolbar — paused" data-category="recorder"><a href="#recording-toolbar-paused" data-id="recording-toolbar-paused">Recording toolbar — paused</a></li>
+              <li class="storybook-index-row" data-id="recording-toolbar-recording" data-title="recording toolbar — recording" data-category="recorder"><a href="#recording-toolbar-recording" data-id="recording-toolbar-recording">Recording toolbar — recording</a></li>
+              <li class="storybook-index-row" data-id="system-audio-all-selected" data-title="system audio — every app selected" data-category="recorder"><a href="#system-audio-all-selected" data-id="system-audio-all-selected">System audio — every app selected</a></li>
+              <li class="storybook-index-row" data-id="system-audio-collapsed" data-title="system audio — collapsed row" data-category="recorder"><a href="#system-audio-collapsed" data-id="system-audio-collapsed">System audio — collapsed row</a></li>
+              <li class="storybook-index-row" data-id="system-audio-expanded" data-title="system audio — expanded app list" data-category="recorder"><a href="#system-audio-expanded" data-id="system-audio-expanded">System audio — expanded app list</a></li>
+              <li class="storybook-index-row" data-id="system-audio-none-selected" data-title="system audio — no apps selected" data-category="recorder"><a href="#system-audio-none-selected" data-id="system-audio-none-selected">System audio — no apps selected</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-camera-open" data-title="tray record popover — camera menu open" data-category="recorder"><a href="#tray-record-popover-camera-open" data-id="tray-record-popover-camera-open">Tray record popover — camera menu open</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-default" data-title="tray record popover — default" data-category="recorder"><a href="#tray-record-popover-default" data-id="tray-record-popover-default">Tray record popover — default</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-microphone-open" data-title="tray record popover — microphone menu open" data-category="recorder"><a href="#tray-record-popover-microphone-open" data-id="tray-record-popover-microphone-open">Tray record popover — microphone menu open</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-on-screen-open" data-title="tray record popover — on-screen options open" data-category="recorder"><a href="#tray-record-popover-on-screen-open" data-id="tray-record-popover-on-screen-open">Tray record popover — on-screen options open</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-start-disabled" data-title="tray record popover — start recording disabled" data-category="recorder"><a href="#tray-record-popover-start-disabled" data-id="tray-record-popover-start-disabled">Tray record popover — Start recording disabled</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-system-audio-open" data-title="tray record popover — system-audio expanded" data-category="recorder"><a href="#tray-record-popover-system-audio-open" data-id="tray-record-popover-system-audio-open">Tray record popover — system-audio expanded</a></li>
+              <li class="storybook-index-row" data-id="tray-record-popover-workspace-open" data-title="tray record popover — workspace menu open" data-category="recorder"><a href="#tray-record-popover-workspace-open" data-id="tray-record-popover-workspace-open">Tray record popover — workspace menu open</a></li>
+            </ul>
+          </li>
+          <li class="storybook-index-category" data-category="shell">
+            <span class="storybook-index-heading">Shell</span>
+            <ul>
+              <li class="storybook-index-row" data-id="nav-rail-cursor-active" data-title="nav rail — cursor active" data-category="shell"><a href="#nav-rail-cursor-active" data-id="nav-rail-cursor-active">Nav rail — Cursor active</a></li>
+              <li class="storybook-index-row" data-id="nav-rail-editor-active" data-title="nav rail — editor active" data-category="shell"><a href="#nav-rail-editor-active" data-id="nav-rail-editor-active">Nav rail — Editor active</a></li>
+              <li class="storybook-index-row" data-id="nav-rail-library-active" data-title="nav rail — library active" data-category="shell"><a href="#nav-rail-library-active" data-id="nav-rail-library-active">Nav rail — Library active</a></li>
+              <li class="storybook-index-row" data-id="nav-rail-record-active" data-title="nav rail — record active" data-category="shell"><a href="#nav-rail-record-active" data-id="nav-rail-record-active">Nav rail — Record active</a></li>
+              <li class="storybook-index-row" data-id="nav-rail-with-counts" data-title="nav rail — with notification count" data-category="shell"><a href="#nav-rail-with-counts" data-id="nav-rail-with-counts">Nav rail — with notification count</a></li>
+              <li class="storybook-index-row" data-id="status-bar-busy" data-title="status bar — encoding" data-category="shell"><a href="#status-bar-busy" data-id="status-bar-busy">Status bar — encoding</a></li>
+              <li class="storybook-index-row" data-id="status-bar-error" data-title="status bar — error" data-category="shell"><a href="#status-bar-error" data-id="status-bar-error">Status bar — error</a></li>
+              <li class="storybook-index-row" data-id="status-bar-ready" data-title="status bar — ready" data-category="shell"><a href="#status-bar-ready" data-id="status-bar-ready">Status bar — ready</a></li>
+            </ul>
+          </li>
+          </ul>
+        </nav>
+      </aside>
+      <main class="storybook-index-main">
+        <header class="storybook-index-header">
+          <span class="storybook-index-current" id="storybook-index-current">button-variants</span>
+          <a class="storybook-index-open" id="storybook-index-open" href="./button-variants.html" target="_blank" rel="noopener">Open in new tab ↗</a>
+        </header>
+        <iframe
+          class="storybook-index-frame"
+          id="storybook-index-frame"
+          title="story preview"
+          src="./button-variants.html"
+        ></iframe>
+      </main>
+    </div>
+    <script>
+// Storybook index cockpit (DEV-03 / DEV-08).
+// Vanilla JS, no framework. Loaded inline from export_stories.rs.
+
+(function () {
+  var frame = document.getElementById('storybook-index-frame');
+  var current = document.getElementById('storybook-index-current');
+  var openLink = document.getElementById('storybook-index-open');
+  var filter = document.getElementById('storybook-index-filter');
+  var list = document.querySelector('.storybook-index-list');
+  var FILTER_KEY = 'storybook-index-filter';
+
+  function pick(id) {
+    if (!id) {
+      id = (document.body.getAttribute('data-first-story') || '').trim();
+    }
+    if (!id) return;
+    var safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (safeId !== id) return;
+    var href = './' + safeId + '.html';
+    if (frame.getAttribute('src') !== href) {
+      frame.setAttribute('src', href);
+    }
+    if (current) current.textContent = safeId;
+    if (openLink) openLink.setAttribute('href', href);
+    document.querySelectorAll('.storybook-index-row').forEach(function (row) {
+      if (row.getAttribute('data-id') === safeId) {
+        row.classList.add('is-active');
+      } else {
+        row.classList.remove('is-active');
+      }
+    });
+  }
+
+  function readHash() {
+    return decodeURIComponent((location.hash || '').replace(/^#/, ''));
+  }
+
+  window.addEventListener('hashchange', function () {
+    pick(readHash());
+  });
+
+  pick(readHash());
+
+  if (list) {
+    list.addEventListener('click', function (e) {
+      var target = e.target;
+      while (target && target !== list && target.tagName !== 'A') {
+        target = target.parentNode;
+      }
+      if (!target || target === list) return;
+      var id = target.getAttribute('data-id');
+      if (!id) return;
+      // Allow native anchor to update the hash; pick() runs from hashchange.
+    });
+  }
+
+  function applyFilter(query) {
+    var q = (query || '').trim().toLowerCase();
+    var anyVisible = false;
+    document.querySelectorAll('.storybook-index-row').forEach(function (row) {
+      var match =
+        !q ||
+        (row.getAttribute('data-id') || '').indexOf(q) !== -1 ||
+        (row.getAttribute('data-title') || '').indexOf(q) !== -1 ||
+        (row.getAttribute('data-category') || '').indexOf(q) !== -1;
+      if (match) {
+        row.classList.remove('is-hidden');
+        anyVisible = true;
+      } else {
+        row.classList.add('is-hidden');
+      }
+    });
+    document.querySelectorAll('.storybook-index-category').forEach(function (cat) {
+      var rows = cat.querySelectorAll('.storybook-index-row');
+      var visible = 0;
+      rows.forEach(function (r) {
+        if (!r.classList.contains('is-hidden')) visible += 1;
+      });
+      if (visible === 0) {
+        cat.classList.add('is-hidden');
+      } else {
+        cat.classList.remove('is-hidden');
+      }
+    });
+    try {
+      window.sessionStorage.setItem(FILTER_KEY, q);
+    } catch (_e) {
+      /* sessionStorage may be unavailable (private mode) */
+    }
+    return anyVisible;
+  }
+
+  if (filter) {
+    try {
+      var stored = window.sessionStorage.getItem(FILTER_KEY) || '';
+      if (stored) {
+        filter.value = stored;
+        applyFilter(stored);
+      }
+    } catch (_e) {
+      /* ignore */
+    }
+    filter.addEventListener('input', function () {
+      applyFilter(filter.value);
+    });
+    document.addEventListener('keydown', function (e) {
+      var inField =
+        e.target &&
+        (e.target.tagName === 'INPUT' ||
+          e.target.tagName === 'TEXTAREA' ||
+          e.target.isContentEditable);
+      if (e.key === '/' && !inField) {
+        e.preventDefault();
+        filter.focus();
+        filter.select();
+      } else if (e.key === 'Escape' && document.activeElement === filter) {
+        filter.value = '';
+        applyFilter('');
+        filter.blur();
+      }
+    });
+  }
+})();
+
+    </script>
+  </body>
+</html>

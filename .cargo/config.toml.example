@@ -1,0 +1,28 @@
+# Linker speedup template — DEV-06 / AUT-149.
+#
+# Copy this file to `.cargo/config.toml` (or merge into your existing one)
+# to wire `mold` (Linux) or `lld` (macOS) into cargo's link step. The
+# default platform linker (Apple's `ld-prime`, GNU `ld.bfd`) is fine; this
+# config is purely an opt-in dev-loop optimisation. Expect ~30–50 % faster
+# warm-cache incremental rebuilds of the `ui-storybook` crate, which is
+# the hot path for `just dev`.
+#
+# Prerequisite (install once):
+#   macOS:   `brew install lld`
+#   Linux:   `apt install mold` or `brew install mold`
+#
+# `.cargo/config.toml` is gitignored. Each developer opts in independently.
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

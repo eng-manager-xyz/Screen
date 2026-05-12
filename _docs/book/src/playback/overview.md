@@ -1,7 +1,7 @@
 # `playback` — overview
 
 The middle layer between [`decode`](../decode/overview.md) and
-[`wisp`](../wisp/overview.md). `Player` owns a boxed `VideoStream` and a
+[`wisp`]({{wisp-link wisp/overview}}). `Player` owns a boxed `VideoStream` and a
 `VideoTexture`, and pumps decoded frames into the GPU at the source's
 frame rate while the shell ticks it once per render frame.
 

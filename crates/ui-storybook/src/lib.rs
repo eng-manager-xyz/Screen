@@ -27,5 +27,6 @@
 //! up — that's deliberately deferred so SSR + snapshots can land first.
 
 pub mod components;
+pub mod exporter;
 pub mod fixtures;
 pub mod stories;

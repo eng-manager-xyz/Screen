@@ -191,11 +191,9 @@ impl Path {
 
     /// Convert to a [`crate::scene::VectorShape::Path`] for use as
     /// a mask via the path-mask machinery. Caller is responsible for
-    /// keeping the vertex count under
-    /// [`MAX_PATH_POINTS`](path_clip_max_points) — anything beyond
-    /// the cap is silently truncated by the path-mask shader.
-    ///
-    /// [path_clip_max_points]: # "32 vertices, see path_clip.wgsl"
+    /// keeping the vertex count under `MAX_PATH_POINTS` (32 vertices —
+    /// see `path_clip.wgsl`). Anything beyond the cap is silently
+    /// truncated by the path-mask shader.
     #[must_use]
     pub fn to_mask_polygon(&self, tolerance: f32) -> Vec<Vec2> {
         self.flatten(tolerance)

@@ -1,0 +1,26 @@
+[package]
+name = "mdbook-preprocessor-cross"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "mdBook preprocessor for cross-book shared content and cross-book hyperlinks. Powers the screen-vs-wisp book split (AUT-154..AUT-160)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mdbook-preprocessor-cross"
+path = "src/main.rs"
+
+[lib]
+name = "mdbook_preprocessor_cross"
+path = "src/lib.rs"
+
+[dependencies]
+regex = "1"
+serde_json = "1"
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"

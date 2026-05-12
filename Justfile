@@ -56,12 +56,38 @@ docs-strict:
 #
 # `--dest-dir` is resolved relative to the source dir, so we pass an absolute
 # path rooted at the workspace.
-site: docs
-    @mkdir -p target/book
-    mdbook build _docs/book --dest-dir "$(pwd)/target/book"
-    @rm -rf target/book/api && cp -r target/doc target/book/api
+# Build the in-repo mdBook preprocessor binary so `mdbook build` can find
+# it on PATH via the recipes below. The first mdbook call after a clean
+# would otherwise fail because the preprocessor isn't installed globally.
+preprocessor-build:
+    @cargo build -p mdbook-preprocessor-cross
+
+# Build the `tools/doc-gates` binary used by `shared-check` /
+# `snapshots-check`. Cheap incremental rebuild on warm cache; the
+# cargo step short-circuits when nothing changed. Pure Rust + std +
+# regex, no python / no external interpreter — same gate on macOS,
+# Ubuntu, and Windows.
+doc-gates-build:
+    @cargo build -p doc-gates
+
+site: docs preprocessor-build site-screen site-wisp
     @echo
-    @echo "Open: file://$(pwd)/target/book/index.html"
+    @echo "Open: file://$(pwd)/target/book/index.html  (screen project book)"
+    @echo "      file://$(pwd)/target/book/wisp/index.html  (wisp library book)"
+
+# Build the screen project book. Standalone recipe so CI can target a
+# single book without rebuilding the other.
+site-screen: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/book --dest-dir "$(pwd)/target/book"
+    @rm -rf target/book/api && cp -r target/doc target/book/api
+
+# Build the wisp library book into `target/book/wisp/` so the two books
+# compose into one site rooted at `target/book/`. Standalone target so
+# the wisp-only CI gate can build it without touching the screen book.
+site-wisp: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-book --dest-dir "$(pwd)/target/book/wisp"
 
 # Regenerate per-feature screenshots / story HTML into _docs/book/src/assets/.
 # Used by mdBook chapters; commit the output so docs build is reproducible.
@@ -97,89 +123,190 @@ snapshots-media-video:
       mp4mux ! filesink location=_docs/book/src/assets/media/video-capture.mp4
 
 # Snapshot completeness gate.
-# Every mdBook chapter that references an asset under
-# `_docs/book/src/assets/` MUST have that asset committed. Re-running the
-# storybook exporters across machines is non-deterministic (Metal vs
-# lavapipe etc.), so we don't byte-compare. We DO verify that every
-# referenced file exists — catches "added a chapter, forgot to commit the
-# PNG." Run `just snapshots` locally before committing if you changed a
+# Every mdBook chapter (in either book + the shared fragments)
+# that references an asset under any `assets/` MUST have that asset
+# committed. Re-running the storybook exporters across machines is
+# non-deterministic (Metal vs lavapipe etc.), so we don't
+# byte-compare. We DO verify that every referenced file exists —
+# catches "added a chapter, forgot to commit the PNG." Run
+# `just snapshots` locally before committing if you changed a
 # story's rendered output.
-snapshots-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    missing=0
-    # Find every `assets/...` reference in markdown chapters, resolve
-    # relative to the chapter's directory, and check existence.
-    while IFS= read -r chapter; do
-      chapter_dir="$(dirname "$chapter")"
-      # markdown image syntax: ![alt](path) or <iframe src="path">
-      python3 - "$chapter" "$chapter_dir" <<'PY'
-    import re, sys, os
-    chapter, chapter_dir = sys.argv[1], sys.argv[2]
-    text = open(chapter).read()
-    refs = re.findall(r'!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"', text)
-    flat = [a or b for a, b in refs]
-    missing = []
-    for ref in flat:
-        if ref.startswith(('http://', 'https://')):
-            continue
-        # Only check assets/ references — code links / api links live elsewhere.
-        if '/assets/' not in ref:
-            continue
-        path = os.path.normpath(os.path.join(chapter_dir, ref))
-        if not os.path.exists(path):
-            missing.append((chapter, ref, path))
-    for c, r, p in missing:
-        print(f"MISSING ASSET: {c} → {r} (resolved {p})", file=sys.stderr)
-    sys.exit(1 if missing else 0)
-    PY
-    done < <(find _docs/book/src -name "*.md" -type f)
-    echo "snapshots-check: all referenced assets present."
+#
+# Implementation: `tools/doc-gates` Rust binary. Replaces the
+# python heredoc that used to live here (DOCS-08) so the gate is
+# pure Rust + just on macOS, Ubuntu, and Windows alike — no
+# external interpreter required.
+snapshots-check: doc-gates-build
+    @target/debug/doc-gates snapshots-check
 
-# Diagrams must be mermaid, not ASCII.
-# Rejects any chapter under `_docs/book/src/` containing box-drawing
+# Diagrams must be mermaid, not ASCII. Rejects any chapter under
+# `_docs/book/src/` or `_docs/wisp-book/src/` containing box-drawing
 # characters (┌ │ └ ├ ═ ╔ ╗) or the unicode arrow runs `─►` / `──▶`
-# / `◄──` outside of allowlisted files. The allowlist covers:
-#   - orientation/stack.md — directory-tree listing (mermaid is poor at file trees)
-# Math formulas, type-signature legends, and shell pipelines that
-# happen to contain `!` etc. are fine because they don't use these
-# specific glyphs.
-mermaid-check:
+# / `◄──`, outside of allowlisted files. The allowlist covers
+# `orientation/stack.md` (directory-tree listing — mermaid is poor
+# at file trees).
+#
+# Implementation: `tools/doc-gates` Rust binary. The previous
+# `grep -P` implementation worked on macOS + Linux but false-
+# matched em dashes / ellipses / curly quotes on Windows Git Bash
+# because grep falls back to byte-level matching when the locale
+# isn't UTF-8, and box-drawing chars share a leading UTF-8 byte
+# with the entire `\xE2 \x__ \x__` range. Rust strings are
+# char-level by construction — no locale dependency.
+mermaid-check: doc-gates-build
+    @target/debug/doc-gates mermaid-check
+
+# Source-only drift gate for the two-book setup. Walks both books +
+# shared for `\{\{shared X\}\}` tags and fails if `_docs/shared/X` is
+# missing. Catches the common typo / missing-file case at source —
+# no `mdbook` required, so `just gate` stays Rust-only and CI's
+# gate-screen.yml doesn't need to install mdbook on every PR.
+#
+# The rendered-HTML belt-and-braces grep lives in `site-check`
+# (depends on `site`, requires `mdbook` on PATH) and is invoked by
+# `docs.yml` after both books are built. That keeps the
+# concern-separation clean: `just gate` = Rust quality; `docs.yml`
+# = site rendering + drift.
+#
+# Implementation: `tools/doc-gates` Rust binary. Replaces the
+# python heredoc that used to live here (DOCS-08) so the gate is
+# pure Rust + just on macOS, Ubuntu, and Windows alike — no
+# external interpreter required.
+shared-check: doc-gates-build
+    @target/debug/doc-gates shared-check
+
+# Anti-regression for the "silent .gitignore drop" failure mode.
+# Some build-critical files (`crates/app/icons/icon.{png,ico}`) live
+# in directories whose names can be matched by overly-broad
+# .gitignore globs (the macOS template's `Icon?` pattern matched
+# our real `icons/` dir on case-insensitive filesystems, eating
+# `icon.ico` and making the Windows CI build fail opaquely deep
+# inside `tauri-winres`). This step runs `git ls-files
+# --error-unmatch` for each file in `REQUIRED_FILES` in
+# `tools/doc-gates/src/main.rs` and fails fast with a clear message
+# pointing at `.gitignore` + `git check-ignore -v <file>`.
+#
+# Add to the REQUIRED_FILES list (in `tools/doc-gates/src/main.rs`)
+# whenever a new build-critical asset gets committed.
+required-files-check: doc-gates-build
+    @target/debug/doc-gates required-files-check
+
+# Full site-rendering drift gate. Builds both books, then greps
+# rendered HTML for `mdbook-preprocessor-cross.*error` sentinels
+# the source-level shared-check can't see (unreadable files,
+# typo'd tag forms whose source variant matches but whose runtime
+# variant doesn't). Requires `mdbook` + preprocessors on PATH.
+# Invoked by `docs.yml` after both books are built; NOT invoked
+# by `just gate` so the Rust gate stays mdbook-free.
+#
+# `target/book/api/` is excluded because rustdoc renders the
+# preprocessor's own source (which contains the literal error
+# template string) and the grep would self-match.
+site-check: site shared-check
     #!/usr/bin/env bash
     set -euo pipefail
-    allowlist=(
-      "_docs/book/src/orientation/stack.md"
-    )
-    is_allowed() {
-      local f="$1"
-      for a in "${allowlist[@]}"; do
-        [[ "$f" == "$a" ]] && return 0
-      done
-      return 1
-    }
-    violations=0
-    while IFS= read -r file; do
-      if is_allowed "$file"; then
-        continue
-      fi
-      if grep -nP '[┌│└├═╔╗]|─►|──▶|◄──' "$file" >/dev/null 2>&1; then
-        echo "ASCII DIAGRAM IN MDBOOK CHAPTER: $file" >&2
-        grep -nP '[┌│└├═╔╗]|─►|──▶|◄──' "$file" >&2 || true
-        violations=$((violations + 1))
-      fi
-    done < <(find _docs/book/src -name '*.md' -type f)
-    if [ $violations -gt 0 ]; then
-      echo "" >&2
-      echo "Found $violations file(s) with ASCII diagrams." >&2
-      echo "Per CLAUDE.md 'Diagrams in mdBook — mermaid only, no ASCII'," >&2
-      echo "convert to a \`\`\`mermaid block." >&2
-      echo "Prefer sequenceDiagram when participants exchange messages over time." >&2
-      exit 1
+    if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
+        echo "RUNTIME ERROR COMMENT IN RENDERED HTML — see above." >&2
+        exit 1
     fi
-    echo "mermaid-check: no ASCII diagrams in mdBook chapters."
+    echo "site-check: both books rendered cleanly, no preprocessor error sentinels."
 
-# Per-task gate. Run before marking any task done.
-gate: fmt check lint test doctest docs snapshots-check mermaid-check
+# Per-task gate. Run before marking any task done. Pure Rust —
+# does NOT require mdbook (site rendering is gated by `just
+# site-check` in docs.yml) and does NOT require python (text
+# munging lives in `tools/doc-gates`). Runs identically on every
+# supported CI runner (macOS, Ubuntu, Windows) and locally.
+gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check required-files-check
+
+# ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
+
+# Local-only storybook dev loop. Watches ui-storybook src + assets,
+# re-runs export-stories on change, browser auto-reloads via WebSocket.
+# Visit http://127.0.0.1:3000/ to see the storybook index.
+#
+# For phone access over Tailscale, see `just dev-remote`.
+dev:
+    cargo run -p dev-server --release -- \
+        --assets _docs/book/src/assets/ui \
+        --watch crates/ui-storybook/src crates/ui-storybook/assets \
+        --port 3000 \
+        --host 127.0.0.1
+
+# Remote-accessible storybook for phone preview. Starts `dev` in the
+# background, exposes the local server via Tailscale Serve, prints the
+# phone-reachable HTTPS URL. Requires Tailscale installed + signed in
+# (see _docs/book/src/conventions/remote-dev.md for one-time setup).
+#
+# Stop with: `just dev-remote-stop`.
+dev-remote:
+    @echo "Booting dev-server in background (logs: /tmp/screen-dev-server.log)…"
+    @nohup just dev > /tmp/screen-dev-server.log 2>&1 &
+    @sleep 4
+    @echo "Exposing via Tailscale Serve…"
+    tailscale serve --bg http://127.0.0.1:3000
+    @echo ""
+    @echo "Phone URL:"
+    @tailscale serve status | grep -Eo 'https://[^ ]+' | head -1 || echo "(check 'tailscale serve status' manually)"
+    @echo ""
+    @echo "Stop with:  just dev-remote-stop"
+
+# Tear down the background dev-server + Tailscale Serve config opened by
+# `just dev-remote`.
+dev-remote-stop:
+    @echo "Stopping Tailscale Serve…"
+    -tailscale serve --https=443 off
+    @echo "Killing background dev-server…"
+    -pkill -f "target/release/dev-server" || true
+    @echo "Done."
+
+# ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
+#
+# `mdbook serve` has built-in live reload (filesystem watch + websocket
+# auto-refresh in the browser), and runs the preprocessor on every
+# rebuild, so changes to `{{shared}}` / `{{wisp-link}}` tags are picked
+# up automatically. No dev-server crate involvement.
+#
+# Two books, two ports so you can run both at once. The `preprocessor-
+# build` dependency rebuilds `mdbook-preprocessor-cross` first; mdbook's
+# subsequent rebuilds skip it because `cargo build` short-circuits when
+# nothing changed.
+
+# Local screen project book. Visit http://127.0.0.1:3001/.
+dev-book: preprocessor-build
+    PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/book \
+        --hostname 127.0.0.1 --port 3001 --open
+
+# Local wisp library book. Visit http://127.0.0.1:3002/.
+dev-wisp-book: preprocessor-build
+    PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/wisp-book \
+        --hostname 127.0.0.1 --port 3002 --open
+
+# Publish both books over Tailscale Serve (private to your tailnet).
+# Run `just dev-book` and `just dev-wisp-book` in separate terminals
+# first — this recipe only wires the Tailscale path proxies. After
+# this, visit https://<MAC-NAME>.<TAILNET>.ts.net/ for the screen
+# book and https://<MAC-NAME>.<TAILNET>.ts.net/wisp/ for the wisp
+# book on any tailnet-enrolled device.
+#
+# Idempotent — re-running just refreshes the routes. Stop with
+# `just dev-remote-book-stop`.
+dev-remote-book:
+    @echo "Registering Tailscale Serve proxies…"
+    tailscale serve --bg --set-path / http://127.0.0.1:3001
+    tailscale serve --bg --set-path /wisp http://127.0.0.1:3002
+    @echo ""
+    @echo "Routes:"
+    @tailscale serve status || true
+    @echo ""
+    @echo "Stop with:  just dev-remote-book-stop"
+
+# Tear down the book Tailscale Serve routes registered by
+# `dev-remote-book`. Leaves the local `mdbook serve` processes alone
+# (run them in foreground terminals you can Ctrl-C yourself).
+dev-remote-book-stop:
+    @echo "Removing Tailscale Serve routes…"
+    -tailscale serve --https=443 off
+    @echo "Done."
 
 # Tier-2 e2e tests. Requires `tauri-driver` and (on Linux) `webkit2gtk-driver`
 # + `xvfb`. Linux runs the suite under `xvfb-run` for headless display;

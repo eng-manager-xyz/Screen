@@ -3,7 +3,7 @@
 A native [winit] window with a [wgpu] surface that [wisp] renders into.
 Plays an MP4 end-to-end through the
 [decode](../decode/overview.md) → [playback](../playback/overview.md) →
-[wisp](../wisp/overview.md) stack:
+[wisp]({{wisp-link wisp/overview}}) stack:
 
 ```mermaid
 sequenceDiagram
@@ -76,4 +76,4 @@ cargo run -p preview --example render_offscreen
 
 [winit]: https://docs.rs/winit
 [wgpu]: https://docs.rs/wgpu
-[wisp]: ../wisp/overview.md
+[wisp]: {{wisp-link wisp/overview}}

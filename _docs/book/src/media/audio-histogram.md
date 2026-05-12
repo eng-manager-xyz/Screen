@@ -8,7 +8,7 @@ The seam works. `media` quantizes audio into an
 lays it out as rectangle geometry, and `wisp`'s graphics pipeline
 draws those rectangles. Wisp never imports `media`.
 
-![](../assets/wisp/audio-histogram.png)
+![](../assets/media/audio-histogram.png)
 
 A 440 Hz sine at amplitude 0.6, sampled at 48 kHz for 1 second,
 quantized at 50 ms (20 bars), mirrored about the centerline. Every

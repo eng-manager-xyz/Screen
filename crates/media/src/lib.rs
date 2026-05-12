@@ -18,7 +18,8 @@
 //!   `decode::VideoFrame` re-exported under [`video`]), the
 //!   [`clock::MediaClock`] + [`clock::MediaTime`] timing model,
 //!   [`histogram::AudioHistogram`] quantization, the
-//!   [`manifest::RecordingManifest`] session descriptor, and the device
+//!   `manifest::RecordingManifest` session descriptor (planned —
+//!   see [`manifest`] for the scaffolded module), and the device
 //!   enumeration model.
 //! - **`wisp`** owns visual composition only. It **must not** depend on
 //!   this crate's GStreamer integration. It receives `VideoFrame` /
