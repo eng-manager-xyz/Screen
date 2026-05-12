@@ -3,7 +3,7 @@
 | Layer | Choice |
 |---|---|
 | Shell | Tauri 2 (multi-window) |
-| UI | Leptos 0.7 (Rust → WASM) inside the Tauri webview |
+| UI | Leptos 0.8 (Rust → WASM) inside the Tauri webview |
 | Renderer | `wisp` (this repo) — wgpu + WGSL |
 | Editor preview | native `winit` sibling window rendered by `wisp` |
 | Capture | `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux) |

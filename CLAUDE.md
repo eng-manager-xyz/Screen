@@ -516,7 +516,7 @@ Library is means; the app is the goal.
 ## Stack (locked 2026-05-09)
 
 - **Shell:** Tauri 2 (multi-window)
-- **UI:** Leptos 0.7 (Rust → WASM) inside the Tauri webview
+- **UI:** Leptos 0.8 (Rust → WASM) inside the Tauri webview. See `.claude/skills/leptos-migration.md` for version-by-version migration notes and "strive to use" 0.8 idioms.
 - **Renderer:** `wisp` (in-repo, `crates/wisp`) — wgpu + WGSL
 - **Editor preview:** native `winit` sibling window rendered by `wisp`
 - **Capture:** `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux)
