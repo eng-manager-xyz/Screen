@@ -11,6 +11,7 @@ pub mod recording_controls_footer;
 pub mod recording_selects;
 pub mod recording_toolbar;
 pub mod system_audio;
+pub mod tray_record_popover;
 
 pub use capture_mode_tabs::CaptureModeTabs;
 pub use capture_source_row::{CaptureSourceKind, CaptureSourceRow, CaptureSourceView};
@@ -31,4 +32,9 @@ pub use recording_toolbar::{RecordingState, RecordingToolbar};
 pub use system_audio::{
     AppIconView, AudioAppView, AudioFilter, SystemAudioAppList, SystemAudioRow, SystemAudioView,
     format_selection_count,
+};
+pub use tray_record_popover::{
+    OnScreenSummaryView, OpenRecorderPopoverKind, TrayOverflowHint, TrayRecordPopover,
+    TrayRecordPopoverView, WorkspaceSwitcherView, format_on_screen_summary,
+    format_system_audio_summary,
 };

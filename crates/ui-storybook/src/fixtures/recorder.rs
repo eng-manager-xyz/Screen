@@ -174,6 +174,57 @@ pub fn sample_recording_controls_compact() -> crate::components::recorder::Recor
     }
 }
 
+/// Sample tray-record-popover view (UI-12 / AUT-132).
+#[must_use]
+pub fn sample_tray_record_popover(
+    open: crate::components::recorder::OpenRecorderPopoverKind,
+) -> crate::components::recorder::TrayRecordPopoverView {
+    use crate::components::recorder::{
+        OnScreenSummaryView, StartRecordingState, TrayRecordPopoverView, WorkspaceSwitcherView,
+        format_on_screen_summary,
+    };
+    use crate::components::shell::AppSection;
+    use crate::fixtures::audio_apps::{sample_audio_apps, sample_system_audio_view};
+    use crate::fixtures::devices::{
+        sample_capture_source_camera, sample_capture_source_microphone, sample_display_source,
+    };
+    use crate::fixtures::workspaces::sample_workspace_views;
+
+    let workspaces = sample_workspace_views();
+    let on_screen = sample_on_screen_options(false);
+    let summary = format_on_screen_summary(&on_screen);
+    let apps = sample_audio_apps();
+    let total = apps.len();
+    TrayRecordPopoverView {
+        active_section: AppSection::Record,
+        capture_mode: CaptureMode::Screen,
+        workspaces: WorkspaceSwitcherView {
+            workspaces,
+            selected_id: "ws-northwind",
+        },
+        display: sample_display_source(true),
+        camera: sample_capture_source_camera(true, false),
+        microphone: sample_capture_source_microphone(true, false, Some(0.35)),
+        system_audio: sample_system_audio_view(true, false, &apps, total),
+        on_screen_summary: OnScreenSummaryView {
+            summary,
+            options: on_screen,
+        },
+        controls: sample_recording_controls(StartRecordingState::Ready),
+        open,
+    }
+}
+
+/// Variant with Start recording disabled (no source selected yet).
+#[must_use]
+pub fn sample_tray_record_popover_start_disabled()
+-> crate::components::recorder::TrayRecordPopoverView {
+    use crate::components::recorder::{OpenRecorderPopoverKind, StartRecordingState};
+    let mut v = sample_tray_record_popover(OpenRecorderPopoverKind::None);
+    v.controls = sample_recording_controls(StartRecordingState::Disabled);
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +232,15 @@ mod tests {
     #[test]
     fn overlay_options_non_empty() {
         assert!(!sample_overlay_options().is_empty());
+    }
+
+    #[test]
+    fn tray_record_popover_is_record_section_by_default() {
+        use crate::components::recorder::OpenRecorderPopoverKind;
+        use crate::components::shell::AppSection;
+        let v = sample_tray_record_popover(OpenRecorderPopoverKind::None);
+        assert!(matches!(v.active_section, AppSection::Record));
+        assert!(!v.on_screen_summary.summary.is_empty());
     }
 
     #[test]

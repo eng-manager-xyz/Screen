@@ -1756,3 +1756,87 @@ kbd {
 .start-recording-label {
   font-size: 13px;
 }
+
+/* ───── UI-12 — Tray record popover ───── */
+.tray-record-popover {
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  border-radius: var(--radius-panel);
+  background: var(--surface-popover);
+  border: 1px solid var(--line-subtle);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  position: relative;
+}
+.tray-record-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-subtle);
+}
+.tray-record-workspace-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tray-record-workspace-chip:hover { background: var(--surface-selected); }
+.tray-record-workspace-label { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.tray-record-chevron { color: var(--text-tertiary); font-size: 10px; }
+
+.tray-record-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.tray-record-display,
+.tray-record-sources,
+.tray-record-audio,
+.tray-record-on-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tray-record-on-screen-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.tray-record-on-screen-row:hover { background: var(--surface-selected); }
+.tray-record-on-screen-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tray-record-on-screen-title { font-size: 13px; font-weight: 600; }
+.tray-record-on-screen-summary { font-size: 11px; color: var(--text-secondary); }
+
+.tray-popover-overlay {
+  position: absolute;
+  z-index: 10;
+}
+.tray-popover-overlay-workspace { top: 56px; left: 12px; }
+.tray-popover-overlay-camera,
+.tray-popover-overlay-microphone { top: 220px; right: 12px; }
+.tray-popover-overlay-on-screen { bottom: 76px; right: 12px; }

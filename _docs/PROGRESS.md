@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-12 — TrayRecordPopover composition (AUT-132)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `TrayRecordPopover` composes UI-02..UI-11 into the floating tray-record window. `OpenRecorderPopoverKind` enum drives which secondary surface (workspace menu / camera / microphone / system-audio / on-screen-options) is rendered as an overlay over the popover. State remains entirely external; the popover only renders what props say to render.
+- **Linear:** [AUT-132](https://linear.app/harwood/issue/AUT-132).
+- **Files:** new `components/recorder/tray_record_popover.rs` (`TrayRecordPopover`, `TrayRecordPopoverView`, `OpenRecorderPopoverKind`, `WorkspaceSwitcherView`, `OnScreenSummaryView`, `format_on_screen_summary`, `format_system_audio_summary` + 5 unit tests). `components/recorder/mod.rs` re-exports. `fixtures/recorder.rs` adds `sample_tray_record_popover(open)` + `_start_disabled()` + 1 unit test. New `stories/tray_record_popover.rs` (7 stories). `stories/mod.rs` registers. `assets/style.css` adds `.tray-record-popover*` and `.tray-popover-overlay*`. New `_docs/book/src/ui/chunks/tray-record-popover.md`. `SUMMARY.md` indexes it.
+- **Verified:** 62 ui-storybook tests pass (was 56; +6: 5 tray unit + 1 fixture). All 7 `tray-record-popover-*.html` assets exported. Full `just gate` green.
+- **Overlay positioning.** Each open overlay lives in `.tray-popover-overlay-<kind>` and is positioned absolutely relative to the popover container — the parent decides which one is active by passing `open`, so the popover doesn't track its own menu state. This keeps the SSR snapshot deterministic across menu transitions.
+
+---
+
 ## UI-11 — RecordingControlsFooter (AUT-131)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `RecordingControlsFooter` composes `AutoZoomSelect` + `CountdownSelect` + `StartRecordingButton`. `StartRecordingState { Ready, Disabled, Loading, PermissionBlocked }` covers the four lifecycle visuals; `Ready` renders the ⌘⇧2 shortcut chip inside the red button, `PermissionBlocked` swaps to amber + warning glyph and stays interactive (so the parent can open the permission prompt). `ShortcutBadgeGroup` is a new dedicated chip set (inverted color treatment vs. UI-01 `Kbd`).
