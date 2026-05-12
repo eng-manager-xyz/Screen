@@ -113,6 +113,7 @@
 
 - [Overview](./ui/overview.md)
 - [Presentational contract](./ui/presentational-contract.md)
+- [Shared fixture library](./ui/fixtures.md)
 - [Components](./ui/components.md)
   - [Design tokens](./ui/chunks/tokens.md)
   - [Surface primitives](./ui/chunks/surface-primitives.md)

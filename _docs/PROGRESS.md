@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-22 — Shared fixture library + contact sheet (AUT-142)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `default_ui_fixtures()` aggregates every per-surface canonical sample (workspaces, displays, devices, audio apps, recordings, cursor presets) into a single deterministic `UiFixtureSet`. New fixture-gallery story renders a contact sheet of every major domain for design review.
+- **Linear:** [AUT-142](https://linear.app/harwood/issue/AUT-142).
+- **Files:** new `fixtures/contact_sheet.rs` (`UiFixtureSet`, `DeviceFixtureSet`, `default_ui_fixtures` + 2 unit tests). `fixtures/mod.rs` re-exports. New `stories/fixtures_gallery.rs` (4 stories: contact sheet + 3 per-surface filters). `stories/mod.rs` registers. `tests/story_registry.rs` adds `"Fixtures"` category. `assets/style.css` adds `.contact-sheet*`. New `_docs/book/src/ui/fixtures.md` chapter with the "why fixtures matter" explanation + module index. `SUMMARY.md` indexes it as a top-level page under the `ui-storybook` book section.
+- **Verified:** 80 ui-storybook tests pass (was 78; +2 unit). Deterministic equality test for `default_ui_fixtures()` confirms cross-machine stability. 4 new asset HTMLs exported. Full `just gate` green.
+- **One source of truth, swapped for real DTOs later.** When the runtime crate lands a real `Recording` / `Workspace` struct, the fixtures get replaced (not rewritten) by mappers. Today's snapshot diffs stay quiet because the canonical samples never drift.
+
+---
+
 ## UI-21 — CursorPreviewCanvas + appearance controls (AUT-141)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — `CursorPreviewCanvas` follows the same three-backend pattern as the editor canvas (`CssFallback` / `WispAsset` / `RuntimeUnavailable`). `CursorAppearancePanel` composes UI-18 inspector primitives into APPEARANCE / CLICK EFFECT / MOTION / BEHAVIOR sections + a Reset/Apply footer. 6 stories cover preview light/dark + 4 appearance permutations.

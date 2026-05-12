@@ -88,6 +88,7 @@ fn category_set_is_within_known_buckets() {
         "Library",
         "Inspector",
         "Cursor",
+        "Fixtures",
     ];
     for story in all_stories() {
         assert!(

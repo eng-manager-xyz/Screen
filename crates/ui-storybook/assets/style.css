@@ -2683,3 +2683,38 @@ kbd {
   padding: 8px 12px;
   border-top: 1px solid var(--line-subtle);
 }
+
+/* ───── UI-22 — Contact sheet ───── */
+.contact-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+.contact-sheet-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+.contact-sheet-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.contact-sheet-row-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.contact-sheet-cursor-tile {
+  width: 320px;
+  height: 360px;
+  overflow: hidden;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line-subtle);
+}
