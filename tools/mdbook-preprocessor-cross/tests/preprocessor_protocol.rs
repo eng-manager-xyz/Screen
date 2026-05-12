@@ -17,8 +17,8 @@ fn workspace_root() -> PathBuf {
 
 fn binary_path() -> PathBuf {
     let root = workspace_root();
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| root.join("target"), PathBuf::from);
+    let target =
+        std::env::var("CARGO_TARGET_DIR").map_or_else(|_| root.join("target"), PathBuf::from);
     target.join("debug").join("mdbook-preprocessor-cross")
 }
 

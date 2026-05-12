@@ -44,15 +44,6 @@ recorder's Tauri integration, capture pipeline, Leptos UI, and
 storybook discipline are all noise to them. Splitting the books
 keeps each one short for its actual audience.
 
-The two books share an origin
-(`eng-manager-xyz.github.io/screen/`) and cross-link freely. The
-{{wisp-link …}} preprocessor tag ensures cross-references resolve
-correctly in both books (relative in wisp, absolute in screen).
-See `_docs/shared/` for shared content fragments.
+{{shared cross-link-convention.md}}
 
-```admonish info title="Cross-link convention"
-- Project ↔ wisp: absolute URLs (`/screen/wisp/...` or `/screen/...`).
-- Within either book: relative paths (`./chunks/blur.md`).
-- The `mdbook-preprocessor-cross` preprocessor enforces this so
-  shared content fragments resolve correctly per-book.
-```
+{{shared architecture-boundary.md}}

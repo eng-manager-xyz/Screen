@@ -16,12 +16,12 @@ use mdbook_preprocessor_cross::{config_from_ctx, transform, walk_book};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(first) = args.first() {
-        if first == "supports" {
-            // mdBook 0.4 sends `supports <renderer>`. We support `html`.
-            let renderer = args.get(1).map(String::as_str).unwrap_or("");
-            std::process::exit(if renderer == "html" { 0 } else { 1 });
-        }
+    if let Some(first) = args.first()
+        && first == "supports"
+    {
+        // mdBook 0.4 sends `supports <renderer>`. We support `html`.
+        let renderer = args.get(1).map_or("", String::as_str);
+        std::process::exit(i32::from(renderer != "html"));
     }
 
     let mut input = String::new();

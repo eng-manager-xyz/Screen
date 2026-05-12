@@ -1,7 +1,6 @@
 # wisp
 
-A Pixi-shaped 2D scene graph + filter chain library on top of
-[`wgpu`](https://wgpu.rs). Native Rust, no JavaScript, no DOM.
+{{shared wisp-tagline.md}}
 
 ## What it gives you
 
@@ -43,5 +42,9 @@ screen recorder. The full project is in the `screen` monorepo; this
 book is the renderer-only deep dive. If you want context on how the
 recorder uses wisp, the project book at [/screen/](/screen/) has the
 integration story.
+
+{{shared architecture-boundary.md}}
+
+{{shared cross-link-convention.md}}
 
 [Get started](./quickstart.md) →

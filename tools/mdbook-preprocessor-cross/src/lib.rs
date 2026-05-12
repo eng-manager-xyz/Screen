@@ -105,7 +105,9 @@ fn expand_once(content: &str, config: &Config) -> String {
         .into_owned();
     LINK_RE
         .get_or_init(|| Regex::new(r"\{\{\s*wisp-link\s+([^}]+?)\s*\}\}").unwrap())
-        .replace_all(&after_shared, |caps: &Captures| render_wisp_link(&caps[1], config))
+        .replace_all(&after_shared, |caps: &Captures| {
+            render_wisp_link(&caps[1], config)
+        })
         .into_owned()
 }
 
@@ -121,9 +123,7 @@ fn inline_shared(rel_path: &str, config: &Config) -> String {
     let full = config.shared_root.join(rel_path);
     match std::fs::read_to_string(&full) {
         Ok(s) => s,
-        Err(e) => format!(
-            "<!-- mdbook-preprocessor-cross: shared({rel_path}) error: {e} -->"
-        ),
+        Err(e) => format!("<!-- mdbook-preprocessor-cross: shared({rel_path}) error: {e} -->"),
     }
 }
 
@@ -157,10 +157,7 @@ fn is_safe_relative(p: &str) -> bool {
 /// on every chapter's `content` field. The book value is mutated in
 /// place.
 pub fn walk_book(book: &mut serde_json::Value, mut apply: impl FnMut(&str) -> String) {
-    fn walk_sections(
-        sections: &mut serde_json::Value,
-        apply: &mut dyn FnMut(&str) -> String,
-    ) {
+    fn walk_sections(sections: &mut serde_json::Value, apply: &mut dyn FnMut(&str) -> String) {
         let Some(arr) = sections.as_array_mut() else {
             return;
         };
@@ -168,11 +165,11 @@ pub fn walk_book(book: &mut serde_json::Value, mut apply: impl FnMut(&str) -> St
             let Some(chapter) = item.get_mut("Chapter") else {
                 continue;
             };
-            if let Some(content) = chapter.get_mut("content") {
-                if let Some(s) = content.as_str() {
-                    let new = apply(s);
-                    *content = serde_json::Value::String(new);
-                }
+            if let Some(content) = chapter.get_mut("content")
+                && let Some(s) = content.as_str()
+            {
+                let new = apply(s);
+                *content = serde_json::Value::String(new);
             }
             if let Some(sub) = chapter.get_mut("sub_items") {
                 walk_sections(sub, apply);
@@ -281,16 +278,8 @@ mod tests {
     #[test]
     fn shared_inside_a_fragment_expands_too() {
         let tmp = TempDir::new().unwrap();
-        std::fs::write(
-            tmp.path().join("inner.md"),
-            "see {{wisp-link foo}}",
-        )
-        .unwrap();
-        std::fs::write(
-            tmp.path().join("outer.md"),
-            "outer: {{shared inner.md}}",
-        )
-        .unwrap();
+        std::fs::write(tmp.path().join("inner.md"), "see {{wisp-link foo}}").unwrap();
+        std::fs::write(tmp.path().join("outer.md"), "outer: {{shared inner.md}}").unwrap();
         let cfg = wisp_cfg(tmp.path().to_path_buf());
         let out = transform("{{shared outer.md}}", &cfg);
         assert!(out.contains("./foo.html"), "got: {out:?}");
@@ -372,7 +361,10 @@ mod tests {
         });
         let cfg = config_from_ctx(&ctx);
         assert_eq!(cfg.target, Target::Wisp);
-        assert_eq!(cfg.shared_root, std::path::PathBuf::from("/path/to/book/../shared"));
+        assert_eq!(
+            cfg.shared_root,
+            std::path::PathBuf::from("/path/to/book/../shared")
+        );
         assert_eq!(cfg.wisp_base, "/different/wisp");
     }
 }

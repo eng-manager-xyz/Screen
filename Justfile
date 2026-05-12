@@ -196,8 +196,49 @@ mermaid-check:
     fi
     echo "mermaid-check: no ASCII diagrams in mdBook chapters."
 
+# Drift gate for the two-book setup. Walks both books for
+# `{{shared path}}` and `{{wisp-link path}}` tags and asserts:
+#   1. every `{{shared X}}` resolves to an existing file under
+#      `_docs/shared/`,
+#   2. the rendered HTML doesn't carry any
+#      `mdbook-preprocessor-cross: ... error` comments (a missing
+#      fragment in production emits one of those).
+# Run as part of `gate` so a typo in a shared/wisp-link tag fails
+# CI before deploy.
+shared-check: site
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 - <<'PY'
+    import os, re, sys
+    SHARED = re.compile(r'\{\{\s*shared\s+([^}]+?)\s*\}\}')
+    fail = 0
+    for root in ("_docs/book/src", "_docs/wisp-book/src"):
+        for dirpath, _, files in os.walk(root):
+            for f in files:
+                if not f.endswith(".md"):
+                    continue
+                p = os.path.join(dirpath, f)
+                text = open(p).read()
+                for m in SHARED.finditer(text):
+                    ref = m.group(1).strip()
+                    if not os.path.isfile(os.path.join("_docs/shared", ref)):
+                        print(f"MISSING SHARED FRAGMENT: {p} → _docs/shared/{ref}", file=sys.stderr)
+                        fail = 1
+    sys.exit(fail)
+    PY
+    # Belt-and-braces: rendered HTML must not carry the preprocessor's
+    # error sentinel (catches runtime-only failures the source grep
+    # cannot see — unreadable files, typo'd tag forms, etc.).
+    # Exclude `target/book/api/` because rustdoc renders the preprocessor's
+    # own source — the error-comment template would otherwise match itself.
+    if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
+      echo "RUNTIME ERROR COMMENT IN RENDERED HTML — see above." >&2
+      exit 1
+    fi
+    echo "shared-check: all shared() references resolve and no runtime errors in rendered HTML."
+
 # Per-task gate. Run before marking any task done.
-gate: fmt check lint test doctest docs snapshots-check mermaid-check
+gate: fmt check lint test doctest docs snapshots-check mermaid-check shared-check
 
 # ─── Remote-first UI dev loop (DEV-00..DEV-08 / AUT-145..AUT-153) ─────────────
 
