@@ -118,3 +118,54 @@ sequenceDiagram
     TS->>Server: GET / (loopback)
     Server-->>Phone: index.html + injected client
 ```
+
+## The books (mdBook live-reload)
+
+The same Tailscale machinery serves the two mdBooks, with `mdbook
+serve` providing the live-reload (no `dev-server` involved — mdbook
+has built-in filesystem watch + websocket reload).
+
+Two books, two ports so you can run both at once:
+
+```bash
+# Terminal 1 — screen project book
+just dev-book          # http://127.0.0.1:3001/
+
+# Terminal 2 — wisp library book
+just dev-wisp-book     # http://127.0.0.1:3002/
+
+# Terminal 3 (once) — expose both over Tailscale
+just dev-remote-book
+```
+
+`dev-remote-book` registers two Tailscale Serve path proxies:
+
+| Phone URL                                          | Routes to                  |
+|----------------------------------------------------|----------------------------|
+| `https://<MAC>.<TAILNET>.ts.net/`                  | `http://127.0.0.1:3001/`   |
+| `https://<MAC>.<TAILNET>.ts.net/wisp/`             | `http://127.0.0.1:3002/`   |
+
+Both books pass through `mdbook-preprocessor-cross` on every
+rebuild, so `\{\{shared X\}\}` and `\{\{wisp-link Y\}\}` tags get
+re-resolved live as you edit. The cross-book links work because
+the production base path (`/screen/wisp/`) doesn't match the
+local path (`/wisp/`) — but mdbook's `site-url` is configured for
+production, so on local you'll see the cross-links pointing at
+`/screen/wisp/...` which won't resolve. **For local cross-book
+nav, use the book's own TOC**; for production-shape verification,
+deploy preview or `just site` + open `target/book/`.
+
+Stop with `just dev-remote-book-stop` (tears down the Tailscale
+routes; leave `mdbook serve` running in their terminals and Ctrl-C
+when you're done).
+
+```admonish note title="What 'live reload' covers"
+mdbook serve rebuilds + reloads on changes under the book's
+`src/` tree AND `book.toml`. Changes to `_docs/shared/` files
+also trigger a rebuild — both books' `src/` tree includes a
+`{{shared}}` tag that pulls in those files, and mdbook's watch
+covers them transitively. Changes to the **preprocessor source**
+(`tools/mdbook-preprocessor-cross/src/lib.rs`) do NOT — you have
+to Ctrl-C and re-run `just dev-book` so `preprocessor-build`
+recompiles.
+```

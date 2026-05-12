@@ -283,6 +283,55 @@ dev-remote-stop:
     -pkill -f "target/release/dev-server" || true
     @echo "Done."
 
+# ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
+#
+# `mdbook serve` has built-in live reload (filesystem watch + websocket
+# auto-refresh in the browser), and runs the preprocessor on every
+# rebuild, so changes to `{{shared}}` / `{{wisp-link}}` tags are picked
+# up automatically. No dev-server crate involvement.
+#
+# Two books, two ports so you can run both at once. The `preprocessor-
+# build` dependency rebuilds `mdbook-preprocessor-cross` first; mdbook's
+# subsequent rebuilds skip it because `cargo build` short-circuits when
+# nothing changed.
+
+# Local screen project book. Visit http://127.0.0.1:3001/.
+dev-book: preprocessor-build
+    PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/book \
+        --hostname 127.0.0.1 --port 3001 --open
+
+# Local wisp library book. Visit http://127.0.0.1:3002/.
+dev-wisp-book: preprocessor-build
+    PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/wisp-book \
+        --hostname 127.0.0.1 --port 3002 --open
+
+# Publish both books over Tailscale Serve (private to your tailnet).
+# Run `just dev-book` and `just dev-wisp-book` in separate terminals
+# first — this recipe only wires the Tailscale path proxies. After
+# this, visit https://<MAC-NAME>.<TAILNET>.ts.net/ for the screen
+# book and https://<MAC-NAME>.<TAILNET>.ts.net/wisp/ for the wisp
+# book on any tailnet-enrolled device.
+#
+# Idempotent — re-running just refreshes the routes. Stop with
+# `just dev-remote-book-stop`.
+dev-remote-book:
+    @echo "Registering Tailscale Serve proxies…"
+    tailscale serve --bg --set-path / http://127.0.0.1:3001
+    tailscale serve --bg --set-path /wisp http://127.0.0.1:3002
+    @echo ""
+    @echo "Routes:"
+    @tailscale serve status || true
+    @echo ""
+    @echo "Stop with:  just dev-remote-book-stop"
+
+# Tear down the book Tailscale Serve routes registered by
+# `dev-remote-book`. Leaves the local `mdbook serve` processes alone
+# (run them in foreground terminals you can Ctrl-C yourself).
+dev-remote-book-stop:
+    @echo "Removing Tailscale Serve routes…"
+    -tailscale serve --https=443 off
+    @echo "Done."
+
 # Tier-2 e2e tests. Requires `tauri-driver` and (on Linux) `webkit2gtk-driver`
 # + `xvfb`. Linux runs the suite under `xvfb-run` for headless display;
 # macOS prints a clear skip message because `tauri-driver`'s WKWebView
