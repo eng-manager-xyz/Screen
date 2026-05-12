@@ -38,6 +38,54 @@ pub fn sample_cursor_styles() -> Vec<CursorStyleFixture> {
     ]
 }
 
+/// Sample cursor style picker (UI-20).
+#[must_use]
+pub fn sample_cursor_style_picker(
+    selected: crate::components::cursor::CursorStyle,
+) -> crate::components::cursor::CursorStylePickerView {
+    use crate::components::cursor::{CursorStyle, CursorStylePickerView, CursorStyleTileView};
+    let styles = [
+        CursorStyle::System,
+        CursorStyle::Arrow,
+        CursorStyle::Soft,
+        CursorStyle::Dot,
+        CursorStyle::Ring,
+        CursorStyle::Reticle,
+        CursorStyle::Tactile,
+        CursorStyle::Hide,
+    ];
+    let tiles = styles
+        .iter()
+        .map(|s| CursorStyleTileView {
+            style: *s,
+            label: None,
+            selected: *s == selected,
+            disabled: matches!(*s, CursorStyle::Tactile),
+        })
+        .collect();
+    CursorStylePickerView { tiles }
+}
+
+/// Variant where every tile is disabled.
+#[must_use]
+pub fn sample_cursor_style_picker_disabled() -> crate::components::cursor::CursorStylePickerView {
+    use crate::components::cursor::CursorStyle;
+    let mut v = sample_cursor_style_picker(CursorStyle::Arrow);
+    for t in &mut v.tiles {
+        t.disabled = true;
+    }
+    v
+}
+
+/// Sample shell view (UI-20).
+#[must_use]
+pub fn sample_cursor_studio_shell() -> crate::components::cursor::CursorStudioShellView {
+    use crate::components::cursor::{CursorStudioShellView, CursorStyle};
+    CursorStudioShellView {
+        picker: sample_cursor_style_picker(CursorStyle::Arrow),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

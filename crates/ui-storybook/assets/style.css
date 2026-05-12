@@ -2543,3 +2543,77 @@ kbd {
   font-style: italic;
 }
 .timeline-track-placeholder { user-select: none; }
+
+/* ───── UI-20 — Cursor Studio shell + style picker ───── */
+.cursor-studio-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+.cursor-studio-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 8px;
+  padding: 8px;
+  flex: 1;
+  min-height: 200px;
+}
+.cursor-studio-preview {
+  background: var(--surface-elevated);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line-subtle);
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cursor-studio-inspector {
+  background: var(--surface-elevated);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line-subtle);
+  padding: 12px;
+}
+
+.cursor-style-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line-subtle);
+  background: var(--surface-base);
+}
+.cursor-style-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+.cursor-style-tiles {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+.cursor-style-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.cursor-style-tile:hover { background: var(--surface-selected); }
+.cursor-style-tile-selected {
+  background: #fafafa;
+  color: #09090b;
+  border-color: #fafafa;
+}
+.cursor-style-tile-disabled { opacity: 0.45; cursor: not-allowed; }
+.cursor-style-tile-preview { font-size: 18px; }
+.cursor-style-tile-label { font-size: 11px; font-weight: 600; }

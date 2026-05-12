@@ -87,8 +87,7 @@ fn category_set_is_within_known_buckets() {
         "Menus",
         "Library",
         "Inspector",
-        // Future categories (Cursor) get appended by their
-        // introducing ticket — UI-20.
+        "Cursor",
     ];
     for story in all_stories() {
         assert!(
