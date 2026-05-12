@@ -42,10 +42,49 @@
 
 name: release-plz
 
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║ PUBLISHING IS CURRENTLY DISABLED.                                  ║
+# ║                                                                    ║
+# ║ The workflow is wired and tested; nothing fires on push to main.   ║
+# ║ The owner can manually exercise the workflow via                   ║
+# ║ `workflow_dispatch` (the GitHub Actions "Run workflow" button),    ║
+# ║ but no Release PR will be opened automatically until the           ║
+# ║ `push:` trigger below is uncommented.                              ║
+# ║                                                                    ║
+# ║ ─── To enable automatic publishing ──────────────────────────────  ║
+# ║                                                                    ║
+# ║   1. Uncomment the four lines under `# ENABLE-PUBLISH-AUTO` below  ║
+# ║      (the `push: branches: [main]` block).                         ║
+# ║   2. Add `CARGO_REGISTRY_TOKEN` to repo secrets:                   ║
+# ║      Settings → Secrets and variables → Actions → New              ║
+# ║      repository secret. Token from                                 ║
+# ║      https://crates.io/settings/tokens (publish-scope).            ║
+# ║   3. Publish `screen-wisp v0.1.0` manually once from a logged-in   ║
+# ║      dev box:                                                      ║
+# ║         cd crates/wisp && cargo publish                            ║
+# ║      release-plz cannot claim an unreserved crate name.            ║
+# ║   4. Settings → Actions → General → Workflow permissions:          ║
+# ║      ensure "Read and write permissions" + "Allow GitHub Actions   ║
+# ║      to create and approve pull requests".                         ║
+# ║                                                                    ║
+# ║ After those four steps, every PR merged to main with a             ║
+# ║ conventional commit will auto-open a Release PR. Merging that      ║
+# ║ Release PR triggers the actual crates.io publish.                  ║
+# ╚════════════════════════════════════════════════════════════════════╝
+
 on:
-  push:
-    branches:
-      - main
+  # ENABLE-PUBLISH-AUTO — uncomment the four lines below to flip
+  # automatic Release-PR generation on. Until then, the workflow only
+  # runs when the owner clicks "Run workflow" in the Actions tab.
+  # push:
+  #   branches:
+  #     - main
+
+  # Manual trigger always available — useful for sanity-checking the
+  # workflow shape (release-plz will report "no commits since last
+  # release" if there's nothing to do) without committing to the auto
+  # path.
+  workflow_dispatch:
 
 defaults:
   run:

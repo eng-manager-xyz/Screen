@@ -48,16 +48,21 @@ flowchart LR
 
 ## Install
 
-```bash
-cargo add screen-wisp
-```
-
 > [!IMPORTANT]
-> The published crate name on crates.io is **`screen-wisp`** (the
-> bare name `wisp` is taken by an unrelated project). The library
-> name in your Rust code is still `wisp` — so add `screen-wisp` to
-> your `Cargo.toml` and `use wisp::...` in code. No package alias
-> needed; cargo handles the decoupling via `[lib].name`.
+> **Not yet published to crates.io** — the release pipeline is
+> wired and tested but auto-publishing is intentionally disabled.
+> When the owner flips the enable switch, the install will be:
+>
+> ```bash
+> cargo add screen-wisp
+> ```
+>
+> The published crate name will be **`screen-wisp`** (the bare name
+> `wisp` is claimed by an unrelated tmux project). The library name
+> in your Rust code stays `wisp` — `screen-wisp` in `Cargo.toml`,
+> `use wisp::...` in code. Cargo handles the decoupling via
+> `[lib].name = "wisp"`. Until publication, use the workspace as a
+> path-dep (`wisp = { path = "..." }`).
 
 ```toml
 [dependencies]

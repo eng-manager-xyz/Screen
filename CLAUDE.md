@@ -951,11 +951,26 @@ fine on lavapipe — **don't guard them**.
 
 ### Publishing crates to crates.io
 
-- **`wisp` is the only crate published.** Everything else has
-  `publish = false` (workspace default). To publish a new crate:
-  override `publish = true` in its Cargo.toml, add a `[[package]]`
-  block to `release-plz.toml`, create
-  `crates/<name>/CHANGELOG.md`, copy `LICENSE` into the crate dir.
+> [!IMPORTANT]
+> **Publishing is currently *staged but disabled*.** Every piece of
+> the release-plz pipeline is wired (workflow file, Cargo.toml
+> metadata, `release-plz.toml`, LICENSE + CHANGELOG inside the
+> crate dir, `[lib].name = "wisp"` decoupling). The auto-trigger is
+> commented out at the top of `.github/workflows/release-plz.yml`
+> under the `ENABLE-PUBLISH-AUTO` marker. Re-enabling = uncommenting
+> four lines + completing three setup steps (CARGO_REGISTRY_TOKEN
+> secret, first manual publish, GHA PR-creation permission). The
+> workflow file has the full enable-runbook in its header comment.
+> Until then, no merge to main can publish anything — `just gate`
+> stays green, infrastructure stays validated, but crates.io stays
+> untouched.
+
+- **`wisp` is the only crate that *will* be published.** Everything
+  else has `publish = false` (workspace default). To prep a new
+  crate for publishing: override `publish = true` in its
+  Cargo.toml, add a `[[package]]` block to `release-plz.toml`,
+  create `crates/<name>/CHANGELOG.md`, copy `LICENSE` into the
+  crate dir.
 - **Published name `screen-wisp` ≠ library name `wisp`.** crates.io's
   `wisp` is claimed by an unrelated tmux project; we publish as
   `screen-wisp` but keep `[lib].name = "wisp"` so internal +
@@ -970,12 +985,15 @@ fine on lavapipe — **don't guard them**.
   screen-wisp`. Workspace-internal `wisp.workspace = true` deps
   still work via the alias `wisp = { package = "screen-wisp", ... }`
   in `[workspace.dependencies]`.
-- **`release-plz` drives the publishing flow.** Configured via
-  `release-plz.toml` at repo root. Two GHA jobs in
-  `.github/workflows/release-plz.yml`: `release-plz-pr` opens / updates
-  a "Release PR" on every push to main; `release-plz-release` runs
-  on the Release PR merge → tags + publishes. The Release PR is the
-  CD opt-in moment — main is "ready to release, not yet released."
+- **`release-plz` *will* drive the publishing flow once enabled.**
+  Configured via `release-plz.toml` at repo root. Two GHA jobs in
+  `.github/workflows/release-plz.yml`: `release-plz-pr` opens /
+  updates a "Release PR" on every push to main; `release-plz-release`
+  runs on the Release PR merge → tags + publishes. The Release PR
+  is the CD opt-in moment — main is "ready to release, not yet
+  released." **Today the auto-trigger is disabled** (see the
+  warning callout above); enabling = four uncommented lines in the
+  workflow file.
 - **First publish is by hand.** release-plz can't claim an
   unreserved crate name; the initial `cargo publish -p screen-wisp`
   has to happen from a logged-in dev box with the
