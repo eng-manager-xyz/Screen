@@ -181,6 +181,124 @@ pub fn sample_display_source_small() -> crate::components::recorder::DisplaySour
     }
 }
 
+/// Sample `CaptureSourceView` for the camera row in collapsed state.
+#[must_use]
+pub fn sample_capture_source_camera(
+    enabled: bool,
+    expanded: bool,
+) -> crate::components::recorder::CaptureSourceView {
+    use crate::components::recorder::{CaptureSourceKind, CaptureSourceView};
+    CaptureSourceView {
+        id: "camera-facetime",
+        kind: CaptureSourceKind::Camera,
+        title: "FaceTime HD Camera",
+        subtitle: "MacBook · 1080p",
+        enabled,
+        expanded,
+        favorite: false,
+        level: None,
+    }
+}
+
+/// Sample `CaptureSourceView` for the microphone row in collapsed state.
+#[must_use]
+pub fn sample_capture_source_microphone(
+    enabled: bool,
+    expanded: bool,
+    level: Option<f32>,
+) -> crate::components::recorder::CaptureSourceView {
+    use crate::components::recorder::{CaptureSourceKind, CaptureSourceView};
+    CaptureSourceView {
+        id: "mic-built-in",
+        kind: CaptureSourceKind::Microphone,
+        title: "MacBook Pro Microphone",
+        subtitle: "Built-in · 48 kHz",
+        enabled,
+        expanded,
+        favorite: true,
+        level,
+    }
+}
+
+/// Sample camera options for the expanded picker.
+#[must_use]
+pub fn sample_camera_options() -> Vec<crate::components::recorder::DeviceOptionView> {
+    use crate::components::recorder::{DeviceOptionView, DeviceThumb};
+    vec![
+        DeviceOptionView {
+            id: "cam-facetime",
+            name: "FaceTime HD Camera",
+            detail: "MacBook · 1080p",
+            badge: None,
+            selected: true,
+            level: None,
+            thumbnail: Some(DeviceThumb {
+                background: "linear-gradient(135deg, #4338ca, #db2777)",
+                glyph: "PE",
+            }),
+        },
+        DeviceOptionView {
+            id: "cam-iphone",
+            name: "iPhone 15 Pro",
+            detail: "Continuity · 4K",
+            badge: Some("Wireless"),
+            selected: false,
+            level: None,
+            thumbnail: Some(DeviceThumb {
+                background: "linear-gradient(135deg, #0ea5e9, #1e293b)",
+                glyph: "iP",
+            }),
+        },
+        DeviceOptionView {
+            id: "cam-obs",
+            name: "OBS Virtual Camera",
+            detail: "Not connected",
+            badge: None,
+            selected: false,
+            level: None,
+            thumbnail: Some(DeviceThumb {
+                background: "linear-gradient(135deg, #525252, #1f1f23)",
+                glyph: "OB",
+            }),
+        },
+    ]
+}
+
+/// Sample microphone options for the expanded picker.
+#[must_use]
+pub fn sample_microphone_options() -> Vec<crate::components::recorder::DeviceOptionView> {
+    use crate::components::recorder::DeviceOptionView;
+    vec![
+        DeviceOptionView {
+            id: "mic-built-in",
+            name: "MacBook Pro Microphone",
+            detail: "Built-in · 48 kHz",
+            badge: None,
+            selected: true,
+            level: Some(0.32),
+            thumbnail: None,
+        },
+        DeviceOptionView {
+            id: "mic-airpods",
+            name: "AirPods Pro",
+            detail: "Bluetooth · 86% battery",
+            badge: Some("Wireless"),
+            selected: false,
+            level: Some(0.12),
+            thumbnail: None,
+        },
+        DeviceOptionView {
+            id: "mic-shure",
+            name: "Shure MV7",
+            detail: "USB · Connected",
+            badge: None,
+            selected: false,
+            level: Some(0.55),
+            thumbnail: None,
+        },
+    ]
+}
+
 /// Sample system-audio rows for the system-audio picker.
 #[must_use]
 pub fn sample_system_audio() -> Vec<SystemAudioFixture> {
