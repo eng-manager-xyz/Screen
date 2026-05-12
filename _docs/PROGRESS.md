@@ -6,6 +6,16 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-02 — AppShell + NavigationRail (AUT-122)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `AppShell` provides slots (rail / main / titlebar / inspector / footer); `NavigationRail` is a stateless left-edge nav with `AppSection` enum (Record / Library / Editor / Cursor / Prefs). `WorkspaceBadge` + `UserAvatar` cap the rail. Six new stories cover all four active-section states + notification count + a three-pane shell composition.
+- **Linear:** [AUT-122](https://linear.app/harwood/issue/AUT-122).
+- **Files:** new `crates/ui-storybook/src/components/shell/{app_shell,navigation_rail,workspace_badge,user_avatar}.rs`. `components/shell/mod.rs` + `components/mod.rs` re-export. New `fixtures/shell.rs` with `sample_nav_items(extra_count: bool)` / `sample_workspace_badge` / `sample_user_avatar` + tests. `assets/style.css` adds `.app-shell*`, `.nav-rail*`, `.workspace-badge*`, `.user-avatar*` classes. `stories/shell.rs` extended with 6 new stories. New `_docs/book/src/ui/chunks/{navigation-rail,app-shell}.md`. `SUMMARY.md` indexes both. Six new HTML assets via `just snapshots-ui`.
+- **Verified:** 26 ui-storybook tests pass (was 22; +2 fixture, +2 component, +1 snapshot extension wrapped into the same test). Full `just gate` green.
+- **Slots, not router.** `AppShell` arranges its panes; it picks no content. Each UI-14..21 ticket plugs its component into the matching slot — the library uses just rail + main; the editor uses rail + main + inspector + footer; the chrome looks identical across.
+
+---
+
 ## UI-01 — Design tokens + base surface primitives (AUT-121)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — five new primitives (`Surface`, `Badge`, `Divider`, `Kbd`, `IconTile`) + a semantic-token expansion of `style.css`. Five new stories (`tokens-dark-zinc`, `surface-stack`, `badge-variants`, `kbd-shortcuts`, `icon-tile-variants`). Two new mdBook chapters (token table + surface primitives).

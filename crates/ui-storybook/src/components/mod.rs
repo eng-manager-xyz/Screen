@@ -63,4 +63,7 @@ pub use primitives::{
     DividerOrientation, IconTile, IconTileKind, Kbd, Surface, SurfaceKind,
 };
 pub use recorder::{RecordingState, RecordingToolbar};
-pub use shell::{DropZone, DropZoneState, StatusBar, StatusKind};
+pub use shell::{
+    AppSection, AppShell, DropZone, DropZoneState, NavItemView, NavigationRail, StatusBar,
+    StatusKind, UserAvatar, UserAvatarView, WorkspaceBadge, WorkspaceBadgeView,
+};

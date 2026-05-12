@@ -116,6 +116,8 @@
 - [Components](./ui/components.md)
   - [Design tokens](./ui/chunks/tokens.md)
   - [Surface primitives](./ui/chunks/surface-primitives.md)
+  - [Navigation rail](./ui/chunks/navigation-rail.md)
+  - [App shell](./ui/chunks/app-shell.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

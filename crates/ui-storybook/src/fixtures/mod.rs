@@ -15,4 +15,5 @@ pub mod devices;
 pub mod editor;
 pub mod library;
 pub mod recorder;
+pub mod shell;
 pub mod workspaces;

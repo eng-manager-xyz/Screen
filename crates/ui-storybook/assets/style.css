@@ -237,6 +237,200 @@
 
 .badge-row { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 14px; }
 
+/* ───── AppShell ───── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 480px;
+  background: var(--surface-base);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  border: 1px solid var(--line-subtle);
+}
+.app-shell-titlebar {
+  padding: 8px 14px;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--line-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.app-shell-body { flex: 1; display: flex; min-height: 0; }
+.app-shell-rail {
+  width: 64px;
+  background: #0b0b0d;
+  border-right: 1px solid var(--line-subtle);
+  display: flex;
+  flex-direction: column;
+}
+.app-shell-main {
+  flex: 1;
+  background: var(--surface-base);
+  padding: 18px 22px;
+  overflow: auto;
+  min-width: 0;
+}
+.app-shell-inspector {
+  width: 280px;
+  background: var(--surface-elevated);
+  border-left: 1px solid var(--line-subtle);
+  padding: 16px 18px;
+  overflow: auto;
+}
+.app-shell-footer {
+  background: var(--surface-elevated);
+  border-top: 1px solid var(--line-subtle);
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ───── NavigationRail ───── */
+.nav-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+.nav-rail-top { display: flex; align-items: center; justify-content: center; }
+.nav-rail-bottom { margin-top: auto; padding-bottom: 6px; }
+.nav-rail-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  align-items: center;
+}
+.nav-rail-item {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  width: 48px;
+  height: 52px;
+  padding: 6px 0 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+  transition: background 120ms ease, color 120ms ease;
+}
+.nav-rail-item:hover { background: var(--surface-elevated); color: var(--text-primary); }
+.nav-rail-item-active {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  border-color: var(--line-strong);
+}
+.nav-rail-item-disabled { opacity: 0.4; cursor: not-allowed; }
+.nav-rail-icon { font-size: 15px; line-height: 1; }
+.nav-rail-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.nav-rail-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--action-record);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--radius-pill);
+  min-width: 14px;
+  text-align: center;
+}
+
+/* ───── WorkspaceBadge ───── */
+.workspace-badge {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.workspace-badge-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  background: var(--action-record);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.workspace-badge-chevron {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+.workspace-badge-open .workspace-badge-chevron { color: var(--text-primary); transform: rotate(180deg); }
+
+/* ───── UserAvatar ───── */
+.user-avatar {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.user-avatar-monogram {
+  width: 100%;
+  height: 100%;
+  background: var(--secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ───── App-shell story scaffolding ───── */
+.shell-story { width: 720px; height: 460px; }
+.shell-story .app-shell { height: 100%; min-height: 0; }
+.shell-story-main-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.shell-story-inspector-placeholder {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 html, body {
   background: var(--bg);
   color: var(--fg);
