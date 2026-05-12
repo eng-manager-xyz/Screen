@@ -6,6 +6,86 @@ Use the template at the bottom for new entries.
 
 ---
 
+## UI-07 — DisplaySourceCard + canvas fallback (AUT-127)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `DisplaySourceCard` shows the selected screen with name + size + favourite + resolution pill + chevron header and a `DisplayPreviewFrame` body. Preview is a CSS-positioned mock (deterministic SSR fallback per the contract); a Wisp-backed PNG can land later via `wisp-export-stories` without touching the component API.
+- **Linear:** [AUT-127](https://linear.app/harwood/issue/AUT-127).
+- **Files:** new `crates/ui-storybook/src/components/recorder/display_source.rs` (`DisplaySourceView`, `DisplayPreviewView`, `PreviewWindowChip`, `DisplaySourceCard`, `DisplayPreviewFrame`, `aspect_ratio_css` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `fixtures/devices.rs` extended with `sample_display_source(selected)` / `_wide()` / `_small()`. New `stories/recorder_display.rs`. `stories/mod.rs` aggregates. `assets/style.css` adds `.display-source-card*` + `.display-preview*` classes. New `_docs/book/src/ui/chunks/display-source-card.md`. `SUMMARY.md`.
+- **Verified:** 42 ui-storybook tests pass (was 40; +2 unit tests + 5 new stories in snapshot). Full `just gate` green.
+- **CSS-positioned preview chips, not `<canvas>`.** SSR renders identical bytes every export. Each `PreviewWindowChip` is `(left_pct, top_pct, width_pct, height_pct, color, label)` — a future ScreenCaptureKit thumbnail can land as a Wisp `Texture` without changing the prop surface.
+
+---
+
+## UI-06 — CaptureModeTabs (AUT-126)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `CaptureModeTabs` wraps UI-04's `SegmentedControl`, mapping the three `CaptureMode` variants to `Segment`s. Four stories cover each selection + a disabled-Area variant for permissions-pending.
+- **Linear:** [AUT-126](https://linear.app/harwood/issue/AUT-126).
+- **Files:** new `crates/ui-storybook/src/components/recorder/capture_mode_tabs.rs` (+ `CaptureMode::slug()` + 2 unit tests). `components/recorder/mod.rs` + `components/mod.rs` re-export. `stories/recorder.rs` adds 4 capture-mode stories. New `_docs/book/src/ui/chunks/capture-mode-tabs.md`. `SUMMARY.md`.
+- **Verified:** 40 ui-storybook tests pass. Full `just gate` green.
+- **Composition over duplication.** `CaptureModeTabs` is ~50 lines because `SegmentedControl` carries all the chrome.
+
+---
+
+## UI-05 — WorkspaceSwitcherMenu (AUT-125)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `WorkspaceSwitcherMenu` is a pure composition of UI-03 menu primitives + UI-01 surface tokens. Takes `Vec<WorkspaceView>` + `selected_id: String`, renders the popover the rail's `WorkspaceBadge` opens. Four stories cover default / many / long-names / no-selection.
+- **Linear:** [AUT-125](https://linear.app/harwood/issue/AUT-125).
+- **Files:** new `crates/ui-storybook/src/components/shell/workspace_menu.rs` (`WorkspaceSwitcherMenu`, `WorkspaceView`, `format_member_count` + 2 unit tests). `components/shell/mod.rs` + `components/mod.rs` re-export. `fixtures/workspaces.rs` extended with `sample_workspace_views()` / `_many()` / `_long_names()`. New `stories/workspace_menu.rs` + `stories/mod.rs` registration. New `_docs/book/src/ui/chunks/workspace-switcher.md`. `SUMMARY.md` indexes it.
+- **Verified:** 38 ui-storybook tests pass (was 36; +2 unit tests for `format_member_count` + snapshot extends for 4 new stories). Full `just gate` green.
+- **No bespoke CSS.** Every visual class on the menu comes from UI-01 / UI-03. The component is ~80 lines because the heavy lifting was done by `PopoverSurface` / `MenuList` / `MenuRow`. UI-08 (device picker), UI-09 (system-audio picker), UI-10 (on-screen options popover) will follow the same composition pattern.
+
+---
+
+## UI-04 — Shared control primitives (AUT-124)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — seven new control primitives expand the `Button` vocabulary: `IconButton` (Ghost/Filled/Danger + pressed), `ToggleSwitch` (controlled), `SegmentedControl` (radio-tab pills), `Slider` (visual only — no drag), `SelectPill` (popover trigger), `ColorSwatch` (circular tile w/ selected outline), `Meter` (audio level bars w/ danger color). Six new stories.
+- **Linear:** [AUT-124](https://linear.app/harwood/issue/AUT-124).
+- **Files:** new `crates/ui-storybook/src/components/primitives/{icon_button,toggle_switch,segmented_control,slider,select_pill,color_swatch,meter}.rs` with per-module unit tests where math applies (`slider_percent` clamps + projects; `lit_segments` rounds-to-nearest). `components/primitives/mod.rs` + `components/mod.rs` re-export. New `stories/controls.rs`. `stories/mod.rs` registers. Extended `assets/style.css` with `.icon-btn*`, `.toggle*`, `.segmented`, `.slider*`, `.select-pill*`, `.color-swatch*`, `.meter*` classes. New `_docs/book/src/ui/chunks/controls.md`. `SUMMARY.md` indexes it.
+- **Verified:** 36 ui-storybook tests pass (was 28; +4 slider unit tests + 4 meter unit tests; snapshot extended for 6 new stories). Full `just gate` green.
+- **All controls obey the contract.** `Slider`'s value is a prop; `ToggleSwitch`'s `checked` is a prop; the segmented control's `active` id is a prop. None of them flip themselves. Callback props (`on_change`, `on_select`) aren't even exposed yet — they'll land in `app-ui` wiring, and the components are SSR-safe today.
+
+---
+
+## UI-03 — Shared menu + popover primitives (AUT-123)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `PopoverSurface` (header / body / footer + `PopoverPlacement`), `MenuList`, `MenuSection`, `MenuRow` (with `MenuRowKind { Default, Selected, Action, Danger, Disabled }` + `MenuBadgeView`), `MenuFooter`. Six new stories cover the recurring menu shapes used by every later tray / picker / on-screen-options popover.
+- **Linear:** [AUT-123](https://linear.app/harwood/issue/AUT-123).
+- **Files:** new `crates/ui-storybook/src/components/menus/{popover_surface,menu_list,menu_section,menu_row,menu_footer}.rs`. `components/menus/mod.rs` + `components/mod.rs` re-export. `stories/menus.rs` populates the previously-empty menus surface with 6 stories. `assets/style.css` adds `.popover-*`, `.menu-list`, `.menu-section*`, `.menu-row*`, `.menu-footer` classes. New `_docs/book/src/ui/chunks/{popover-surface,menu-row}.md`. `SUMMARY.md` indexes both. `tests/story_registry.rs` adds `Menus` to the known category set.
+- **Verified:** 28 ui-storybook tests pass. Full `just gate` green.
+- **Primitives don't carry domain.** `MenuRow` doesn't know about workspaces, devices, or apps — it renders rows of arbitrary content with the right look. UI-05 / UI-08 / UI-09 / UI-10 / UI-12 will compose these primitives with the relevant fixtures from `fixtures::{workspaces, devices, recorder}`.
+
+---
+
+## UI-02 — AppShell + NavigationRail (AUT-122)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `AppShell` provides slots (rail / main / titlebar / inspector / footer); `NavigationRail` is a stateless left-edge nav with `AppSection` enum (Record / Library / Editor / Cursor / Prefs). `WorkspaceBadge` + `UserAvatar` cap the rail. Six new stories cover all four active-section states + notification count + a three-pane shell composition.
+- **Linear:** [AUT-122](https://linear.app/harwood/issue/AUT-122).
+- **Files:** new `crates/ui-storybook/src/components/shell/{app_shell,navigation_rail,workspace_badge,user_avatar}.rs`. `components/shell/mod.rs` + `components/mod.rs` re-export. New `fixtures/shell.rs` with `sample_nav_items(extra_count: bool)` / `sample_workspace_badge` / `sample_user_avatar` + tests. `assets/style.css` adds `.app-shell*`, `.nav-rail*`, `.workspace-badge*`, `.user-avatar*` classes. `stories/shell.rs` extended with 6 new stories. New `_docs/book/src/ui/chunks/{navigation-rail,app-shell}.md`. `SUMMARY.md` indexes both. Six new HTML assets via `just snapshots-ui`.
+- **Verified:** 26 ui-storybook tests pass (was 22; +2 fixture, +2 component, +1 snapshot extension wrapped into the same test). Full `just gate` green.
+- **Slots, not router.** `AppShell` arranges its panes; it picks no content. Each UI-14..21 ticket plugs its component into the matching slot — the library uses just rail + main; the editor uses rail + main + inspector + footer; the chrome looks identical across.
+
+---
+
+## UI-01 — Design tokens + base surface primitives (AUT-121)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — five new primitives (`Surface`, `Badge`, `Divider`, `Kbd`, `IconTile`) + a semantic-token expansion of `style.css`. Five new stories (`tokens-dark-zinc`, `surface-stack`, `badge-variants`, `kbd-shortcuts`, `icon-tile-variants`). Two new mdBook chapters (token table + surface primitives).
+- **Linear:** [AUT-121](https://linear.app/harwood/issue/AUT-121).
+- **Files:** new `crates/ui-storybook/src/components/primitives/{surface,badge,divider,kbd,icon_tile}.rs`. `components/primitives/mod.rs` + `components/mod.rs` re-export the new types. `assets/style.css` gains semantic tokens (`--surface-base/-elevated/-popover/-selected/-glass`, `--text-primary/-secondary/-tertiary`, `--line-subtle/-strong`, `--action-record/-hover`, `--shadow-popover/-elevated`, `--radius-panel/-control/-pill`, `--focus-ring`) + new component classes. `stories/primitives.rs` adds the five new stories. New `_docs/book/src/ui/chunks/{tokens,surface-primitives}.md`. `SUMMARY.md` indexes both. Five new HTML assets via `just snapshots-ui`.
+- **Verified:** 22 ui-storybook tests pass (12 fixture + 5 registry + 4 primitive class-uniqueness + 1 SSR snapshot — snapshot extended for new stories). Full `just gate` green.
+- **Tokens are the public API; raw hex is implementation detail.** `:root` in `style.css` defines the zinc palette; every component class references semantic aliases. UI-23's grep guardrail (later in this PR) will flag stray hex outside `:root` + token demos.
+
+---
+
+## UI-00 — Storybook workbench scaffolding (AUT-120)
+- **Date:** 2026-05-11
+- **Status:** ✅ done — `crates/ui-storybook` refactored into the proposed product-surface layout (`components/{primitives,shell,menus,recorder,library,editor,cursor}`, `fixtures/`, `stories/`). Public re-export surface preserved so `app-ui`'s `use ui_storybook::components::{Button, DropZone, ...}` imports keep working unchanged. New `StoryViewport` enum on `Story`. Eighteen pre-existing stories all keep their stable kebab-case ids.
+- **Linear:** [AUT-120](https://linear.app/harwood/issue/AUT-120).
+- **Files:** moved all seven existing components into subgroup folders via `git mv` (history preserved). New `fixtures/{cursor,devices,editor,library,recorder,workspaces}.rs` with owned fixture builders + per-module unit tests. New `stories/{cursor,editor,library,menus,primitives,recorder,shell}.rs` per-surface registries; old `stories.rs` moved to `stories/mod.rs` with `Story` + `StoryViewport` + `render()` helper + `all_stories()` aggregator. New `tests/story_registry.rs` (5 tests: unique ids, kebab-case, non-empty metadata, known category buckets, fixture smoke). New `_docs/book/src/ui/presentational-contract.md` chapter. Updated `_docs/book/src/ui/overview.md` (workbench layout mermaid + boundaries) + `_docs/book/src/ui/components.md` (subgroup index). `_docs/book/src/SUMMARY.md` adds presentational-contract entry.
+- **Verified:** 17 ui-storybook tests pass (12 fixture/snapshot + 5 registry). `app-ui` still compiles unchanged. Full `just gate` green; `just snapshots-ui` regenerated every existing story asset.
+- **Contract codified in test, not just docs.** `tests/story_registry.rs::category_set_is_within_known_buckets` lists the seven approved categories — adding a new one without registering it here OR in `components.md` trips the gate. Same for kebab-case ids: a story id like `Drop Zone Idle` would fail the regex check.
+
+---
+
 ## M-TEXT.11 — Text as mask (AUT-85)
 - **Date:** 2026-05-11
 - **Status:** ✅ done — text drives the existing `Renderer::apply_mask_to_texture` primitive. Storybook story `text-mask` shows "WISP" clipping three foregrounds: a gradient color-band fill, a blurred circles backdrop, and a warm spotlight. One mask, three foregrounds.

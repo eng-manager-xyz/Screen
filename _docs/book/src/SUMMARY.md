@@ -112,7 +112,17 @@
 # `ui-storybook` — Leptos UI
 
 - [Overview](./ui/overview.md)
+- [Presentational contract](./ui/presentational-contract.md)
 - [Components](./ui/components.md)
+  - [Design tokens](./ui/chunks/tokens.md)
+  - [Surface primitives](./ui/chunks/surface-primitives.md)
+  - [Navigation rail](./ui/chunks/navigation-rail.md)
+  - [App shell](./ui/chunks/app-shell.md)
+  - [Popover surface](./ui/chunks/popover-surface.md)
+  - [Menu row](./ui/chunks/menu-row.md)
+  - [Workspace switcher](./ui/chunks/workspace-switcher.md)
+  - [Controls](./ui/chunks/controls.md)
+  - [Capture mode tabs](./ui/chunks/capture-mode-tabs.md)
   - [Button — variants](./ui/chunks/button-variants.md)
   - [Button — sizes](./ui/chunks/button-sizes.md)
   - [Card — header + body](./ui/chunks/card-basic.md)

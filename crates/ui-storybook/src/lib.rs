@@ -4,13 +4,21 @@
 //!
 //! # Layers
 //!
-//! - [`components`] — the actual Leptos `#[component]`s (`Button`, `DopeSheet`, …).
-//! - [`stories`] — a flat registry that pairs each component with one or more
-//!   demo views (the same shape as wisp-storybook's `stories::all_stories`).
+//! - [`components`] — the actual Leptos `#[component]`s (`Button`,
+//!   `DopeSheet`, …), organised into product-surface subgroups
+//!   (`primitives`, `shell`, `menus`, `recorder`, `library`, `editor`,
+//!   `cursor`).
+//! - [`fixtures`] — owned mock data structs (devices, workspaces,
+//!   recordings, timeline tracks, …) reused across stories so component
+//!   stories never hand-roll inline mocks.
+//! - [`stories`] — the gallery registry. Every component re-exported from
+//!   `components` must have at least one story; `stories::all_stories()`
+//!   is the stable list consumed by `tests/snapshots.rs` and
+//!   `ui-export-stories`.
 //!
 //! # Testing
 //!
-//! Components are exercised via SSR (`leptos::prelude::ssr::render_to_string`)
+//! Components are exercised via SSR (`leptos::IntoView::into_view().to_html()`)
 //! in `tests/snapshots.rs`. Each story snapshots its rendered HTML through
 //! `insta` so any unintended structural change (class swaps, missing children,
 //! attribute drift) trips the gate before it can ship.
@@ -19,4 +27,5 @@
 //! up — that's deliberately deferred so SSR + snapshots can land first.
 
 pub mod components;
+pub mod fixtures;
 pub mod stories;
