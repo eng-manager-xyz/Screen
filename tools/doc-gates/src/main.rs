@@ -17,10 +17,16 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: doc-gates <shared-check|snapshots-check|required-files-check>";
+const USAGE: &str =
+    "usage: doc-gates <shared-check|snapshots-check|mermaid-check|required-files-check>";
 
 const BOOK_ROOTS: &[&str] = &["_docs/book/src", "_docs/wisp-book/src"];
 const SHARED_ROOT: &str = "_docs/shared";
+
+/// Chapters that are allowed to use ASCII art instead of mermaid.
+/// Today: only directory-tree listings, where mermaid's flowchart
+/// dialect produces worse output than indented text.
+const MERMAID_ALLOWLIST: &[&str] = &["_docs/book/src/orientation/stack.md"];
 
 /// Files that the CI build depends on but which are easy to lose
 /// silently (e.g. a `.gitignore` overreach swallows them on `git
@@ -48,6 +54,7 @@ fn main() -> ExitCode {
     match cmd.as_str() {
         "shared-check" => run_shared(),
         "snapshots-check" => run_snapshots(),
+        "mermaid-check" => run_mermaid(),
         "required-files-check" => run_required_files(),
         other => {
             eprintln!("unknown command: {other}");
@@ -88,6 +95,35 @@ fn run_snapshots() -> ExitCode {
         );
         ExitCode::FAILURE
     }
+}
+
+fn run_mermaid() -> ExitCode {
+    let roots: Vec<&Path> = BOOK_ROOTS.iter().map(Path::new).collect();
+    let hits = doc_gates::check_mermaid(&roots, MERMAID_ALLOWLIST);
+    if hits.is_empty() {
+        println!("mermaid-check: no ASCII diagrams in mdBook chapters.");
+        return ExitCode::SUCCESS;
+    }
+    // Group by file for readable output.
+    let mut current: Option<&Path> = None;
+    for hit in &hits {
+        if current.map(Path::to_owned) != Some(hit.chapter.clone()) {
+            eprintln!("ASCII DIAGRAM IN MDBOOK CHAPTER: {}", hit.chapter.display());
+            current = Some(&hit.chapter);
+        }
+        eprintln!("  {}: {}", hit.line_number, hit.line);
+    }
+    let files = hits
+        .iter()
+        .map(|h| h.chapter.as_path())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    eprintln!();
+    eprintln!("Found {files} file(s) with ASCII diagrams.");
+    eprintln!("Per CLAUDE.md 'Diagrams in mdBook — mermaid only, no ASCII',");
+    eprintln!("convert to a ```mermaid block.");
+    eprintln!("Prefer sequenceDiagram when participants exchange messages over time.");
+    ExitCode::FAILURE
 }
 
 fn run_required_files() -> ExitCode {

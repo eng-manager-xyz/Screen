@@ -139,48 +139,22 @@ snapshots-media-video:
 snapshots-check: doc-gates-build
     @target/debug/doc-gates snapshots-check
 
-# Diagrams must be mermaid, not ASCII.
-# Rejects any chapter under `_docs/book/src/`, `_docs/wisp-book/src/`,
-# or `_docs/shared/` containing box-drawing characters
-# (┌ │ └ ├ ═ ╔ ╗) or the unicode arrow runs `─►` / `──▶` / `◄──`
-# outside of allowlisted files. The allowlist covers:
-#   - orientation/stack.md — directory-tree listing (mermaid is poor at file trees)
-# Math formulas, type-signature legends, and shell pipelines that
-# happen to contain `!` etc. are fine because they don't use these
-# specific glyphs.
-mermaid-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    allowlist=(
-      "_docs/book/src/orientation/stack.md"
-    )
-    is_allowed() {
-      local f="$1"
-      for a in "${allowlist[@]}"; do
-        [[ "$f" == "$a" ]] && return 0
-      done
-      return 1
-    }
-    violations=0
-    while IFS= read -r file; do
-      if is_allowed "$file"; then
-        continue
-      fi
-      if grep -nP '[┌│└├═╔╗]|─►|──▶|◄──' "$file" >/dev/null 2>&1; then
-        echo "ASCII DIAGRAM IN MDBOOK CHAPTER: $file" >&2
-        grep -nP '[┌│└├═╔╗]|─►|──▶|◄──' "$file" >&2 || true
-        violations=$((violations + 1))
-      fi
-    done < <(find _docs/book/src _docs/wisp-book/src _docs/shared -name '*.md' -type f 2>/dev/null)
-    if [ $violations -gt 0 ]; then
-      echo "" >&2
-      echo "Found $violations file(s) with ASCII diagrams." >&2
-      echo "Per CLAUDE.md 'Diagrams in mdBook — mermaid only, no ASCII'," >&2
-      echo "convert to a \`\`\`mermaid block." >&2
-      echo "Prefer sequenceDiagram when participants exchange messages over time." >&2
-      exit 1
-    fi
-    echo "mermaid-check: no ASCII diagrams in mdBook chapters."
+# Diagrams must be mermaid, not ASCII. Rejects any chapter under
+# `_docs/book/src/` or `_docs/wisp-book/src/` containing box-drawing
+# characters (┌ │ └ ├ ═ ╔ ╗) or the unicode arrow runs `─►` / `──▶`
+# / `◄──`, outside of allowlisted files. The allowlist covers
+# `orientation/stack.md` (directory-tree listing — mermaid is poor
+# at file trees).
+#
+# Implementation: `tools/doc-gates` Rust binary. The previous
+# `grep -P` implementation worked on macOS + Linux but false-
+# matched em dashes / ellipses / curly quotes on Windows Git Bash
+# because grep falls back to byte-level matching when the locale
+# isn't UTF-8, and box-drawing chars share a leading UTF-8 byte
+# with the entire `\xE2 \x__ \x__` range. Rust strings are
+# char-level by construction — no locale dependency.
+mermaid-check: doc-gates-build
+    @target/debug/doc-gates mermaid-check
 
 # Source-only drift gate for the two-book setup. Walks both books +
 # shared for `\{\{shared X\}\}` tags and fails if `_docs/shared/X` is

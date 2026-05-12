@@ -275,7 +275,7 @@ pub fn format_on_screen_summary(options: &[OnScreenOptionView]) -> String {
 
 /// Helper: render the "N of M apps selected" string for the
 /// system-audio summary slot. Re-uses
-/// [`format_selection_count`](super::format_selection_count) so the
+/// [`format_selection_count`] so the
 /// wording is identical to the standalone row.
 #[must_use]
 pub fn format_system_audio_summary(view: &SystemAudioView) -> String {

@@ -15,8 +15,10 @@
 //! Path masks are intentionally **not** cached in V1: hashing a
 //! `Vec<glam::Vec2>` is non-trivial and most freehand-mask use cases
 //! mutate the polygon between frames anyway. Callers needing path
-//! caching should use [`Renderer::generate_path_mask_texture`] and
-//! manage the cache externally.
+//! caching should use [`Renderer::generate_path_mask_texture`][gpmt]
+//! and manage the cache externally.
+//!
+//! [gpmt]: crate::render::Renderer::generate_path_mask_texture
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};

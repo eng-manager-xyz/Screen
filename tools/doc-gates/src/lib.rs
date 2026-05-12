@@ -190,6 +190,62 @@ fn is_tracked_by_git(path: &str) -> bool {
     output.status.success()
 }
 
+/// One ASCII-diagram violation found by [`check_mermaid`]:
+/// a chapter whose prose contains box-drawing characters or
+/// the arrow runs reserved for mermaid diagrams.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AsciiDiagramMatch {
+    /// Chapter (`.md` file) that contained the violation.
+    pub chapter: PathBuf,
+    /// 1-based line number of the first offending line.
+    pub line_number: usize,
+    /// The offending line text (trimmed).
+    pub line: String,
+}
+
+/// Walk `book_roots` for chapters that use ASCII art for diagrams
+/// where mermaid is required. Reports every line with a
+/// box-drawing character (`┌ │ └ ├ ═ ╔ ╗`) or one of the arrow
+/// sequences (`─►`, `──▶`, `◄──`). Files whose paths match any
+/// entry in `allowlist` (interpreted as suffix match relative to
+/// the workspace root) are skipped — used for directory-tree
+/// listings where mermaid is the wrong shape.
+///
+/// Pure Rust because `grep -P` on Windows Git Bash misbehaves with
+/// multibyte UTF-8 character classes: it falls back to byte-level
+/// matching and a class like `[┌│└├═╔╗]` collides with any
+/// character whose UTF-8 starts with `\xE2` — em-dash (`—`),
+/// ellipsis (`…`), curly quotes — producing thousands of false
+/// positives. Rust strings are UTF-8 natively, no locale games.
+#[must_use]
+pub fn check_mermaid(book_roots: &[&Path], allowlist: &[&str]) -> Vec<AsciiDiagramMatch> {
+    const BOX_CHARS: &[char] = &['┌', '│', '└', '├', '═', '╔', '╗'];
+    const ARROWS: &[&str] = &["─►", "──▶", "◄──"];
+    let mut hits = Vec::new();
+    for root in book_roots {
+        for md in walk_md(root) {
+            if allowlist.iter().any(|a| md.ends_with(a)) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&md) else {
+                continue;
+            };
+            for (i, line) in text.lines().enumerate() {
+                let has_box = line.chars().any(|c| BOX_CHARS.contains(&c));
+                let has_arrow = ARROWS.iter().any(|a| line.contains(a));
+                if has_box || has_arrow {
+                    hits.push(AsciiDiagramMatch {
+                        chapter: md.clone(),
+                        line_number: i + 1,
+                        line: line.trim().to_owned(),
+                    });
+                }
+            }
+        }
+    }
+    hits
+}
+
 /// Returns the subset of `paths` that exist as files in the working
 /// tree but are NOT tracked in the git index — typically because of
 /// a `.gitignore` overreach. Empty vector means every required file
@@ -444,6 +500,70 @@ mod tests {
         );
         let issues = check_shared(&[book.as_path()], shared.as_path());
         assert!(issues.is_empty(), "got {issues:?}");
+    }
+
+    #[test]
+    fn check_mermaid_passes_clean_files() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root.join("a.md"),
+            "# Title\n\nNormal prose with em-dash — and ellipsis…\n",
+        );
+        let hits = check_mermaid(&[root], &[]);
+        assert!(
+            hits.is_empty(),
+            "em-dash + ellipsis must not trigger; got {hits:?}"
+        );
+    }
+
+    #[test]
+    fn check_mermaid_catches_box_drawing_chars() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(root.join("a.md"), "┌──────┐\n│ box  │\n└──────┘\n");
+        let hits = check_mermaid(&[root], &[]);
+        assert!(!hits.is_empty());
+        assert!(hits.iter().any(|h| h.line.contains('┌')));
+    }
+
+    #[test]
+    fn check_mermaid_catches_arrow_runs() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(root.join("a.md"), "Producer ──▶ Consumer\n");
+        let hits = check_mermaid(&[root], &[]);
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn check_mermaid_does_not_match_emdash_or_curly_quotes() {
+        // Em dash (U+2014, UTF-8 `\xE2\x80\x94`) shares its leading
+        // byte with box-drawings (`┌` = U+250C = `\xE2\x94\x8C`).
+        // grep -P on Windows Git Bash false-matches them in byte
+        // mode; this test pins the Rust path to char-level matching.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root.join("a.md"),
+            "Tauri ↔ Leptos integration — see below.\n\
+             Em-dash everywhere — and curly “quotes” too.\n\
+             Ellipsis … and arrow run that's NOT box-drawing: → ← ↑ ↓\n",
+        );
+        let hits = check_mermaid(&[root], &[]);
+        assert!(hits.is_empty(), "got false positives: {hits:?}");
+    }
+
+    #[test]
+    fn check_mermaid_respects_allowlist_by_path_suffix() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(root.join("sub/stack.md"), "├── crates\n├── _docs\n");
+        // Without allowlist: matches.
+        assert!(!check_mermaid(&[root], &[]).is_empty());
+        // With allowlist: skipped.
+        let cleared = check_mermaid(&[root], &["sub/stack.md"]);
+        assert!(cleared.is_empty(), "got {cleared:?}");
     }
 
     #[test]

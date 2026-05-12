@@ -433,7 +433,7 @@ impl Renderer {
     /// Vector-driven variant of [`Self::apply_solid_redaction`]
     /// (M-VEC.5 / AUT-57). Same composition shape, but the mask is
     /// produced from a [`Vector`](crate::scene::Vector) — including
-    /// freehand polygons via [`VectorShape::Path`].
+    /// freehand polygons via [`VectorShape::Path`](crate::scene::VectorShape::Path).
     pub fn apply_solid_redaction_vector(
         &self,
         app: &Application,
@@ -656,11 +656,13 @@ impl Renderer {
             .generate(app, shape, w, h, self.output_format)
     }
 
-    /// Generate an alpha-mask `RenderTexture` for a [`Vector`]
-    /// primitive (M-VEC.3 / AUT-55). Routes to the analytic-SDF or
-    /// path-mask path depending on the underlying [`VectorShape`].
+    /// Generate an alpha-mask `RenderTexture` for a
+    /// [`Vector`](crate::scene::Vector) primitive (M-VEC.3 / AUT-55).
+    /// Routes to the analytic-SDF or path-mask path depending on the
+    /// underlying [`VectorShape`](crate::scene::VectorShape).
     ///
-    /// Only [`Vector::shape`] is consulted — `fill` / `stroke` /
+    /// Only [`Vector::shape`](crate::scene::Vector::shape) is
+    /// consulted — `fill` / `stroke` /
     /// `opacity` / `transform` don't affect mask coverage.
     /// `transform` *does* shift the SDF center / path points if
     /// honored; for V1 we ignore it (the mask is always evaluated in
@@ -716,8 +718,8 @@ impl Renderer {
     /// h) inputs reuse the same GPU texture across frames instead of
     /// regenerating.
     ///
-    /// Cache eviction is FIFO at 64 entries — see
-    /// [`mask_cache::MAX_ENTRIES`]. `f32` fields hash by exact bits,
+    /// Cache eviction is FIFO at 64 entries (see the `MAX_ENTRIES`
+    /// constant in `crate::render::mask_cache`). `f32` fields hash by exact bits,
     /// so callers re-passing the same shape value Just Work.
     #[must_use]
     pub fn cached_mask_texture(
@@ -1039,7 +1041,8 @@ impl Renderer {
 
     /// Vector-driven variant of [`Self::apply_dim_outside_data`]
     /// (M-VEC.7 / AUT-59). Same composition as `apply_spotlight_vector`
-    /// but the dim color is derived from a [`DimStrength`] preset
+    /// but the dim color is derived from a
+    /// [`DimStrength`](crate::scene::DimStrength) preset
     /// (`Light` / `Medium` / `Heavy` / `Custom(alpha)`). Accepts paths.
     pub fn apply_dim_outside_vector(
         &self,

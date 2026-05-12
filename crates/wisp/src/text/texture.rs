@@ -10,9 +10,9 @@
 //! textures — filter / mask / blend / export composition all become
 //! sprite-pipeline routing decisions (the M-TEXT.6 work).
 //!
-//! Modeled on the [`mask_cache`](crate::render::mask_cache) pattern:
-//! same FIFO eviction at [`MAX_ENTRIES`], same `Arc`-shared texture
-//! ownership, same `(hits, misses)` instrumentation hook.
+//! Modeled on the `mask_cache` pattern in `crate::render`: same FIFO
+//! eviction at `MAX_ENTRIES`, same `Arc`-shared texture ownership,
+//! same `(hits, misses)` instrumentation hook.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};

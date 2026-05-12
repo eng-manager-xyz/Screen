@@ -457,6 +457,29 @@ live in the three subsections below it.
   http.postBuffer 524288000` (500 MB). Default 1 MB buffer is
   enough for small commits but stalls on initial repo seeding
   with binary assets (PNGs, MP4 fixtures).
+- **Keep rustdoc intra-doc links clean even though CI doesn't fail
+  on them.** `cargo doc --workspace` emits warnings for broken
+  intra-doc links, redundant explicit link targets, and public→
+  private link leaks. We can't promote them to errors (`RUSTFLAGS:
+  -D warnings` breaks on transitive future-incompat warnings — see
+  separate rule), so the gate just lets them through. Fix them in
+  the PR that introduces them — they accumulate fast (13 warnings
+  built up before the DOCS-11 cleanup) and bury the rustdoc output
+  in noise that masks real issues. Common forms:
+  - **Type not in scope:** `[`Vector`]` in a sibling module →
+    `[`Vector`](crate::scene::Vector)` with an absolute path.
+  - **Stale reference** to a planned-but-unimplemented type
+    (`manifest::RecordingManifest`) → drop the brackets, keep as
+    inline `code`.
+  - **GStreamer / system-API names** that look like Rust paths
+    (`audiotestsrc`, `videotestsrc`) → inline code, never
+    brackets.
+  - **`some_fn`** referenced from a doc comment that's not in scope
+    → spell out the path (`TypeName::method`) or drop the brackets.
+  - **Private→public leak** (a public item documents a link to a
+    private constant) → either make the constant `pub(crate)` and
+    add `[gpmt]: crate::path::Type::method` reference-style links,
+    or drop the brackets and keep as prose.
 - **`.gitignore` globs can silently eat real directories.** The
   upstream macOS template's `Icon?` pattern (meant for Finder's
   `Icon\r` metadata file) matches our real `crates/app/icons/`
@@ -759,15 +782,29 @@ fine on lavapipe — **don't guard them**.
   Justfile *comments* parse and fail with "Unknown start of token"
   / "Variable not defined". Use plain prose ("the shared X tag")
   or escape with backticks in comments.
-- **macOS `sed` lacks ERE `+` in BRE mode.** `sed 's/X+/Y/'` works
-  on GNU sed (Linux) but fails on macOS unless you pass `-E`. For
-  non-trivial text munging in a justfile, **don't reach for python
-  heredocs** — that adds an interpreter dep to every CI runner
-  (Windows ships `python` not `python3`, Git Bash PATH ordering
-  varies). Instead, write a small Rust binary under `tools/` (see
-  `tools/doc-gates/` for the pattern: ~150 LOC lib + bin + tests,
-  `cargo build`-fast, fully cross-platform). The
-  `snapshots-check` / `shared-check` recipes use this pattern.
+- **Shell text-matching is a portability trap. Use a Rust binary.**
+  Three different failure modes have hit us:
+  1. **macOS `sed` lacks ERE `+` in BRE mode.** `sed 's/X+/Y/'`
+     works on GNU sed (Linux) but fails on macOS without `-E`.
+  2. **Python heredocs require `python3` on PATH.** Windows ships
+     `python` not `python3`; Git Bash PATH ordering varies.
+  3. **`grep -P` on Windows Git Bash falls back to byte-level
+     matching for non-ASCII.** A character class
+     `[┌│└├═╔╗]` becomes a byte-set including `\xE2`, which is
+     the leading byte of every char in the U+2000–U+2FFF range
+     — em dash (`—`), ellipsis (`…`), curly quotes, *all*
+     box-drawing chars. The `mermaid-check` gate false-matched
+     hundreds of lines on Windows for this reason. macOS / Linux
+     glibc grep was fine.
+  
+  **The rule:** for any pattern matching beyond plain ASCII
+  substrings, write a small Rust binary under `tools/`. Rust
+  strings are UTF-8-by-construction; regex crate works at char
+  level regardless of locale; `cargo build`-fast on warm cache.
+  See `tools/doc-gates/` for the pattern — one lib + bin with
+  subcommands (`shared-check`, `snapshots-check`, `mermaid-check`,
+  `required-files-check`), ~300 LOC including 30 tests. Adding a
+  new gate is one function + one match arm.
 
 ### mdBook live-reload (split-book serving)
 

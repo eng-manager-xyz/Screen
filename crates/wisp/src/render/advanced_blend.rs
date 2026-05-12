@@ -8,7 +8,7 @@
 //! into the template before pipeline compilation.
 //!
 //! [`AdvancedBlendPipelines`] pre-builds one pipeline per advanced mode
-//! at construction time. [`apply`] runs the right one.
+//! at construction time. [`AdvancedBlendPipelines::apply`] runs the right one.
 
 use std::collections::HashMap;
 

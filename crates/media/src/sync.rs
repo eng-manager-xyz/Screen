@@ -1,9 +1,8 @@
 //! Audio/video sync harness (M-MEDIA.7 / AUT-103).
 //!
-//! Combines [`GstreamerAudioCapture`](super::gstreamer_audio::GstreamerAudioCapture)
-//! and [`GstreamerVideoCapture`](super::gstreamer_video::GstreamerVideoCapture)
+//! Combines [`GstreamerAudioCapture`] and [`GstreamerVideoCapture`]
 //! into one harness that reports per-stream timing and inter-stream
-//! drift. Synthetic [`audiotestsrc`] + [`videotestsrc`] sources keep
+//! drift. Synthetic `audiotestsrc` + `videotestsrc` sources keep
 //! the assertion deterministic — live capture (M-MEDIA.15 / .16) will
 //! reuse the same harness shape but with `autoaudiosrc` / `autovideosrc`.
 //!
