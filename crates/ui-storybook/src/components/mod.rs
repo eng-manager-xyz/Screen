@@ -68,10 +68,11 @@ pub use primitives::{
     Segment, SegmentedControl, SelectPill, Slider, Surface, SurfaceKind, ToggleSwitch,
 };
 pub use recorder::{
-    CaptureModeTabs, CaptureSourceKind, CaptureSourceRow, CaptureSourceView, DeviceOptionView,
-    DevicePickerMenu, DevicePickerState, DeviceThumb, DisplayPreviewFrame, DisplayPreviewView,
-    DisplaySourceCard, DisplaySourceView, PreviewWindowChip, RecordingState, RecordingToolbar,
-    aspect_ratio_css,
+    AppIconView, AudioAppView, AudioFilter, CaptureModeTabs, CaptureSourceKind, CaptureSourceRow,
+    CaptureSourceView, DeviceOptionView, DevicePickerMenu, DevicePickerState, DeviceThumb,
+    DisplayPreviewFrame, DisplayPreviewView, DisplaySourceCard, DisplaySourceView,
+    PreviewWindowChip, RecordingState, RecordingToolbar, SystemAudioAppList, SystemAudioRow,
+    SystemAudioView, aspect_ratio_css, format_selection_count,
 };
 pub use shell::{
     AppSection, AppShell, DropZone, DropZoneState, NavItemView, NavigationRail, StatusBar,

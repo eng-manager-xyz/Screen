@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Popover — with footer button</title>
+    <title>Audio app row — idle / unselected</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1633,6 +1633,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="dialog" class="popover-surface popover-bl" style="width:300px;"><header class="popover-header"><div class="popover-title">Choose camera</div><!></header><div class="popover-body"><ul role="menu" aria-label="Cameras" class="menu-list"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-selected"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">FaceTime HD camera</span><span class="menu-row-subtitle">MacBook · 1080p</span></span><!><!><span aria-hidden="true" class="menu-row-check">✓</span></button></li><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">iPhone 15 Pro</span><span class="menu-row-subtitle">Continuity Camera · 4K</span></span><span class="menu-row-badges"><span class="badge badge-accent">New</span><!></span><!><!></button></li><li role="none" class="menu-row-item"><button role="menuitem" aria-disabled disabled class="menu-row menu-row-disabled"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">OBS Virtual Camera</span><span class="menu-row-subtitle">Not connected</span></span><!><!><!></button></li></ul></div><footer class="popover-footer"><div class="menu-footer"><span>Tip: press <span class="kbd-row"><kbd class="kbd-key">C</kbd><!></span> to switch</span><button class="btn btn-default btn-md">Add device</button></div></footer></div>
+    <div style="padding:12px;"><div class="system-audio-applist"><div role="toolbar" aria-label="Filter audio apps" class="system-audio-filters"><button data-filter="all" aria-pressed class="system-audio-filter system-audio-filter-active">All</button><button data-filter="none" class="system-audio-filter">None</button><button data-filter="suggested" class="system-audio-filter">Suggested</button><!></div><ul role="listbox" aria-label="Audio apps" class="system-audio-rows"><li role="option" class="audio-app-row"><span aria-hidden="true" class="audio-app-check"> </span><span aria-hidden="true" class="audio-app-icon" style="background:#0ea5e9;">Z</span><span class="audio-app-text"><span class="audio-app-name">Zoom</span><span class="audio-app-context">Idle · last call 12m ago</span></span><!><!><!></li><!></ul></div></div>
   </body>
 </html>

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Popover — with footer button</title>
+    <title>System audio — collapsed row</title>
     <style>/* ui-storybook — semantic CSS in rust-ui's dark zinc aesthetic.
  *
  * Plain CSS rather than Tailwind to keep the toolchain Rust-only. Class
@@ -1633,6 +1633,6 @@ kbd {
     </style>
   </head>
   <body>
-    <div role="dialog" class="popover-surface popover-bl" style="width:300px;"><header class="popover-header"><div class="popover-title">Choose camera</div><!></header><div class="popover-body"><ul role="menu" aria-label="Cameras" class="menu-list"><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-selected"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">FaceTime HD camera</span><span class="menu-row-subtitle">MacBook · 1080p</span></span><!><!><span aria-hidden="true" class="menu-row-check">✓</span></button></li><li role="none" class="menu-row-item"><button role="menuitem" class="menu-row menu-row-default"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">iPhone 15 Pro</span><span class="menu-row-subtitle">Continuity Camera · 4K</span></span><span class="menu-row-badges"><span class="badge badge-accent">New</span><!></span><!><!></button></li><li role="none" class="menu-row-item"><button role="menuitem" aria-disabled disabled class="menu-row menu-row-disabled"><span class="menu-row-leading"><span aria-hidden="true" class="icon-tile icon-tile-device">📷</span></span><span class="menu-row-text"><span class="menu-row-title">OBS Virtual Camera</span><span class="menu-row-subtitle">Not connected</span></span><!><!><!></button></li></ul></div><footer class="popover-footer"><div class="menu-footer"><span>Tip: press <span class="kbd-row"><kbd class="kbd-key">C</kbd><!></span> to switch</span><button class="btn btn-default btn-md">Add device</button></div></footer></div>
+    <div style="padding:12px;"><div class="system-audio-row"><span class="system-audio-leading"><span class="system-audio-icon-stack"><span aria-hidden="true" class="system-audio-icon" style="background:#16a34a;">S</span><span aria-hidden="true" class="system-audio-icon" style="background:#fbbf24;">C</span><!><!></span></span><span class="system-audio-text"><span class="system-audio-title">System audio</span><span class="system-audio-subtitle">2 of 5 apps</span></span><span class="system-audio-toggle"><button role="switch" aria-checked aria-label="Enable system audio" class="toggle toggle-on"><span class="toggle-track"><span class="toggle-knob"></span></span></button></span><button aria-label="Expand system audio app list" class="system-audio-chevron">▾</button></div></div>
   </body>
 </html>

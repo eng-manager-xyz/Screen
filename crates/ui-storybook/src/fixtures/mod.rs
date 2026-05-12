@@ -10,6 +10,7 @@
 //! freely clone or mutate without leaking app state into presentational
 //! components.
 
+pub mod audio_apps;
 pub mod cursor;
 pub mod devices;
 pub mod editor;
