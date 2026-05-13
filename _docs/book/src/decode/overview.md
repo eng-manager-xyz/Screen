@@ -58,7 +58,7 @@ output would be a regression).
 Run with:
 
 ```
-cargo run -p wisp --example playback_demo
+cargo run -p screen-wisp --example playback_demo
 ```
 
 [Decode API ref](../api/decode/index.html)

@@ -4,7 +4,7 @@
 //! uploads each to a `VideoTexture`, renders, and saves all 8 PNGs to
 //! `target/video_texture/`.
 //!
-//! Run: `cargo run -p wisp --example video_texture`.
+//! Run: `cargo run -p screen-wisp --example video_texture`.
 
 use glam::Vec2;
 use pollster::block_on;

@@ -91,13 +91,13 @@ under realistic per-frame load) is fulfilled in two examples instead of one.
 
 ## Acceptance criteria
 
-- ✅ `cargo build -p wisp` succeeds on stable Rust
-- ✅ `cargo test -p wisp` passes (visual regression tests for filters use snapshot images)
-- ✅ `cargo run -p wisp --example hello_sprite` opens a window, draws a textured rounded-rect with a drop shadow
-- ✅ `cargo run -p wisp --example filter_chain` shows a Container with stacked BlurFilter + DropShadowFilter + MotionBlurFilter
-- ✅ `cargo run -p wisp --example video_texture` loops an MP4 as a `VideoTexture` on a moving sprite
-- ✅ `cargo run -p wisp --example recorder_mock` builds the recorder scene tree from `recorder-features-and-render-api.md` §4 — the proof point for M1+
-- ✅ `cargo run -p wisp --example headless_export` renders 60 frames into a `RenderTexture`, dumps PNGs to disk
+- ✅ `cargo build -p screen-wisp` succeeds on stable Rust
+- ✅ `cargo test -p screen-wisp` passes (visual regression tests for filters use snapshot images)
+- ✅ `cargo run -p screen-wisp --example hello_sprite` opens a window, draws a textured rounded-rect with a drop shadow
+- ✅ `cargo run -p screen-wisp --example filter_chain` shows a Container with stacked BlurFilter + DropShadowFilter + MotionBlurFilter
+- ✅ `cargo run -p screen-wisp --example video_texture` loops an MP4 as a `VideoTexture` on a moving sprite
+- ✅ `cargo run -p screen-wisp --example recorder_mock` builds the recorder scene tree from `recorder-features-and-render-api.md` §4 — the proof point for M1+
+- ✅ `cargo run -p screen-wisp --example headless_export` renders 60 frames into a `RenderTexture`, dumps PNGs to disk
 - ✅ Public API matches the names from §3 of the design doc
 
 ---
@@ -132,7 +132,7 @@ under realistic per-frame load) is fulfilled in two examples instead of one.
 - Set up module skeleton: `lib.rs`, `application.rs`, `scene/`, `texture/`, `filter/`, `render/`, `math/`, `color.rs`, `blend.rs`
 - Add deps to `crates/wisp/Cargo.toml`: `wgpu`, `glam`, `slotmap`, `bytemuck`, `image`, `fontdue`, `thiserror`, `tracing`
 - Empty stubs for each module, `lib.rs` re-exports the public types
-- **Done when:** `cargo build -p wisp` succeeds with the empty surface
+- **Done when:** `cargo build -p screen-wisp` succeeds with the empty surface
 
 #### M0.3 — Math, color, blend primitives
 - `wisp::math` re-exports `glam::{Vec2, Vec3, Mat3, Mat4}`, adds `Rect`

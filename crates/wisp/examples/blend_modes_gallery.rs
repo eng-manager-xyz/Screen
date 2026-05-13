@@ -8,7 +8,7 @@
 //! Output: `_docs/book/src/assets/wisp/blend-modes.png` — the chapter
 //! at `_docs/book/src/wisp/chunks/blend-modes.md` embeds it.
 //!
-//! Run: `cargo run -p wisp --example blend_modes_gallery`.
+//! Run: `cargo run -p screen-wisp --example blend_modes_gallery`.
 
 use glam::Vec2;
 use pollster::block_on;

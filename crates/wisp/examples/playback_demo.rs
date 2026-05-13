@@ -1,4 +1,4 @@
-//! `cargo run -p wisp --example playback_demo`
+//! `cargo run -p screen-wisp --example playback_demo`
 //!
 //! Drives the full **decode → upload → render** path end-to-end with a
 //! mock video stream. Eight BGRA frames are pulled from

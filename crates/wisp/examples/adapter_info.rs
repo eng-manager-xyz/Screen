@@ -1,6 +1,6 @@
 //! Print wgpu adapter info. M0.4 verification example.
 //!
-//! Run with: `cargo run -p wisp --example adapter_info`
+//! Run with: `cargo run -p screen-wisp --example adapter_info`
 
 fn main() -> wisp::Result<()> {
     tracing_subscriber::fmt()

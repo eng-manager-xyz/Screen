@@ -134,13 +134,25 @@ async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
+    // SIGTERM on unix. Previous form was `signal(...).map(|mut s|
+    // async move { s.recv().await; })` which wraps an async block
+    // inside a `Result<impl Future>` and then drops the Result —
+    // the inner future never gets awaited. Net effect: this branch
+    // completed immediately at startup and `select!` returned on
+    // the first iteration, killing the server before it served a
+    // single request. The bug masked itself as "shutdown signal
+    // received" in the logs.
     #[cfg(unix)]
     let terminate = async {
-        let _ = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).map(
-            |mut s| async move {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
                 s.recv().await;
-            },
-        );
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, "dev-server: failed to install SIGTERM handler; only Ctrl-C will stop the server");
+                std::future::pending::<()>().await;
+            }
+        }
     };
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();

@@ -3841,11 +3841,11 @@ dependencies = [
  "glam",
  "image",
  "pollster",
+ "screen-wisp",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
  "wgpu",
- "wisp",
 ]
 
 [[package]]
@@ -4931,10 +4931,10 @@ dependencies = [
  "glam",
  "image",
  "pollster",
+ "screen-wisp",
  "tracing",
  "tracing-subscriber",
  "wgpu",
- "wisp",
 ]
 
 [[package]]
@@ -5051,11 +5051,11 @@ dependencies = [
  "image",
  "playback",
  "pollster",
+ "screen-wisp",
  "tracing",
  "tracing-subscriber",
  "wgpu",
  "winit",
- "wisp",
 ]
 
 [[package]]
@@ -6011,12 +6011,35 @@ dependencies = [
  "decode",
  "playback",
  "pollster",
+ "screen-wisp",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tracing",
- "wisp",
+]
+
+[[package]]
+name = "screen-wisp"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cosmic-text",
+ "decode",
+ "font8x8",
+ "glam",
+ "glyphon",
+ "image",
+ "insta",
+ "pollster",
+ "proptest",
+ "rstest",
+ "slotmap",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -9099,29 +9122,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wisp"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cosmic-text",
- "decode",
- "font8x8",
- "glam",
- "glyphon",
- "image",
- "insta",
- "pollster",
- "proptest",
- "rstest",
- "slotmap",
- "thiserror 2.0.18",
- "tracing",
- "tracing-subscriber",
- "wgpu",
- "winit",
-]
-
-[[package]]
 name = "wisp-storybook"
 version = "0.1.0"
 dependencies = [
@@ -9132,9 +9132,9 @@ dependencies = [
  "insta",
  "media",
  "pollster",
+ "screen-wisp",
  "tracing-subscriber",
  "wgpu",
- "wisp",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@
 //!   5. Keyboard chip (rounded rect + text)
 //!   6. Caption text under the recording
 //!
-//! Run: `cargo run -p wisp --example recorder_mock`. Output: `target/recorder_mock.png`.
+//! Run: `cargo run -p screen-wisp --example recorder_mock`. Output: `target/recorder_mock.png`.
 
 use glam::Vec2;
 use pollster::block_on;

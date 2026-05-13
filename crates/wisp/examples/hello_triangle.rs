@@ -1,6 +1,6 @@
 //! Renders a hardcoded RGB triangle in a winit window. M0.5 verification.
 //!
-//! Run with: `cargo run -p wisp --example hello_triangle`
+//! Run with: `cargo run -p screen-wisp --example hello_triangle`
 //! Press Esc or close the window to exit.
 
 use std::sync::Arc;

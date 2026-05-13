@@ -860,7 +860,7 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
 - **Verified:** `just gate` green (198 tests, +3 from M-MASK.8's 195).
 - **Pseudo-SDF over closed-form.** Closed-form ellipse SDF requires solving a quartic — expensive every fragment. The scaled-quadratic `(x/a)^2 + (y/b)^2 - 1` shares the same zero level set; multiplying by `min(a, b)` puts the result in roughly NDC units so the existing AA-band code (`smoothstep` over `aa = 2/min(w, h)`) still produces a ~1-pixel edge. Visually indistinguishable from the exact SDF for masking; orders of magnitude cheaper.
 - **`shape_kind: f32` flag handles dispatch.** Same uniform buffer as the rest of the clip shader; one extra `if` in WGSL picks the SDF formula. All four primitives (`apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data`) gain the variant for free.
-- **Cache-poisoning replay:** ran into the same nextest+check race documented in M-MASK.8's lesson. `cargo clean -p wisp` + retry was the fix. CLAUDE.md already covers this; reinforced the workflow ordering.
+- **Cache-poisoning replay:** ran into the same nextest+check race documented in M-MASK.8's lesson. `cargo clean -p screen-wisp` + retry was the fix. CLAUDE.md already covers this; reinforced the workflow ordering.
 
 ---
 
@@ -872,7 +872,7 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
 - **Verified:** `just gate` green (195 tests, +3 from M-MASK.7's 192). Story renders both shapes side-by-side over a dark gradient backdrop.
 - **One shader, three shapes.** The rounded-rect SDF (`length(max(|p|-half+r, 0)) + min(max(qx,qy), 0) - r`) degenerates exactly to `length(p) - r` (the circle SDF) when `half = (r, r)` and the corner radius is `r`. So `MaskShape::Circle` plugs into the existing pipeline by translating to those parameters at uniform-build time. No new pipeline, no new shader, no new bind-group — just two `f32` math ops in `apply_with_invert`. Pattern parallels how `MaskShape::Rect` was implemented (RoundedRect with radius=0).
 - **All four primitives gain the new shape automatically.** `apply_clip` / `apply_privacy_blur` / `apply_solid_redaction` / `apply_spotlight` / `apply_dim_outside_data` all accept `MaskShape::Circle` without any per-primitive code changes — that's the dividend of routing every shape through one `ClipPipeline::apply_with_invert`.
-- **Cache-poisoning gate-loop lesson (CLAUDE.md updated):** `cargo nextest run -p wisp --test X` followed by `just gate` (which runs `cargo check --workspace --all-targets --all-features`) hit a stale-cache E0599 saying `MaskShape::circle` was missing even though it was in the source. `cargo clean -p wisp` + re-run cleared it. The root cause: nextest builds the test target before the workspace check has seen the latest source, and the dependency-graph hash gets mis-cached. Documented in CLAUDE.md "Build hygiene".
+- **Cache-poisoning gate-loop lesson (CLAUDE.md updated):** `cargo nextest run -p screen-wisp --test X` followed by `just gate` (which runs `cargo check --workspace --all-targets --all-features`) hit a stale-cache E0599 saying `MaskShape::circle` was missing even though it was in the source. `cargo clean -p screen-wisp` + re-run cleared it. The root cause: nextest builds the test target before the workspace check has seen the latest source, and the dependency-graph hash gets mis-cached. Documented in CLAUDE.md "Build hygiene".
 
 ---
 
@@ -1035,7 +1035,7 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
 - **Date:** 2026-05-10
 - **Status:** ✅ done — closes M0 cleanly. All 21 chunks now have ✅ ticks in `_docs/milestone-0-renderer.md`'s new Status table.
 - **Files:** `crates/wisp/examples/headless_export.rs` rewritten (1 frame at 800×450 → 60 frames at 1920×1080 with per-frame animation: recording-quad rotation, cursor oscillation, text scale pulse); new `crates/wisp/examples/filter_chain.rs` (~170 lines — three-filter chain animated over 60 frames, dumps composites to `target/filter_chain/`); 3 new chunk chapters under `_docs/book/src/wisp/chunks/` (`example-filter-chain.md`, `example-recorder-mock.md`, `example-headless-export.md`); 3 new asset PNGs under `_docs/book/src/assets/wisp/` (filter-chain highlight 22 KB, recorder-mock 81 KB, headless-export highlight 110 KB); `SUMMARY.md` adds the three new chapters; `milestone-0-renderer.md` gains a "Status — ✅ closed 2026-05-10" section with all 21 chunks ticked + a note explaining the M0.21 ffmpeg-next → GStreamer pivot, and the "After M0" section is rewritten to reflect the actual M-DEC/M-PLAY/M-INT/M-PREVIEW/M-POLISH/M-TEST chunks shipped between M0 close and now.
-- **Verified:** `just gate` green (132 tests, 1 leaky-flag — same as before); `cargo run -p wisp --example headless_export` produces 60 PNGs at `target/headless_export/frame_NN.png`; `cargo run -p wisp --example filter_chain` produces 60 PNGs at `target/filter_chain/frame_NN.png`; `cargo run -p wisp --example recorder_mock` produces `target/recorder_mock.png` (copied to assets dir).
+- **Verified:** `just gate` green (132 tests, 1 leaky-flag — same as before); `cargo run -p screen-wisp --example headless_export` produces 60 PNGs at `target/headless_export/frame_NN.png`; `cargo run -p screen-wisp --example filter_chain` produces 60 PNGs at `target/filter_chain/frame_NN.png`; `cargo run -p screen-wisp --example recorder_mock` produces `target/recorder_mock.png` (copied to assets dir).
 - **Gap closed in M0.21:** the consolidated PROGRESS entry from 2026-05-09 noted "headless_export shipped" but at 1 frame at 800×450 — the spec required **60 frames at 1080p**. This chunk closes that gap properly. `filter_chain.rs` was missing entirely from the original M0.20 → also shipped this turn.
 - **Architecture lock:** wisp's `Renderer::apply_filter` chains by passing the previous filter's output `RenderTexture` as the next filter's input. `filter_chain.rs` exercises this with three filters (BlurFilter → DropShadowFilter → MotionBlurFilter) and 4 RTs (base + 3 intermediates). Multi-pass filters (Blur is 2-pass separable Gaussian) get a scratch RT inside `apply_filter` automatically.
 - **Interactive examples acknowledged:** `hello_triangle.rs` (M0.5) and `hello_sprite.rs` (M0.20a) are interactive winit demos — they don't dump PNGs, so they don't get mdBook chapters. The Status table in the milestone doc credits them as ✅ via interactive verification (Apple Silicon Metal backend).
@@ -1614,7 +1614,7 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
 - **Verified:**
   - `just gate` — passes (24 tests, was 20)
   - `just security` — passes (advisories/bans/licenses/sources ok; machete clean with `image` now in use)
-  - **Manual check pending:** `cargo run -p wisp --example hello_quad` — should show a grey-checker square at 50% scale on a dark-purple background. Esc or close to exit.
+  - **Manual check pending:** `cargo run -p screen-wisp --example hello_quad` — should show a grey-checker square at 50% scale on a dark-purple background. Esc or close to exit.
 - **Notes:**
   - **Integration testing pattern established.** `tests/render_quad.rs` is the first member of the integration-test layer (TESTING.md layer 2). Pattern: boot `Application`, build offscreen `wgpu::Texture`, call renderer entry, `device.poll(Maintain::Wait)` to surface validation errors. Pixel-readback comes in M0.11 with `RenderTexture::read_pixels`.
   - **wgpu 24 API surprise:** `ImageCopyTexture` / `ImageDataLayout` are renamed to `TexelCopyTextureInfo` / `TexelCopyBufferLayout`. Used the new names successfully.
@@ -1683,11 +1683,11 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
   - `crates/wisp/Cargo.toml` — added `winit = "0.30"` as dev-dependency
   - `crates/wisp/examples/hello_triangle.rs` — winit 0.30 `ApplicationHandler`, surface configured to first sRGB format, render-on-redraw
 - **Verified:**
-  - `cargo build -p wisp --examples` — passes
+  - `cargo build -p screen-wisp --examples` — passes
   - `cargo fmt --all --check` — passes
   - `cargo clippy --workspace --all-targets -- -D warnings` — passes (after merging `CloseRequested | KeyboardInput` arms)
   - `cargo test --workspace` — passes (15 tests; no new tests since the verification is the example)
-  - **Manual check pending:** `cargo run -p wisp --example hello_triangle` should show an RGB-vertex triangle on a black background. Esc or close to exit.
+  - **Manual check pending:** `cargo run -p screen-wisp --example hello_triangle` should show an RGB-vertex triangle on a black background. Esc or close to exit.
 - **Notes:**
   - Renderer constructed per output format. Surface picks first sRGB format; falls back to first format if none srgb.
   - `Renderer::render` body is the M0.5 smoke path; M0.6 will introduce the textured-quad pipeline as a sibling and the body grows to traverse a scene graph by M0.7+.
@@ -1705,8 +1705,8 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
   - `crates/wisp/Cargo.toml` — added `pollster` and `tracing-subscriber` as dev-dependencies
   - `crates/wisp/examples/adapter_info.rs` — first wisp example: prints adapter name, backend, device type
 - **Verified:**
-  - `cargo build -p wisp --examples` — passes
-  - `cargo run -p wisp --example adapter_info` — prints `Apple M1 / Metal / IntegratedGpu` on this machine
+  - `cargo build -p screen-wisp --examples` — passes
+  - `cargo run -p screen-wisp --example adapter_info` — prints `Apple M1 / Metal / IntegratedGpu` on this machine
   - `cargo fmt --all --check` — passes (after auto-fix)
   - `cargo clippy --workspace --all-targets -- -D warnings` — passes
   - `cargo test --workspace` — passes (15 tests)
@@ -1753,7 +1753,7 @@ Total: +32 pixel-readback tests, +10 storybook stories, +10 mdBook chapters, sta
   - `crates/wisp/src/render/{batcher,pipeline,pass}.rs` — internal stubs
   - `crates/wisp/src/math/rect.rs` — Rect stub
 - **Verified:**
-  - `cargo build -p wisp` — passes (with one transitive future-incompat warning on `block v0.1.6` via `metal`)
+  - `cargo build -p screen-wisp` — passes (with one transitive future-incompat warning on `block v0.1.6` via `metal`)
   - `cargo fmt --all --check` — passes
   - `cargo clippy --workspace --all-targets -- -D warnings` — passes after fixing doc_markdown + module_inception
   - `cargo test --workspace` — passes (0 tests)
