@@ -1,9 +1,9 @@
 [book]
-authors = ["wisp authors"]
+authors = ["wisp-chart authors"]
 language = "en"
 src = "src"
-title = "wisp — wgpu 2D scene graph + filter chain"
-description = "Pixi-shaped public API for wgpu. Scene tree, sprite batcher, filter chain, mask system, text. Native Rust."
+title = "wisp-chart — opinionated chart compositions on wisp"
+description = "Data structs in, scene-graph subtrees out. Gantt first; bar / line / area follow. Same wisp primitives, same fonts, same colour system as the rest of the recording."
 text-direction = "ltr"
 
 [output.html]
@@ -12,7 +12,7 @@ preferred-dark-theme = "navy"
 no-section-label = false
 mathjax-support = false
 text-direction = "ltr"
-site-url = "/Screen/wisp/"
+site-url = "/Screen/wisp-chart/"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
 additional-css = ["mdbook-admonish.css"]
 
@@ -42,12 +42,15 @@ assets_version = "3.1.0"
 [preprocessor.cmdrun]
 command = "mdbook-cmdrun"
 
-# Cross-book shared content + cross-book hyperlinks (DOCS-00 / AUT-154).
-# In the wisp book, `{{wisp-link path}}` becomes a relative URL inside
-# this book; `{{shared path}}` inlines a fragment from `_docs/shared/`.
+# Cross-book shared content + cross-book hyperlinks.
+#
+# Inside the wisp-chart book:
+# - `{{shared path}}` inlines from `_docs/shared/`.
+# - `{{wisp-link path}}` emits an absolute URL to `/Screen/wisp/...`.
+# - `{{wisp-chart-link path}}` emits a RELATIVE URL inside this book.
 [preprocessor.cross]
 command = "mdbook-preprocessor-cross"
-target = "wisp"
+target = "wisp-chart"
 shared-root = "../shared"
 wisp-base = "/Screen/wisp"
 wisp-chart-base = "/Screen/wisp-chart"

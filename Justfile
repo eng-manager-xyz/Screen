@@ -70,10 +70,11 @@ preprocessor-build:
 doc-gates-build:
     @cargo build -p doc-gates
 
-site: docs preprocessor-build site-screen site-wisp
+site: docs preprocessor-build site-screen site-wisp site-wisp-chart
     @echo
     @echo "Open: file://$(pwd)/target/book/index.html  (screen project book)"
     @echo "      file://$(pwd)/target/book/wisp/index.html  (wisp library book)"
+    @echo "      file://$(pwd)/target/book/wisp-chart/index.html  (wisp-chart book)"
 
 # Build the screen project book. Standalone recipe so CI can target a
 # single book without rebuilding the other.
@@ -88,6 +89,13 @@ site-screen: preprocessor-build
 site-wisp: preprocessor-build
     @mkdir -p target/book
     PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-book --dest-dir "$(pwd)/target/book/wisp"
+
+# Build the wisp-chart book into `target/book/wisp-chart/` (M-CHART.0 /
+# AUT-180). Same preprocessor binary, third book mounted at
+# `/Screen/wisp-chart/` on the deployed site.
+site-wisp-chart: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-chart-book --dest-dir "$(pwd)/target/book/wisp-chart"
 
 # Regenerate per-feature screenshots / story HTML into _docs/book/src/assets/.
 # Used by mdBook chapters; commit the output so docs build is reproducible.
@@ -321,7 +329,12 @@ dev-wisp-book: preprocessor-build
     PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/wisp-book \
         --hostname 127.0.0.1 --port 3002 --open
 
-# Publish both books over Tailscale Serve (private to your tailnet).
+# Local wisp-chart book. Visit http://127.0.0.1:3003/.
+dev-wisp-chart-book: preprocessor-build
+    PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/wisp-chart-book \
+        --hostname 127.0.0.1 --port 3003 --open
+
+# Publish all three books over Tailscale Serve (private to your tailnet).
 # Run `just dev-book` and `just dev-wisp-book` in separate terminals
 # first — this recipe only wires the Tailscale path proxies. After
 # this, visit https://<MAC-NAME>.<TAILNET>.ts.net/ for the screen
@@ -334,6 +347,7 @@ dev-remote-book:
     @echo "Registering Tailscale Serve proxies…"
     tailscale serve --bg --set-path / http://127.0.0.1:3001
     tailscale serve --bg --set-path /wisp http://127.0.0.1:3002
+    tailscale serve --bg --set-path /wisp-chart http://127.0.0.1:3003
     @echo ""
     @echo "Routes:"
     @tailscale serve status || true
