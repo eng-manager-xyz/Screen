@@ -1,18 +1,19 @@
 //! Integration tests for the `doc-gates` binary.
 //!
-//! Builds the binary via `cargo build -p doc-gates` (handled by
-//! cargo-nextest's binary-aware test harness) and runs it against
-//! temp-dir fixtures. The CLI hard-codes the workspace's book
-//! layout, so these tests cd into a fixture root and invoke
-//! `doc-gates` with `cwd` set there.
+//! The binary is built automatically by cargo as a dep of this
+//! integration test and located via `CARGO_BIN_EXE_doc-gates`. The
+//! CLI hard-codes the workspace's book layout, so these tests cd
+//! into a fixture root and invoke `doc-gates` with `cwd` set there.
 
 use std::path::PathBuf;
 use std::process::Command;
 
+/// See CLAUDE.md → "Build hygiene → integration tests that spawn a
+/// sibling bin". `CARGO_BIN_EXE_<name>` is the cargo-blessed path:
+/// platform-correct (`doc-gates.exe` on Windows), guaranteed-built
+/// before tests run, race-free under nextest parallelism.
 fn binary_path() -> PathBuf {
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map_or_else(|_| workspace_root().join("target"), PathBuf::from);
-    target.join("debug").join("doc-gates")
+    PathBuf::from(env!("CARGO_BIN_EXE_doc-gates"))
 }
 
 fn workspace_root() -> PathBuf {

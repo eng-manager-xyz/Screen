@@ -1,0 +1,32 @@
+[package]
+name = "wisp-chart"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Opinionated chart compositions (Gantt v1) rendered by `wisp`. Data structs in, scene-graph subtree out. Native + WebGPU/wasm."
+
+[lints]
+workspace = true
+
+# `wisp-chart` compiles for both native and wasm32-unknown-unknown.
+# It depends on `wisp` (also wasm-clean — `winit` lives in wisp's
+# [dev-dependencies] only) and on `jiff` for date handling.
+#
+# The chart-specific deps stay scoped HERE — never added to `wisp`,
+# per AUT-180:
+#   "wisp-chart adds all chart-specific dependencies (jiff, palette
+#    types, contrast utils) to its OWN Cargo.toml. wisp continues to
+#    know nothing about dates, themes, charts, or palettes — it stays
+#    a Pixi-equivalent primitive renderer."
+[dependencies]
+wisp.workspace = true
+glam.workspace = true
+# jiff is scoped to wisp-chart; not added to workspace dependencies
+# so it cannot leak into wisp. Re-pin in this file when bumping.
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Snapshot testing for the chart layout's deterministic outputs
+# (date→x, row→y, divider detection).
+insta = { version = "1", features = ["yaml", "redactions"] }

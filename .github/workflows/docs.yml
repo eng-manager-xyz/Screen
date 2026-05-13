@@ -1,17 +1,20 @@
 # Docs site → GitHub Pages.
 #
-# Builds both mdBooks + the rustdoc API reference and publishes them
-# as a single Pages artifact. Path-based routing (no custom domain):
+# Builds three mdBooks + the rustdoc API reference + the WebGPU
+# demo (M-CHART.0 / AUT-180) and publishes them as a single Pages
+# artifact. Path-based routing (no custom domain):
 #
-#   /screen/              ← screen project book (mdBook)
-#   /screen/wisp/         ← wisp library book (mdBook)
-#   /screen/api/          ← rustdoc index (every workspace crate)
+#   /Screen/                ← screen project book (mdBook)
+#   /Screen/wisp/           ← wisp library book (mdBook)
+#   /Screen/wisp-chart/     ← wisp-chart book (mdBook)
+#   /Screen/wisp-chart/demo/← WebGPU demo (Trunk-built wasm)
+#   /Screen/api/            ← rustdoc index (every workspace crate)
 #
-# The wisp book is composed under `target/book/wisp/` so the
-# resulting directory tree maps 1:1 to the deployed URL space. Both
-# books go through the in-repo `mdbook-preprocessor-cross` so
-# `{{wisp-link …}}` and `{{shared …}}` tags resolve correctly per
-# book.
+# Books are composed under `target/book/{wisp,wisp-chart}/` so the
+# resulting directory tree maps 1:1 to the deployed URL space.
+# All three books run through the in-repo `mdbook-preprocessor-cross`
+# so `{{wisp-link …}}`, `{{wisp-chart-link …}}`, and `{{shared …}}`
+# tags resolve correctly per book.
 #
 # On `push: main` the build is also deployed; on PRs it runs as a
 # build-only check (no deploy). The `concurrency` group serializes
@@ -60,10 +63,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (with wasm32 target for the WebGPU demo)
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
+          targets: wasm32-unknown-unknown
 
       # `cargo doc --workspace` compiles every crate, including
       # screen-app which transitively pulls Tauri 2's gtk-rs / glib /
@@ -139,8 +143,25 @@ jobs:
       # `shared-check` in `just gate` can't catch). Driving from `just`
       # keeps the local + CI behaviour identical — a contributor who
       # runs `just site-check` locally sees the same pass/fail as CI.
-      - name: just site-check (mdbook build both books + drift gate)
+      - name: just site-check (mdbook build all three books + drift gate)
         run: just site-check
+
+      # M-CHART.0 / AUT-180 — Trunk-bundle the wisp-chart-web demo
+      # into the Pages artefact at `/Screen/wisp-chart/demo/`.
+      # `--public-url` tells Trunk to emit relative asset references
+      # that resolve under that subpath.
+      - name: Install Trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: Build wisp-chart-web demo (Trunk → /Screen/wisp-chart/demo/)
+        run: |
+          mkdir -p target/book/wisp-chart/demo
+          cd crates/wisp-chart-web
+          trunk build --release \
+            --public-url /Screen/wisp-chart/demo/ \
+            --dist "$GITHUB_WORKSPACE/target/book/wisp-chart/demo"
 
       - name: Splice rustdoc into the book under /api
         run: |
@@ -158,10 +179,12 @@ jobs:
           HTML
           fi
 
-      - name: Verify both books mounted at expected paths
+      - name: Verify all three books + demo mounted at expected paths
         run: |
           test -f target/book/index.html         || (echo "missing screen book root";  exit 1)
           test -f target/book/wisp/index.html    || (echo "missing wisp book root";    exit 1)
+          test -f target/book/wisp-chart/index.html \
+                                                 || (echo "missing wisp-chart book root"; exit 1)
           test -d target/book/api                || (echo "missing rustdoc tree";      exit 1)
           # The wisp book references must resolve to actual files
           # post-deploy. Smoke-test a couple of well-known paths.
@@ -169,6 +192,15 @@ jobs:
           test -f target/book/wisp/wisp/chunks/filter-blur.html \
                                                              || (echo "missing wisp filter-blur"; exit 1)
           test -f target/book/wisp-overview.html             || (echo "missing screen-side wisp summary"; exit 1)
+          # wisp-chart book + WebGPU demo smoke tests.
+          test -f target/book/wisp-chart/charts/gantt/api.html \
+                                                             || (echo "missing wisp-chart gantt api"; exit 1)
+          test -f target/book/wisp-chart/web-demo.html       || (echo "missing wisp-chart web-demo chapter"; exit 1)
+          test -f target/book/wisp-chart/demo/index.html     || (echo "missing WebGPU demo index"; exit 1)
+          test -n "$(ls target/book/wisp-chart/demo/*.wasm 2>/dev/null)" \
+                                                             || (echo "missing WebGPU demo .wasm"; exit 1)
+          test -n "$(ls target/book/wisp-chart/demo/*.js 2>/dev/null)" \
+                                                             || (echo "missing WebGPU demo wasm-bindgen glue JS"; exit 1)
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
@@ -181,11 +213,13 @@ jobs:
           {
             echo "## docs build"
             echo ""
-            echo "- screen book: ``target/book/index.html``"
-            echo "- wisp book:   ``target/book/wisp/index.html``"
-            echo "- rustdoc:     ``target/book/api/``"
+            echo "- screen book:      \`target/book/index.html\`"
+            echo "- wisp book:        \`target/book/wisp/index.html\`"
+            echo "- wisp-chart book:  \`target/book/wisp-chart/index.html\`"
+            echo "- WebGPU demo:      \`target/book/wisp-chart/demo/index.html\`"
+            echo "- rustdoc:          \`target/book/api/\`"
             echo ""
-            echo "Both books composed into a single Pages artifact."
+            echo "Three books + WebGPU demo composed into one Pages artifact."
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:

@@ -5,35 +5,28 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-fn workspace_root() -> PathBuf {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-}
-
+/// Cargo guarantees integration tests in the same crate as a
+/// `[[bin]]` see `CARGO_BIN_EXE_<name>` at compile time — the
+/// absolute path to the freshly-built binary with the
+/// platform-correct extension (`mdbook-preprocessor-cross` on Unix,
+/// `mdbook-preprocessor-cross.exe` on Windows).
+///
+/// **Anti-regression:** earlier iterations called
+/// `cargo build -p mdbook-preprocessor-cross` from inside each test
+/// (`ensure_built()`) and hand-rolled `target/debug/<name>`. That
+/// pattern raced under nextest's per-binary parallelism (multiple
+/// tests blocked on the same cargo file lock), missed the `.exe`
+/// suffix on Windows, and ignored any non-default `CARGO_TARGET_DIR`
+/// nextest set. `CARGO_BIN_EXE_*` is platform-correct AND
+/// guaranteed-built by cargo as a dep of integration-test execution.
+/// See CLAUDE.md → "Build hygiene → integration tests that spawn a
+/// sibling bin".
 fn binary_path() -> PathBuf {
-    let root = workspace_root();
-    let target =
-        std::env::var("CARGO_TARGET_DIR").map_or_else(|_| root.join("target"), PathBuf::from);
-    target.join("debug").join("mdbook-preprocessor-cross")
-}
-
-fn ensure_built() {
-    let status = Command::new(env!("CARGO"))
-        .args(["build", "-p", "mdbook-preprocessor-cross"])
-        .current_dir(workspace_root())
-        .status()
-        .expect("cargo build");
-    assert!(status.success(), "pre-build");
+    PathBuf::from(env!("CARGO_BIN_EXE_mdbook-preprocessor-cross"))
 }
 
 #[test]
 fn supports_html_renderer() {
-    ensure_built();
     let status = Command::new(binary_path())
         .args(["supports", "html"])
         .status()
@@ -43,7 +36,6 @@ fn supports_html_renderer() {
 
 #[test]
 fn does_not_support_latex() {
-    ensure_built();
     let status = Command::new(binary_path())
         .args(["supports", "latex"])
         .status()
@@ -53,7 +45,6 @@ fn does_not_support_latex() {
 
 #[test]
 fn rewrites_wisp_link_tags_in_book_payload() {
-    ensure_built();
     let payload = serde_json::json!([
         {
             "root": "/tmp/fake-book-root",

@@ -90,16 +90,18 @@ jobs:
     outputs:
       wisp: ${{ steps.filter.outputs.wisp }}
       screen: ${{ steps.filter.outputs.screen }}
+      wisp_chart: ${{ steps.filter.outputs.wisp_chart }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           # `_docs/shared/` and the workspace-wide files
-          # (`Cargo.lock` etc.) appear under BOTH filters so a
-          # change there triggers both gates — wisp because shared
-          # content might break it, screen because workspace-level
-          # changes affect everyone.
+          # (`Cargo.lock` etc.) appear under MULTIPLE filters so a
+          # change there triggers every relevant gate — wisp because
+          # shared content might break it, screen because workspace-
+          # level changes affect everyone, wisp-chart because it
+          # depends on wisp.
           filters: |
             wisp:
               - 'crates/wisp/**'
@@ -129,6 +131,17 @@ jobs:
               - 'Justfile'
               - 'deny.toml'
               - 'rustfmt.toml'
+              - '.github/workflows/gate.yml'
+            wisp_chart:
+              - 'crates/wisp-chart/**'
+              - 'crates/wisp-chart-web/**'
+              - 'crates/wisp/**'
+              - '_docs/wisp-chart-book/**'
+              - '_docs/shared/**'
+              - 'tools/mdbook-preprocessor-cross/**'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
               - '.github/workflows/gate.yml'
 
   gate-wisp:
@@ -225,6 +238,133 @@ jobs:
             -p screen-wisp \
             -p wisp-storybook \
             -p mdbook-preprocessor-cross
+
+  # M-CHART.0 / AUT-180 — wisp-chart + its WebGPU demo crate.
+  #
+  # Tiers:
+  # - **Tier A (required):** `cargo check --target wasm32-unknown-unknown`
+  #   on wisp-chart + wisp-chart-web. Proves the wasm path compiles.
+  # - **Tier B (required):** `trunk build --release` of the demo.
+  #   Proves the bundled artefact (HTML + .wasm + glue JS) exists.
+  # - **Tier C (optional, signal-only):** Runtime WebGPU verification
+  #   in headless Chrome with SwiftShader. Marked `continue-on-error`
+  #   so flakes in the GPU stack don't block PRs while we stabilize
+  #   the configuration. Lands in a follow-on PR.
+  gate-wisp-chart:
+    name: gate-wisp-chart (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.wisp_chart == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (nightly per rust-toolchain.toml) with wasm32 target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-gate-wisp-chart-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-gate-wisp-chart-
+
+      # Linux: wisp depends transitively on winit's x11/wayland
+      # headers for the (dev-only) Application surface. Even though
+      # we're only checking wisp-chart + wisp-chart-web, cargo's
+      # workspace resolution may pull winit. Install just the
+      # x11/wayland devel headers — full Tauri toolchain isn't
+      # needed here.
+      - name: Install Linux deps (winit headers, no Tauri toolchain)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb1-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            mesa-vulkan-drivers \
+            libvulkan1
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      # Trunk — the WASM bundler. Pre-built binary install keeps CI
+      # under a minute for this step.
+      - name: Install Trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: cargo fmt (wisp-chart subset)
+        run: cargo fmt -p wisp-chart -p wisp-chart-web -- --check
+
+      - name: cargo clippy (native target)
+        run: |
+          cargo clippy \
+            -p wisp-chart \
+            -p wisp-chart-web \
+            --all-targets --all-features \
+            -- -D warnings
+
+      - name: cargo clippy (wasm32 target)
+        run: |
+          cargo clippy \
+            --target wasm32-unknown-unknown \
+            -p wisp-chart \
+            -p wisp-chart-web \
+            -- -D warnings
+
+      - name: cargo nextest (wisp-chart unit tests, native)
+        run: cargo nextest run -p wisp-chart
+
+      - name: cargo doctest (wisp-chart)
+        run: cargo test --doc -p wisp-chart
+
+      # Tier A: wasm32 compile.
+      - name: cargo check --target wasm32-unknown-unknown
+        run: |
+          cargo check --target wasm32-unknown-unknown \
+            -p wisp-chart \
+            -p wisp-chart-web
+
+      # Tier B: full Trunk bundle.
+      - name: trunk build --release
+        run: |
+          cd crates/wisp-chart-web
+          trunk build --release \
+            --public-url /Screen/wisp-chart/demo/ \
+            --dist "$GITHUB_WORKSPACE/target/wisp-chart-demo-dist"
+
+      - name: Verify Trunk artefact
+        run: |
+          test -f target/wisp-chart-demo-dist/index.html \
+            || (echo "::error::Trunk did not produce index.html"; exit 1)
+          test -n "$(ls target/wisp-chart-demo-dist/*.wasm 2>/dev/null)" \
+            || (echo "::error::Trunk did not produce a .wasm file"; exit 1)
+          test -n "$(ls target/wisp-chart-demo-dist/*.js 2>/dev/null)" \
+            || (echo "::error::Trunk did not produce wasm-bindgen glue JS"; exit 1)
+          ls -la target/wisp-chart-demo-dist/
 
   gate-screen:
     name: gate-screen (${{ matrix.os }})
@@ -361,7 +501,7 @@ jobs:
   # the conditional job would be skipped rather than passing.
   gate-all:
     name: gate-all
-    needs: [changes, gate-wisp, gate-screen]
+    needs: [changes, gate-wisp, gate-screen, gate-wisp-chart]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -378,8 +518,14 @@ jobs:
             echo "::error::gate-screen was required but result was ${{ needs.gate-screen.result }}"
             fail=1
           fi
+          if [[ "${{ needs.changes.outputs.wisp_chart }}" == "true" \
+                && "${{ needs.gate-wisp-chart.result }}" != "success" ]]; then
+            echo "::error::gate-wisp-chart was required but result was ${{ needs.gate-wisp-chart.result }}"
+            fail=1
+          fi
           if [[ "${{ needs.changes.outputs.wisp }}" != "true" \
-                && "${{ needs.changes.outputs.screen }}" != "true" ]]; then
+                && "${{ needs.changes.outputs.screen }}" != "true" \
+                && "${{ needs.changes.outputs.wisp_chart }}" != "true" ]]; then
             echo "::notice::no relevant paths changed — gate-all passes by default"
           fi
           exit $fail

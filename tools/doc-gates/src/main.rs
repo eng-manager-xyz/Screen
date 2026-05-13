@@ -35,8 +35,10 @@ const FORBIDDEN_PAGES_URL_PREFIXES: &[&str] = &[
     " /screen/",
     "\"/screen/",
     "/screen/wisp/",
+    "/screen/wisp-chart/",
     "site-url = \"/screen",
     "wisp-base = \"/screen",
+    "wisp-chart-base = \"/screen",
 ];
 
 /// Roots to scan for [`FORBIDDEN_PAGES_URL_PREFIXES`]. Covers every
@@ -46,7 +48,11 @@ const PAGES_URL_ROOTS: &[&str] = &["."];
 /// File extensions to scan for wrong-case Pages URLs.
 const PAGES_URL_EXTENSIONS: &[&str] = &["md", "toml"];
 
-const BOOK_ROOTS: &[&str] = &["_docs/book/src", "_docs/wisp-book/src"];
+const BOOK_ROOTS: &[&str] = &[
+    "_docs/book/src",
+    "_docs/wisp-book/src",
+    "_docs/wisp-chart-book/src",
+];
 const SHARED_ROOT: &str = "_docs/shared";
 
 /// Chapters that are allowed to use ASCII art instead of mermaid.

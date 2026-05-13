@@ -1,0 +1,18 @@
+# Trunk build config — see https://trunkrs.dev/configuration/
+#
+# Local dev:
+#     trunk serve            # http://127.0.0.1:8080
+# Release build:
+#     trunk build --release  # dist/ → deployable artefact
+# CI / Pages deploy with subpath:
+#     trunk build --release --public-url /Screen/wisp-chart/demo/
+
+[build]
+target = "index.html"
+dist = "dist"
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+open = false
+no_autoreload = false

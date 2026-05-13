@@ -59,4 +59,5 @@ command = "mdbook-preprocessor-cross"
 target = "screen"
 shared-root = "../shared"
 wisp-base = "/Screen/wisp"
+wisp-chart-base = "/Screen/wisp-chart"
 

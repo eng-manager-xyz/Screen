@@ -25,6 +25,33 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-04: `block` + `proc-macro-error2` future-incompat warnings (transitive)
+- **Filed:** 2026-05-13
+- **By:** user (post-CI investigation on `Gantt` branch)
+- **Severity:** tech-debt
+- **Affects:** workspace-wide (cosmetic — surfaced on macOS most prominently because `block` only compiles there)
+- **Status:** open, **accepted** (not actionable from our code without forking)
+- **Description:**
+  `cargo build --workspace --all-features` emits a note:
+  > warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6, proc-macro-error2 v2.0.1
+  Neither warning fails CI — they are future-incompat *informational* notes, not errors. Root causes both live upstream and we don't write either crate.
+
+  **block v0.1.6** — `static _NSConcreteStackBlock: Class;` is an uninhabited static (lint rust-lang/rust#74840). The `block` crate is unmaintained (last release Sep 2024) and `block2` is the modern replacement. **`metal-rs` master still pins `block 0.1.6` directly** (verified upstream) — no migration issue or PR exists. So even upgrading wgpu 24 → latest does NOT clear this warning until metal-rs adopts `block2`. macOS-only because `metal` only compiles there.
+
+  **proc-macro-error2 v2.0.1** — `pub use proc_macro;` re-exports the private `extern crate proc_macro` (lint rust-lang/rust#127909). Upstream issue [GnomedDev/proc-macro-error-2#13](https://github.com/GnomedDev/proc-macro-error-2/issues/13) is open with PR [#14](https://github.com/GnomedDev/proc-macro-error-2/pull/14) (2-char fix, unmerged as of 2026-05-13). Pulled in by every Leptos macro crate; we stay on Leptos, so the only way to excise it is to wait for upstream to publish a fixed `2.0.2` (or `2.1`) and for Leptos to bump.
+
+  Discarded alternatives (each is a worse trade-off than accepting the note):
+  - Fork `block` into `third_party/` — permanent maintenance burden for an Objective-C interop layer we don't author.
+  - Fork Leptos to drop the `proc-macro-error2` dep — 100k-LOC permanent fork.
+  - `[patch.crates-io]` to PR #14's unmerged fork commit — depends on a contributor branch that could be force-pushed or deleted; not a stable pin.
+  - Coordinated `wgpu 24 → 29` ecosystem bump — doesn't even fix `block` (metal-rs main still uses it) and the migration is wildly out of scope.
+
+  These warnings are informational and CI-green; the prior policy noted in CLAUDE.md ("we can't fix those upstream") remains correct.
+- **Resolution:** (open)
+  Re-check when (a) `proc-macro-error2 2.0.2+` ships with the PR #14 fix, or (b) `metal-rs` migrates to `block2`. At that point the lockfile bump should make the warning go away with no code change on our side.
+
+---
+
 ## ISS-03: `app-ui` rustdoc has an unresolved intra-doc link to `playback::Player`
 - **Filed:** 2026-05-09
 - **By:** M-PREVIEW.1 (spotted during `just site`)
