@@ -27,6 +27,18 @@ pub mod texture;
 
 mod error;
 
+/// Public façade for path types + boolean ops (M-BOOL track).
+///
+/// The implementation lives under `crate::scene::path`; this module
+/// re-exports the surface so external consumers write
+/// `use wisp::path::{Path, PathBuilder}` and `use wisp::path::boolean`
+/// — matching the M-BOOL ticket spec without leaking the internal
+/// `scene::*` module layout.
+pub mod path {
+    pub use crate::scene::path::boolean;
+    pub use crate::scene::path::{Path, PathBuilder, PathCommand};
+}
+
 pub use blend::BlendMode;
 pub use color::Color;
 pub use error::Error;

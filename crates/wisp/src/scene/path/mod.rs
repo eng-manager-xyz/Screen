@@ -12,6 +12,11 @@
 //! Adaptive subdivision uses a flatness test on the control polygon:
 //! a Bezier curve is "flat enough" when the maximum perpendicular
 //! distance from a control point to the chord is below `tolerance`.
+//!
+//! Boolean ops on paths (`union`, `intersection`, `difference`,
+//! `xor`) live in the [`boolean`] submodule (M-BOOL.0 / AUT-161).
+
+pub mod boolean;
 
 use glam::Vec2;
 
@@ -126,6 +131,74 @@ impl Path {
         &self.commands
     }
 
+    /// Flatten Beziers to line segments **per subpath**, preserving
+    /// `MoveTo` boundaries. Each `MoveTo` starts a new
+    /// `Vec<Vec2>`; subsequent `LineTo` / `QuadTo` / `CubicTo`
+    /// commands append into the current subpath; `Close` appends a
+    /// final point back to the subpath's start.
+    ///
+    /// This is the multi-subpath variant of [`Path::flatten`]
+    /// (M-BOOL.7 / AUT-168). Boolean ops, masks, and any consumer
+    /// that needs to distinguish disjoint regions of a single
+    /// `Path` (e.g. holes, multi-shape clips) should use this
+    /// instead of the flat-concatenation [`Path::flatten`].
+    ///
+    /// `tolerance` semantics match [`Path::flatten`]. Empty paths
+    /// return an empty `Vec`; paths with only a `MoveTo` return a
+    /// single one-element subpath.
+    #[must_use]
+    pub fn flatten_subpaths(&self, tolerance: f32) -> Vec<Vec<Vec2>> {
+        let mut subs: Vec<Vec<Vec2>> = Vec::new();
+        let mut current: Option<Vec<Vec2>> = None;
+        let mut subpath_start: Vec2 = Vec2::ZERO;
+        let mut last_point: Vec2 = Vec2::ZERO;
+
+        for cmd in &self.commands {
+            match *cmd {
+                PathCommand::MoveTo(p) => {
+                    if let Some(v) = current.take()
+                        && !v.is_empty()
+                    {
+                        subs.push(v);
+                    }
+                    current = Some(vec![p]);
+                    subpath_start = p;
+                    last_point = p;
+                }
+                PathCommand::LineTo(p) => {
+                    if let Some(v) = current.as_mut() {
+                        v.push(p);
+                    }
+                    last_point = p;
+                }
+                PathCommand::QuadTo { control, end } => {
+                    if let Some(v) = current.as_mut() {
+                        flatten_quad(last_point, control, end, tolerance, v);
+                    }
+                    last_point = end;
+                }
+                PathCommand::CubicTo { c1, c2, end } => {
+                    if let Some(v) = current.as_mut() {
+                        flatten_cubic(last_point, c1, c2, end, tolerance, v);
+                    }
+                    last_point = end;
+                }
+                PathCommand::Close => {
+                    if let Some(v) = current.as_mut() {
+                        v.push(subpath_start);
+                    }
+                    last_point = subpath_start;
+                }
+            }
+        }
+        if let Some(v) = current
+            && !v.is_empty()
+        {
+            subs.push(v);
+        }
+        subs
+    }
+
     /// Flatten Beziers to line segments and return the resulting
     /// polygon (a `Vec<Vec2>`). `tolerance` is the maximum
     /// perpendicular distance from a control point to the chord
@@ -134,6 +207,10 @@ impl Path {
     ///
     /// Open subpaths (no `Close`) end at the last point. `Close`
     /// adds a line back to the most recent `MoveTo`.
+    ///
+    /// For consumers that need to distinguish individual subpaths
+    /// (boolean ops, holes, multi-shape masks), use
+    /// [`Path::flatten_subpaths`].
     #[must_use]
     pub fn flatten(&self, tolerance: f32) -> Vec<Vec2> {
         let mut out: Vec<Vec2> = Vec::new();
@@ -313,6 +390,58 @@ mod tests {
         let d = perp_distance(Vec2::new(0.0, 1.0), Vec2::ZERO, Vec2::new(1.0, 0.0));
         // Distance from (0,1) to the x-axis = 1.0.
         assert!((d - 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn flatten_subpaths_separates_two_movetos() {
+        let path = PathBuilder::new()
+            .move_to(Vec2::new(0.0, 0.0))
+            .line_to(Vec2::new(0.5, 0.0))
+            .line_to(Vec2::new(0.5, 0.5))
+            .close()
+            .move_to(Vec2::new(1.0, 1.0))
+            .line_to(Vec2::new(1.5, 1.0))
+            .line_to(Vec2::new(1.5, 1.5))
+            .close()
+            .build();
+        let subs = path.flatten_subpaths(0.01);
+        assert_eq!(subs.len(), 2, "two MoveTos → two subpaths");
+        // Each subpath has 4 points (3 explicit + close-back-to-start).
+        assert_eq!(subs[0].len(), 4);
+        assert_eq!(subs[1].len(), 4);
+        // First subpath stays in its own bucket — no point from the
+        // second subpath leaked in.
+        assert!(subs[0].iter().all(|p| p.x < 0.6 && p.y < 0.6));
+        assert!(subs[1].iter().all(|p| p.x > 0.9 && p.y > 0.9));
+    }
+
+    #[test]
+    fn flatten_subpaths_preserves_bezier_curvature_per_subpath() {
+        let path = PathBuilder::new()
+            .move_to(Vec2::new(0.0, 0.0))
+            .quad_to(Vec2::new(0.5, 1.0), Vec2::new(1.0, 0.0))
+            .close()
+            .move_to(Vec2::new(2.0, 0.0))
+            .line_to(Vec2::new(3.0, 0.0))
+            .close()
+            .build();
+        let subs = path.flatten_subpaths(0.01);
+        assert_eq!(subs.len(), 2);
+        // First subpath subdivides the quad → > 3 points.
+        assert!(
+            subs[0].len() > 3,
+            "quad subpath should subdivide, got {} pts",
+            subs[0].len()
+        );
+        // Second subpath is just two lines → 3 points (2 explicit +
+        // close back to start).
+        assert_eq!(subs[1].len(), 3);
+    }
+
+    #[test]
+    fn flatten_subpaths_empty_path_is_empty() {
+        let path = Path::from_commands(Vec::new());
+        assert!(path.flatten_subpaths(0.01).is_empty());
     }
 
     #[test]

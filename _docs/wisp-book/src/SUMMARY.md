@@ -46,6 +46,8 @@
   - [Vector highlight + callout](./wisp/chunks/vector-highlight-callout.md)
   - [Path stroke + mask boolean ops](./wisp/chunks/vector-path-stroke.md)
   - [Vector primitive gallery](./wisp/chunks/vector-gallery.md)
+  - [Path boolean ops — union / intersection / difference / XOR](./wisp/chunks/path-boolean.md)
+  - [Boolean ops on curved paths — flatten tolerance](./wisp/chunks/boolean-curves.md)
 
 # Text
 

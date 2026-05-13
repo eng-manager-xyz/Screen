@@ -6,6 +6,27 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-BOOL.7 + .9 + .16 — curve support, fluent Path API, algebraic proptest (AUT-168, 170, 177)
+- **Date:** 2026-05-13
+- **Status:** ✅ done — three boolean-ops follow-ups in one push on branch `linear-audit-and-wisp-sprint`. Curved-input booleans (`circle ∪ circle`, crescent via difference, tolerance-controls-edge-count) are first-class via internal flatten; fluent builder lives on `Path` (not `Graphics` — justified in chapter) for `union_with` / `intersect_with` / `cut` / `xor_with`; property-test suite covers commutativity, associativity, identity, self-cancellation, and De Morgan.
+- **Linear:** [AUT-168](https://linear.app/harwood/issue/AUT-168) M-BOOL.7 curves · [AUT-170](https://linear.app/harwood/issue/AUT-170) M-BOOL.9 fluent · [AUT-177](https://linear.app/harwood/issue/AUT-177) M-BOOL.16 proptest.
+- **Files:**
+  - **`crates/wisp/src/scene/path/mod.rs`** — new public `Path::flatten_subpaths(tolerance) -> Vec<Vec<Vec2>>` API that preserves `MoveTo` boundaries. 3 new unit tests (two-MoveTo separation, per-subpath Bezier curvature, empty-path is empty).
+  - **`crates/wisp/src/scene/path/boolean.rs`** — fluent `Path::union_with` / `.intersect_with` / `.cut` / `.xor_with` (each delegates to `combine` with `BoolOptions::default()`). 4 fluent-equivalence tests + 3 multi-subpath tests + 3 curve-input tests (`circle ∪ circle` produces one peanut contour with >>edges than `square ∪ square`; crescent via `A − B`; tighter `flatten_tolerance` strictly produces more output edges). 14 → 24 unit tests in this module.
+  - **`crates/wisp/tests/path_boolean_proptest.rs`** (new) — 8 proptest cases × 32 generated input pairs each. Sample-based PIP comparison handles the engine's re-tessellation (exact-path equality would fail on numeric drift). Covers Union/Intersection/XOR commutativity, Union associativity, identity (`A ∪ ∅`, `A − ∅`, `A ∩ ∅ = ∅`), self-difference, XOR self-cancellation, and De Morgan (`¬(A ∪ B) ⇔ ¬A ∧ ¬B` at probe points).
+  - **`_docs/wisp-book/src/wisp/chunks/boolean-curves.md`** (new) — chapter on flatten-tolerance trade-offs. Default `0.005` NDC ≈ 2.7 px at 1080p; table of `0.001` / `0.005` / `0.05` / `0.1` use cases; warning that halving tolerance doesn't strictly double edge count (clip-side simplification collapses collinears); gotcha list (collinear input edges split unions, self-intersecting input undefined, `f32` precision floor at ~`0.0001`).
+  - **`_docs/wisp-book/src/wisp/chunks/path-boolean.md`** — "Shipped this PR" updated to `M-BOOL.0..7, .9, .13, .16`. Fluent admonition explains why methods live on `Path` not `Graphics` (Graphics is a draw-call list, no single underlying Path). Deferred-tickets table drops `.7` and `.16` rows. New "Fluent vs raw API" section.
+  - **`_docs/wisp-book/src/SUMMARY.md`** — indexes the new curves chapter under Vector.
+- **Verified:**
+  - `cargo nextest run -p screen-wisp --lib scene::path::boolean::tests::` → 24/24 green.
+  - `cargo nextest run -p screen-wisp --test path_boolean_proptest` → 8/8 green in 0.03 s (well under AC's 10s budget).
+  - `cargo nextest run -p screen-wisp --lib` → 161/161 green.
+  - `just gate` → green end-to-end (fmt + check + lint + nextest + doctest + docs + snapshots-check + mermaid-check + shared-check + required-files-check + pages-url-check).
+- **What this unlocks:** boolean ops on real wisp paths (rounded rects, ellipses, hand-drawn curves) without callers pre-flattening; cleaner story / mask code via fluent `Path::union_with(...)`; algebraic-laws gate against any future backend swap (e.g. clipper2-rs or i_overlay → in-house drift would surface immediately).
+- **Anti-patterns earned:** Two overlapping rounded rects (same y-bounds, same h) have **collinear coincident top/bottom edges** that split a union into 3 subpaths — matches the engine's documented "Known v1 limitations" note. Used pure-curve circles for the canonical curve-union test instead; rounded rects with edge-aligned bounds remain a deferred backend question (likely M-BOOL.8 fill-rule work fixes it).
+
+---
+
 ## DOCS-00..DOCS-06 — Split the engineering site into two mdBooks (AUT-154..160)
 - **Date:** 2026-05-12
 - **Status:** ✅ done — seven DOCS tickets in one push on branch `localdev-next` (extending PR #20). One repo → two books composed at deploy: `/Screen/` (project / recorder / Tauri shell) and `/Screen/wisp/` (renderer-only reference, publishable to crates.io independently). One Pages artifact, path-based routing, no subdomain.
