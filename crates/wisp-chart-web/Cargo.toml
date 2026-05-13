@@ -1,0 +1,61 @@
+[package]
+name = "wisp-chart-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "WebGPU / wasm32 browser demo for `wisp-chart`. Renders a Gantt fixture into a <canvas> via wgpu's BROWSER_WEBGPU backend. Trunk-built."
+
+[lints]
+workspace = true
+
+# `wisp-chart-web` is wasm32-only by intent. It builds with
+# `cargo build --target wasm32-unknown-unknown` and is bundled into
+# a self-contained HTML + JS + WASM artefact by Trunk.
+#
+# `crate-type = ["cdylib", "rlib"]`:
+# - `cdylib` is what wasm-bindgen wraps for the browser.
+# - `rlib` keeps `cargo check --workspace` (native target) happy
+#   without forcing it to drop wasm-bindgen at link time. The
+#   `[target.cfg(target_arch = "wasm32")]` block below scopes the
+#   browser-only deps so a non-wasm `cargo check` doesn't pull
+#   wasm-bindgen / web-sys into its build graph.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Native default: `wisp-chart` is what we'll feed scene-graph data
+# from once chunk 3 ships `Gantt::render(&Theme) -> SceneNode`.
+# Until then, the demo only depends on `wgpu` (for the clear pass)
+# and `log` (for the JS-console logging shim). `wisp` itself
+# transitively arrives via `wisp-chart` — no direct dep needed.
+wisp-chart = { path = "../wisp-chart" }
+log = "0.4"
+
+# wgpu — workspace-pinned at 24. We use `Backends::BROWSER_WEBGPU`
+# explicitly; WebGL fallback is deliberately NOT enabled (user
+# direction: WebGPU only).
+wgpu = { workspace = true }
+
+# Browser-only deps. Scoping to `cfg(target_arch = "wasm32")` keeps
+# native `cargo check` clean — these only pull in when building for
+# wasm32-unknown-unknown.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "Window",
+    "console",
+] }
+console_error_panic_hook = "0.1"
+console_log = "1"
+
+[package.metadata.cargo-machete]
+# `log` is consumed via `log::info!` / `log::error!` macros that
+# only fire on the wasm32 target through `console_log`. machete
+# can't see the macro use cleanly.
+ignored = ["log"]

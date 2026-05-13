@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wisp-chart — WebGPU demo</title>
+    <link data-trunk rel="rust" data-wasm-opt="z" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background: #ffffff;
+        color: #222222;
+      }
+      header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e5e5e5;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      header p {
+        margin: 0.25rem 0 0;
+        font-size: 0.85rem;
+        color: #666;
+      }
+      main {
+        padding: 1.5rem;
+      }
+      #wisp-chart-canvas {
+        display: block;
+        width: 1920px;
+        max-width: 100%;
+        height: 800px;
+        background: #fafafa;
+        border: 1px solid #e5e5e5;
+        box-sizing: border-box;
+      }
+      #status {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: #888;
+      }
+      #status[data-state="error"] {
+        color: #d55e00;
+      }
+      noscript {
+        color: #d55e00;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>wisp-chart — WebGPU demo</h1>
+      <p>
+        Native Rust → WebAssembly → wgpu (BROWSER_WEBGPU) → HTML
+        canvas. Same crate as the native renderer.
+      </p>
+    </header>
+    <main>
+      <noscript>This demo requires JavaScript + WebGPU.</noscript>
+      <canvas id="wisp-chart-canvas" width="1920" height="800"></canvas>
+      <p id="status">Loading wisp-chart-web.wasm…</p>
+    </main>
+    <script>
+      // Lightweight WebGPU probe. The Rust side will overwrite the
+      // status text once it gets going; this just gives a clear
+      // message in browsers that lack WebGPU entirely.
+      (function () {
+        const status = document.getElementById("status");
+        if (!navigator.gpu) {
+          status.textContent =
+            "WebGPU is not available in this browser. Use Chrome / Edge 113+ or Firefox 121+.";
+          status.dataset.state = "error";
+          return;
+        }
+        status.textContent = "WebGPU available — initializing wgpu…";
+      })();
+    </script>
+  </body>
+</html>

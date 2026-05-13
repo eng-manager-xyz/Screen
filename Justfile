@@ -334,6 +334,20 @@ dev-wisp-chart-book: preprocessor-build
     PATH="$(pwd)/target/debug:$PATH" mdbook serve _docs/wisp-chart-book \
         --hostname 127.0.0.1 --port 3003 --open
 
+# Local WebGPU demo for wisp-chart. Trunk serves the wasm bundle at
+# http://127.0.0.1:8080 and rebuilds on file change. Requires
+# `cargo install --locked trunk` once (Trunk is intentionally NOT a
+# workspace dep — it's a build tool, not a runtime dep). Open in
+# a WebGPU-capable browser (Chrome 113+ / Firefox 121+).
+dev-wisp-chart-demo:
+    @cd crates/wisp-chart-web && trunk serve
+
+# Build the WebGPU demo for deployment under `/Screen/wisp-chart/demo/`.
+# Output: target/wisp-chart-demo-dist/ (will be composed into the
+# Pages artefact by docs.yml).
+site-wisp-chart-demo:
+    @cd crates/wisp-chart-web && trunk build --release --public-url /Screen/wisp-chart/demo/ --dist "$(pwd)/../../target/wisp-chart-demo-dist"
+
 # Publish all three books over Tailscale Serve (private to your tailnet).
 # Run `just dev-book` and `just dev-wisp-book` in separate terminals
 # first — this recipe only wires the Tailscale path proxies. After
