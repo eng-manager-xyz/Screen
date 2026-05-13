@@ -12,6 +12,11 @@
 //! Adaptive subdivision uses a flatness test on the control polygon:
 //! a Bezier curve is "flat enough" when the maximum perpendicular
 //! distance from a control point to the chord is below `tolerance`.
+//!
+//! Boolean ops on paths (`union`, `intersection`, `difference`,
+//! `xor`) live in the [`boolean`] submodule (M-BOOL.0 / AUT-161).
+
+pub mod boolean;
 
 use glam::Vec2;
 
