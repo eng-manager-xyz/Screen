@@ -85,27 +85,45 @@ one new `op_rule` line.
 
 ## What's in v1, what's deferred
 
-**Shipped this PR (M-BOOL.0..6):**
+**Shipped this PR (M-BOOL.0..7, .9, .13, .16):**
 
 - In-house polygon-clipping engine.
 - Public API: `combine`, `combine_n`, `BooleanOp`, `BoolOptions`, `FillRule`.
-- All 4 primitive ops on simple closed polygons.
-- 14 unit tests covering geometry correctness + empty-input cases.
+- Fluent builder on `Path`: `.union_with`, `.intersect_with`, `.cut`, `.xor_with`.
+- Curved-input support — `QuadTo` / `CubicTo` flatten internally at
+  `BoolOptions::flatten_tolerance`. See
+  [Boolean ops on curved paths](./boolean-curves.md) for the
+  tolerance trade-off and per-subpath flattening helper
+  (`Path::flatten_subpaths`).
+- All 4 primitive ops on closed polygons (with curve support via flatten).
+- 24 unit tests + 8 proptest cases covering geometry correctness,
+  fluent equivalence, multi-subpath behaviour, empty-input edge
+  cases, curve flattening, and algebraic laws (commutativity,
+  associativity, identity, self-cancellation, De Morgan).
 - Re-exported at `wisp::path::boolean::*`.
+
+```admonish note title="Why Path, not Graphics, hosts the fluent ops"
+The M-BOOL.9 ticket originally spec'd `Graphics::union_with` /
+`.intersect_with` / `.cut` / `.xor_with`. `Graphics` in this
+codebase carries a draw-call list of SDF primitives
+(`draw_rect`, `draw_ellipse`, `draw_line`) — not a single Path —
+so there's no natural shape to feed into the boolean engine. The
+fluent methods live on `Path` instead, which **is** a single
+vector shape. The Graphics-level convenience returns when
+[M-BOOL.10 / `BooleanGroup`](#) introduces a scene-graph node
+that draws a baked `Path` directly.
+```
 
 **Deferred follow-ups** (each is a separate Linear ticket):
 
 | Ticket | What's deferred | Why this PR doesn't touch it |
 |---|---|---|
-| M-BOOL.7 / AUT-168 | Multi-subpath Bezier handling (curves preserved per subpath) | v1 flattens the entire input to a single polyline; multi-subpath needs a `Path::flatten_subpaths` API |
 | M-BOOL.8 / AUT-169 | `FillRule::NonZero` semantics + native holes | Needs winding-number tracking in the sweep; v1 honours `EvenOdd` only |
-| M-BOOL.9 / AUT-170 | `Graphics::union_with` / `.cut` / `.intersect_with` / `.xor_with` fluent builder | Pending after the engine settles |
 | M-BOOL.10 / AUT-171 | `BooleanGroup` scene-graph node | Render-pass integration; depends on stable engine |
 | M-BOOL.11 / AUT-172 | Bake boolean result → alpha-mask `RenderTexture` | Wires the engine into M-VEC.3's mask pipeline |
 | M-BOOL.12 / AUT-173 | Complete Porter-Duff blend modes | Orthogonal to the engine — lives in `wisp::blend` |
 | M-BOOL.14 / AUT-175 | Cache + bake-to-mask for static booleans | Perf opt — needs M-BOOL.11 first |
-| M-BOOL.15 / AUT-176 | Four-circle Venn storybook story | Needs `wisp-storybook` rendering of `Path` output (depends on M-BOOL.9 or .10 for ergonomics) |
-| M-BOOL.16 / AUT-177 | `proptest` property tests for algebraic laws | Adds proptest dependency; v1 tests are deterministic and named |
+| M-BOOL.15 / AUT-176 | Four-circle Venn storybook story | Needs `wisp-storybook` rendering of `Path` output (depends on M-BOOL.10 for ergonomics) |
 | M-BOOL.17 / AUT-178 | `criterion` benchmarks | Adds criterion dependency |
 | M-BOOL.18 / AUT-179 | Offset/Minkowski, SDF, glyph booleans | Explicitly P3 deferred per the ticket |
 
@@ -127,19 +145,22 @@ without replacing them.
 - **`FillRule::NonZero` is accepted but treated as `EvenOdd`** until
   M-BOOL.8 ships winding-number tracking.
 
-## Tests
+## Fluent vs raw API
 
-`crates/wisp/src/scene/path/boolean.rs` has 14 unit tests:
+```rust
+use wisp::path::Path;
 
-- 4 op-correctness tests (one per primitive op) using a baseline of
-  two unit squares offset by 0.3 NDC. Each asserts contour count +
-  point-in/point-out classification of probe locations.
-- 2 disjoint-input tests (`Union` returns both, `Intersection`
-  returns nothing).
-- 3 empty-input tests (`Path::from_commands(vec![])` against a
-  non-empty path produces sensible no-op results).
-- 3 N-ary tests (empty slice, single-element slice, three disjoint
-  squares union).
-- 2 internal-helper tests (`ray_crossings`, `segment_intersection`).
+// Raw `combine` form:
+let result = combine(&a, &b, BooleanOp::Union, BoolOptions::default());
 
-All passing on macOS + Ubuntu + Windows in `just gate`.
+// Fluent form (same answer, chains nicely):
+let result = a.union_with(&b);
+
+// Chain three-way ops:
+let highlight = a.union_with(&b).cut(&c);
+```
+
+Both forms are equivalent (`fluent_*_matches_combine` tests pin
+this); pick by readability. Use `combine` when you need custom
+`BoolOptions` (tolerance, fill rule); use the fluent methods for
+the common defaults.

@@ -52,6 +52,44 @@ use glam::Vec2;
 
 use crate::scene::path::{Path, PathBuilder, PathCommand};
 
+// ──────────────────────────────────────────────────────────────────
+// Fluent builder on Path (M-BOOL.9 / AUT-170)
+// ──────────────────────────────────────────────────────────────────
+//
+// The ticket text spec'd these on `Graphics`, but `Graphics` carries
+// draw-call primitives (`draw_rect`, `draw_ellipse`, `draw_line`)
+// not Path data — there's no single Path inside a Graphics. The
+// natural home for fluent boolean ops is `Path` itself; a future
+// `Graphics::from_path` lands when M-BOOL.10's `BooleanGroup` scene
+// node arrives.
+
+impl Path {
+    /// Fluent `A ∪ B`. Equivalent to
+    /// `combine(self, other, BooleanOp::Union, BoolOptions::default())`.
+    #[must_use]
+    pub fn union_with(&self, other: &Path) -> Path {
+        combine(self, other, BooleanOp::Union, BoolOptions::default())
+    }
+
+    /// Fluent `A ∩ B`.
+    #[must_use]
+    pub fn intersect_with(&self, other: &Path) -> Path {
+        combine(self, other, BooleanOp::Intersection, BoolOptions::default())
+    }
+
+    /// Fluent `A − B`. Named `cut` for Pixi-parity per the ticket.
+    #[must_use]
+    pub fn cut(&self, other: &Path) -> Path {
+        combine(self, other, BooleanOp::Difference, BoolOptions::default())
+    }
+
+    /// Fluent `A ⊕ B`.
+    #[must_use]
+    pub fn xor_with(&self, other: &Path) -> Path {
+        combine(self, other, BooleanOp::Xor, BoolOptions::default())
+    }
+}
+
 /// The four primitive boolean ops on two paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BooleanOp {
@@ -743,5 +781,235 @@ mod tests {
         assert!(any_vertex_inside(&path_inside, &unit_sq));
         let path_outside = square(Vec2::new(5.0, 5.0), 0.1);
         assert!(!any_vertex_inside(&path_outside, &unit_sq));
+    }
+
+    // ─── Fluent builder (M-BOOL.9 / AUT-170) ──────────────────────
+
+    #[test]
+    fn fluent_union_with_matches_combine() {
+        let a = square(Vec2::ZERO, 0.5);
+        let b = square(Vec2::new(0.3, 0.0), 0.5);
+        let fluent = a.union_with(&b);
+        let direct = combine(&a, &b, BooleanOp::Union, BoolOptions::default());
+        assert_eq!(fluent, direct);
+    }
+
+    #[test]
+    fn fluent_intersect_with_matches_combine() {
+        let a = square(Vec2::ZERO, 0.5);
+        let b = square(Vec2::new(0.3, 0.0), 0.5);
+        let fluent = a.intersect_with(&b);
+        let direct = combine(&a, &b, BooleanOp::Intersection, BoolOptions::default());
+        assert_eq!(fluent, direct);
+    }
+
+    #[test]
+    fn fluent_cut_matches_combine_difference() {
+        let a = square(Vec2::ZERO, 0.5);
+        let b = square(Vec2::new(0.3, 0.0), 0.5);
+        let fluent = a.cut(&b);
+        let direct = combine(&a, &b, BooleanOp::Difference, BoolOptions::default());
+        assert_eq!(fluent, direct);
+    }
+
+    #[test]
+    fn fluent_xor_with_matches_combine() {
+        let a = square(Vec2::ZERO, 0.5);
+        let b = square(Vec2::new(0.3, 0.0), 0.5);
+        let fluent = a.xor_with(&b);
+        let direct = combine(&a, &b, BooleanOp::Xor, BoolOptions::default());
+        assert_eq!(fluent, direct);
+    }
+
+    // ─── Multi-subpath (M-BOOL.7 / AUT-168) ───────────────────────
+
+    /// Build a `Path` containing two disjoint square subpaths.
+    fn two_squares(centre_a: Vec2, centre_b: Vec2, half: f32) -> Path {
+        PathBuilder::new()
+            .move_to(centre_a + Vec2::new(-half, -half))
+            .line_to(centre_a + Vec2::new(half, -half))
+            .line_to(centre_a + Vec2::new(half, half))
+            .line_to(centre_a + Vec2::new(-half, half))
+            .close()
+            .move_to(centre_b + Vec2::new(-half, -half))
+            .line_to(centre_b + Vec2::new(half, -half))
+            .line_to(centre_b + Vec2::new(half, half))
+            .line_to(centre_b + Vec2::new(-half, half))
+            .close()
+            .build()
+    }
+
+    #[test]
+    fn multi_subpath_union_preserves_disjoint_regions() {
+        // A: two disjoint squares; B: one square that hits only A's
+        // first subpath. Union should leave A's second subpath
+        // untouched.
+        let a = two_squares(Vec2::new(-1.0, 0.0), Vec2::new(1.0, 0.0), 0.3);
+        let b = square(Vec2::new(-0.9, 0.0), 0.25);
+        let u = combine(&a, &b, BooleanOp::Union, BoolOptions::default());
+        let polys: Vec<Vec<Vec2>> = subpaths(&u, 0.005);
+        // The far-right square's centre must still be inside the
+        // union.
+        assert!(
+            inside_any(Vec2::new(1.0, 0.0), &polys),
+            "right square missing from multi-subpath union"
+        );
+        // Some point that was only in B (not in A) must also be in.
+        assert!(inside_any(Vec2::new(-0.9, 0.0), &polys));
+    }
+
+    #[test]
+    fn multi_subpath_difference_carves_only_affected_subpath() {
+        // A: two squares; B: a square that overlaps only the LEFT
+        // one. Difference should keep the right square intact.
+        let a = two_squares(Vec2::new(-1.0, 0.0), Vec2::new(1.0, 0.0), 0.3);
+        let b = square(Vec2::new(-1.0, 0.0), 0.2);
+        let d = combine(&a, &b, BooleanOp::Difference, BoolOptions::default());
+        let polys: Vec<Vec<Vec2>> = subpaths(&d, 0.005);
+        // Right square still present.
+        assert!(inside_any(Vec2::new(1.0, 0.0), &polys));
+        // Centre of left square got carved.
+        assert!(!inside_any(Vec2::new(-1.0, 0.0), &polys));
+    }
+
+    #[test]
+    fn fluent_chain_compiles_and_runs() {
+        // Three-way `(A ∪ B) − C` via fluent chain.
+        let a = square(Vec2::new(-0.2, 0.0), 0.4);
+        let b = square(Vec2::new(0.2, 0.0), 0.4);
+        let c = square(Vec2::new(0.0, 0.4), 0.2);
+        let result = a.union_with(&b).cut(&c);
+        // C lies inside the union — its centre should be carved out.
+        let polys: Vec<Vec<Vec2>> = subpaths(&result, 0.005);
+        assert!(!inside_any(Vec2::new(0.0, 0.4), &polys));
+        // A's left half should survive.
+        assert!(inside_any(Vec2::new(-0.5, 0.0), &polys));
+    }
+
+    // ─── Curve flattening (M-BOOL.7 / AUT-168) ────────────────────
+
+    /// Closed circle approximated by four cubic Beziers, the classic
+    /// `k = 0.5523` corner-control constant. `c` is the centre, `r`
+    /// the radius. No straight segments — pure curve input.
+    fn circle(c: Vec2, r: f32) -> Path {
+        let k = 0.5523 * r;
+        let cx = c.x;
+        let cy = c.y;
+        PathBuilder::new()
+            .move_to(Vec2::new(cx + r, cy))
+            .cubic_to(
+                Vec2::new(cx + r, cy + k),
+                Vec2::new(cx + k, cy + r),
+                Vec2::new(cx, cy + r),
+            )
+            .cubic_to(
+                Vec2::new(cx - k, cy + r),
+                Vec2::new(cx - r, cy + k),
+                Vec2::new(cx - r, cy),
+            )
+            .cubic_to(
+                Vec2::new(cx - r, cy - k),
+                Vec2::new(cx - k, cy - r),
+                Vec2::new(cx, cy - r),
+            )
+            .cubic_to(
+                Vec2::new(cx + k, cy - r),
+                Vec2::new(cx + r, cy - k),
+                Vec2::new(cx + r, cy),
+            )
+            .close()
+            .build()
+    }
+
+    /// Count `LineTo` commands in a path — proxy for "how many edges
+    /// did the output polygon get tessellated into".
+    fn count_line_to(path: &Path) -> usize {
+        path.commands()
+            .iter()
+            .filter(|c| matches!(c, PathCommand::LineTo(_)))
+            .count()
+    }
+
+    #[test]
+    fn curve_input_union_produces_curved_outline() {
+        // Two overlapping circles — pure curves, no flat edges to
+        // collide. Union should be a single peanut-shaped contour
+        // with materially more edges than a square-on-square union
+        // (proof that the cubics were flattened, not dropped).
+        let a = circle(Vec2::new(-0.2, 0.0), 0.4);
+        let b = circle(Vec2::new(0.2, 0.0), 0.4);
+        let u = combine(&a, &b, BooleanOp::Union, BoolOptions::default());
+        assert_eq!(
+            count_subpaths(&u),
+            1,
+            "two overlapping circles union → one peanut"
+        );
+        let sq_u = combine(
+            &square(Vec2::new(-0.2, 0.0), 0.4),
+            &square(Vec2::new(0.2, 0.0), 0.4),
+            BooleanOp::Union,
+            BoolOptions::default(),
+        );
+        assert!(
+            count_line_to(&u) > count_line_to(&sq_u) + 4,
+            "circle union should carry >>{} edges (sq baseline = {})",
+            count_line_to(&sq_u) + 4,
+            count_line_to(&sq_u)
+        );
+        // Probe: midpoint between the two centres is inside (overlap
+        // zone). A point well outside is not.
+        let polys: Vec<Vec<Vec2>> = subpaths(&u, 0.005);
+        assert!(inside_any(Vec2::new(0.0, 0.0), &polys));
+        assert!(!inside_any(Vec2::new(0.9, 0.9), &polys));
+    }
+
+    #[test]
+    fn curve_input_difference_carves_circle_out_of_circle() {
+        // Crescent: A − B where B's centre is inside A. The carved
+        // hole's centre is gone; A's far side is preserved.
+        let a = circle(Vec2::ZERO, 0.4);
+        let b = circle(Vec2::new(0.2, 0.0), 0.2);
+        let d = combine(&a, &b, BooleanOp::Difference, BoolOptions::default());
+        let polys: Vec<Vec<Vec2>> = subpaths(&d, 0.005);
+        assert!(
+            !inside_any(Vec2::new(0.2, 0.0), &polys),
+            "B's centre should be carved out"
+        );
+        assert!(
+            inside_any(Vec2::new(-0.3, 0.0), &polys),
+            "A's far side should survive"
+        );
+    }
+
+    #[test]
+    fn flatten_tolerance_controls_output_resolution() {
+        // Tighter tolerance → more line segments. Looser tolerance →
+        // fewer. Use a circle union so both sides are pure curves.
+        let a = circle(Vec2::new(-0.2, 0.0), 0.4);
+        let b = circle(Vec2::new(0.2, 0.0), 0.4);
+        let tight = combine(
+            &a,
+            &b,
+            BooleanOp::Union,
+            BoolOptions {
+                flatten_tolerance: 0.001,
+                ..Default::default()
+            },
+        );
+        let loose = combine(
+            &a,
+            &b,
+            BooleanOp::Union,
+            BoolOptions {
+                flatten_tolerance: 0.1,
+                ..Default::default()
+            },
+        );
+        let n_tight = count_line_to(&tight);
+        let n_loose = count_line_to(&loose);
+        assert!(
+            n_tight > n_loose,
+            "tighter tolerance ({n_tight} edges) should subdivide more than looser ({n_loose})"
+        );
     }
 }
