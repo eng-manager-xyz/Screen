@@ -7,6 +7,7 @@
 # Foundations
 
 - [Theme](./charts/theme.md)
+- [Scales](./charts/scales.md)
 
 # Gantt
 
