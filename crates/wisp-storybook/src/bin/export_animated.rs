@@ -3,7 +3,7 @@
 //! Renders every animated story (`tick: Some(...)`) to an MP4 by
 //! piping raw RGBA frames into a `gst-launch-1.0` subprocess that
 //! encodes via `x264enc + mp4mux`. Outputs land at
-//! `_docs/book/src/assets/wisp/<id>.mp4` next to the existing PNGs.
+//! `_docs/wisp-book/src/assets/wisp/<id>.mp4` next to the existing PNGs.
 //!
 //! Local-only by design — gstreamer 1.x must be on PATH (`brew
 //! install gstreamer`). CI does not run this binary; mdBook chapters
@@ -70,7 +70,7 @@ fn main() {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let renderer = Renderer::new(&app, format).expect("Renderer::new");
 
-    let out_dir = PathBuf::from("_docs/book/src/assets/wisp");
+    let out_dir = PathBuf::from("_docs/wisp-book/src/assets/wisp");
     std::fs::create_dir_all(&out_dir).expect("create out dir");
 
     let stories = all_stories();

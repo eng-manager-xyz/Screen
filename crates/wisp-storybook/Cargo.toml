@@ -18,13 +18,13 @@ name = "wisp-storybook"
 path = "src/main.rs"
 
 # Headless story exporter — writes a PNG per story under
-# `_docs/book/src/assets/wisp/<id>.png` for the mdBook site.
+# `_docs/wisp-book/src/assets/wisp/<id>.png` for the mdBook site.
 [[bin]]
 name = "wisp-export-stories"
 path = "src/bin/export_stories.rs"
 
 # FlexibleText custom-font screenshot exporter — writes
-# `_docs/book/src/assets/wisp/text-custom-fonts.png` demonstrating
+# `_docs/wisp-book/src/assets/wisp/text-custom-fonts.png` demonstrating
 # Inter + JetBrains Mono via FlexibleTextEngine + FlexibleTextRenderer.
 # Sibling to wisp-export-stories because FlexibleTextRenderer lives
 # outside the Stage / Renderer pipeline.

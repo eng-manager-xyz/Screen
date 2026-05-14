@@ -6,6 +6,115 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.10 — Area chart mark (AUT-190)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Mark::Area { interpolation }` renders the region between a line and the baseline as filled quads. Branch `chart-axis-legend`.
+- **Linear:** [AUT-190](https://linear.app/harwood/issue/AUT-190).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `Mark::Area { interpolation }` variant.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_areas` reuses `cartesian_layout`. Splits rows into series by `Color` encoding (same shape as `render_lines`). Emits one convex quad per segment: `(x0, baseline) → (x1, baseline) → (x1, y1) → (x0, y0)`. Step interpolation flattens to `(x0, y0) → (x1, y0)` at the top edge. **Quad-per-segment instead of one big polygon** because wisp's `draw_polygon` is convex-only in v1; the area polygon between a non-monotonic line and the baseline is generally non-convex.
+  - **`_docs/wisp-chart-book/src/charts/area.md`** — new chapter explains the convex-quad emission strategy.
+- **Verified:** `cargo test -p wisp-chart --lib` → 105/105 green. `just gate` → green end-to-end.
+
+---
+
+## M-CHART.12 — Bubble chart via Size encoding + Area mapping (AUT-192)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Encoding::size(...).size_mapping(SizeMapping::Area)` lets the Point mark render area-correct bubbles. Default is Area (vs visually-misleading Radius). Branch `chart-axis-legend`.
+- **Linear:** [AUT-192](https://linear.app/harwood/issue/AUT-192).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `SizeMapping::{Radius, Area}` enum (default Area). New `Encoding::size_mapping(...)` builder. Encoding struct grows `size_mapping` field.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — `render_points` builds the size scale into `(r_min², r_max²)` (= 9..1600 px²) for Area mode, then `sqrt()` after map. Radius mode maps directly into `(r_min, r_max)` = (3..40 px). 1 unit test confirms 10× value renders 2 ellipses without panic.
+  - **`_docs/wisp-chart-book/src/charts/bubble.md`** — new chapter explains the perceptual reason for Area default (4× value → 4× visible bubble, not 16×).
+- **Verified:** `cargo test -p wisp-chart --lib` → 103/103 green. `just gate` → green end-to-end.
+
+---
+
+## M-CHART.11 — Scatterplot mark (AUT-191)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Mark::Point { shape: PointShape }` with five shape variants (Circle / Square / Diamond / Triangle / Plus) and optional `Encoding::Size` for radius mapping. Branch `chart-axis-legend`.
+- **Linear:** [AUT-191](https://linear.app/harwood/issue/AUT-191).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `PointShape` enum (Circle / Square / Diamond / Triangle / Plus), `Mark::Point { shape }` variant.
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `Channel::Size` variant + `plot::size(field)` convenience.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_points` that builds a *continuous* layout (LinearScale × LinearScale, distinct from the band-based bar layout in `cartesian_layout`). Shape lookup picks the right primitive (`draw_ellipse` / `draw_rect` / `draw_polygon` / two crossed rects for `Plus`). Size encoding maps a numeric column → marker radius via LinearScale into `(3.0, 18.0)` px range. Color encoding picks fill per category. 3 unit tests: circle one-per-row, all 5 shapes emit expected primitive counts (Plus = 2 rects), size encoding doesn't change primitive count.
+  - **`_docs/wisp-chart-book/src/charts/scatter.md`** — new chapter under "Mark types" with shape-table + size-encoding warning.
+- **Verified:** `cargo test -p wisp-chart --lib` → 102/102 green. `just gate` → green end-to-end.
+
+---
+
+## M-CHART.8 — Stacked bar + 100% normalized (AUT-188)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot::transform(Transform::Stack { normalize })` composes with bar + Color. Branch `chart-axis-legend`.
+- **Linear:** [AUT-188](https://linear.app/harwood/issue/AUT-188).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `Transform::Stack { normalize: bool }` enum + `Plot::transform(...)` builder. `render_bars` precomputes per-band totals, walks rows in DataFrame order accumulating a per-band offset. Normalize mode divides each row's contribution by its band total and rescales to the y-domain top. Composes with `XOffset` for grouped-stacked layouts. 2 new tests: 6-segment stacked count, normalize-mode smoke (sharply different band totals → identical band heights).
+  - **`_docs/wisp-chart-book/src/charts/stacked-bar.md`** — new chapter explains both modes + stack+XOffset composition.
+- **Verified:** `cargo test -p wisp-chart --lib` → 99/99 green. `just gate` → green end-to-end.
+
+---
+
+## M-CHART.7 — Grouped bar chart (AUT-187)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot` supports `Encoding::XOffset(field)` which re-bands the X scale into per-series sub-bands within each outer X band. Branch `chart-axis-legend`.
+- **Linear:** [AUT-187](https://linear.app/harwood/issue/AUT-187).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `Channel::XOffset` variant. New convenience `plot::x_offset(field)` builder.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — `render_bars` builds an inner `BandScale<String>` over the XOffset column's distinct values within each row's outer X band (10% inner padding). Pairs naturally with `Color` encoding so each series carries a palette colour. 2 new tests: 6-bar count for 2 quarters × 3 regions, smoke test for grouped layout.
+  - **`_docs/wisp-chart-book/src/charts/grouped-bar.md`** — new chapter under "Mark types" in SUMMARY.md. Explains the layout, pairing with `Plot::legend`.
+- **Verified:** `cargo test -p wisp-chart --lib` → 97/97 green. `just gate` → green end-to-end.
+- **What this unlocks:** AUT-188 stacked bar reuses the same iteration loop with a `Transform::Stack` accumulator; same renderer path. Multi-region revenue dashboards (Q1..Q4 × {NA, EU, APAC}) render in 5 lines.
+
+---
+
+## M-CHART.9 — Line chart mark (AUT-189)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot` now supports `Mark::Line { interpolation, marker }` with `Interpolation::Linear` + `Step` and optional `PointStyle::Circle` markers. Multi-series via `Color` encoding splits rows by colour category and emits one polyline per series. Branch `chart-axis-legend`.
+- **Linear:** [AUT-189](https://linear.app/harwood/issue/AUT-189).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `Interpolation::{Linear, Step}` enum (`Monotone` deferred per ticket P2 note), `PointStyle::Circle`. `Mark::Line { interpolation, marker }` variant.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_lines` mark renderer reusing `cartesian_layout()`. Step interpolation emits 2 segments per pair (h then v). Color encoding splits the row stream into series Vec keyed by colour category, each rendered with its own palette colour. Re-exports `Interpolation` + `PointStyle`. 3 new unit tests: 4-point Linear → 3 segments; 4-point Step → 6 segments; markers on → 4 ellipses + 3 segments.
+  - **`crates/wisp-chart/src/theme.rs`** — `PlotTheme.line_width_px = 2.0`, `line_marker_radius_px = 3.0`.
+  - **`_docs/wisp-chart-book/src/charts/line.md`** — full chapter (was placeholder from AUT-183). Mark-variant guide, interpolation comparison, multi-series with `Plot::legend`, theme-field table.
+- **Verified:** `cargo test -p wisp-chart --lib` → 95/95 green. `just gate` → green end-to-end.
+- **What this unlocks:** time-series, daily-metric, and continuous-x charts. Multi-line legend integration tested via `Plot::legend(theme)` from AUT-184. Step interpolation covers monotonic step series (quarterly milestones, billing tier changes).
+
+---
+
+## M-CHART.4 — Legend renderer (AUT-184)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `wisp-chart` ships a `legend` module mirroring the axis shape. `Plot::legend(theme)` auto-builds a `Legend` from the chart's `Color` encoding. Branch `chart-axis-legend`.
+- **Linear:** [AUT-184](https://linear.app/harwood/issue/AUT-184).
+- **Files:**
+  - **`crates/wisp-chart/src/legend/mod.rs`** (new) — `Legend`, `LegendItem`, `SwatchStyle` (`ColorBox` / `LineSample` / `PointMarker`), `LegendOrientation` (`Vertical` / `Horizontal`). `emit_graphics(...) -> Graphics` draws the swatches; `emit_text_labels(..., &Font) -> Vec<Text>` emits labels. `item_positions(...)` is exposed for tests + future stage-layout calls. Horizontal layouts wrap when the running x exceeds viewport. 5 unit tests covering vertical uniform spacing, horizontal advance, horizontal wrap, empty legend → empty Graphics, one-primitive-per-item.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `Plot::legend(theme) -> Legend` method that auto-builds from the `Color` encoding via the palette. Empty when the plot has no `Color` channel.
+  - **`crates/wisp-chart/src/lib.rs`** — `pub mod legend;`.
+  - **`_docs/wisp-chart-book/src/charts/legend.md`** — full chapter (was a placeholder shipped in AUT-183). Public-surface table, swatch-style guidance, manual + auto-build examples, orientation table.
+- **Verified:** `cargo test -p wisp-chart --lib` → 92/92 green. `just gate` → green end-to-end.
+- **What this unlocks:** AUT-186 (Bar) already takes a `Color` encoding via `OrdinalScale`; multi-series renders can now ship a legend for free. Grouped bar / stacked bar / multi-line / scatter-with-category (AUT-187..190) inherit the same emission path.
+
+---
+
+## M-CHART.3 — Axis renderer (AUT-183)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `wisp-chart` now ships an `axis` module that emits axis lines, tick marks, gridlines, tick labels, and a rotated/horizontal axis title. `Plot::render` auto-emits axes by default (toggleable via `.axes(false)`). Branch `chart-axis-legend`.
+- **Linear:** [AUT-183](https://linear.app/harwood/issue/AUT-183).
+- **Files:**
+  - **`crates/wisp-chart/src/axis/mod.rs`** (new) — `AxisPosition`, `TickLabel`, plus four emit fns: `emit_x_axis_lines`, `emit_y_axis_lines` return `wisp::Graphics`; `emit_x_axis_text`, `emit_y_axis_text` return `Vec<wisp::Text>`. Y-axis title rotates `-π/2` via `Transform { rotation, .. }`. 5 unit tests + 2 wgpu-device tests (Application::new via pollster::block_on for the Font).
+  - **`crates/wisp-chart/src/plot/mod.rs`** — Plot grows `axes_enabled: bool` + `x_axis_title: Option<String>` + `y_axis_title: Option<String>` with `.axes(bool)` / `.x_title(...)` / `.y_title(...)` builders. New `cartesian_layout()` helper consolidates plot rect + scales + ticks (avoids re-computing across `render_bars` and `axis_text_labels`). New `axis_text_labels(theme, viewport, font)` public method so callers can attach `Text` nodes to the stage (`Plot::render` can't emit Text — needs a Font). `render_bars` splices axis-line primitives into the plot's `Graphics` via the new `Graphics::append`.
+  - **`crates/wisp/src/scene/graphics.rs`** — new `Graphics::append(&Graphics)` method that clones primitives across nodes so higher layers can compose independently-built `Graphics` lists into one node.
+  - **`crates/wisp-chart-web/tests/render_bar.rs`** — integration test now builds the Plot with `.x_title("Quarter") / .y_title("Revenue")`, renders to RT, and also wires `Font::bitmap_8x8(&app)` + `plot.axis_text_labels(...)` to add tick labels + titles as sibling Text nodes. Resulting `bar-quarterly.png` shows axes, gridlines, "Quarter" / "Revenue" titles, and 0..60 tick labels.
+  - **`_docs/wisp-chart-book/src/charts/axes.md`** (new) — chapter documenting the public surface, render order (gridlines → marks → labels), and pixel-vs-NDC coordinate convention.
+  - **`_docs/wisp-chart-book/src/charts/legend.md` + `line.md`** (new placeholders) — empty book shells for AUT-184 (Legend) + AUT-189 (Line) so SUMMARY links resolve.
+  - **`_docs/wisp-chart-book/src/SUMMARY.md`** — indexes axes / legend / line.
+- **Verified:**
+  - `cargo test -p wisp-chart --lib` → 87/87 green.
+  - `cargo test -p wisp-chart-web --test render_bar` → 1/1 green (no wgpu validation errors).
+  - `just gate` → green end-to-end.
+- **Anti-patterns earned:** struct literal evaluation order — `y_scale.map(0.0_f32.max(y_lo))` inside a struct literal *after* `y_scale` is moved into the same struct is use-after-move. Always compute terminal values into locals BEFORE the struct literal consumes the sources.
+
+---
+
 ## M-BOOL.7 + .9 + .16 — curve support, fluent Path API, algebraic proptest (AUT-168, 170, 177)
 - **Date:** 2026-05-13
 - **Status:** ✅ done — three boolean-ops follow-ups in one push on branch `linear-audit-and-wisp-sprint`. Curved-input booleans (`circle ∪ circle`, crescent via difference, tolerance-controls-edge-count) are first-class via internal flatten; fluent builder lives on `Path` (not `Graphics` — justified in chapter) for `union_with` / `intersect_with` / `cut` / `xor_with`; property-test suite covers commutativity, associativity, identity, self-cancellation, and De Morgan.

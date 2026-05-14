@@ -16,7 +16,7 @@
 //!
 //! Animates the parameters over **60 frames**, dumps each composite
 //! to `target/filter_chain/frame_NN.png`. Frame #30 (peak parameters)
-//! also lands at `_docs/book/src/assets/wisp/example-filter-chain.png`
+//! also lands at `_docs/wisp-book/src/assets/wisp/example-filter-chain.png`
 //! so the mdBook chapter can embed a representative composite without
 //! committing 60 large PNGs.
 
@@ -88,7 +88,7 @@ fn main() -> wisp::Result<()> {
 
     let out_dir = Path::new("target/filter_chain");
     std::fs::create_dir_all(out_dir).ok();
-    let highlight_dir = Path::new("_docs/book/src/assets/wisp");
+    let highlight_dir = Path::new("_docs/wisp-book/src/assets/wisp");
     std::fs::create_dir_all(highlight_dir).ok();
 
     for frame in 0..FRAMES {

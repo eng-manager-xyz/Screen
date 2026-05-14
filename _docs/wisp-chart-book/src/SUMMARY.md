@@ -9,6 +9,17 @@
 - [Theme](./charts/theme.md)
 - [Scales](./charts/scales.md)
 - [Plot facade](./charts/plot.md)
+- [Axes](./charts/axes.md)
+- [Legend](./charts/legend.md)
+
+# Mark types
+
+- [Line chart](./charts/line.md)
+- [Grouped bar chart](./charts/grouped-bar.md)
+- [Stacked bar chart](./charts/stacked-bar.md)
+- [Scatterplot](./charts/scatter.md)
+- [Bubble chart](./charts/bubble.md)
+- [Area chart](./charts/area.md)
 
 # Gantt
 
