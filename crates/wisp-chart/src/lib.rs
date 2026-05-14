@@ -28,11 +28,13 @@
 pub mod color;
 pub mod gantt;
 pub mod palette;
+pub mod plot;
 pub mod scale;
 pub mod theme;
 
 pub use color::Color;
 pub use gantt::{Bar, DateRange, Gantt, Person, PersonMap, Row};
 pub use palette::OwnerPalette;
+pub use plot::{DataFrame, Encoding, Mark, Plot, ScaleKind, Value};
 pub use scale::{BandScale, LinearScale, LogScale, OrdinalScale, TimeScale};
 pub use theme::Theme;
