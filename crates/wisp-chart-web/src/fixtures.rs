@@ -14,6 +14,7 @@ use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
 use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::multi::{Splom, SplomDimension};
+use wisp_chart::overlay::{ErrorBars, ErrorPoint};
 use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
 use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
@@ -409,6 +410,25 @@ pub fn baseline_fixture() -> BaselineChart {
             (7.0, 30.0),
         ],
         0.0,
+    )
+}
+
+/// Error-bars fixture — 4-quarter bar revenue with symmetric
+/// ±15% error whiskers. Caller composes with `bar_fixture` (or
+/// the demo's `Bar` chart) to show the overlay use-case.
+#[must_use]
+pub fn error_bars_fixture() -> ErrorBars {
+    // The bar fixture's y-extent (0..64) maps to (cum/64) of
+    // each band centre. Bars are 4 across; centres at 0.125,
+    // 0.375, 0.625, 0.875 of the plot's x-width.
+    ErrorBars::new(
+        vec![
+            ErrorPoint::symmetric(0.125, 38.0, 5.0),
+            ErrorPoint::symmetric(0.375, 52.0, 7.0),
+            ErrorPoint::symmetric(0.625, 47.0, 6.0),
+            ErrorPoint::symmetric(0.875, 64.0, 9.0),
+        ],
+        (0.0, 64.0),
     )
 }
 

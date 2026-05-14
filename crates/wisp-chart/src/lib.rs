@@ -35,6 +35,7 @@ pub mod heatmap;
 pub mod indicator;
 pub mod legend;
 pub mod multi;
+pub mod overlay;
 pub mod palette;
 pub mod plot;
 pub mod polar;

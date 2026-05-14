@@ -57,6 +57,7 @@
 
 - [Box plot](./charts/boxplot.md)
 - [Parallel coordinates](./charts/parallel-coords.md)
+- [Error bars overlay](./charts/error-bars.md)
 
 # Multi-view
 

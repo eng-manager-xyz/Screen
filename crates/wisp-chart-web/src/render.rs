@@ -78,6 +78,8 @@ pub enum ChartId {
     ParallelCoords,
     /// Scatterplot matrix.
     Splom,
+    /// Bar chart with error-bar overlay.
+    ErrorBars,
 }
 
 impl ChartId {
@@ -116,6 +118,7 @@ impl ChartId {
             "box-plot" | "boxplot" => Some(Self::BoxPlot),
             "parallel-coords" | "parallel" => Some(Self::ParallelCoords),
             "splom" => Some(Self::Splom),
+            "error-bars" | "errorbars" => Some(Self::ErrorBars),
             _ => None,
         }
     }
@@ -346,6 +349,32 @@ pub fn render_chart_to_view(
             let s = fixtures::splom_fixture();
             let graphics = s.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::ErrorBars => {
+            // Compose a Bar chart + matching ErrorBars overlay
+            // in the SAME plot rect so the whiskers line up
+            // with the bar centres. Bar uses Plot's
+            // cartesian_layout (60-px gutter + 40-px header +
+            // 40-px footer); ErrorBars matches by passing the
+            // same rect.
+            let plot = Plot::new(fixtures::bar_fixture())
+                .mark(Mark::Bar {
+                    value_labels: false,
+                })
+                .x_title("Quarter")
+                .y_title("Revenue")
+                .axes(false)
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("revenue", ScaleKind::Linear));
+            let bar_graphics = plot.render(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, bar_graphics);
+            // Match the plot's internal layout — gutter 60,
+            // header 40, footer 40, right pad 20.
+            let plot_rect =
+                wisp::math::Rect::new(60.0, 40.0, viewport_px.x - 80.0, viewport_px.y - 80.0);
+            let bars = fixtures::error_bars_fixture();
+            let overlay = bars.emit_graphics_in_rect(&theme, viewport_px, plot_rect);
+            let _ = app.stage_mut().add_child(root, overlay);
         }
     }
 
