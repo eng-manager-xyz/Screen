@@ -22,7 +22,7 @@ pub mod mark;
 
 pub use dataframe::{DataFrame, Value};
 pub use encoding::{Channel, Encoding, ScaleKind, color, x, y};
-pub use mark::Mark;
+pub use mark::{Interpolation, Mark, PointStyle};
 
 use glam::Vec2;
 use wisp::math::Rect;
@@ -136,10 +136,16 @@ impl Plot {
         g.fill(Fill::Solid(chart_to_wisp(theme.bg)));
         g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
 
-        // Pick the mark renderer. v1: Bar only.
+        // Pick the mark renderer.
         match self.mark {
             Mark::Bar { value_labels: _ } => {
                 self.render_bars(theme, viewport_px, &mut g);
+            }
+            Mark::Line {
+                interpolation,
+                marker,
+            } => {
+                self.render_lines(theme, viewport_px, interpolation, marker, &mut g);
             }
         }
 
@@ -352,6 +358,138 @@ impl Plot {
             g.draw_rounded_rect(ndc, corner_ndc);
         }
     }
+
+    fn render_lines(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+        interpolation: mark::Interpolation,
+        marker: Option<mark::PointStyle>,
+        g: &mut Graphics,
+    ) {
+        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
+            return;
+        };
+
+        if self.axes_enabled {
+            let x_axis = axis::emit_x_axis_lines(
+                &layout.x_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Bottom,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            let y_axis = axis::emit_y_axis_lines(
+                &layout.y_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Left,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            g.append(&x_axis);
+            g.append(&y_axis);
+        }
+
+        let x_scale = layout.x_scale;
+        let y_scale = layout.y_scale;
+        let x_enc_field = layout.x_field;
+        let y_enc_field = layout.y_field;
+
+        // Color encoding → splits the data into series. When
+        // absent, the whole DataFrame is one series.
+        let color_enc = self.find_encoding(Channel::Color).cloned();
+        let x_col = self.data.column(&x_enc_field);
+        let y_col = self.data.column(&y_enc_field);
+        let row_count = self.data.row_count();
+
+        // Build per-series point lists. Series_key is the colour
+        // category (when Color encoding present) or empty string
+        // for single-series.
+        let mut series: Vec<(String, Vec<(f32, f32)>)> = Vec::new();
+        for i in 0..row_count {
+            let Some(x_val) = x_col.and_then(|c| c.get(i)).and_then(Value::as_category) else {
+                continue;
+            };
+            let Some(y_val) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let Some(bx_centre) = x_scale
+                .range_for(&x_val.to_owned())
+                .map(|(a, b)| (a + b) * 0.5)
+            else {
+                continue;
+            };
+            let py = y_scale.map(y_val);
+            let key = match &color_enc {
+                Some(enc) => self
+                    .data
+                    .column(&enc.field)
+                    .and_then(|c| c.get(i))
+                    .and_then(Value::as_category)
+                    .unwrap_or("")
+                    .to_owned(),
+                None => String::new(),
+            };
+            match series.iter_mut().find(|(k, _)| k == &key) {
+                Some((_, pts)) => pts.push((bx_centre, py)),
+                None => series.push((key, vec![(bx_centre, py)])),
+            }
+        }
+
+        let line_w_ndc = theme.plot.line_width_px / viewport_px.y * 2.0;
+
+        for (key, pts) in &series {
+            if pts.is_empty() {
+                continue;
+            }
+            let stroke_color = if color_enc.is_some() && !key.is_empty() {
+                theme.palette.color_for(key)
+            } else {
+                theme.palette.color_for(&y_enc_field)
+            };
+            g.fill(Fill::Solid(chart_to_wisp(stroke_color)));
+
+            // Segments.
+            for pair in pts.windows(2) {
+                let (x0, y0) = pair[0];
+                let (x1, y1) = pair[1];
+                let a = pixel_to_ndc(Vec2::new(x0, y0), viewport_px);
+                let b = pixel_to_ndc(Vec2::new(x1, y1), viewport_px);
+                match interpolation {
+                    mark::Interpolation::Linear => {
+                        g.draw_line(a, b, line_w_ndc);
+                    }
+                    mark::Interpolation::Step => {
+                        // Step: horizontal then vertical.
+                        let mid = pixel_to_ndc(Vec2::new(x1, y0), viewport_px);
+                        g.draw_line(a, mid, line_w_ndc);
+                        g.draw_line(mid, b, line_w_ndc);
+                    }
+                }
+            }
+
+            // Markers.
+            if matches!(marker, Some(mark::PointStyle::Circle)) {
+                let r = theme.plot.line_marker_radius_px;
+                let radii_ndc = Vec2::new(r / viewport_px.x * 2.0, r / viewport_px.y * 2.0);
+                for (x, y) in pts {
+                    let centre = pixel_to_ndc(Vec2::new(*x, *y), viewport_px);
+                    g.draw_ellipse(centre, radii_ndc);
+                }
+            }
+        }
+    }
+}
+
+fn pixel_to_ndc(p: Vec2, viewport_px: Vec2) -> Vec2 {
+    Vec2::new(
+        p.x / viewport_px.x * 2.0 - 1.0,
+        1.0 - p.y / viewport_px.y * 2.0,
+    )
 }
 
 /// Pixel-space rect used internally by mark renderers.
@@ -500,6 +638,52 @@ mod tests {
             g_axes.primitive_count(),
             g_no_axes.primitive_count(),
         );
+    }
+
+    #[test]
+    fn line_mark_emits_one_segment_per_pair_of_points() {
+        let plot = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Line {
+                interpolation: Interpolation::Linear,
+                marker: None,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 3 segments (4 points → 3 segments).
+        assert_eq!(g.primitive_count(), 4);
+    }
+
+    #[test]
+    fn line_step_interpolation_doubles_segment_count() {
+        let plot = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Line {
+                interpolation: Interpolation::Step,
+                marker: None,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 6 segments (4 points → 3 pairs × 2 segments each
+        // for step = horizontal + vertical).
+        assert_eq!(g.primitive_count(), 7);
+    }
+
+    #[test]
+    fn line_with_circle_markers_adds_one_ellipse_per_point() {
+        let plot = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Line {
+                interpolation: Interpolation::Linear,
+                marker: Some(PointStyle::Circle),
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 3 segments + 4 markers.
+        assert_eq!(g.primitive_count(), 8);
     }
 
     #[test]

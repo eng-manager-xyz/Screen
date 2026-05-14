@@ -49,6 +49,12 @@ pub struct PlotTheme {
     pub gridline_major: LineStyle,
     /// Minor gridline (e.g. week boundaries on a time axis).
     pub gridline_minor: LineStyle,
+    /// Stroke width for line marks (Line / Step / Monotone) in
+    /// device pixels.
+    pub line_width_px: f32,
+    /// Radius of a `PointStyle::Circle` marker on a line chart in
+    /// device pixels.
+    pub line_marker_radius_px: f32,
 }
 
 /// Shared axis-renderer knobs. Read by the cartesian axis
@@ -171,6 +177,8 @@ impl Theme {
             plot: PlotTheme {
                 gridline_major: grid_major,
                 gridline_minor: grid_minor,
+                line_width_px: 2.0,
+                line_marker_radius_px: 3.0,
             },
             axis: AxisTheme {
                 tick_length_px: 5.0,

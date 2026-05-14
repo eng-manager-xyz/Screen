@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.9 — Line chart mark (AUT-189)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot` now supports `Mark::Line { interpolation, marker }` with `Interpolation::Linear` + `Step` and optional `PointStyle::Circle` markers. Multi-series via `Color` encoding splits rows by colour category and emits one polyline per series. Branch `chart-axis-legend`.
+- **Linear:** [AUT-189](https://linear.app/harwood/issue/AUT-189).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `Interpolation::{Linear, Step}` enum (`Monotone` deferred per ticket P2 note), `PointStyle::Circle`. `Mark::Line { interpolation, marker }` variant.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_lines` mark renderer reusing `cartesian_layout()`. Step interpolation emits 2 segments per pair (h then v). Color encoding splits the row stream into series Vec keyed by colour category, each rendered with its own palette colour. Re-exports `Interpolation` + `PointStyle`. 3 new unit tests: 4-point Linear → 3 segments; 4-point Step → 6 segments; markers on → 4 ellipses + 3 segments.
+  - **`crates/wisp-chart/src/theme.rs`** — `PlotTheme.line_width_px = 2.0`, `line_marker_radius_px = 3.0`.
+  - **`_docs/wisp-chart-book/src/charts/line.md`** — full chapter (was placeholder from AUT-183). Mark-variant guide, interpolation comparison, multi-series with `Plot::legend`, theme-field table.
+- **Verified:** `cargo test -p wisp-chart --lib` → 95/95 green. `just gate` → green end-to-end.
+- **What this unlocks:** time-series, daily-metric, and continuous-x charts. Multi-line legend integration tested via `Plot::legend(theme)` from AUT-184. Step interpolation covers monotonic step series (quarterly milestones, billing tier changes).
+
+---
+
 ## M-CHART.4 — Legend renderer (AUT-184)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `wisp-chart` ships a `legend` module mirroring the axis shape. `Plot::legend(theme)` auto-builds a `Legend` from the chart's `Color` encoding. Branch `chart-axis-legend`.
