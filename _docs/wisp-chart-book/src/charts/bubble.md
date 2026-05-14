@@ -3,6 +3,8 @@
 A bubble chart is a scatterplot with a third magnitude encoded
 as marker size — e.g. GDP × life-expectancy × population.
 
+![Bubble chart — GDP × life expectancy × population × continent](../assets/wisp-chart-web/bubble.png)
+
 ## Public surface
 
 ```rust,ignore

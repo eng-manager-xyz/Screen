@@ -4,6 +4,8 @@ Two continuous numeric variables plotted as points — correlation
 explorations, A/B comparisons, sample distributions. Categorical
 colour and varying size for richer reads.
 
+![Scatterplot of 28 samples across 3 species](../assets/wisp-chart-web/scatter.png)
+
 ## Public surface
 
 ```rust,ignore

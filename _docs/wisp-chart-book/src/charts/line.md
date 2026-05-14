@@ -4,6 +4,8 @@ A line chart connects rows of a `DataFrame` in order with a
 stroked polyline. Multi-series support comes via a `Color`
 encoding: each distinct category becomes its own line.
 
+![Two-series line chart (NA + EU quarterly revenue) with circle markers](../assets/wisp-chart-web/line.png)
+
 ## Public surface
 
 ```rust,ignore

@@ -4,6 +4,8 @@ A scatterplot whose points are joined by a line in a meaningful
 sequence — usually time. The reader sees the trajectory through
 2D space, not just where points cluster.
 
+![Connected scatterplot — inflation vs unemployment, sorted by quarter index](../assets/wisp-chart-web/connected-scatter.png)
+
 ## Public surface
 
 ```rust,ignore

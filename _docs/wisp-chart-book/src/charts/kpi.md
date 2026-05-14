@@ -3,6 +3,8 @@
 A dashboard summary tile: one big number, a one-line label, a
 colour-coded delta, optional sparkline.
 
+![KPI card — Monthly Active Users, +12.4%, with sparkline](../assets/wisp-chart-web/kpi.png)
+
 ## Public surface
 
 ```rust,ignore

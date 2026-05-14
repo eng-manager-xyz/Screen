@@ -4,6 +4,8 @@ Side-by-side comparison of 2–5 series within each X-band — e.g.
 revenue per region per quarter. Each outer band (a quarter) is
 subdivided into one inner band per series (a region).
 
+![Grouped bar chart with 4 quarters × 3 regions](../assets/wisp-chart-web/grouped-bar.png)
+
 ## Public surface
 
 The grouped layout is one extra encoding on top of the standard

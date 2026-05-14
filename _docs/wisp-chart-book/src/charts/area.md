@@ -4,6 +4,8 @@ A line chart whose region between the curve and the baseline is
 filled. Use for magnitude-over-time visualisations where the
 area under the curve carries meaning.
 
+![Area chart of revenue across 7 periods](../assets/wisp-chart-web/area.png)
+
 ## Public surface
 
 ```rust,ignore

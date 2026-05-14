@@ -4,6 +4,8 @@ A semicircular gauge — value vs target with colour-coded
 threshold zones and a needle indicator. The default ops/SLA
 dashboard chart.
 
+![Semicircle gauge at 73% with 3 threshold zones](../assets/wisp-chart-web/gauge.png)
+
 ## Public surface
 
 ```rust,ignore

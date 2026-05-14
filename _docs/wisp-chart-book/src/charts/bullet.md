@@ -5,6 +5,8 @@ Stephen Few's compact performance-vs-target chart. A horizontal
 it, a target marker line, and the current value as a thinner
 foreground bar.
 
+![Bullet chart — value 270 against target 250 with 3 qualitative bands](../assets/wisp-chart-web/bullet.png)
+
 ## Public surface
 
 ```rust,ignore

@@ -5,6 +5,8 @@ region as fractions of the quarterly total. Normalized mode
 divides each segment by its band's total, producing 100%-stacked
 bars where every band reaches the plot top.
 
+![Stacked bar chart with 4 quarters × 3 regions](../assets/wisp-chart-web/stacked-bar.png)
+
 ## Public surface
 
 ```rust,ignore
