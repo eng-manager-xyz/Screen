@@ -3,7 +3,9 @@
 //! here in `lib.rs` so the iframe demos render the same data the
 //! committed `.png` snapshots show.
 
+use wisp_chart::baseline::BaselineChart;
 use wisp_chart::color::Color as ChartColor;
+use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
@@ -276,6 +278,67 @@ pub fn sunburst_fixture() -> Sunburst {
         ],
     ))
     .ring_width_px(30.0)
+}
+
+/// Candlestick fixture — 8 OHLC periods.
+#[must_use]
+pub fn candlestick_fixture() -> Candlestick {
+    Candlestick::new(vec![
+        Period::new(100.0, 110.0, 95.0, 108.0),
+        Period::new(108.0, 115.0, 105.0, 102.0),
+        Period::new(102.0, 109.0, 100.0, 107.0),
+        Period::new(107.0, 112.0, 103.0, 111.0),
+        Period::new(111.0, 118.0, 109.0, 116.0),
+        Period::new(116.0, 119.0, 112.0, 113.0),
+        Period::new(113.0, 117.0, 110.0, 109.0),
+        Period::new(109.0, 114.0, 106.0, 113.0),
+    ])
+}
+
+/// OHLC fixture — same periods as candlestick.
+#[must_use]
+pub fn ohlc_fixture() -> Ohlc {
+    Ohlc::new(vec![
+        Period::new(100.0, 110.0, 95.0, 108.0),
+        Period::new(108.0, 115.0, 105.0, 102.0),
+        Period::new(102.0, 109.0, 100.0, 107.0),
+        Period::new(107.0, 112.0, 103.0, 111.0),
+        Period::new(111.0, 118.0, 109.0, 116.0),
+        Period::new(116.0, 119.0, 112.0, 113.0),
+        Period::new(113.0, 117.0, 110.0, 109.0),
+        Period::new(109.0, 114.0, 106.0, 113.0),
+    ])
+}
+
+/// Waterfall fixture — P&L bridge.
+#[must_use]
+pub fn waterfall_fixture() -> Waterfall {
+    Waterfall::new(vec![
+        WaterfallRow::summary("Start", 100.0),
+        WaterfallRow::contribution("Revenue", 80.0),
+        WaterfallRow::contribution("COGS", -30.0),
+        WaterfallRow::contribution("Opex", -25.0),
+        WaterfallRow::contribution("Tax", -10.0),
+        WaterfallRow::summary("End", 115.0),
+    ])
+}
+
+/// Baseline fixture — signal crossing zero a few times.
+#[must_use]
+pub fn baseline_fixture() -> BaselineChart {
+    BaselineChart::new(
+        vec![
+            (0.0, 10.0),
+            (1.0, 25.0),
+            (2.0, 15.0),
+            (3.0, -10.0),
+            (4.0, -25.0),
+            (5.0, -5.0),
+            (6.0, 15.0),
+            (7.0, 30.0),
+        ],
+        0.0,
+    )
 }
 
 /// Radar fixture — two products across 5 dimensions.

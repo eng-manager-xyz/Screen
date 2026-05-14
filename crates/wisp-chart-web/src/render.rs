@@ -54,6 +54,14 @@ pub enum ChartId {
     Sunburst,
     /// Multi-axis radar / spider chart.
     Radar,
+    /// Candlestick price chart.
+    Candlestick,
+    /// OHLC bar chart.
+    Ohlc,
+    /// Waterfall (cumulative deltas).
+    Waterfall,
+    /// Baseline chart (area split at threshold).
+    Baseline,
 }
 
 impl ChartId {
@@ -80,6 +88,10 @@ impl ChartId {
             "donut" => Some(Self::Donut),
             "sunburst" => Some(Self::Sunburst),
             "radar" => Some(Self::Radar),
+            "candlestick" => Some(Self::Candlestick),
+            "ohlc" => Some(Self::Ohlc),
+            "waterfall" => Some(Self::Waterfall),
+            "baseline" => Some(Self::Baseline),
             _ => None,
         }
     }
@@ -249,6 +261,26 @@ pub fn render_chart_to_view(
         ChartId::Radar => {
             let r = fixtures::radar_fixture();
             let graphics = r.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Candlestick => {
+            let c = fixtures::candlestick_fixture();
+            let graphics = c.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Ohlc => {
+            let o = fixtures::ohlc_fixture();
+            let graphics = o.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Waterfall => {
+            let w = fixtures::waterfall_fixture();
+            let graphics = w.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Baseline => {
+            let b = fixtures::baseline_fixture();
+            let graphics = b.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

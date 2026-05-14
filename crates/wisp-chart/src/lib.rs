@@ -26,7 +26,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod axis;
+pub mod baseline;
 pub mod color;
+pub mod finance;
 pub mod gantt;
 pub mod indicator;
 pub mod legend;

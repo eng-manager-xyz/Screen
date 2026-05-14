@@ -34,6 +34,13 @@
 - [Sunburst chart](./charts/sunburst.md)
 - [Radar chart](./charts/radar.md)
 
+# Finance + variant marks
+
+- [Candlestick chart](./charts/candlestick.md)
+- [OHLC bar chart](./charts/ohlc.md)
+- [Waterfall chart](./charts/waterfall.md)
+- [Baseline chart](./charts/baseline.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)
