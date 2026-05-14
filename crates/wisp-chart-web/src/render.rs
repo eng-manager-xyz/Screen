@@ -46,6 +46,14 @@ pub enum ChartId {
     Gauge,
     /// Bullet chart.
     Bullet,
+    /// Pie chart.
+    Pie,
+    /// Donut variant of the pie chart.
+    Donut,
+    /// Radial hierarchy chart.
+    Sunburst,
+    /// Multi-axis radar / spider chart.
+    Radar,
 }
 
 impl ChartId {
@@ -68,6 +76,10 @@ impl ChartId {
             "kpi" => Some(Self::Kpi),
             "gauge" => Some(Self::Gauge),
             "bullet" => Some(Self::Bullet),
+            "pie" => Some(Self::Pie),
+            "donut" => Some(Self::Donut),
+            "sunburst" => Some(Self::Sunburst),
+            "radar" => Some(Self::Radar),
             _ => None,
         }
     }
@@ -217,6 +229,26 @@ pub fn render_chart_to_view(
         ChartId::Bullet => {
             let bullet = fixtures::bullet_fixture();
             let graphics = bullet.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Pie => {
+            let pie = fixtures::pie_fixture();
+            let graphics = pie.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Donut => {
+            let pie = fixtures::donut_fixture();
+            let graphics = pie.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Sunburst => {
+            let s = fixtures::sunburst_fixture();
+            let graphics = s.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Radar => {
+            let r = fixtures::radar_fixture();
+            let graphics = r.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

@@ -28,6 +28,12 @@
 - [Gauge chart](./charts/gauge.md)
 - [Bullet chart](./charts/bullet.md)
 
+# Polar charts
+
+- [Pie / donut chart](./charts/pie.md)
+- [Sunburst chart](./charts/sunburst.md)
+- [Radar chart](./charts/radar.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

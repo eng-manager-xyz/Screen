@@ -32,6 +32,7 @@ pub mod indicator;
 pub mod legend;
 pub mod palette;
 pub mod plot;
+pub mod polar;
 pub mod scale;
 pub mod theme;
 

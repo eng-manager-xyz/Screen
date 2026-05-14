@@ -6,6 +6,7 @@
 use wisp_chart::color::Color as ChartColor;
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::plot::{DataFrame, Value};
+use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
 
 /// Bar fixture — 4-quarter single-series revenue.
 #[must_use]
@@ -219,4 +220,86 @@ pub fn bullet_fixture() -> Bullet {
         ranges: [150.0, 225.0, 300.0],
         orientation: Orientation::Horizontal,
     }
+}
+
+/// Pie fixture — traffic-source mix.
+#[must_use]
+pub fn pie_fixture() -> Pie {
+    Pie::new(vec![
+        Slice::new(45.0, "Organic", ChartColor::from_hex("#0072b2").unwrap()),
+        Slice::new(25.0, "Paid", ChartColor::from_hex("#d55e00").unwrap()),
+        Slice::new(15.0, "Social", ChartColor::from_hex("#009e73").unwrap()),
+        Slice::new(10.0, "Referral", ChartColor::from_hex("#cc79a7").unwrap()),
+        Slice::new(5.0, "Direct", ChartColor::from_hex("#f0e442").unwrap()),
+    ])
+}
+
+/// Donut fixture — same as pie, 50% hollow.
+#[must_use]
+pub fn donut_fixture() -> Pie {
+    pie_fixture().hollow_ratio(0.5)
+}
+
+/// Sunburst fixture — 2-level org / category breakdown.
+#[must_use]
+pub fn sunburst_fixture() -> Sunburst {
+    let c = |hex: &str| ChartColor::from_hex(hex).unwrap();
+    Sunburst::new(SunburstNode::group(
+        "root",
+        c("#888888"),
+        vec![
+            SunburstNode::group(
+                "Sales",
+                c("#0072b2"),
+                vec![
+                    SunburstNode::leaf("NA", 30.0, c("#56b4e9")),
+                    SunburstNode::leaf("EU", 20.0, c("#7faedc")),
+                    SunburstNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                ],
+            ),
+            SunburstNode::group(
+                "Marketing",
+                c("#d55e00"),
+                vec![
+                    SunburstNode::leaf("Brand", 12.0, c("#e8853d")),
+                    SunburstNode::leaf("Perf", 18.0, c("#eea063")),
+                ],
+            ),
+            SunburstNode::group(
+                "Eng",
+                c("#009e73"),
+                vec![
+                    SunburstNode::leaf("Platform", 25.0, c("#3eb893")),
+                    SunburstNode::leaf("App", 20.0, c("#71cba8")),
+                ],
+            ),
+        ],
+    ))
+    .ring_width_px(30.0)
+}
+
+/// Radar fixture — two products across 5 dimensions.
+#[must_use]
+pub fn radar_fixture() -> Radar {
+    Radar::new(
+        vec![
+            RadarAxis::new("speed", (0.0, 100.0)),
+            RadarAxis::new("range", (0.0, 100.0)),
+            RadarAxis::new("comfort", (0.0, 100.0)),
+            RadarAxis::new("efficiency", (0.0, 100.0)),
+            RadarAxis::new("price", (0.0, 100.0)),
+        ],
+        vec![
+            RadarSeries::new(
+                "Model A",
+                vec![80.0, 70.0, 60.0, 90.0, 50.0],
+                ChartColor::from_hex("#0072b2").unwrap(),
+            ),
+            RadarSeries::new(
+                "Model B",
+                vec![60.0, 85.0, 80.0, 70.0, 75.0],
+                ChartColor::from_hex("#d55e00").unwrap(),
+            ),
+        ],
+    )
 }
