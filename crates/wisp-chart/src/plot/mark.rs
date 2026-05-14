@@ -25,6 +25,22 @@ pub enum PointStyle {
     Circle,
 }
 
+/// Marker shape for a `Mark::Point` (scatterplot) row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PointShape {
+    /// Filled circle.
+    #[default]
+    Circle,
+    /// Filled axis-aligned square.
+    Square,
+    /// Filled diamond (square rotated 45°).
+    Diamond,
+    /// Filled equilateral triangle (apex up).
+    Triangle,
+    /// Plus sign (`+`) drawn as two crossing rectangles.
+    Plus,
+}
+
 /// The drawable shape a Plot emits per row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mark {
@@ -44,6 +60,13 @@ pub enum Mark {
         /// Optional per-point marker style. `None` skips
         /// markers entirely.
         marker: Option<PointStyle>,
+    },
+    /// Scatter / point mark. Each row becomes one marker at
+    /// `(x, y)` mapped through the X/Y scales. Both X and Y
+    /// must use `ScaleKind::Linear` (continuous numeric).
+    Point {
+        /// Marker shape.
+        shape: PointShape,
     },
 }
 

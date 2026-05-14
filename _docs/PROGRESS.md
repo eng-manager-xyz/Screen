@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.11 — Scatterplot mark (AUT-191)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Mark::Point { shape: PointShape }` with five shape variants (Circle / Square / Diamond / Triangle / Plus) and optional `Encoding::Size` for radius mapping. Branch `chart-axis-legend`.
+- **Linear:** [AUT-191](https://linear.app/harwood/issue/AUT-191).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `PointShape` enum (Circle / Square / Diamond / Triangle / Plus), `Mark::Point { shape }` variant.
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `Channel::Size` variant + `plot::size(field)` convenience.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_points` that builds a *continuous* layout (LinearScale × LinearScale, distinct from the band-based bar layout in `cartesian_layout`). Shape lookup picks the right primitive (`draw_ellipse` / `draw_rect` / `draw_polygon` / two crossed rects for `Plus`). Size encoding maps a numeric column → marker radius via LinearScale into `(3.0, 18.0)` px range. Color encoding picks fill per category. 3 unit tests: circle one-per-row, all 5 shapes emit expected primitive counts (Plus = 2 rects), size encoding doesn't change primitive count.
+  - **`_docs/wisp-chart-book/src/charts/scatter.md`** — new chapter under "Mark types" with shape-table + size-encoding warning.
+- **Verified:** `cargo test -p wisp-chart --lib` → 102/102 green. `just gate` → green end-to-end.
+
+---
+
 ## M-CHART.8 — Stacked bar + 100% normalized (AUT-188)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Plot::transform(Transform::Stack { normalize })` composes with bar + Color. Branch `chart-axis-legend`.

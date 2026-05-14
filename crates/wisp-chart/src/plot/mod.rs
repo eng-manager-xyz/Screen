@@ -21,8 +21,8 @@ pub mod encoding;
 pub mod mark;
 
 pub use dataframe::{DataFrame, Value};
-pub use encoding::{Channel, Encoding, ScaleKind, color, x, x_offset, y};
-pub use mark::{Interpolation, Mark, PointStyle};
+pub use encoding::{Channel, Encoding, ScaleKind, color, size, x, x_offset, y};
+pub use mark::{Interpolation, Mark, PointShape, PointStyle};
 
 /// Data transform applied before render. Composes with marks +
 /// encodings to produce derived layouts. v1 ships `Stack`.
@@ -172,6 +172,9 @@ impl Plot {
                 marker,
             } => {
                 self.render_lines(theme, viewport_px, interpolation, marker, &mut g);
+            }
+            Mark::Point { shape } => {
+                self.render_points(theme, viewport_px, shape, &mut g);
             }
         }
 
@@ -575,6 +578,190 @@ impl Plot {
             }
         }
     }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "single pass renders axes + continuous layout + per-shape marker emission. Splitting would obscure shared scale + size + color state."
+    )]
+    fn render_points(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+        shape: mark::PointShape,
+        g: &mut Graphics,
+    ) {
+        let Some(x_enc) = self.find_encoding(Channel::X) else {
+            return;
+        };
+        let Some(y_enc) = self.find_encoding(Channel::Y) else {
+            return;
+        };
+
+        // Scatter requires continuous numeric X — build a fresh
+        // continuous layout instead of reusing `cartesian_layout`
+        // which bands the X axis.
+        let header = 40.0;
+        let footer = 40.0;
+        let gutter = 60.0;
+        let plot_left = gutter;
+        let plot_right = viewport_px.x - 20.0;
+        let plot_top = header;
+        let plot_bottom = viewport_px.y - footer;
+        let plot_rect = Rect::new(
+            plot_left,
+            plot_top,
+            plot_right - plot_left,
+            plot_bottom - plot_top,
+        );
+
+        let Some((x_lo, x_hi)) = self.data.numeric_extent(&x_enc.field) else {
+            return;
+        };
+        let Some((y_lo, y_hi)) = self.data.numeric_extent(&y_enc.field) else {
+            return;
+        };
+        let x_scale = LinearScale::new((x_lo, x_hi), (plot_left, plot_right));
+        let y_scale = LinearScale::new((y_lo.min(0.0), y_hi), (plot_bottom, plot_top));
+
+        if self.axes_enabled {
+            let x_ticks: Vec<TickLabel> = x_scale
+                .ticks(theme.axis.tick_density_hint)
+                .into_iter()
+                .map(|t| TickLabel {
+                    position: t.position,
+                    label: format_tick_value(t.value),
+                })
+                .collect();
+            let y_ticks: Vec<TickLabel> = y_scale
+                .ticks(theme.axis.tick_density_hint)
+                .into_iter()
+                .map(|t| TickLabel {
+                    position: t.position,
+                    label: format_tick_value(t.value),
+                })
+                .collect();
+            let x_axis = axis::emit_x_axis_lines(
+                &x_ticks,
+                plot_rect,
+                viewport_px,
+                AxisPosition::Bottom,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            let y_axis = axis::emit_y_axis_lines(
+                &y_ticks,
+                plot_rect,
+                viewport_px,
+                AxisPosition::Left,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            g.append(&x_axis);
+            g.append(&y_axis);
+        }
+
+        let x_col = self.data.column(&x_enc.field);
+        let y_col = self.data.column(&y_enc.field);
+        let color_enc = self.find_encoding(Channel::Color).cloned();
+        let color_col = color_enc
+            .as_ref()
+            .and_then(|enc| self.data.column(&enc.field));
+
+        // Size encoding (radius mapping).
+        let size_enc = self.find_encoding(Channel::Size).cloned();
+        let size_scale = size_enc.as_ref().and_then(|enc| {
+            self.data
+                .numeric_extent(&enc.field)
+                .map(|(lo, hi)| LinearScale::new((lo, hi), (3.0, 18.0)))
+        });
+        let size_col = size_enc
+            .as_ref()
+            .and_then(|enc| self.data.column(&enc.field));
+
+        let row_count = self.data.row_count();
+        for i in 0..row_count {
+            let Some(xv) = x_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let Some(yv) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let px = x_scale.map(xv);
+            let py = y_scale.map(yv);
+
+            let r_px = if let (Some(scale), Some(col)) = (&size_scale, size_col)
+                && let Some(sv) = col.get(i).and_then(Value::as_number)
+            {
+                scale.map(sv)
+            } else {
+                theme.plot.line_marker_radius_px * 2.0
+            };
+
+            let fill_color = if let Some(enc) = &color_enc
+                && let Some(cat) = color_col
+                    .and_then(|c| c.get(i))
+                    .and_then(Value::as_category)
+            {
+                let _ = enc;
+                theme.palette.color_for(cat)
+            } else {
+                theme.palette.color_for(&x_enc.field)
+            };
+            g.fill(Fill::Solid(chart_to_wisp(fill_color)));
+
+            let centre = pixel_to_ndc(Vec2::new(px, py), viewport_px);
+            let r_ndc_x = r_px / viewport_px.x * 2.0;
+            let r_ndc_y = r_px / viewport_px.y * 2.0;
+            match shape {
+                mark::PointShape::Circle => {
+                    g.draw_ellipse(centre, Vec2::new(r_ndc_x, r_ndc_y));
+                }
+                mark::PointShape::Square => {
+                    g.draw_rect(Rect::new(
+                        centre.x - r_ndc_x,
+                        centre.y - r_ndc_y,
+                        r_ndc_x * 2.0,
+                        r_ndc_y * 2.0,
+                    ));
+                }
+                mark::PointShape::Diamond => {
+                    g.draw_polygon(&[
+                        Vec2::new(centre.x, centre.y + r_ndc_y),
+                        Vec2::new(centre.x + r_ndc_x, centre.y),
+                        Vec2::new(centre.x, centre.y - r_ndc_y),
+                        Vec2::new(centre.x - r_ndc_x, centre.y),
+                    ]);
+                }
+                mark::PointShape::Triangle => {
+                    g.draw_polygon(&[
+                        Vec2::new(centre.x, centre.y + r_ndc_y),
+                        Vec2::new(centre.x + r_ndc_x, centre.y - r_ndc_y),
+                        Vec2::new(centre.x - r_ndc_x, centre.y - r_ndc_y),
+                    ]);
+                }
+                mark::PointShape::Plus => {
+                    let arm_x = r_ndc_x * 0.3;
+                    let arm_y = r_ndc_y * 0.3;
+                    // Vertical bar.
+                    g.draw_rect(Rect::new(
+                        centre.x - arm_x,
+                        centre.y - r_ndc_y,
+                        arm_x * 2.0,
+                        r_ndc_y * 2.0,
+                    ));
+                    // Horizontal bar.
+                    g.draw_rect(Rect::new(
+                        centre.x - r_ndc_x,
+                        centre.y - arm_y,
+                        r_ndc_x * 2.0,
+                        arm_y * 2.0,
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn pixel_to_ndc(p: Vec2, viewport_px: Vec2) -> Vec2 {
@@ -819,6 +1006,103 @@ mod tests {
         let g_g = grouped.render(&Theme::light(), Vec2::new(960.0, 400.0));
         // Smoke test: grouped emits 6 bars total (one per row).
         assert_eq!(g_g.primitive_count(), 7);
+    }
+
+    fn scatter_fixture_df() -> DataFrame {
+        struct Sample {
+            x: f32,
+            y: f32,
+            species: &'static str,
+        }
+        let rows = vec![
+            Sample {
+                x: 1.0,
+                y: 2.0,
+                species: "A",
+            },
+            Sample {
+                x: 2.0,
+                y: 5.0,
+                species: "A",
+            },
+            Sample {
+                x: 3.0,
+                y: 4.0,
+                species: "B",
+            },
+            Sample {
+                x: 4.0,
+                y: 7.0,
+                species: "B",
+            },
+            Sample {
+                x: 5.0,
+                y: 9.0,
+                species: "A",
+            },
+        ];
+        DataFrame::from_rows(&rows, |s| {
+            vec![
+                ("x".into(), Value::Number(s.x)),
+                ("y".into(), Value::Number(s.y)),
+                ("species".into(), Value::Category(s.species.into())),
+            ]
+        })
+    }
+
+    #[test]
+    fn scatter_circle_emits_one_ellipse_per_row() {
+        let plot = Plot::new(scatter_fixture_df())
+            .axes(false)
+            .mark(Mark::Point {
+                shape: PointShape::Circle,
+            })
+            .encode(x("x", ScaleKind::Linear))
+            .encode(y("y", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 5 points.
+        assert_eq!(g.primitive_count(), 6);
+    }
+
+    #[test]
+    fn scatter_all_point_shapes_emit_at_least_one_primitive_per_row() {
+        for shape in [
+            PointShape::Circle,
+            PointShape::Square,
+            PointShape::Diamond,
+            PointShape::Triangle,
+            PointShape::Plus,
+        ] {
+            let plot = Plot::new(scatter_fixture_df())
+                .axes(false)
+                .mark(Mark::Point { shape })
+                .encode(x("x", ScaleKind::Linear))
+                .encode(y("y", ScaleKind::Linear));
+            let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+            let count = g.primitive_count();
+            // Plus draws 2 rects per row; others draw 1.
+            let expected = if shape == PointShape::Plus { 11 } else { 6 };
+            assert_eq!(
+                count, expected,
+                "shape {shape:?} should produce {expected} primitives, got {count}"
+            );
+        }
+    }
+
+    #[test]
+    fn scatter_with_size_encoding_emits_one_ellipse_per_row() {
+        use crate::plot::encoding::size;
+        let plot = Plot::new(scatter_fixture_df())
+            .axes(false)
+            .mark(Mark::Point {
+                shape: PointShape::Circle,
+            })
+            .encode(x("x", ScaleKind::Linear))
+            .encode(y("y", ScaleKind::Linear))
+            .encode(size("y"));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 5 points (radius varies; primitive count constant).
+        assert_eq!(g.primitive_count(), 6);
     }
 
     #[test]

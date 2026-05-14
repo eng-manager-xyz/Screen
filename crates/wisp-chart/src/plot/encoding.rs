@@ -40,6 +40,9 @@ pub enum Channel {
     /// Re-bands the outer X scale into one inner band per
     /// distinct value of this encoding's column.
     XOffset,
+    /// Numeric magnitude → marker size mapping (scatter +
+    /// bubble charts). Source column must be numeric.
+    Size,
 }
 
 /// One encoding — a channel + column + scale kind, optionally
@@ -107,4 +110,11 @@ pub fn color(field: impl Into<String>) -> Encoding {
 #[must_use]
 pub fn x_offset(field: impl Into<String>) -> Encoding {
     Encoding::new(Channel::XOffset, field).scale(ScaleKind::Band)
+}
+
+/// Convenience: `Encoding::new(Channel::Size, field).scale(Linear)`.
+/// Maps a numeric column to marker radius / area on Point marks.
+#[must_use]
+pub fn size(field: impl Into<String>) -> Encoding {
+    Encoding::new(Channel::Size, field).scale(ScaleKind::Linear)
 }
