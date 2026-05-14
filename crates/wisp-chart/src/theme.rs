@@ -107,6 +107,16 @@ pub struct IndicatorTheme {
     pub gauge_track_width_px: f32,
     /// Gauge needle colour.
     pub gauge_needle_color: Color,
+    /// Bullet chart — poor (lowest) qualitative range colour.
+    pub bullet_poor_color: Color,
+    /// Bullet chart — satisfactory (middle) qualitative range colour.
+    pub bullet_ok_color: Color,
+    /// Bullet chart — good (highest) qualitative range colour.
+    pub bullet_good_color: Color,
+    /// Bullet chart — current-value bar colour.
+    pub bullet_value_color: Color,
+    /// Bullet chart — target marker line colour.
+    pub bullet_target_color: Color,
 }
 
 /// Gantt-specific dimensions and style. Other chart families
@@ -213,6 +223,11 @@ impl Theme {
                 sparkline_width_px: 1.5,
                 gauge_track_width_px: 18.0,
                 gauge_needle_color: Color::from_hex("#222222").unwrap(),
+                bullet_poor_color: Color::from_hex("#e0e0e0").unwrap(),
+                bullet_ok_color: Color::from_hex("#b8b8b8").unwrap(),
+                bullet_good_color: Color::from_hex("#909090").unwrap(),
+                bullet_value_color: Color::from_hex("#222222").unwrap(),
+                bullet_target_color: Color::from_hex("#e74c3c").unwrap(),
             },
             gantt: GanttTheme {
                 row_alt_bg: Color::from_hex("#fafafa"),

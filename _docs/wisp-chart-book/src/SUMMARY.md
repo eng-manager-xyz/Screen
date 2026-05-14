@@ -26,6 +26,7 @@
 
 - [KPI card](./charts/kpi.md)
 - [Gauge chart](./charts/gauge.md)
+- [Bullet chart](./charts/bullet.md)
 
 # Gantt
 

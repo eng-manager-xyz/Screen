@@ -8,8 +8,10 @@
 //! `emit_text_labels(theme, viewport_px, font) -> Vec<wisp::Text>`
 //! method since `Text` needs a Font.
 
+pub mod bullet;
 pub mod gauge;
 pub mod kpi;
 
+pub use bullet::{Bullet, Orientation};
 pub use gauge::{Gauge, Zone};
 pub use kpi::{Delta, DeltaKind, Kpi, format_value};
