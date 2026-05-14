@@ -3,6 +3,7 @@
 [Introduction](./intro.md)
 [Quickstart](./quickstart.md)
 [Where this book sits](./cross-link-convention.md)
+[Chart gallery](./charts/gallery.md)
 
 # Foundations
 
