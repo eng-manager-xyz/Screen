@@ -8,7 +8,7 @@
 //!
 //! For styled, wrapped, or user-typed text use `FlexibleText` (Cosmic
 //! Text + Glyphon, lands in M-TEXT.2/.3). The two backends are
-//! complementary, not competitive — see `_docs/book/src/wisp/text/atlas-vs-flexible.md`
+//! complementary, not competitive — see `_docs/wisp-book/src/wisp/text/atlas-vs-flexible.md`
 //! for the comparison table.
 //!
 //! Layout semantics:

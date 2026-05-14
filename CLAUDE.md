@@ -846,6 +846,7 @@ fine on lavapipe — **don't guard them**.
 
 ### mdBook / engineering site
 
+- **After a book split, grep for `_docs/<old-book>/src/assets/<crate>/` everywhere — not just the chapter files.** The DOCS-00..DOCS-06 split moved the wisp book from `_docs/book/src/wisp/` to `_docs/wisp-book/src/wisp/` (with its assets in `_docs/wisp-book/src/assets/wisp/`), but `crates/wisp-storybook/src/bin/export_stories.rs`, `export_animated.rs`, `export_text_screenshots.rs` and three `crates/wisp/examples/*.rs` still wrote to the old `_docs/book/src/assets/wisp/` path for weeks after the split. `just snapshots-wisp` silently regenerated assets to the WRONG dir; the book chapters embedded the OLD (stale) assets from the new dir; nobody noticed because the gate's `snapshots-check` only verifies that referenced assets exist, not that they're the current ones. **Anti-pattern:** writing the asset output path as a string literal in three+ places. **Mitigation when splitting a book:** `rg -n '_docs/<old-book>/src/(assets|wisp|<crate>)' crates/ Justfile` BEFORE the split lands; fix every site; consider introducing a `pub const OUTPUT_DIR: &str = ...` shared between exporter binaries so future renames are one line. (Discovered 2026-05-14 while shipping AUT-183; root-cause-fixed in the same PR.)
 - **`mdbook build --dest-dir` is resolved relative to the source dir, not the
   cwd.** `mdbook build _docs/book --dest-dir ../../target/book` looks correct
   but lands the output at `<one-up-from-project>/target/book`. **Pass an

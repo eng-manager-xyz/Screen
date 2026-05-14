@@ -30,3 +30,7 @@ jiff = { version = "0.2", default-features = false, features = ["std"] }
 # Snapshot testing for the chart layout's deterministic outputs
 # (date→x, row→y, divider detection).
 insta = { version = "1", features = ["yaml", "redactions"] }
+# Axis / legend tests need a wgpu device to build a bitmap font
+# atlas; `pollster::block_on` drives the async `Application::new`
+# from inside a `#[test]` fn.
+pollster = "0.4"

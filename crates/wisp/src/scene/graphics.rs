@@ -275,6 +275,21 @@ impl Graphics {
     pub fn primitive_count(&self) -> usize {
         self.primitives.len()
     }
+
+    /// Append all primitives from `other` onto this `Graphics`,
+    /// preserving each primitive's captured fill/stroke. The
+    /// current node's `current_fill` / `current_stroke` state is
+    /// unchanged — subsequent `draw_*` calls keep using the
+    /// existing state.
+    ///
+    /// Composing two `Graphics` is the idiomatic way for higher
+    /// layers (e.g. `wisp-chart`'s axis renderer) to splice
+    /// independently-built primitive lists into a single node so
+    /// the whole chart submits as one draw batch.
+    pub fn append(&mut self, other: &Graphics) -> &mut Self {
+        self.primitives.extend(other.primitives.iter().cloned());
+        self
+    }
 }
 
 #[cfg(test)]

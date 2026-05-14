@@ -26,8 +26,9 @@ pub use mark::Mark;
 
 use glam::Vec2;
 use wisp::math::Rect;
-use wisp::{Color as WispColor, Fill, Graphics};
+use wisp::{Color as WispColor, Fill, Font, Graphics, Text};
 
+use crate::axis::{self, AxisPosition, TickLabel};
 use crate::scale::{BandScale, LinearScale, OrdinalScale};
 use crate::theme::Theme;
 
@@ -37,6 +38,9 @@ pub struct Plot {
     data: DataFrame,
     mark: Mark,
     encodings: Vec<Encoding>,
+    axes_enabled: bool,
+    x_axis_title: Option<String>,
+    y_axis_title: Option<String>,
 }
 
 impl Plot {
@@ -47,7 +51,33 @@ impl Plot {
             data,
             mark: Mark::default(),
             encodings: Vec::new(),
+            axes_enabled: true,
+            x_axis_title: None,
+            y_axis_title: None,
         }
+    }
+
+    /// Toggle automatic axes (lines + ticks + labels) rendering.
+    /// Default `true`. Tests / minimalist renders can opt out.
+    #[must_use]
+    pub fn axes(mut self, enabled: bool) -> Self {
+        self.axes_enabled = enabled;
+        self
+    }
+
+    /// Set the X-axis title (rendered below tick labels).
+    #[must_use]
+    pub fn x_title(mut self, title: impl Into<String>) -> Self {
+        self.x_axis_title = Some(title.into());
+        self
+    }
+
+    /// Set the Y-axis title (rendered to the left of tick
+    /// labels, rotated `-π/2`).
+    #[must_use]
+    pub fn y_title(mut self, title: impl Into<String>) -> Self {
+        self.y_axis_title = Some(title.into());
+        self
     }
 
     /// Set the mark type.
@@ -95,17 +125,14 @@ impl Plot {
         self.encodings.iter().find(|e| e.channel == channel)
     }
 
-    fn render_bars(&self, theme: &Theme, viewport_px: Vec2, g: &mut Graphics) {
-        let Some(x_enc) = self.find_encoding(Channel::X) else {
-            return;
-        };
-        let Some(y_enc) = self.find_encoding(Channel::Y) else {
-            return;
-        };
-
-        // Plot area — leaves room for axes / legend even though
-        // those don't paint yet, so when they ship the bars
-        // don't shift.
+    /// Internal cartesian layout — plot rect + scales + tick
+    /// lists used by both `render_bars` and
+    /// `axis_text_labels`. Returns `None` when the encodings
+    /// don't define a renderable chart (missing X / Y, etc.).
+    fn cartesian_layout(&self, theme: &Theme, viewport_px: Vec2) -> Option<CartesianLayout> {
+        let _ = theme;
+        let x_enc = self.find_encoding(Channel::X)?;
+        let y_enc = self.find_encoding(Channel::Y)?;
         let gutter = 60.0;
         let header = 40.0;
         let footer = 40.0;
@@ -113,25 +140,136 @@ impl Plot {
         let plot_right = viewport_px.x - 20.0;
         let plot_top = header;
         let plot_bottom = viewport_px.y - footer;
+        let plot_rect = Rect::new(
+            plot_left,
+            plot_top,
+            plot_right - plot_left,
+            plot_bottom - plot_top,
+        );
 
-        // X scale (must be Band for Bar v1 — Linear bars are a
-        // follow-on chart family).
-        let Some(categories) = self.data.distinct_categories(&x_enc.field) else {
-            return;
-        };
-        let x_scale = BandScale::new(categories, (plot_left, plot_right)).padding(0.15);
+        let categories = self.data.distinct_categories(&x_enc.field)?;
+        let x_scale = BandScale::new(categories.clone(), (plot_left, plot_right)).padding(0.15);
 
-        // Y scale (Linear with auto-derived or explicit domain).
         let (y_lo, y_hi) = if let Some(d) = y_enc.domain_override {
             d
         } else if let Some((lo, hi)) = self.data.numeric_extent(&y_enc.field) {
             (lo.min(0.0), hi)
         } else {
+            return None;
+        };
+        let y_scale = LinearScale::new((y_lo, y_hi), (plot_bottom, plot_top));
+
+        // X tick labels: centre of each band.
+        let mut x_ticks = Vec::with_capacity(categories.len());
+        for (i, cat) in categories.iter().enumerate() {
+            if let Some(centre) = x_scale.band_centre(i) {
+                x_ticks.push(TickLabel {
+                    position: centre,
+                    label: cat.clone(),
+                });
+            }
+        }
+        // Y tick labels: nice stops from the linear scale.
+        let mut y_ticks: Vec<TickLabel> = y_scale
+            .ticks(theme.axis.tick_density_hint)
+            .into_iter()
+            .map(|t| TickLabel {
+                position: t.position,
+                label: format_tick_value(t.value),
+            })
+            .collect();
+        if y_ticks.is_empty() {
+            y_ticks.push(TickLabel {
+                position: y_scale.map(y_hi),
+                label: format_tick_value(y_hi),
+            });
+        }
+
+        let y_zero_px = y_scale.map(0.0_f32.max(y_lo));
+        Some(CartesianLayout {
+            plot_rect,
+            x_scale,
+            y_scale,
+            y_zero_px,
+            x_field: x_enc.field.clone(),
+            y_field: y_enc.field.clone(),
+            x_ticks,
+            y_ticks,
+        })
+    }
+
+    /// Emit axis text labels (and optional titles) using `font`.
+    /// `Plot::render` itself can't produce these because Text
+    /// nodes need a Font, which wisp-chart doesn't carry. The
+    /// caller (typically `wisp-chart-web`) builds a Font once
+    /// and feeds it in.
+    #[must_use]
+    pub fn axis_text_labels(&self, theme: &Theme, viewport_px: Vec2, font: &Font) -> Vec<Text> {
+        let mut out = Vec::new();
+        if !self.axes_enabled {
+            return out;
+        }
+        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
+            return out;
+        };
+        out.extend(axis::emit_x_axis_text(
+            &layout.x_ticks,
+            layout.plot_rect,
+            viewport_px,
+            AxisPosition::Bottom,
+            &theme.axis,
+            theme.text_muted,
+            self.x_axis_title.as_deref(),
+            font,
+        ));
+        out.extend(axis::emit_y_axis_text(
+            &layout.y_ticks,
+            layout.plot_rect,
+            viewport_px,
+            AxisPosition::Left,
+            &theme.axis,
+            theme.text_muted,
+            self.y_axis_title.as_deref(),
+            font,
+        ));
+        out
+    }
+
+    fn render_bars(&self, theme: &Theme, viewport_px: Vec2, g: &mut Graphics) {
+        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
             return;
         };
-        // Y range flipped so larger values render at the TOP
-        // (smaller pixel y).
-        let y_scale = LinearScale::new((y_lo, y_hi), (plot_bottom, plot_top));
+
+        if self.axes_enabled {
+            let x_axis = axis::emit_x_axis_lines(
+                &layout.x_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Bottom,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            let y_axis = axis::emit_y_axis_lines(
+                &layout.y_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Left,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            // Splice axes primitives into `g` so the whole plot
+            // is one Graphics node.
+            g.append(&x_axis);
+            g.append(&y_axis);
+        }
+
+        let x_scale = layout.x_scale;
+        let y_scale = layout.y_scale;
+        let y_zero_px = layout.y_zero_px;
+        let x_enc_field = layout.x_field;
+        let y_enc_field = layout.y_field;
 
         // Color encoding → palette lookup via OrdinalScale.
         let color_lookup = self
@@ -139,12 +277,9 @@ impl Plot {
             .and_then(|enc| self.data.distinct_categories(&enc.field).map(|c| (enc, c)))
             .map(|(enc, cats)| (enc.field.clone(), OrdinalScale::new(cats)));
 
-        // Y zero baseline in pixel space.
-        let y_zero_px = y_scale.map(0.0_f32.max(y_lo));
-
         // Iterate rows in DataFrame order.
-        let x_col = self.data.column(&x_enc.field);
-        let y_col = self.data.column(&y_enc.field);
+        let x_col = self.data.column(&x_enc_field);
+        let y_col = self.data.column(&y_enc_field);
         let color_col = color_lookup
             .as_ref()
             .and_then(|(field, _)| self.data.column(field));
@@ -201,6 +336,39 @@ struct PixelRect {
     y: f32,
     w: f32,
     h: f32,
+}
+
+/// Internal cartesian-layout cache returned by
+/// `Plot::cartesian_layout` and consumed by `render_bars` +
+/// `axis_text_labels`.
+struct CartesianLayout {
+    plot_rect: Rect,
+    x_scale: BandScale<String>,
+    y_scale: LinearScale,
+    y_zero_px: f32,
+    x_field: String,
+    y_field: String,
+    x_ticks: Vec<TickLabel>,
+    y_ticks: Vec<TickLabel>,
+}
+
+/// Format a numeric tick value for display. Drops trailing zeros
+/// so `10.0` renders as `"10"`, `10.5` as `"10.5"`.
+fn format_tick_value(v: f32) -> String {
+    if (v.fract()).abs() < 1e-6 {
+        // Integer-like — format without decimal part. Clamp into
+        // f32-representable integer range first; nice-tick stops
+        // never exceed magnitudes that would overflow i64, but
+        // clippy wants the cast guarded.
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "tick values come from LinearScale::ticks which produces nice round numbers; never exceeds f32 integer-precise range"
+        )]
+        let i = v as i64;
+        format!("{i}")
+    } else {
+        format!("{v:.1}")
+    }
 }
 
 /// `wisp_chart::Color` → `wisp::Color`. Channels pass through;
@@ -272,14 +440,41 @@ mod tests {
     #[test]
     fn render_emits_background_plus_one_bar_per_row() {
         let plot = Plot::new(fixture_df())
+            .axes(false)
             .mark(Mark::Bar {
                 value_labels: false,
             })
             .encode(x("q", ScaleKind::Band))
             .encode(y("r", ScaleKind::Linear));
         let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
-        // 1 bg + 4 bars.
+        // 1 bg + 4 bars (axes disabled).
         assert_eq!(g.primitive_count(), 5);
+    }
+
+    #[test]
+    fn render_with_axes_emits_more_than_just_bars() {
+        let plot_no_axes = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let plot_axes = Plot::new(fixture_df())
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g_no_axes = plot_no_axes.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        let g_axes = plot_axes.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // Axes must contribute strictly more primitives than the bare bars.
+        assert!(
+            g_axes.primitive_count() > g_no_axes.primitive_count(),
+            "axes-enabled count {} should exceed axes-disabled count {}",
+            g_axes.primitive_count(),
+            g_no_axes.primitive_count(),
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! `cargo run -p wisp-storybook --bin export-stories`
 //!
 //! Headlessly renders every shipped wisp story to a 256×256 PNG under
-//! `_docs/book/src/assets/wisp/<id>.png`. The mdBook site embeds these via
+//! `_docs/wisp-book/src/assets/wisp/<id>.png`. The mdBook site embeds these via
 //! standard markdown — without an asset, the chunk's docs page renders empty
 //! (that's the convention's gate).
 //!
@@ -31,7 +31,7 @@ fn main() {
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let renderer = Renderer::new(&app, format).expect("Renderer::new");
 
-    let out_dir = Path::new("_docs/book/src/assets/wisp");
+    let out_dir = Path::new("_docs/wisp-book/src/assets/wisp");
     std::fs::create_dir_all(out_dir).expect("create assets dir");
 
     let stories = all_stories();

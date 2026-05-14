@@ -25,9 +25,9 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use pollster::block_on;
-use wisp::RenderTexture;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
+use wisp::{Font, RenderTexture};
 use wisp_chart::Theme;
 use wisp_chart::plot::{self, DataFrame, Mark, Plot, ScaleKind, Value};
 
@@ -91,12 +91,22 @@ fn plot_facade_renders_4_quarter_bar_chart() {
         .mark(Mark::Bar {
             value_labels: false,
         })
+        .x_title("Quarter")
+        .y_title("Revenue")
         .encode(plot::x("quarter", ScaleKind::Band))
         .encode(plot::y("revenue", ScaleKind::Linear));
 
     let graphics = plot.render(&theme, viewport);
     let root = app.stage().root();
     let _ = app.stage_mut().add_child(root, graphics);
+
+    // Axis text — Plot can't bake these into Graphics because
+    // Text needs a Font. Wire the bitmap_8x8 font here and add
+    // each label / title as a sibling Text node.
+    let font = Font::bitmap_8x8(&app);
+    for text in plot.axis_text_labels(&theme, viewport, &font) {
+        let _ = app.stage_mut().add_child(root, text);
+    }
 
     app.device().push_error_scope(wgpu::ErrorFilter::Validation);
     let _stats = renderer.render_stage(&app, rt.view(), wisp::Color::WHITE, app.stage());

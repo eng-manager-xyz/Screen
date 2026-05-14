@@ -14,7 +14,7 @@
 //! Run: `cargo run -p screen-wisp --example headless_export`. Output: 60 PNGs
 //! at `target/headless_export/frame_NN.png`. Also writes a single
 //! representative frame (#30, the mid-animation peak) to
-//! `_docs/book/src/assets/wisp/example-headless-export.png` so the
+//! `_docs/wisp-book/src/assets/wisp/example-headless-export.png` so the
 //! mdBook chapter can embed it without committing 60 large PNGs.
 
 use std::path::Path;
@@ -65,7 +65,7 @@ fn main() -> wisp::Result<()> {
 
     let out_dir = Path::new("target/headless_export");
     std::fs::create_dir_all(out_dir).ok();
-    let highlight_dir = Path::new("_docs/book/src/assets/wisp");
+    let highlight_dir = Path::new("_docs/wisp-book/src/assets/wisp");
     std::fs::create_dir_all(highlight_dir).ok();
 
     let mut total_draw_calls = 0u32;

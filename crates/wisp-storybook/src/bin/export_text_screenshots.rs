@@ -5,7 +5,7 @@
 //! `JetBrains` Mono Regular). Output:
 //!
 //! ```text
-//! _docs/book/src/assets/wisp/text-custom-fonts.png
+//! _docs/wisp-book/src/assets/wisp/text-custom-fonts.png
 //! ```
 //!
 //! Sibling to `wisp-export-stories`. We don't piggyback on the Story
@@ -114,7 +114,7 @@ fn main() {
     let bytes = target.read_pixels(&app);
     let img = image::RgbaImage::from_raw(WIDTH, HEIGHT, bytes).expect("dims");
 
-    let out_dir = PathBuf::from("_docs/book/src/assets/wisp");
+    let out_dir = PathBuf::from("_docs/wisp-book/src/assets/wisp");
     std::fs::create_dir_all(&out_dir).expect("create out dir");
     let out_path = out_dir.join("text-custom-fonts.png");
     img.save(&out_path).expect("save png");

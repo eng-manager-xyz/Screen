@@ -6,6 +6,26 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.3 — Axis renderer (AUT-183)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `wisp-chart` now ships an `axis` module that emits axis lines, tick marks, gridlines, tick labels, and a rotated/horizontal axis title. `Plot::render` auto-emits axes by default (toggleable via `.axes(false)`). Branch `chart-axis-legend`.
+- **Linear:** [AUT-183](https://linear.app/harwood/issue/AUT-183).
+- **Files:**
+  - **`crates/wisp-chart/src/axis/mod.rs`** (new) — `AxisPosition`, `TickLabel`, plus four emit fns: `emit_x_axis_lines`, `emit_y_axis_lines` return `wisp::Graphics`; `emit_x_axis_text`, `emit_y_axis_text` return `Vec<wisp::Text>`. Y-axis title rotates `-π/2` via `Transform { rotation, .. }`. 5 unit tests + 2 wgpu-device tests (Application::new via pollster::block_on for the Font).
+  - **`crates/wisp-chart/src/plot/mod.rs`** — Plot grows `axes_enabled: bool` + `x_axis_title: Option<String>` + `y_axis_title: Option<String>` with `.axes(bool)` / `.x_title(...)` / `.y_title(...)` builders. New `cartesian_layout()` helper consolidates plot rect + scales + ticks (avoids re-computing across `render_bars` and `axis_text_labels`). New `axis_text_labels(theme, viewport, font)` public method so callers can attach `Text` nodes to the stage (`Plot::render` can't emit Text — needs a Font). `render_bars` splices axis-line primitives into the plot's `Graphics` via the new `Graphics::append`.
+  - **`crates/wisp/src/scene/graphics.rs`** — new `Graphics::append(&Graphics)` method that clones primitives across nodes so higher layers can compose independently-built `Graphics` lists into one node.
+  - **`crates/wisp-chart-web/tests/render_bar.rs`** — integration test now builds the Plot with `.x_title("Quarter") / .y_title("Revenue")`, renders to RT, and also wires `Font::bitmap_8x8(&app)` + `plot.axis_text_labels(...)` to add tick labels + titles as sibling Text nodes. Resulting `bar-quarterly.png` shows axes, gridlines, "Quarter" / "Revenue" titles, and 0..60 tick labels.
+  - **`_docs/wisp-chart-book/src/charts/axes.md`** (new) — chapter documenting the public surface, render order (gridlines → marks → labels), and pixel-vs-NDC coordinate convention.
+  - **`_docs/wisp-chart-book/src/charts/legend.md` + `line.md`** (new placeholders) — empty book shells for AUT-184 (Legend) + AUT-189 (Line) so SUMMARY links resolve.
+  - **`_docs/wisp-chart-book/src/SUMMARY.md`** — indexes axes / legend / line.
+- **Verified:**
+  - `cargo test -p wisp-chart --lib` → 87/87 green.
+  - `cargo test -p wisp-chart-web --test render_bar` → 1/1 green (no wgpu validation errors).
+  - `just gate` → green end-to-end.
+- **Anti-patterns earned:** struct literal evaluation order — `y_scale.map(0.0_f32.max(y_lo))` inside a struct literal *after* `y_scale` is moved into the same struct is use-after-move. Always compute terminal values into locals BEFORE the struct literal consumes the sources.
+
+---
+
 ## M-BOOL.7 + .9 + .16 — curve support, fluent Path API, algebraic proptest (AUT-168, 170, 177)
 - **Date:** 2026-05-13
 - **Status:** ✅ done — three boolean-ops follow-ups in one push on branch `linear-audit-and-wisp-sprint`. Curved-input booleans (`circle ∪ circle`, crescent via difference, tolerance-controls-edge-count) are first-class via internal flatten; fluent builder lives on `Path` (not `Graphics` — justified in chapter) for `union_with` / `intersect_with` / `cut` / `xor_with`; property-test suite covers commutativity, associativity, identity, self-cancellation, and De Morgan.

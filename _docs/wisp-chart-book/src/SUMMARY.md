@@ -9,6 +9,12 @@
 - [Theme](./charts/theme.md)
 - [Scales](./charts/scales.md)
 - [Plot facade](./charts/plot.md)
+- [Axes](./charts/axes.md)
+- [Legend](./charts/legend.md)
+
+# Mark types
+
+- [Line chart](./charts/line.md)
 
 # Gantt
 

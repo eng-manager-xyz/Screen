@@ -5,8 +5,8 @@
 //! renders the result as a labelled tile. The 28 tiles are arranged in
 //! a 7×4 grid.
 //!
-//! Output: `_docs/book/src/assets/wisp/blend-modes.png` — the chapter
-//! at `_docs/book/src/wisp/chunks/blend-modes.md` embeds it.
+//! Output: `_docs/wisp-book/src/assets/wisp/blend-modes.png` — the chapter
+//! at `_docs/wisp-book/src/wisp/chunks/blend-modes.md` embeds it.
 //!
 //! Run: `cargo run -p screen-wisp --example blend_modes_gallery`.
 
@@ -176,7 +176,7 @@ fn main() -> wisp::Result<()> {
     }
 
     // Save.
-    let out = std::path::Path::new("_docs/book/src/assets/wisp/blend-modes.png");
+    let out = std::path::Path::new("_docs/wisp-book/src/assets/wisp/blend-modes.png");
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).ok();
     }
