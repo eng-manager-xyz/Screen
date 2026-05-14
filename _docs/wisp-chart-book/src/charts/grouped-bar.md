@@ -4,6 +4,10 @@ Side-by-side comparison of 2–5 series within each X-band — e.g.
 revenue per region per quarter. Each outer band (a quarter) is
 subdivided into one inner band per series (a region).
 
+<div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/grouped-bar.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=grouped-bar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: grouped bar chart"></iframe>
+</div>
+
 ## Public surface
 
 The grouped layout is one extra encoding on top of the standard

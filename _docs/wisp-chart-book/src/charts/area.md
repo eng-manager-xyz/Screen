@@ -4,6 +4,10 @@ A line chart whose region between the curve and the baseline is
 filled. Use for magnitude-over-time visualisations where the
 area under the curve carries meaning.
 
+<div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/area.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=area" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: area chart"></iframe>
+</div>
+
 ## Public surface
 
 ```rust,ignore

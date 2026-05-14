@@ -1,0 +1,250 @@
+//! Per-chart render functions consumed by both native tests and
+//! the browser WebGPU demo. Each `render_*` builds the chart from
+//! the matching fixture in [`crate::fixtures`] and pushes its
+//! `Graphics` + optional `Text` nodes onto the stage, then runs
+//! `Renderer::render_stage` against the supplied `TextureView`.
+
+use glam::Vec2;
+use wgpu::TextureView;
+use wisp::Font;
+use wisp::application::Application;
+use wisp::render::Renderer;
+use wisp_chart::Theme;
+use wisp_chart::plot::{
+    self, Interpolation, Mark, Plot, PointShape, PointStyle, ScaleKind, SizeMapping, Transform,
+};
+
+use crate::fixtures;
+
+/// Identifier of one of the demo charts. Parsed from the
+/// `?chart=<id>` URL parameter in the browser, or hand-picked by
+/// integration tests.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChartId {
+    /// Gantt fixture — same as the original wisp-chart-web demo.
+    #[default]
+    Gantt,
+    /// Single-series bar chart.
+    Bar,
+    /// Multi-series line chart.
+    Line,
+    /// Grouped bar — 4 quarters × 3 regions.
+    GroupedBar,
+    /// Stacked bar — same data as grouped, accumulated.
+    StackedBar,
+    /// Scatterplot — 28 points across 3 species.
+    Scatter,
+    /// Bubble chart — area-encoded size.
+    Bubble,
+    /// Area chart — single-series filled curve.
+    Area,
+    /// Connected scatterplot — Linear X + Order encoding.
+    ConnectedScatter,
+    /// KPI / indicator card.
+    Kpi,
+    /// Semicircular gauge.
+    Gauge,
+    /// Bullet chart.
+    Bullet,
+}
+
+impl ChartId {
+    /// Parse from a URL-param string (case-insensitive). Returns
+    /// `None` for unknown values so callers can default cleanly.
+    #[must_use]
+    pub fn parse(id: &str) -> Option<Self> {
+        match id.to_ascii_lowercase().as_str() {
+            "gantt" => Some(Self::Gantt),
+            "bar" => Some(Self::Bar),
+            "line" => Some(Self::Line),
+            "grouped-bar" | "grouped_bar" | "groupedbar" => Some(Self::GroupedBar),
+            "stacked-bar" | "stacked_bar" | "stackedbar" => Some(Self::StackedBar),
+            "scatter" => Some(Self::Scatter),
+            "bubble" => Some(Self::Bubble),
+            "area" => Some(Self::Area),
+            "connected-scatter" | "connected_scatter" | "connectedscatter" => {
+                Some(Self::ConnectedScatter)
+            }
+            "kpi" => Some(Self::Kpi),
+            "gauge" => Some(Self::Gauge),
+            "bullet" => Some(Self::Bullet),
+            _ => None,
+        }
+    }
+}
+
+/// Dispatch render to the right per-chart fn.
+///
+/// # Errors
+///
+/// Returns the underlying [`wisp::Error`] if `Renderer::new`
+/// fails (e.g. the surface format can't compile the pipelines).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one match arm per chart variant — each arm is a small Plot::new() builder chain. Extracting them into per-variant fns would 10× the indirection without simplifying anything."
+)]
+pub fn render_chart_to_view(
+    chart: ChartId,
+    app: &mut Application,
+    target_view: &TextureView,
+    surface_format: wgpu::TextureFormat,
+    viewport_px: Vec2,
+) -> Result<(), wisp::Error> {
+    let renderer = Renderer::new(app, surface_format)?;
+    let theme = Theme::light();
+    let root = app.stage().root();
+
+    match chart {
+        ChartId::Gantt => {
+            let gantt = crate::sample_gantt();
+            let graphics = gantt.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Bar => {
+            let plot = Plot::new(fixtures::bar_fixture())
+                .mark(Mark::Bar {
+                    value_labels: false,
+                })
+                .x_title("Quarter")
+                .y_title("Revenue")
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("revenue", ScaleKind::Linear));
+            attach_plot(app, root, &plot, &theme, viewport_px);
+        }
+        ChartId::Line => {
+            let plot = Plot::new(fixtures::line_fixture())
+                .mark(Mark::Line {
+                    interpolation: Interpolation::Linear,
+                    marker: Some(PointStyle::Circle),
+                })
+                .x_title("Quarter")
+                .y_title("Revenue")
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("revenue", ScaleKind::Linear))
+                .encode(plot::color("region"));
+            attach_plot(app, root, &plot, &theme, viewport_px);
+        }
+        ChartId::GroupedBar => {
+            let plot = Plot::new(fixtures::region_bar_fixture())
+                .mark(Mark::Bar {
+                    value_labels: false,
+                })
+                .x_title("Quarter")
+                .y_title("Revenue")
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("revenue", ScaleKind::Linear))
+                .encode(plot::color("region"))
+                .encode(plot::x_offset("region"));
+            attach_plot(app, root, &plot, &theme, viewport_px);
+        }
+        ChartId::StackedBar => {
+            let plot = Plot::new(fixtures::region_bar_fixture())
+                .mark(Mark::Bar {
+                    value_labels: false,
+                })
+                .x_title("Quarter")
+                .y_title("Revenue")
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("revenue", ScaleKind::Linear))
+                .encode(plot::color("region"))
+                .transform(Transform::Stack { normalize: false });
+            attach_plot(app, root, &plot, &theme, viewport_px);
+        }
+        ChartId::Scatter => {
+            let plot = Plot::new(fixtures::scatter_fixture())
+                .mark(Mark::Point {
+                    shape: PointShape::Circle,
+                })
+                .encode(plot::x("x", ScaleKind::Linear))
+                .encode(plot::y("y", ScaleKind::Linear))
+                .encode(plot::color("species"));
+            let graphics = plot.render(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Bubble => {
+            let plot = Plot::new(fixtures::bubble_fixture())
+                .mark(Mark::Point {
+                    shape: PointShape::Circle,
+                })
+                .encode(plot::x("gdp", ScaleKind::Linear))
+                .encode(plot::y("life", ScaleKind::Linear))
+                .encode(plot::size("population").size_mapping(SizeMapping::Area))
+                .encode(plot::color("continent"));
+            let graphics = plot.render(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Area => {
+            let plot = Plot::new(fixtures::area_fixture())
+                .mark(Mark::Area {
+                    interpolation: Interpolation::Linear,
+                })
+                .x_title("Period")
+                .y_title("Revenue")
+                .encode(plot::x("quarter", ScaleKind::Band))
+                .encode(plot::y("value", ScaleKind::Linear));
+            attach_plot(app, root, &plot, &theme, viewport_px);
+        }
+        ChartId::ConnectedScatter => {
+            let plot = Plot::new(fixtures::connected_scatter_fixture())
+                .mark(Mark::Line {
+                    interpolation: Interpolation::Linear,
+                    marker: Some(PointStyle::Circle),
+                })
+                .encode(plot::x("inflation", ScaleKind::Linear))
+                .encode(plot::y("unemployment", ScaleKind::Linear))
+                .encode(plot::order("step"));
+            let graphics = plot.render(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Kpi => {
+            let kpi = fixtures::kpi_fixture();
+            let graphics = kpi.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+            let font = Font::bitmap_8x8(app);
+            for t in kpi.emit_text_labels(&theme, viewport_px, &font) {
+                let _ = app.stage_mut().add_child(root, t);
+            }
+        }
+        ChartId::Gauge => {
+            let gauge = fixtures::gauge_fixture();
+            let graphics = gauge.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+            let font = Font::bitmap_8x8(app);
+            for t in gauge.emit_text_labels(&theme, viewport_px, &font) {
+                let _ = app.stage_mut().add_child(root, t);
+            }
+        }
+        ChartId::Bullet => {
+            let bullet = fixtures::bullet_fixture();
+            let graphics = bullet.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+    }
+
+    let _stats = renderer.render_stage(
+        app,
+        target_view,
+        // Bright magenta clear — any uncovered region pops.
+        wisp::Color::rgba(1.0, 0.0, 1.0, 1.0),
+        app.stage(),
+    );
+    Ok(())
+}
+
+/// Helper: attach a `Plot`'s `Graphics` + axis text labels to
+/// the stage. Used by cartesian-band plots that need axis titles
+/// rendered as `Text` nodes.
+fn attach_plot(
+    app: &mut Application,
+    root: wisp::scene::NodeId,
+    plot: &Plot,
+    theme: &Theme,
+    viewport_px: Vec2,
+) {
+    let graphics = plot.render(theme, viewport_px);
+    let _ = app.stage_mut().add_child(root, graphics);
+    let font = Font::bitmap_8x8(app);
+    for t in plot.axis_text_labels(theme, viewport_px, &font) {
+        let _ = app.stage_mut().add_child(root, t);
+    }
+}

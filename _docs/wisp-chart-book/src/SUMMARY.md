@@ -20,6 +20,13 @@
 - [Scatterplot](./charts/scatter.md)
 - [Bubble chart](./charts/bubble.md)
 - [Area chart](./charts/area.md)
+- [Connected scatterplot](./charts/connected-scatter.md)
+
+# Indicators
+
+- [KPI card](./charts/kpi.md)
+- [Gauge chart](./charts/gauge.md)
+- [Bullet chart](./charts/bullet.md)
 
 # Gantt
 

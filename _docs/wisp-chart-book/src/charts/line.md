@@ -4,6 +4,10 @@ A line chart connects rows of a `DataFrame` in order with a
 stroked polyline. Multi-series support comes via a `Color`
 encoding: each distinct category becomes its own line.
 
+<div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/line.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=line" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: line chart"></iframe>
+</div>
+
 ## Public surface
 
 ```rust,ignore

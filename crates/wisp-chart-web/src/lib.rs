@@ -50,6 +50,11 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod fixtures;
+pub mod render;
+
+pub use render::{ChartId, render_chart_to_view};
+
 use glam::Vec2;
 use jiff::civil::date;
 use wgpu::TextureView;
