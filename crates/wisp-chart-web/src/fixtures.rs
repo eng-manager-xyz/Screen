@@ -7,11 +7,15 @@ use jiff::civil::date;
 
 use wisp_chart::baseline::BaselineChart;
 use wisp_chart::color::Color as ChartColor;
+use wisp_chart::contour::ContourPlot;
 use wisp_chart::distributions::{
-    Box as BoxSummary, BoxPlot, ParallelAxis, ParallelCoords, ParallelRow,
+    BandwidthRule, BinCount, Box as BoxSummary, BoxPlot, Histogram, KdePlot, ParallelAxis,
+    ParallelCoords, ParallelRow,
 };
 use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
-use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
+use wisp_chart::heatmap::{
+    CalendarHeatmap, CalendarValue, Histogram2D, LasagnaHeatmap, TableHeatmap,
+};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::multi::{Splom, SplomDimension};
 use wisp_chart::overlay::{ErrorBars, ErrorPoint};
@@ -19,7 +23,10 @@ use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{
     Pie, PolarPlot, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode,
 };
-use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
+use wisp_chart::ternary::{TernaryPlot, TernaryPoint};
+use wisp_chart::topology::{
+    Funnel, FunnelStage, Sankey, SankeyLink, SankeyNode, Treemap, TreemapNode,
+};
 
 /// Bar fixture — 4-quarter single-series revenue.
 #[must_use]
@@ -571,4 +578,130 @@ pub fn radar_fixture() -> Radar {
             ),
         ],
     )
+}
+
+/// Deterministic pseudo-uniform draw in `[0, 1)` using a single
+/// wrapping LCG round. Output is mod-1000 so the intermediate
+/// fits in a `u16` and converts to `f32` without precision loss.
+fn pseudo_uniform(seed: u32) -> f32 {
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "(seed % 1000) < 1000 fits in u16"
+    )]
+    let modded = (seed % 1000) as u16;
+    f32::from(modded) / 1000.0
+}
+
+/// Deterministic pseudo-normal-ish sample (sum of two uniforms,
+/// re-centred). Wrapping arithmetic keeps overflow safe in both
+/// debug and release builds.
+fn pseudo_normal(i: u32) -> f32 {
+    let a = pseudo_uniform(i.wrapping_mul(1_103_515_245).wrapping_add(12_345));
+    let b = pseudo_uniform(i.wrapping_mul(87).wrapping_add(17));
+    (a + b - 1.0) * 30.0 + 50.0
+}
+
+/// Histogram fixture — synthetic Gaussian-ish samples.
+#[must_use]
+pub fn histogram_fixture() -> Histogram {
+    let samples: Vec<f32> = (0..200_u32).map(pseudo_normal).collect();
+    Histogram::from_samples(&samples, BinCount::Fixed(16), Some((0.0, 100.0)))
+}
+
+/// KDE fixture — same samples as histogram for visual comparison.
+#[must_use]
+pub fn kde_fixture() -> KdePlot {
+    let samples: Vec<f32> = (0..200_u32).map(pseudo_normal).collect();
+    KdePlot::new(samples).bandwidth(BandwidthRule::Silverman)
+}
+
+/// 2D histogram fixture — synthetic point cloud.
+#[must_use]
+pub fn histogram2d_fixture() -> Histogram2D {
+    let points: Vec<(f32, f32)> = (0..600_u32)
+        .map(|i| {
+            let a = pseudo_uniform(i.wrapping_mul(1_103_515_245).wrapping_add(12_345));
+            let b = pseudo_uniform(i.wrapping_mul(87).wrapping_add(17));
+            let x = (a - 0.5) * 8.0;
+            let y = (b - 0.5) * 8.0;
+            (x, y)
+        })
+        .collect();
+    Histogram2D::from_points(&points, 24, 24, Some(((-5.0, 5.0), (-5.0, 5.0))))
+}
+
+/// Contour fixture — radial bump (gaussian) over a 48×48 grid.
+#[must_use]
+pub fn contour_fixture() -> ContourPlot {
+    let cols = 48_usize;
+    let rows = 48_usize;
+    let mut field = vec![0.0_f32; cols * rows];
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "grid size 48 fits f32 mantissa precisely"
+    )]
+    let (cx, cy) = ((cols as f32 - 1.0) * 0.5, (rows as f32 - 1.0) * 0.5);
+    for row in 0..rows {
+        for col in 0..cols {
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "col/row < 48 fits f32 mantissa precisely"
+            )]
+            let (dx, dy) = (col as f32 - cx, row as f32 - cy);
+            field[row * cols + col] = (-(dx * dx + dy * dy) * 0.012).exp();
+        }
+    }
+    ContourPlot::new(field, cols, rows, vec![0.15, 0.35, 0.55, 0.75, 0.9])
+}
+
+/// Ternary fixture — synthetic soil-composition points.
+#[must_use]
+pub fn ternary_fixture() -> TernaryPlot {
+    let red = ChartColor::from_hex("#0072b2").unwrap();
+    let points = vec![
+        TernaryPoint::new(0.7, 0.2, 0.1, red),
+        TernaryPoint::new(0.4, 0.4, 0.2, red),
+        TernaryPoint::new(0.3, 0.5, 0.2, red),
+        TernaryPoint::new(0.5, 0.3, 0.2, red),
+        TernaryPoint::new(0.2, 0.3, 0.5, red),
+        TernaryPoint::new(0.1, 0.4, 0.5, red),
+        TernaryPoint::new(0.6, 0.1, 0.3, red),
+        TernaryPoint::new(0.3, 0.3, 0.4, red),
+    ];
+    TernaryPlot::new("Sand", "Silt", "Clay", points)
+}
+
+/// Sankey fixture — 3-column flow (sources → mid → sinks).
+#[must_use]
+pub fn sankey_fixture() -> Sankey {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    let nodes = vec![
+        SankeyNode::new("Organic", 0, c("#0072b2")),
+        SankeyNode::new("Paid", 0, c("#d55e00")),
+        SankeyNode::new("Signed Up", 1, c("#009e73")),
+        SankeyNode::new("Trial", 1, c("#cc79a7")),
+        SankeyNode::new("Converted", 2, c("#56b4e9")),
+        SankeyNode::new("Lost", 2, c("#e69f00")),
+    ];
+    let ribbon = c("#aaaaaa");
+    let links = vec![
+        SankeyLink::new(0, 2, 40.0, ribbon),
+        SankeyLink::new(0, 3, 25.0, ribbon),
+        SankeyLink::new(1, 2, 20.0, ribbon),
+        SankeyLink::new(1, 3, 15.0, ribbon),
+        SankeyLink::new(2, 4, 35.0, ribbon),
+        SankeyLink::new(2, 5, 25.0, ribbon),
+        SankeyLink::new(3, 4, 15.0, ribbon),
+        SankeyLink::new(3, 5, 25.0, ribbon),
+    ];
+    Sankey::new(nodes, links)
+}
+
+/// Faceted-KDE fixture — same as `kde_fixture` but visualised
+/// alongside the histogram as a complementary view. The
+/// faceted-density chapter is a composition tutorial rather
+/// than a separate value type, so this fixture mirrors KDE.
+#[must_use]
+pub fn faceted_kde_fixture() -> KdePlot {
+    kde_fixture()
 }

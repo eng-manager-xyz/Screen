@@ -48,17 +48,27 @@
 - [Table heatmap](./charts/table-heatmap.md)
 - [Calendar heatmap](./charts/calendar-heatmap.md)
 - [Lasagna plot](./charts/lasagna.md)
+- [2D histogram](./charts/histogram2d.md)
 
 # Topology
 
 - [Treemap](./charts/treemap.md)
 - [Funnel chart](./charts/funnel.md)
+- [Sankey diagram](./charts/sankey.md)
 
 # Distributions
 
 - [Box plot](./charts/boxplot.md)
 - [Parallel coordinates](./charts/parallel-coords.md)
 - [Error bars overlay](./charts/error-bars.md)
+- [Histogram](./charts/histogram.md)
+- [Density (KDE)](./charts/kde.md)
+- [Faceted density](./charts/faceted-density.md)
+
+# Compositional + fields
+
+- [Ternary plot](./charts/ternary.md)
+- [Contour plot](./charts/contour.md)
 
 # Multi-view
 

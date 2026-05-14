@@ -87,6 +87,7 @@ embedded inside each.
   <a class="card" href="../wisp-chart/charts/table-heatmap.html"><img loading="lazy" src="../assets/wisp-chart-web/table-heatmap.png" alt="Table heatmap"><div class="label">Table heatmap</div><div class="desc">2D matrix as colour grid</div></a>
   <a class="card" href="../wisp-chart/charts/calendar-heatmap.html"><img loading="lazy" src="../assets/wisp-chart-web/calendar-heatmap.png" alt="Calendar heatmap"><div class="label">Calendar heatmap</div><div class="desc">Year-in-review 7×52 grid</div></a>
   <a class="card" href="../wisp-chart/charts/lasagna.html"><img loading="lazy" src="../assets/wisp-chart-web/lasagna.png" alt="Lasagna"><div class="label">Lasagna plot</div><div class="desc">Entity-time stripes</div></a>
+  <a class="card" href="../wisp-chart/charts/histogram2d.html"><img loading="lazy" src="../assets/wisp-chart-web/histogram2d.png" alt="2D histogram"><div class="label">2D histogram</div><div class="desc">Binned point-cloud density</div></a>
 </div>
 
 ## Topology + multi-view
@@ -94,6 +95,7 @@ embedded inside each.
 <div class="wisp-chart-gallery">
   <a class="card" href="../wisp-chart/charts/treemap.html"><img loading="lazy" src="../assets/wisp-chart-web/treemap.png" alt="Treemap"><div class="label">Treemap</div><div class="desc">Nested rectangle hierarchy</div></a>
   <a class="card" href="../wisp-chart/charts/funnel.html"><img loading="lazy" src="../assets/wisp-chart-web/funnel.png" alt="Funnel"><div class="label">Funnel</div><div class="desc">Staged conversion bands</div></a>
+  <a class="card" href="../wisp-chart/charts/sankey.html"><img loading="lazy" src="../assets/wisp-chart-web/sankey.png" alt="Sankey"><div class="label">Sankey</div><div class="desc">Column-based flow ribbons</div></a>
   <a class="card" href="../wisp-chart/charts/splom.html"><img loading="lazy" src="../assets/wisp-chart-web/splom.png" alt="SPLOM"><div class="label">SPLOM</div><div class="desc">Pairwise scatter matrix</div></a>
 </div>
 
@@ -103,6 +105,16 @@ embedded inside each.
   <a class="card" href="../wisp-chart/charts/boxplot.html"><img loading="lazy" src="../assets/wisp-chart-web/boxplot.png" alt="Box plot"><div class="label">Box plot</div><div class="desc">5-number summary per category</div></a>
   <a class="card" href="../wisp-chart/charts/parallel-coords.html"><img loading="lazy" src="../assets/wisp-chart-web/parallel-coords.png" alt="Parallel coordinates"><div class="label">Parallel coordinates</div><div class="desc">N axes polyline overlay</div></a>
   <a class="card" href="../wisp-chart/charts/error-bars.html"><img loading="lazy" src="../assets/wisp-chart-web/error-bars.png" alt="Error bars overlay"><div class="label">Error bars</div><div class="desc">Uncertainty whiskers on bar / point / line</div></a>
+  <a class="card" href="../wisp-chart/charts/histogram.html"><img loading="lazy" src="../assets/wisp-chart-web/histogram.png" alt="Histogram"><div class="label">Histogram</div><div class="desc">Equal-width sample bins</div></a>
+  <a class="card" href="../wisp-chart/charts/kde.html"><img loading="lazy" src="../assets/wisp-chart-web/kde.png" alt="KDE"><div class="label">Density (KDE)</div><div class="desc">Smoothed 1D density estimate</div></a>
+  <a class="card" href="../wisp-chart/charts/faceted-density.html"><img loading="lazy" src="../assets/wisp-chart-web/kde.png" alt="Faceted density"><div class="label">Faceted density</div><div class="desc">One KDE per facet via trellis</div></a>
+</div>
+
+## Compositional + fields
+
+<div class="wisp-chart-gallery">
+  <a class="card" href="../wisp-chart/charts/ternary.html"><img loading="lazy" src="../assets/wisp-chart-web/ternary.png" alt="Ternary plot"><div class="label">Ternary plot</div><div class="desc">3-component compositional</div></a>
+  <a class="card" href="../wisp-chart/charts/contour.html"><img loading="lazy" src="../assets/wisp-chart-web/contour.png" alt="Contour plot"><div class="label">Contour plot</div><div class="desc">Iso-level lines via marching squares</div></a>
 </div>
 
 ## Gantt

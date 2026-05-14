@@ -82,6 +82,18 @@ pub enum ChartId {
     ErrorBars,
     /// Polar coordinate plot (wind-rose style).
     Polar,
+    /// Histogram (bin-and-bar).
+    Histogram,
+    /// Kernel-density estimate curve.
+    Kde,
+    /// 2D histogram heatmap.
+    Histogram2D,
+    /// Contour plot via marching squares.
+    Contour,
+    /// Ternary (compositional) plot.
+    Ternary,
+    /// Sankey flow diagram.
+    Sankey,
 }
 
 impl ChartId {
@@ -122,6 +134,12 @@ impl ChartId {
             "splom" => Some(Self::Splom),
             "error-bars" | "errorbars" => Some(Self::ErrorBars),
             "polar" | "polar-plot" | "wind-rose" => Some(Self::Polar),
+            "histogram" => Some(Self::Histogram),
+            "kde" | "density" => Some(Self::Kde),
+            "histogram2d" | "histogram-2d" => Some(Self::Histogram2D),
+            "contour" => Some(Self::Contour),
+            "ternary" => Some(Self::Ternary),
+            "sankey" => Some(Self::Sankey),
             _ => None,
         }
     }
@@ -382,6 +400,36 @@ pub fn render_chart_to_view(
         ChartId::Polar => {
             let plot = fixtures::polar_plot_fixture();
             let graphics = plot.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Histogram => {
+            let h = fixtures::histogram_fixture();
+            let graphics = h.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Kde => {
+            let k = fixtures::kde_fixture();
+            let graphics = k.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Histogram2D => {
+            let h = fixtures::histogram2d_fixture();
+            let graphics = h.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Contour => {
+            let c = fixtures::contour_fixture();
+            let graphics = c.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Ternary => {
+            let t = fixtures::ternary_fixture();
+            let graphics = t.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Sankey => {
+            let s = fixtures::sankey_fixture();
+            let graphics = s.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

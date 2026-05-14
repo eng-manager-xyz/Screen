@@ -28,6 +28,7 @@
 pub mod axis;
 pub mod baseline;
 pub mod color;
+pub mod contour;
 pub mod distributions;
 pub mod finance;
 pub mod gantt;
@@ -40,6 +41,7 @@ pub mod palette;
 pub mod plot;
 pub mod polar;
 pub mod scale;
+pub mod ternary;
 pub mod theme;
 pub mod topology;
 
