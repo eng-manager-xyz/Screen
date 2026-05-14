@@ -28,6 +28,7 @@
 pub mod axis;
 pub mod baseline;
 pub mod color;
+pub mod distributions;
 pub mod finance;
 pub mod gantt;
 pub mod heatmap;

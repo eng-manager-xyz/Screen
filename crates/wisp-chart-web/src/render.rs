@@ -72,6 +72,10 @@ pub enum ChartId {
     Treemap,
     /// Funnel (staged conversion bands).
     Funnel,
+    /// Box plot.
+    BoxPlot,
+    /// Parallel-coordinates plot.
+    ParallelCoords,
 }
 
 impl ChartId {
@@ -107,6 +111,8 @@ impl ChartId {
             "lasagna" => Some(Self::Lasagna),
             "treemap" => Some(Self::Treemap),
             "funnel" => Some(Self::Funnel),
+            "box-plot" | "boxplot" => Some(Self::BoxPlot),
+            "parallel-coords" | "parallel" => Some(Self::ParallelCoords),
             _ => None,
         }
     }
@@ -321,6 +327,16 @@ pub fn render_chart_to_view(
         ChartId::Funnel => {
             let f = fixtures::funnel_fixture();
             let graphics = f.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::BoxPlot => {
+            let bp = fixtures::boxplot_fixture();
+            let graphics = bp.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::ParallelCoords => {
+            let pc = fixtures::parallel_coords_fixture();
+            let graphics = pc.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

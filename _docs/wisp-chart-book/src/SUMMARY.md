@@ -52,6 +52,11 @@
 - [Treemap](./charts/treemap.md)
 - [Funnel chart](./charts/funnel.md)
 
+# Distributions
+
+- [Box plot](./charts/boxplot.md)
+- [Parallel coordinates](./charts/parallel-coords.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

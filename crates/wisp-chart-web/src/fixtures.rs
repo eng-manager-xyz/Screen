@@ -7,6 +7,9 @@ use jiff::civil::date;
 
 use wisp_chart::baseline::BaselineChart;
 use wisp_chart::color::Color as ChartColor;
+use wisp_chart::distributions::{
+    Box as BoxSummary, BoxPlot, ParallelAxis, ParallelCoords, ParallelRow,
+};
 use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
 use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
@@ -405,6 +408,40 @@ pub fn baseline_fixture() -> BaselineChart {
             (7.0, 30.0),
         ],
         0.0,
+    )
+}
+
+/// Box plot fixture — 4 categories with synthetic summaries.
+#[must_use]
+pub fn boxplot_fixture() -> BoxPlot {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    BoxPlot::new(vec![
+        BoxSummary::from_summary("A", 10.0, 20.0, 30.0, 45.0, 60.0, c("#0072b2")),
+        BoxSummary::from_summary("B", 5.0, 18.0, 28.0, 50.0, 70.0, c("#d55e00")),
+        BoxSummary::from_summary("C", 20.0, 35.0, 45.0, 55.0, 80.0, c("#009e73")),
+        BoxSummary::from_summary("D", 12.0, 22.0, 32.0, 42.0, 58.0, c("#cc79a7")),
+    ])
+}
+
+/// Parallel-coordinates fixture — 4 dimensions × 6 rows.
+#[must_use]
+pub fn parallel_coords_fixture() -> ParallelCoords {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    ParallelCoords::new(
+        vec![
+            ParallelAxis::new("mpg", (10.0, 50.0)),
+            ParallelAxis::new("cyl", (3.0, 8.0)),
+            ParallelAxis::new("hp", (60.0, 300.0)),
+            ParallelAxis::new("wt", (1.5, 5.5)),
+        ],
+        vec![
+            ParallelRow::new(vec![32.0, 4.0, 95.0, 2.2], c("#0072b2")),
+            ParallelRow::new(vec![28.0, 4.0, 110.0, 2.5], c("#56b4e9")),
+            ParallelRow::new(vec![22.0, 6.0, 150.0, 3.0], c("#d55e00")),
+            ParallelRow::new(vec![18.0, 6.0, 200.0, 3.6], c("#e8853d")),
+            ParallelRow::new(vec![14.0, 8.0, 280.0, 4.4], c("#009e73")),
+            ParallelRow::new(vec![12.0, 8.0, 300.0, 5.0], c("#3eb893")),
+        ],
     )
 }
 
