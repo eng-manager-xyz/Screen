@@ -48,11 +48,34 @@ web-sys = { version = "0.3", features = [
     "Document",
     "Element",
     "HtmlCanvasElement",
+    "HtmlElement",
+    "Node",
     "Window",
     "console",
 ] }
 console_error_panic_hook = "0.1"
 console_log = "1"
+
+# Native test deps. `wisp::Application` boots a headless wgpu
+# adapter + device; `pollster::block_on` drives the async wgpu
+# bring-up from inside a `#[test]` fn. `image` writes the rendered
+# pixels to the committed `_docs/wisp-chart-book/src/assets/.../*.png`
+# snapshot — the PR-visible proof that the test asserted on real
+# rendered output, not on its expectation alone.
+[dev-dependencies]
+wisp = { path = "../wisp", package = "screen-wisp" }
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Browser-test deps. `wasm-bindgen-test` is invoked only via
+# `cargo test --target wasm32-unknown-unknown` (manual / local
+# only — not on `just gate`). Needs `chromedriver` on PATH; see
+# `tests/headless_webgpu.rs` for the local-run runbook.
+# `futures-channel` provides the `oneshot` we need to await
+# `buffer.map_async` from inside the `#[wasm_bindgen_test]` fn.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+futures-channel = "0.3"
 
 [package.metadata.cargo-machete]
 # `log` is consumed via `log::info!` / `log::error!` macros that

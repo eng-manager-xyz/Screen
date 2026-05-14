@@ -15,6 +15,7 @@ crates/*/target/
 # Trunk regenerates these on `trunk build` / `just app-ui-build`.
 /crates/app-ui/dist
 /crates/ui-storybook/dist
+/crates/wisp-chart-web/dist
 
 # wasm-bindgen and wasm-pack scratch.
 **/pkg/
