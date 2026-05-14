@@ -57,6 +57,11 @@
 - [Box plot](./charts/boxplot.md)
 - [Parallel coordinates](./charts/parallel-coords.md)
 
+# Multi-view
+
+- [Trellis / small multiples](./charts/trellis.md)
+- [Scatterplot matrix (SPLOM)](./charts/splom.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

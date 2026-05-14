@@ -76,6 +76,8 @@ pub enum ChartId {
     BoxPlot,
     /// Parallel-coordinates plot.
     ParallelCoords,
+    /// Scatterplot matrix.
+    Splom,
 }
 
 impl ChartId {
@@ -113,6 +115,7 @@ impl ChartId {
             "funnel" => Some(Self::Funnel),
             "box-plot" | "boxplot" => Some(Self::BoxPlot),
             "parallel-coords" | "parallel" => Some(Self::ParallelCoords),
+            "splom" => Some(Self::Splom),
             _ => None,
         }
     }
@@ -337,6 +340,11 @@ pub fn render_chart_to_view(
         ChartId::ParallelCoords => {
             let pc = fixtures::parallel_coords_fixture();
             let graphics = pc.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Splom => {
+            let s = fixtures::splom_fixture();
+            let graphics = s.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

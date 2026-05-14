@@ -13,6 +13,7 @@ use wisp_chart::distributions::{
 use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
 use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
+use wisp_chart::multi::{Splom, SplomDimension};
 use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
 use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
@@ -409,6 +410,17 @@ pub fn baseline_fixture() -> BaselineChart {
         ],
         0.0,
     )
+}
+
+/// SPLOM fixture — 4 dimensions × 6 rows (mtcars-style).
+#[must_use]
+pub fn splom_fixture() -> Splom {
+    Splom::new(vec![
+        SplomDimension::new("mpg", vec![32.0, 28.0, 22.0, 18.0, 14.0, 12.0]),
+        SplomDimension::new("cyl", vec![4.0, 4.0, 6.0, 6.0, 8.0, 8.0]),
+        SplomDimension::new("hp", vec![95.0, 110.0, 150.0, 200.0, 280.0, 300.0]),
+        SplomDimension::new("wt", vec![2.2, 2.5, 3.0, 3.6, 4.4, 5.0]),
+    ])
 }
 
 /// Box plot fixture — 4 categories with synthetic summaries.
