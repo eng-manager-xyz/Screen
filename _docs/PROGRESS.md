@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.10 — Area chart mark (AUT-190)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Mark::Area { interpolation }` renders the region between a line and the baseline as filled quads. Branch `chart-axis-legend`.
+- **Linear:** [AUT-190](https://linear.app/harwood/issue/AUT-190).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mark.rs`** — `Mark::Area { interpolation }` variant.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `render_areas` reuses `cartesian_layout`. Splits rows into series by `Color` encoding (same shape as `render_lines`). Emits one convex quad per segment: `(x0, baseline) → (x1, baseline) → (x1, y1) → (x0, y0)`. Step interpolation flattens to `(x0, y0) → (x1, y0)` at the top edge. **Quad-per-segment instead of one big polygon** because wisp's `draw_polygon` is convex-only in v1; the area polygon between a non-monotonic line and the baseline is generally non-convex.
+  - **`_docs/wisp-chart-book/src/charts/area.md`** — new chapter explains the convex-quad emission strategy.
+- **Verified:** `cargo test -p wisp-chart --lib` → 105/105 green. `just gate` → green end-to-end.
+
+---
+
 ## M-CHART.12 — Bubble chart via Size encoding + Area mapping (AUT-192)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Encoding::size(...).size_mapping(SizeMapping::Area)` lets the Point mark render area-correct bubbles. Default is Area (vs visually-misleading Radius). Branch `chart-axis-legend`.

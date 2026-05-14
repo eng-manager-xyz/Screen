@@ -19,6 +19,7 @@
 - [Stacked bar chart](./charts/stacked-bar.md)
 - [Scatterplot](./charts/scatter.md)
 - [Bubble chart](./charts/bubble.md)
+- [Area chart](./charts/area.md)
 
 # Gantt
 

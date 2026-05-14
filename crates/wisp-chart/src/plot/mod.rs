@@ -176,6 +176,9 @@ impl Plot {
             Mark::Point { shape } => {
                 self.render_points(theme, viewport_px, shape, &mut g);
             }
+            Mark::Area { interpolation } => {
+                self.render_areas(theme, viewport_px, interpolation, &mut g);
+            }
         }
 
         g
@@ -574,6 +577,126 @@ impl Plot {
                 for (x, y) in pts {
                     let centre = pixel_to_ndc(Vec2::new(*x, *y), viewport_px);
                     g.draw_ellipse(centre, radii_ndc);
+                }
+            }
+        }
+    }
+
+    fn render_areas(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+        interpolation: mark::Interpolation,
+        g: &mut Graphics,
+    ) {
+        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
+            return;
+        };
+
+        if self.axes_enabled {
+            let x_axis = axis::emit_x_axis_lines(
+                &layout.x_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Bottom,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            let y_axis = axis::emit_y_axis_lines(
+                &layout.y_ticks,
+                layout.plot_rect,
+                viewport_px,
+                AxisPosition::Left,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            g.append(&x_axis);
+            g.append(&y_axis);
+        }
+
+        let x_scale = layout.x_scale;
+        let y_scale = layout.y_scale;
+        let y_zero_px = layout.y_zero_px;
+        let x_enc_field = layout.x_field;
+        let y_enc_field = layout.y_field;
+
+        let color_enc = self.find_encoding(Channel::Color).cloned();
+        let x_col = self.data.column(&x_enc_field);
+        let y_col = self.data.column(&y_enc_field);
+        let row_count = self.data.row_count();
+
+        // Build per-series (x_centre_px, y_top_px) lists in row order.
+        let mut series: Vec<(String, Vec<(f32, f32)>)> = Vec::new();
+        for i in 0..row_count {
+            let Some(x_val) = x_col.and_then(|c| c.get(i)).and_then(Value::as_category) else {
+                continue;
+            };
+            let Some(y_val) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let Some(bx_centre) = x_scale
+                .range_for(&x_val.to_owned())
+                .map(|(a, b)| (a + b) * 0.5)
+            else {
+                continue;
+            };
+            let py = y_scale.map(y_val);
+            let key = match &color_enc {
+                Some(enc) => self
+                    .data
+                    .column(&enc.field)
+                    .and_then(|c| c.get(i))
+                    .and_then(Value::as_category)
+                    .unwrap_or("")
+                    .to_owned(),
+                None => String::new(),
+            };
+            match series.iter_mut().find(|(k, _)| k == &key) {
+                Some((_, pts)) => pts.push((bx_centre, py)),
+                None => series.push((key, vec![(bx_centre, py)])),
+            }
+        }
+
+        for (key, pts) in &series {
+            if pts.len() < 2 {
+                continue;
+            }
+            let fill_color = if color_enc.is_some() && !key.is_empty() {
+                theme.palette.color_for(key)
+            } else {
+                theme.palette.color_for(&y_enc_field)
+            };
+            g.fill(Fill::Solid(chart_to_wisp(fill_color)));
+
+            // Emit one convex quad per segment so wisp's
+            // fan-triangulated draw_polygon (convex-only in v1)
+            // renders the area cleanly even for non-monotonic
+            // series.
+            for pair in pts.windows(2) {
+                let (x0, y0) = pair[0];
+                let (x1, y1) = pair[1];
+                match interpolation {
+                    mark::Interpolation::Linear => {
+                        let p0 = pixel_to_ndc(Vec2::new(x0, y0), viewport_px);
+                        let p1 = pixel_to_ndc(Vec2::new(x1, y1), viewport_px);
+                        let b1 = pixel_to_ndc(Vec2::new(x1, y_zero_px), viewport_px);
+                        let b0 = pixel_to_ndc(Vec2::new(x0, y_zero_px), viewport_px);
+                        // CCW winding in NDC (+Y up): bottom-left,
+                        // bottom-right, top-right, top-left.
+                        g.draw_polygon(&[b0, b1, p1, p0]);
+                    }
+                    mark::Interpolation::Step => {
+                        // Step: rectangle from (x0, y0) to (x1, y0)
+                        // — the line stays at y0 until x1, then
+                        // jumps to y1 at the segment's right edge.
+                        let p0 = pixel_to_ndc(Vec2::new(x0, y0), viewport_px);
+                        let p1 = pixel_to_ndc(Vec2::new(x1, y0), viewport_px);
+                        let b1 = pixel_to_ndc(Vec2::new(x1, y_zero_px), viewport_px);
+                        let b0 = pixel_to_ndc(Vec2::new(x0, y_zero_px), viewport_px);
+                        g.draw_polygon(&[b0, b1, p1, p0]);
+                    }
                 }
             }
         }
@@ -1235,6 +1358,34 @@ mod tests {
         let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
         // 1 bg + 4 stacked segments.
         assert_eq!(g.primitive_count(), 5);
+    }
+
+    #[test]
+    fn area_mark_emits_one_quad_per_segment() {
+        let plot = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Area {
+                interpolation: Interpolation::Linear,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 3 quads (4 points → 3 segments).
+        assert_eq!(g.primitive_count(), 4);
+    }
+
+    #[test]
+    fn area_mark_with_step_interpolation_emits_one_quad_per_segment() {
+        let plot = Plot::new(fixture_df())
+            .axes(false)
+            .mark(Mark::Area {
+                interpolation: Interpolation::Step,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("r", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 3 quads.
+        assert_eq!(g.primitive_count(), 4);
     }
 
     #[test]

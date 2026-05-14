@@ -68,6 +68,13 @@ pub enum Mark {
         /// Marker shape.
         shape: PointShape,
     },
+    /// Area mark — line chart with the region between the curve
+    /// and the baseline filled. Composes with `Transform::Stack`
+    /// for stacked / 100%-normalized area charts.
+    Area {
+        /// Segment interpolation between adjacent points.
+        interpolation: Interpolation,
+    },
 }
 
 impl Default for Mark {
