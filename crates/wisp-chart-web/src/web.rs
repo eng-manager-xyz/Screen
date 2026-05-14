@@ -4,18 +4,28 @@
 //!
 //! 1. wasm-bindgen calls `start()` once on page load.
 //! 2. `start()` finds `<canvas id="wisp-chart-canvas">` in the DOM,
-//!    spawns the async wgpu bring-up, returns to the event loop.
-//! 3. `run()` creates a `wgpu::Instance` with `BROWSER_WEBGPU`,
-//!    builds a `wgpu::Surface` from the canvas, requests an
-//!    adapter + device, configures the surface, and clears to the
-//!    demo purple via
-//!    `crate::clear_with_color(_, _, _, DEMO_CLEAR_COLOR)`.
-//! 4. The actual chart drawing replaces step 3's clear pass when
-//!    the M-CHART.0 render chunk lands.
+//!    spawns the async wgpu + wisp bring-up, returns to the event
+//!    loop.
+//! 3. `run()` builds a `wgpu::Instance` with `BROWSER_WEBGPU`, a
+//!    `wgpu::Surface` from the canvas, adapter + device, then
+//!    hands those four values into
+//!    `wisp::Application::from_wgpu`. From there
+//!    [`crate::render_gantt`] draws [`crate::sample_gantt`] into
+//!    the surface texture via `wisp::Renderer::render_stage`.
+//! 4. `frame.present()` posts the rendered Gantt to the canvas.
 
+#![allow(
+    clippy::cast_precision_loss,
+    reason = "canvas width/height come from the browser bounded by viewport size; \
+              well below the f32 precision boundary."
+)]
+
+use glam::Vec2;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
+use wisp::application::{AppConfig, Application};
+use wisp_chart::Theme;
 
 /// Entry point invoked by wasm-bindgen on page load.
 ///
@@ -47,30 +57,21 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Run the WebGPU bring-up + render loop.
+/// Run the WebGPU bring-up + Gantt render.
 async fn run(canvas: HtmlCanvasElement) -> Result<(), String> {
     let width = canvas.width().max(1);
     let height = canvas.height().max(1);
     log::info!("wisp-chart-web: canvas is {width}x{height}");
 
-    // Instance: pick the BROWSER_WEBGPU backend explicitly. WebGL
-    // fallback is deliberately NOT enabled — this demo targets
-    // WebGPU specifically. Browsers without WebGPU error here with
-    // an actionable message.
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::BROWSER_WEBGPU,
         ..Default::default()
     });
 
-    // Surface from canvas. `SurfaceTarget::Canvas` accepts the
-    // owned canvas; wgpu wraps it for the BROWSER_WEBGPU backend.
     let surface = instance
         .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
         .map_err(|e| format!("create_surface: {e}"))?;
 
-    // Adapter — high-performance preference is a hint; the browser
-    // ultimately picks. wgpu 24's `request_adapter` returns Option,
-    // not Result.
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -81,10 +82,6 @@ async fn run(canvas: HtmlCanvasElement) -> Result<(), String> {
         .ok_or_else(|| "request_adapter: no compatible WebGPU adapter".to_owned())?;
     log::info!("wisp-chart-web: adapter = {:?}", adapter.get_info());
 
-    // BROWSER_WEBGPU honours WebGPU's native limits — the WebGL2
-    // downlevel set is wrong here and was the legacy of copying
-    // from a generic wgpu example. Use `downlevel_defaults()` so
-    // the device matches what Chrome / Firefox actually expose.
     let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
@@ -98,7 +95,6 @@ async fn run(canvas: HtmlCanvasElement) -> Result<(), String> {
         .await
         .map_err(|e| format!("request_device: {e}"))?;
 
-    // Surface capabilities for diagnostic logging.
     let caps = surface.get_capabilities(&adapter);
     log::info!("wisp-chart-web: caps.formats = {:?}", caps.formats);
     log::info!("wisp-chart-web: caps.alpha_modes = {:?}", caps.alpha_modes);
@@ -107,15 +103,7 @@ async fn run(canvas: HtmlCanvasElement) -> Result<(), String> {
         caps.present_modes
     );
 
-    // BROWSER_WEBGPU surfaces don't expose an sRGB-tagged format
-    // (Chrome returns `Bgra8Unorm` / `Rgba8Unorm`). Pick the first
-    // entry — that's the canvas-preferred format.
     let surface_format = caps.formats[0];
-
-    // Pick alpha mode explicitly. Chrome typically exposes
-    // [Opaque, PreMultiplied]; we want Opaque so the canvas's CSS
-    // background never bleeds through. Fall back to whatever's
-    // first if Opaque isn't offered.
     let alpha_mode = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
         wgpu::CompositeAlphaMode::Opaque
     } else {
@@ -137,21 +125,45 @@ async fn run(canvas: HtmlCanvasElement) -> Result<(), String> {
         },
     );
 
-    // Render one frame: clear to white via the shared helper. (When
-    // `Gantt::render` ships, this becomes "build scene tree → draw
-    // scene tree" but the helper's surface-presentation contract
-    // stays the same.)
+    // Hand the canvas-built wgpu context to `wisp::Application`.
+    // wgpu types are `Arc`-backed so the clones are cheap and the
+    // surface keeps working from this scope's bindings.
+    let mut app = Application::from_wgpu(
+        instance.clone(),
+        adapter.clone(),
+        device.clone(),
+        queue.clone(),
+        AppConfig {
+            width,
+            height,
+            ..Default::default()
+        },
+    );
+
     let frame = surface
         .get_current_texture()
         .map_err(|e| format!("get_current_texture: {e}"))?;
     let view = frame
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
-    crate::clear_with_color(&device, &queue, &view, crate::DEMO_CLEAR_COLOR);
+
+    let gantt = crate::sample_gantt();
+    let theme = Theme::light();
+    crate::render_gantt(
+        &mut app,
+        &view,
+        surface_format,
+        Vec2::new(width as f32, height as f32),
+        &gantt,
+        &theme,
+    )
+    .map_err(|e| format!("render_gantt: {e}"))?;
+
     frame.present();
     log::info!(
-        "wisp-chart-web: cleared canvas to demo purple {:?} — WebGPU path is live.",
-        crate::DEMO_CLEAR_COLOR
+        "wisp-chart-web: rendered Gantt ({} rows, {} bars) — WebGPU path is live.",
+        gantt.rows.len(),
+        gantt.bars.len()
     );
     Ok(())
 }

@@ -24,12 +24,13 @@ workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Native default: `wisp-chart` is what we'll feed scene-graph data
-# from once chunk 3 ships `Gantt::render(&Theme) -> SceneNode`.
-# Until then, the demo only depends on `wgpu` (for the clear pass)
-# and `log` (for the JS-console logging shim). `wisp` itself
-# transitively arrives via `wisp-chart` — no direct dep needed.
+# `wisp-chart` builds the scene-graph subtree (Gantt::emit_graphics);
+# `wisp` owns the renderer that draws it; `glam` for Vec2 viewport
+# math; `jiff` for the fixture's date literals.
 wisp-chart = { path = "../wisp-chart" }
+wisp = { path = "../wisp", package = "screen-wisp" }
+glam.workspace = true
+jiff = { version = "0.2", default-features = false, features = ["std"] }
 log = "0.4"
 
 # wgpu — workspace-pinned at 24. We use `Backends::BROWSER_WEBGPU`
@@ -63,7 +64,6 @@ console_log = "1"
 # snapshot — the PR-visible proof that the test asserted on real
 # rendered output, not on its expectation alone.
 [dev-dependencies]
-wisp = { path = "../wisp", package = "screen-wisp" }
 pollster = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
