@@ -62,6 +62,12 @@ pub enum ChartId {
     Waterfall,
     /// Baseline chart (area split at threshold).
     Baseline,
+    /// Table heatmap.
+    TableHeatmap,
+    /// Calendar heatmap (year-in-review).
+    CalendarHeatmap,
+    /// Lasagna heatmap.
+    Lasagna,
 }
 
 impl ChartId {
@@ -92,6 +98,9 @@ impl ChartId {
             "ohlc" => Some(Self::Ohlc),
             "waterfall" => Some(Self::Waterfall),
             "baseline" => Some(Self::Baseline),
+            "table-heatmap" | "heatmap" => Some(Self::TableHeatmap),
+            "calendar-heatmap" | "calendar" => Some(Self::CalendarHeatmap),
+            "lasagna" => Some(Self::Lasagna),
             _ => None,
         }
     }
@@ -281,6 +290,21 @@ pub fn render_chart_to_view(
         ChartId::Baseline => {
             let b = fixtures::baseline_fixture();
             let graphics = b.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::TableHeatmap => {
+            let h = fixtures::table_heatmap_fixture();
+            let graphics = h.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::CalendarHeatmap => {
+            let cal = fixtures::calendar_heatmap_fixture();
+            let graphics = cal.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Lasagna => {
+            let l = fixtures::lasagna_fixture();
+            let graphics = l.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

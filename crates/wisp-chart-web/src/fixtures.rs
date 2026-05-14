@@ -3,9 +3,12 @@
 //! here in `lib.rs` so the iframe demos render the same data the
 //! committed `.png` snapshots show.
 
+use jiff::civil::date;
+
 use wisp_chart::baseline::BaselineChart;
 use wisp_chart::color::Color as ChartColor;
 use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
+use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
@@ -321,6 +324,69 @@ pub fn waterfall_fixture() -> Waterfall {
         WaterfallRow::contribution("Tax", -10.0),
         WaterfallRow::summary("End", 115.0),
     ])
+}
+
+/// Table heatmap fixture — 5×8 activity grid.
+#[must_use]
+pub fn table_heatmap_fixture() -> TableHeatmap {
+    let rows = vec![
+        "Mon".into(),
+        "Tue".into(),
+        "Wed".into(),
+        "Thu".into(),
+        "Fri".into(),
+    ];
+    let cols = (0..8).map(|h| format!("{}h", h * 3)).collect();
+    let values = (0..5_usize)
+        .map(|r| {
+            (0..8_usize)
+                .map(|c| {
+                    let modulo = u16::try_from((r * 3 + c * 7) % 11).unwrap_or(0);
+                    let base = f32::from(modulo) / 11.0;
+                    base * 100.0
+                })
+                .collect()
+        })
+        .collect();
+    TableHeatmap::new(rows, cols, values)
+}
+
+/// Calendar heatmap fixture — 2025 with a few hot days.
+#[must_use]
+pub fn calendar_heatmap_fixture() -> CalendarHeatmap {
+    let mut values = Vec::new();
+    // Synth a wave of activity through the year.
+    for month in 1i8..=12 {
+        for day in [3i8, 10, 17, 24] {
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_lossless,
+                reason = "month + day bounded"
+            )]
+            let v = (f32::from(month) * 2.0 + f32::from(day) * 0.3) % 10.0;
+            values.push(CalendarValue::new(date(2025, month, day), v));
+        }
+    }
+    CalendarHeatmap::new(2025, values)
+}
+
+/// Lasagna fixture — 6 entities × 24 hours.
+#[must_use]
+pub fn lasagna_fixture() -> LasagnaHeatmap {
+    let entities = (1..=6).map(|i| format!("entity-{i}")).collect();
+    let times = (0..24).map(|h| format!("{h:02}h")).collect();
+    let values = (0..6_usize)
+        .map(|r| {
+            (0..24_usize)
+                .map(|c| {
+                    let modulo = u16::try_from((r * 5 + c * 3) % 13).unwrap_or(0);
+                    let v = f32::from(modulo) / 13.0;
+                    v * 100.0
+                })
+                .collect()
+        })
+        .collect();
+    LasagnaHeatmap::new(entities, times, values)
 }
 
 /// Baseline fixture — signal crossing zero a few times.

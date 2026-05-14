@@ -30,6 +30,7 @@ pub mod baseline;
 pub mod color;
 pub mod finance;
 pub mod gantt;
+pub mod heatmap;
 pub mod indicator;
 pub mod legend;
 pub mod palette;

@@ -41,6 +41,12 @@
 - [Waterfall chart](./charts/waterfall.md)
 - [Baseline chart](./charts/baseline.md)
 
+# Heatmaps
+
+- [Table heatmap](./charts/table-heatmap.md)
+- [Calendar heatmap](./charts/calendar-heatmap.md)
+- [Lasagna plot](./charts/lasagna.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)
