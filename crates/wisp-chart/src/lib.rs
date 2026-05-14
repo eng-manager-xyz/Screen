@@ -26,14 +26,21 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod axis;
+pub mod baseline;
 pub mod color;
+pub mod distributions;
+pub mod finance;
 pub mod gantt;
+pub mod heatmap;
 pub mod indicator;
 pub mod legend;
+pub mod multi;
 pub mod palette;
 pub mod plot;
+pub mod polar;
 pub mod scale;
 pub mod theme;
+pub mod topology;
 
 pub use color::Color;
 pub use gantt::{Bar, DateRange, Gantt, Person, PersonMap, Row};

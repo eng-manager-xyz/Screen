@@ -46,6 +46,38 @@ pub enum ChartId {
     Gauge,
     /// Bullet chart.
     Bullet,
+    /// Pie chart.
+    Pie,
+    /// Donut variant of the pie chart.
+    Donut,
+    /// Radial hierarchy chart.
+    Sunburst,
+    /// Multi-axis radar / spider chart.
+    Radar,
+    /// Candlestick price chart.
+    Candlestick,
+    /// OHLC bar chart.
+    Ohlc,
+    /// Waterfall (cumulative deltas).
+    Waterfall,
+    /// Baseline chart (area split at threshold).
+    Baseline,
+    /// Table heatmap.
+    TableHeatmap,
+    /// Calendar heatmap (year-in-review).
+    CalendarHeatmap,
+    /// Lasagna heatmap.
+    Lasagna,
+    /// Treemap (hierarchical rectangles).
+    Treemap,
+    /// Funnel (staged conversion bands).
+    Funnel,
+    /// Box plot.
+    BoxPlot,
+    /// Parallel-coordinates plot.
+    ParallelCoords,
+    /// Scatterplot matrix.
+    Splom,
 }
 
 impl ChartId {
@@ -68,6 +100,22 @@ impl ChartId {
             "kpi" => Some(Self::Kpi),
             "gauge" => Some(Self::Gauge),
             "bullet" => Some(Self::Bullet),
+            "pie" => Some(Self::Pie),
+            "donut" => Some(Self::Donut),
+            "sunburst" => Some(Self::Sunburst),
+            "radar" => Some(Self::Radar),
+            "candlestick" => Some(Self::Candlestick),
+            "ohlc" => Some(Self::Ohlc),
+            "waterfall" => Some(Self::Waterfall),
+            "baseline" => Some(Self::Baseline),
+            "table-heatmap" | "heatmap" => Some(Self::TableHeatmap),
+            "calendar-heatmap" | "calendar" => Some(Self::CalendarHeatmap),
+            "lasagna" => Some(Self::Lasagna),
+            "treemap" => Some(Self::Treemap),
+            "funnel" => Some(Self::Funnel),
+            "box-plot" | "boxplot" => Some(Self::BoxPlot),
+            "parallel-coords" | "parallel" => Some(Self::ParallelCoords),
+            "splom" => Some(Self::Splom),
             _ => None,
         }
     }
@@ -217,6 +265,86 @@ pub fn render_chart_to_view(
         ChartId::Bullet => {
             let bullet = fixtures::bullet_fixture();
             let graphics = bullet.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Pie => {
+            let pie = fixtures::pie_fixture();
+            let graphics = pie.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Donut => {
+            let pie = fixtures::donut_fixture();
+            let graphics = pie.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Sunburst => {
+            let s = fixtures::sunburst_fixture();
+            let graphics = s.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Radar => {
+            let r = fixtures::radar_fixture();
+            let graphics = r.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Candlestick => {
+            let c = fixtures::candlestick_fixture();
+            let graphics = c.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Ohlc => {
+            let o = fixtures::ohlc_fixture();
+            let graphics = o.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Waterfall => {
+            let w = fixtures::waterfall_fixture();
+            let graphics = w.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Baseline => {
+            let b = fixtures::baseline_fixture();
+            let graphics = b.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::TableHeatmap => {
+            let h = fixtures::table_heatmap_fixture();
+            let graphics = h.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::CalendarHeatmap => {
+            let cal = fixtures::calendar_heatmap_fixture();
+            let graphics = cal.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Lasagna => {
+            let l = fixtures::lasagna_fixture();
+            let graphics = l.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Treemap => {
+            let t = fixtures::treemap_fixture();
+            let graphics = t.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Funnel => {
+            let f = fixtures::funnel_fixture();
+            let graphics = f.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::BoxPlot => {
+            let bp = fixtures::boxplot_fixture();
+            let graphics = bp.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::ParallelCoords => {
+            let pc = fixtures::parallel_coords_fixture();
+            let graphics = pc.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Splom => {
+            let s = fixtures::splom_fixture();
+            let graphics = s.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }

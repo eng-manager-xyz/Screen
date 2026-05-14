@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.17..42 — P2 chart wave + gallery (AUT-197/198/202/204..207/211..213/215/216/218..222)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — 18 new charts across 7 batches on branch `chart-p2-wave`, each behind native + wasm32 clippy. Gallery page closes the wave.
+- **Linear:** AUT-197 Pie/donut · AUT-216 Sunburst · AUT-198 Radar · AUT-204 Waterfall · AUT-219 Candlestick · AUT-220 OHLC · AUT-221 Baseline · AUT-206 Table heatmap · AUT-207 Calendar heatmap · AUT-213 Lasagna · AUT-215 Treemap · AUT-218 Funnel · AUT-202 Box plot · AUT-205 Parallel coords · AUT-212 Trellis · AUT-211 SPLOM · AUT-222 Gallery.
+- **New modules in `wisp-chart`:**
+  - `polar` — `Pie`/`Slice`, `Sunburst`/`SunburstNode`, `Radar`/`RadarAxis`/`RadarSeries`. All reuse `draw_annular_sector`.
+  - `finance` — `Period { open, high, low, close }`, `Candlestick`, `Ohlc`, `Waterfall`/`WaterfallRow`.
+  - `baseline` — `BaselineChart` (area split at horizontal reference; convex-quad-per-segment).
+  - `heatmap` — `SequentialPalette` (blues / github / magma / custom), `TableHeatmap`, `CalendarHeatmap` (jiff-backed), `LasagnaHeatmap`.
+  - `topology` — `Treemap`/`TreemapNode` (slice-and-dice; squarify deferred), `Funnel`/`FunnelStage`.
+  - `distributions` — `BoxPlot`/`Box` (with `from_summary` + `from_samples`), `ParallelCoords`/`ParallelAxis`/`ParallelRow`.
+  - `multi` — `Trellis`/`TrellisCell` (caller-built per-cell Graphics + grid tiling), `Splom`/`SplomDimension`.
+- **wisp-chart-web:** 18 new `ChartId` variants + dispatch arms; 17 new render-to-PNG integration tests; 18 new chapters with `<iframe src="../demo/?chart=…">` + PNG-as-background (Trellis is API-only — no iframe). Gallery page at top of SUMMARY indexes everything.
+- **Tests:** 52 net new wisp-chart unit tests. Every chart has at least 2 (smoke + edge cases). All native gate green + wasm32 `cargo clippy --target wasm32-unknown-unknown -p wisp-chart-web -- -D warnings` green before push.
+- **Build-hygiene slippages caught:**
+  - `Color::from_hex("#888")` (3-digit short hex) panics — only 6-digit accepted. Caught in tests.
+  - `Box::from_samples` test cast `(1..=9).map(|i| i as f32)` — must be `(1u8..=9).map(f32::from)`.
+  - `clippy::many_single_char_names` + `clippy::similar_names` are unavoidable in geometry code that uses x/y/a/b conventions; targeted `#[allow]` with explicit reason is the right pattern, *not* renaming everything to verbose forms.
+  - `wisp::scene::Container` has private fields — can't `..g.container`; mutate `g.container.transform` directly.
+  - `i8.is_multiple_of(2)` exists since Rust 1.81 — clippy prefers it over `% 2 == 0`.
+- **What this closes:** P2 chart wave + AUT-222 gallery. AUT-203 Error bars + AUT-199 Polar coord system deferred (overlay-only / coord-system-only, less product impact than the 18 shipped here).
+
+---
+
 ## M-CHART.13..16 — Connected scatter + KPI + Gauge + Bullet (AUT-193..196)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — final wave of P1 chart tickets. Branch `chart-p1-finish`. 4 commits, all gates green throughout.

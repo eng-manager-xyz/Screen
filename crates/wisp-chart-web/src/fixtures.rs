@@ -3,9 +3,20 @@
 //! here in `lib.rs` so the iframe demos render the same data the
 //! committed `.png` snapshots show.
 
+use jiff::civil::date;
+
+use wisp_chart::baseline::BaselineChart;
 use wisp_chart::color::Color as ChartColor;
+use wisp_chart::distributions::{
+    Box as BoxSummary, BoxPlot, ParallelAxis, ParallelCoords, ParallelRow,
+};
+use wisp_chart::finance::{Candlestick, Ohlc, Period, Waterfall, WaterfallRow};
+use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableHeatmap};
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
+use wisp_chart::multi::{Splom, SplomDimension};
 use wisp_chart::plot::{DataFrame, Value};
+use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
+use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
 
 /// Bar fixture — 4-quarter single-series revenue.
 #[must_use]
@@ -219,4 +230,305 @@ pub fn bullet_fixture() -> Bullet {
         ranges: [150.0, 225.0, 300.0],
         orientation: Orientation::Horizontal,
     }
+}
+
+/// Pie fixture — traffic-source mix.
+#[must_use]
+pub fn pie_fixture() -> Pie {
+    Pie::new(vec![
+        Slice::new(45.0, "Organic", ChartColor::from_hex("#0072b2").unwrap()),
+        Slice::new(25.0, "Paid", ChartColor::from_hex("#d55e00").unwrap()),
+        Slice::new(15.0, "Social", ChartColor::from_hex("#009e73").unwrap()),
+        Slice::new(10.0, "Referral", ChartColor::from_hex("#cc79a7").unwrap()),
+        Slice::new(5.0, "Direct", ChartColor::from_hex("#f0e442").unwrap()),
+    ])
+}
+
+/// Donut fixture — same as pie, 50% hollow.
+#[must_use]
+pub fn donut_fixture() -> Pie {
+    pie_fixture().hollow_ratio(0.5)
+}
+
+/// Sunburst fixture — 2-level org / category breakdown.
+#[must_use]
+pub fn sunburst_fixture() -> Sunburst {
+    let c = |hex: &str| ChartColor::from_hex(hex).unwrap();
+    Sunburst::new(SunburstNode::group(
+        "root",
+        c("#888888"),
+        vec![
+            SunburstNode::group(
+                "Sales",
+                c("#0072b2"),
+                vec![
+                    SunburstNode::leaf("NA", 30.0, c("#56b4e9")),
+                    SunburstNode::leaf("EU", 20.0, c("#7faedc")),
+                    SunburstNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                ],
+            ),
+            SunburstNode::group(
+                "Marketing",
+                c("#d55e00"),
+                vec![
+                    SunburstNode::leaf("Brand", 12.0, c("#e8853d")),
+                    SunburstNode::leaf("Perf", 18.0, c("#eea063")),
+                ],
+            ),
+            SunburstNode::group(
+                "Eng",
+                c("#009e73"),
+                vec![
+                    SunburstNode::leaf("Platform", 25.0, c("#3eb893")),
+                    SunburstNode::leaf("App", 20.0, c("#71cba8")),
+                ],
+            ),
+        ],
+    ))
+    .ring_width_px(30.0)
+}
+
+/// Candlestick fixture — 8 OHLC periods.
+#[must_use]
+pub fn candlestick_fixture() -> Candlestick {
+    Candlestick::new(vec![
+        Period::new(100.0, 110.0, 95.0, 108.0),
+        Period::new(108.0, 115.0, 105.0, 102.0),
+        Period::new(102.0, 109.0, 100.0, 107.0),
+        Period::new(107.0, 112.0, 103.0, 111.0),
+        Period::new(111.0, 118.0, 109.0, 116.0),
+        Period::new(116.0, 119.0, 112.0, 113.0),
+        Period::new(113.0, 117.0, 110.0, 109.0),
+        Period::new(109.0, 114.0, 106.0, 113.0),
+    ])
+}
+
+/// OHLC fixture — same periods as candlestick.
+#[must_use]
+pub fn ohlc_fixture() -> Ohlc {
+    Ohlc::new(vec![
+        Period::new(100.0, 110.0, 95.0, 108.0),
+        Period::new(108.0, 115.0, 105.0, 102.0),
+        Period::new(102.0, 109.0, 100.0, 107.0),
+        Period::new(107.0, 112.0, 103.0, 111.0),
+        Period::new(111.0, 118.0, 109.0, 116.0),
+        Period::new(116.0, 119.0, 112.0, 113.0),
+        Period::new(113.0, 117.0, 110.0, 109.0),
+        Period::new(109.0, 114.0, 106.0, 113.0),
+    ])
+}
+
+/// Waterfall fixture — P&L bridge.
+#[must_use]
+pub fn waterfall_fixture() -> Waterfall {
+    Waterfall::new(vec![
+        WaterfallRow::summary("Start", 100.0),
+        WaterfallRow::contribution("Revenue", 80.0),
+        WaterfallRow::contribution("COGS", -30.0),
+        WaterfallRow::contribution("Opex", -25.0),
+        WaterfallRow::contribution("Tax", -10.0),
+        WaterfallRow::summary("End", 115.0),
+    ])
+}
+
+/// Table heatmap fixture — 5×8 activity grid.
+#[must_use]
+pub fn table_heatmap_fixture() -> TableHeatmap {
+    let rows = vec![
+        "Mon".into(),
+        "Tue".into(),
+        "Wed".into(),
+        "Thu".into(),
+        "Fri".into(),
+    ];
+    let cols = (0..8).map(|h| format!("{}h", h * 3)).collect();
+    let values = (0..5_usize)
+        .map(|r| {
+            (0..8_usize)
+                .map(|c| {
+                    let modulo = u16::try_from((r * 3 + c * 7) % 11).unwrap_or(0);
+                    let base = f32::from(modulo) / 11.0;
+                    base * 100.0
+                })
+                .collect()
+        })
+        .collect();
+    TableHeatmap::new(rows, cols, values)
+}
+
+/// Calendar heatmap fixture — 2025 with a few hot days.
+#[must_use]
+pub fn calendar_heatmap_fixture() -> CalendarHeatmap {
+    let mut values = Vec::new();
+    // Synth a wave of activity through the year.
+    for month in 1i8..=12 {
+        for day in [3i8, 10, 17, 24] {
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_lossless,
+                reason = "month + day bounded"
+            )]
+            let v = (f32::from(month) * 2.0 + f32::from(day) * 0.3) % 10.0;
+            values.push(CalendarValue::new(date(2025, month, day), v));
+        }
+    }
+    CalendarHeatmap::new(2025, values)
+}
+
+/// Lasagna fixture — 6 entities × 24 hours.
+#[must_use]
+pub fn lasagna_fixture() -> LasagnaHeatmap {
+    let entities = (1..=6).map(|i| format!("entity-{i}")).collect();
+    let times = (0..24).map(|h| format!("{h:02}h")).collect();
+    let values = (0..6_usize)
+        .map(|r| {
+            (0..24_usize)
+                .map(|c| {
+                    let modulo = u16::try_from((r * 5 + c * 3) % 13).unwrap_or(0);
+                    let v = f32::from(modulo) / 13.0;
+                    v * 100.0
+                })
+                .collect()
+        })
+        .collect();
+    LasagnaHeatmap::new(entities, times, values)
+}
+
+/// Baseline fixture — signal crossing zero a few times.
+#[must_use]
+pub fn baseline_fixture() -> BaselineChart {
+    BaselineChart::new(
+        vec![
+            (0.0, 10.0),
+            (1.0, 25.0),
+            (2.0, 15.0),
+            (3.0, -10.0),
+            (4.0, -25.0),
+            (5.0, -5.0),
+            (6.0, 15.0),
+            (7.0, 30.0),
+        ],
+        0.0,
+    )
+}
+
+/// SPLOM fixture — 4 dimensions × 6 rows (mtcars-style).
+#[must_use]
+pub fn splom_fixture() -> Splom {
+    Splom::new(vec![
+        SplomDimension::new("mpg", vec![32.0, 28.0, 22.0, 18.0, 14.0, 12.0]),
+        SplomDimension::new("cyl", vec![4.0, 4.0, 6.0, 6.0, 8.0, 8.0]),
+        SplomDimension::new("hp", vec![95.0, 110.0, 150.0, 200.0, 280.0, 300.0]),
+        SplomDimension::new("wt", vec![2.2, 2.5, 3.0, 3.6, 4.4, 5.0]),
+    ])
+}
+
+/// Box plot fixture — 4 categories with synthetic summaries.
+#[must_use]
+pub fn boxplot_fixture() -> BoxPlot {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    BoxPlot::new(vec![
+        BoxSummary::from_summary("A", 10.0, 20.0, 30.0, 45.0, 60.0, c("#0072b2")),
+        BoxSummary::from_summary("B", 5.0, 18.0, 28.0, 50.0, 70.0, c("#d55e00")),
+        BoxSummary::from_summary("C", 20.0, 35.0, 45.0, 55.0, 80.0, c("#009e73")),
+        BoxSummary::from_summary("D", 12.0, 22.0, 32.0, 42.0, 58.0, c("#cc79a7")),
+    ])
+}
+
+/// Parallel-coordinates fixture — 4 dimensions × 6 rows.
+#[must_use]
+pub fn parallel_coords_fixture() -> ParallelCoords {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    ParallelCoords::new(
+        vec![
+            ParallelAxis::new("mpg", (10.0, 50.0)),
+            ParallelAxis::new("cyl", (3.0, 8.0)),
+            ParallelAxis::new("hp", (60.0, 300.0)),
+            ParallelAxis::new("wt", (1.5, 5.5)),
+        ],
+        vec![
+            ParallelRow::new(vec![32.0, 4.0, 95.0, 2.2], c("#0072b2")),
+            ParallelRow::new(vec![28.0, 4.0, 110.0, 2.5], c("#56b4e9")),
+            ParallelRow::new(vec![22.0, 6.0, 150.0, 3.0], c("#d55e00")),
+            ParallelRow::new(vec![18.0, 6.0, 200.0, 3.6], c("#e8853d")),
+            ParallelRow::new(vec![14.0, 8.0, 280.0, 4.4], c("#009e73")),
+            ParallelRow::new(vec![12.0, 8.0, 300.0, 5.0], c("#3eb893")),
+        ],
+    )
+}
+
+/// Treemap fixture — 2-level org breakdown.
+#[must_use]
+pub fn treemap_fixture() -> Treemap {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    Treemap::new(TreemapNode::group(
+        "root",
+        c("#888888"),
+        vec![
+            TreemapNode::group(
+                "Sales",
+                c("#0072b2"),
+                vec![
+                    TreemapNode::leaf("NA", 30.0, c("#56b4e9")),
+                    TreemapNode::leaf("EU", 20.0, c("#7faedc")),
+                    TreemapNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                ],
+            ),
+            TreemapNode::group(
+                "Eng",
+                c("#d55e00"),
+                vec![
+                    TreemapNode::leaf("Platform", 25.0, c("#e8853d")),
+                    TreemapNode::leaf("App", 18.0, c("#eea063")),
+                    TreemapNode::leaf("Infra", 12.0, c("#f3b890")),
+                ],
+            ),
+            TreemapNode::group(
+                "G&A",
+                c("#009e73"),
+                vec![
+                    TreemapNode::leaf("HR", 8.0, c("#3eb893")),
+                    TreemapNode::leaf("Finance", 6.0, c("#71cba8")),
+                ],
+            ),
+        ],
+    ))
+}
+
+/// Funnel fixture — 4-stage conversion.
+#[must_use]
+pub fn funnel_fixture() -> Funnel {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    Funnel::new(vec![
+        FunnelStage::new("Visited", 10000.0, c("#0072b2")),
+        FunnelStage::new("Signed up", 4000.0, c("#56b4e9")),
+        FunnelStage::new("Activated", 1800.0, c("#7faedc")),
+        FunnelStage::new("Converted", 600.0, c("#a3c7ea")),
+    ])
+}
+
+/// Radar fixture — two products across 5 dimensions.
+#[must_use]
+pub fn radar_fixture() -> Radar {
+    Radar::new(
+        vec![
+            RadarAxis::new("speed", (0.0, 100.0)),
+            RadarAxis::new("range", (0.0, 100.0)),
+            RadarAxis::new("comfort", (0.0, 100.0)),
+            RadarAxis::new("efficiency", (0.0, 100.0)),
+            RadarAxis::new("price", (0.0, 100.0)),
+        ],
+        vec![
+            RadarSeries::new(
+                "Model A",
+                vec![80.0, 70.0, 60.0, 90.0, 50.0],
+                ChartColor::from_hex("#0072b2").unwrap(),
+            ),
+            RadarSeries::new(
+                "Model B",
+                vec![60.0, 85.0, 80.0, 70.0, 75.0],
+                ChartColor::from_hex("#d55e00").unwrap(),
+            ),
+        ],
+    )
 }

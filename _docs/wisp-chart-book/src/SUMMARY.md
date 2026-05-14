@@ -3,6 +3,7 @@
 [Introduction](./intro.md)
 [Quickstart](./quickstart.md)
 [Where this book sits](./cross-link-convention.md)
+[Chart gallery](./charts/gallery.md)
 
 # Foundations
 
@@ -27,6 +28,40 @@
 - [KPI card](./charts/kpi.md)
 - [Gauge chart](./charts/gauge.md)
 - [Bullet chart](./charts/bullet.md)
+
+# Polar charts
+
+- [Pie / donut chart](./charts/pie.md)
+- [Sunburst chart](./charts/sunburst.md)
+- [Radar chart](./charts/radar.md)
+
+# Finance + variant marks
+
+- [Candlestick chart](./charts/candlestick.md)
+- [OHLC bar chart](./charts/ohlc.md)
+- [Waterfall chart](./charts/waterfall.md)
+- [Baseline chart](./charts/baseline.md)
+
+# Heatmaps
+
+- [Table heatmap](./charts/table-heatmap.md)
+- [Calendar heatmap](./charts/calendar-heatmap.md)
+- [Lasagna plot](./charts/lasagna.md)
+
+# Topology
+
+- [Treemap](./charts/treemap.md)
+- [Funnel chart](./charts/funnel.md)
+
+# Distributions
+
+- [Box plot](./charts/boxplot.md)
+- [Parallel coordinates](./charts/parallel-coords.md)
+
+# Multi-view
+
+- [Trellis / small multiples](./charts/trellis.md)
+- [Scatterplot matrix (SPLOM)](./charts/splom.md)
 
 # Gantt
 
