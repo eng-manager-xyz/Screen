@@ -12,6 +12,7 @@ use wisp_chart::heatmap::{CalendarHeatmap, CalendarValue, LasagnaHeatmap, TableH
 use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Zone};
 use wisp_chart::plot::{DataFrame, Value};
 use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
+use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
 
 /// Bar fixture — 4-quarter single-series revenue.
 #[must_use]
@@ -405,6 +406,56 @@ pub fn baseline_fixture() -> BaselineChart {
         ],
         0.0,
     )
+}
+
+/// Treemap fixture — 2-level org breakdown.
+#[must_use]
+pub fn treemap_fixture() -> Treemap {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    Treemap::new(TreemapNode::group(
+        "root",
+        c("#888888"),
+        vec![
+            TreemapNode::group(
+                "Sales",
+                c("#0072b2"),
+                vec![
+                    TreemapNode::leaf("NA", 30.0, c("#56b4e9")),
+                    TreemapNode::leaf("EU", 20.0, c("#7faedc")),
+                    TreemapNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                ],
+            ),
+            TreemapNode::group(
+                "Eng",
+                c("#d55e00"),
+                vec![
+                    TreemapNode::leaf("Platform", 25.0, c("#e8853d")),
+                    TreemapNode::leaf("App", 18.0, c("#eea063")),
+                    TreemapNode::leaf("Infra", 12.0, c("#f3b890")),
+                ],
+            ),
+            TreemapNode::group(
+                "G&A",
+                c("#009e73"),
+                vec![
+                    TreemapNode::leaf("HR", 8.0, c("#3eb893")),
+                    TreemapNode::leaf("Finance", 6.0, c("#71cba8")),
+                ],
+            ),
+        ],
+    ))
+}
+
+/// Funnel fixture — 4-stage conversion.
+#[must_use]
+pub fn funnel_fixture() -> Funnel {
+    let c = |hex| ChartColor::from_hex(hex).unwrap();
+    Funnel::new(vec![
+        FunnelStage::new("Visited", 10000.0, c("#0072b2")),
+        FunnelStage::new("Signed up", 4000.0, c("#56b4e9")),
+        FunnelStage::new("Activated", 1800.0, c("#7faedc")),
+        FunnelStage::new("Converted", 600.0, c("#a3c7ea")),
+    ])
 }
 
 /// Radar fixture — two products across 5 dimensions.

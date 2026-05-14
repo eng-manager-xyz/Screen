@@ -47,6 +47,11 @@
 - [Calendar heatmap](./charts/calendar-heatmap.md)
 - [Lasagna plot](./charts/lasagna.md)
 
+# Topology
+
+- [Treemap](./charts/treemap.md)
+- [Funnel chart](./charts/funnel.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

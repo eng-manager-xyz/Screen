@@ -68,6 +68,10 @@ pub enum ChartId {
     CalendarHeatmap,
     /// Lasagna heatmap.
     Lasagna,
+    /// Treemap (hierarchical rectangles).
+    Treemap,
+    /// Funnel (staged conversion bands).
+    Funnel,
 }
 
 impl ChartId {
@@ -101,6 +105,8 @@ impl ChartId {
             "table-heatmap" | "heatmap" => Some(Self::TableHeatmap),
             "calendar-heatmap" | "calendar" => Some(Self::CalendarHeatmap),
             "lasagna" => Some(Self::Lasagna),
+            "treemap" => Some(Self::Treemap),
+            "funnel" => Some(Self::Funnel),
             _ => None,
         }
     }
@@ -305,6 +311,16 @@ pub fn render_chart_to_view(
         ChartId::Lasagna => {
             let l = fixtures::lasagna_fixture();
             let graphics = l.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Treemap => {
+            let t = fixtures::treemap_fixture();
+            let graphics = t.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
+        }
+        ChartId::Funnel => {
+            let f = fixtures::funnel_fixture();
+            let graphics = f.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
         }
     }
