@@ -4,6 +4,10 @@
 [Quickstart](./quickstart.md)
 [Where this book sits](./cross-link-convention.md)
 
+# Foundations
+
+- [Theme](./charts/theme.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

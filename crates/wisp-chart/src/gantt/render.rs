@@ -46,7 +46,7 @@ impl Gantt {
             let fill = resolve_bar_fill(self, theme, &bar.owner);
             g.fill(Fill::Solid(fill));
             let ndc = pixel_rect_to_ndc(rect_px, viewport_px);
-            let corner_ndc = theme.bar_corner_radius / viewport_px.y * 2.0;
+            let corner_ndc = theme.gantt.bar_corner_radius / viewport_px.y * 2.0;
             g.draw_rounded_rect(ndc, corner_ndc);
         }
 
