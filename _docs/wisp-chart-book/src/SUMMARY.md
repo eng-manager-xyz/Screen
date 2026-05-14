@@ -15,6 +15,7 @@
 # Mark types
 
 - [Line chart](./charts/line.md)
+- [Grouped bar chart](./charts/grouped-bar.md)
 
 # Gantt
 

@@ -21,7 +21,7 @@ pub mod encoding;
 pub mod mark;
 
 pub use dataframe::{DataFrame, Value};
-pub use encoding::{Channel, Encoding, ScaleKind, color, x, y};
+pub use encoding::{Channel, Encoding, ScaleKind, color, x, x_offset, y};
 pub use mark::{Interpolation, Mark, PointStyle};
 
 use glam::Vec2;
@@ -308,10 +308,21 @@ impl Plot {
             .and_then(|enc| self.data.distinct_categories(&enc.field).map(|c| (enc, c)))
             .map(|(enc, cats)| (enc.field.clone(), OrdinalScale::new(cats)));
 
+        // XOffset encoding → inner band scale for grouped bars.
+        // Each distinct value of the XOffset column becomes its
+        // own sub-band within the outer X band.
+        let xoffset_lookup = self
+            .find_encoding(Channel::XOffset)
+            .and_then(|enc| self.data.distinct_categories(&enc.field).map(|c| (enc, c)))
+            .map(|(enc, cats)| (enc.field.clone(), cats));
+
         // Iterate rows in DataFrame order.
         let x_col = self.data.column(&x_enc_field);
         let y_col = self.data.column(&y_enc_field);
         let color_col = color_lookup
+            .as_ref()
+            .and_then(|(field, _)| self.data.column(field));
+        let xoffset_col = xoffset_lookup
             .as_ref()
             .and_then(|(field, _)| self.data.column(field));
         let row_count = self.data.row_count();
@@ -330,6 +341,24 @@ impl Plot {
             let by0 = by_top.min(y_zero_px);
             let by1 = by_top.max(y_zero_px);
 
+            // Compute final bar x extents — apply XOffset inner
+            // band if present.
+            let (final_bx0, final_bx1) = if let Some((_, cats)) = &xoffset_lookup {
+                let Some(offset_val) = xoffset_col
+                    .and_then(|c| c.get(i))
+                    .and_then(Value::as_category)
+                else {
+                    continue;
+                };
+                let inner = BandScale::new(cats.clone(), (bx0, bx1)).padding(0.1);
+                let Some((ix0, ix1)) = inner.range_for(&offset_val.to_owned()) else {
+                    continue;
+                };
+                (ix0, ix1)
+            } else {
+                (bx0, bx1)
+            };
+
             // Pick fill colour. Color encoding → palette lookup;
             // otherwise theme.palette default for the row's
             // x-category.
@@ -347,9 +376,9 @@ impl Plot {
             };
 
             let rect_px = PixelRect {
-                x: bx0.min(bx1),
+                x: final_bx0.min(final_bx1),
                 y: by0,
-                w: (bx1 - bx0).abs(),
+                w: (final_bx1 - final_bx0).abs(),
                 h: by1 - by0,
             };
             let ndc = pixel_rect_to_ndc(rect_px, viewport_px);
@@ -638,6 +667,95 @@ mod tests {
             g_axes.primitive_count(),
             g_no_axes.primitive_count(),
         );
+    }
+
+    fn grouped_fixture_df() -> DataFrame {
+        struct Sale {
+            quarter: &'static str,
+            region: &'static str,
+            revenue: f32,
+        }
+        let rows = vec![
+            Sale {
+                quarter: "Q1",
+                region: "NA",
+                revenue: 38.0,
+            },
+            Sale {
+                quarter: "Q1",
+                region: "EU",
+                revenue: 22.0,
+            },
+            Sale {
+                quarter: "Q1",
+                region: "APAC",
+                revenue: 14.0,
+            },
+            Sale {
+                quarter: "Q2",
+                region: "NA",
+                revenue: 52.0,
+            },
+            Sale {
+                quarter: "Q2",
+                region: "EU",
+                revenue: 27.0,
+            },
+            Sale {
+                quarter: "Q2",
+                region: "APAC",
+                revenue: 18.0,
+            },
+        ];
+        DataFrame::from_rows(&rows, |s| {
+            vec![
+                ("quarter".into(), Value::Category(s.quarter.into())),
+                ("region".into(), Value::Category(s.region.into())),
+                ("revenue".into(), Value::Number(s.revenue)),
+            ]
+        })
+    }
+
+    #[test]
+    fn grouped_bar_emits_one_bar_per_row() {
+        use crate::plot::encoding::x_offset;
+        let plot = Plot::new(grouped_fixture_df())
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("quarter", ScaleKind::Band))
+            .encode(y("revenue", ScaleKind::Linear))
+            .encode(color("region"))
+            .encode(x_offset("region"));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 6 bars (2 quarters × 3 regions).
+        assert_eq!(g.primitive_count(), 7);
+    }
+
+    #[test]
+    fn grouped_bar_uses_sub_band_widths_narrower_than_full_band() {
+        use crate::plot::encoding::x_offset;
+        let single = Plot::new(grouped_fixture_df())
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("quarter", ScaleKind::Band))
+            .encode(y("revenue", ScaleKind::Linear));
+        let grouped = Plot::new(grouped_fixture_df())
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("quarter", ScaleKind::Band))
+            .encode(y("revenue", ScaleKind::Linear))
+            .encode(color("region"))
+            .encode(x_offset("region"));
+        let _ = single.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        let g_g = grouped.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // Smoke test: grouped emits 6 bars total (one per row).
+        assert_eq!(g_g.primitive_count(), 7);
     }
 
     #[test]

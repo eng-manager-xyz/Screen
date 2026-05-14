@@ -36,6 +36,10 @@ pub enum Channel {
     Y,
     /// Mark fill / stroke colour.
     Color,
+    /// Sub-band offset within the X band (grouped bar charts).
+    /// Re-bands the outer X scale into one inner band per
+    /// distinct value of this encoding's column.
+    XOffset,
 }
 
 /// One encoding — a channel + column + scale kind, optionally
@@ -95,4 +99,12 @@ pub fn y(field: impl Into<String>, kind: ScaleKind) -> Encoding {
 #[must_use]
 pub fn color(field: impl Into<String>) -> Encoding {
     Encoding::new(Channel::Color, field).scale(ScaleKind::Ordinal)
+}
+
+/// Convenience: `Encoding::new(Channel::XOffset, field).scale(Band)`.
+/// Use to enable grouped-bar layout — each distinct value of `field`
+/// gets its own sub-band within the outer X band.
+#[must_use]
+pub fn x_offset(field: impl Into<String>) -> Encoding {
+    Encoding::new(Channel::XOffset, field).scale(ScaleKind::Band)
 }

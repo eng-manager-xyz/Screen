@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.7 — Grouped bar chart (AUT-187)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot` supports `Encoding::XOffset(field)` which re-bands the X scale into per-series sub-bands within each outer X band. Branch `chart-axis-legend`.
+- **Linear:** [AUT-187](https://linear.app/harwood/issue/AUT-187).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `Channel::XOffset` variant. New convenience `plot::x_offset(field)` builder.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — `render_bars` builds an inner `BandScale<String>` over the XOffset column's distinct values within each row's outer X band (10% inner padding). Pairs naturally with `Color` encoding so each series carries a palette colour. 2 new tests: 6-bar count for 2 quarters × 3 regions, smoke test for grouped layout.
+  - **`_docs/wisp-chart-book/src/charts/grouped-bar.md`** — new chapter under "Mark types" in SUMMARY.md. Explains the layout, pairing with `Plot::legend`.
+- **Verified:** `cargo test -p wisp-chart --lib` → 97/97 green. `just gate` → green end-to-end.
+- **What this unlocks:** AUT-188 stacked bar reuses the same iteration loop with a `Transform::Stack` accumulator; same renderer path. Multi-region revenue dashboards (Q1..Q4 × {NA, EU, APAC}) render in 5 lines.
+
+---
+
 ## M-CHART.9 — Line chart mark (AUT-189)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Plot` now supports `Mark::Line { interpolation, marker }` with `Interpolation::Linear` + `Step` and optional `PointStyle::Circle` markers. Multi-series via `Color` encoding splits rows by colour category and emits one polyline per series. Branch `chart-axis-legend`.
