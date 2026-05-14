@@ -5,7 +5,9 @@ Stephen Few's compact performance-vs-target chart. A horizontal
 it, a target marker line, and the current value as a thinner
 foreground bar.
 
-![Bullet chart — value 270 against target 250 with 3 qualitative bands](../assets/wisp-chart-web/bullet.png)
+<div style="position: relative; aspect-ratio: 400 / 80; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/bullet.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=bullet" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: bullet chart"></iframe>
+</div>
 
 ## Public surface
 

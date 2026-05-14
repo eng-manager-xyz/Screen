@@ -3,7 +3,9 @@
 A dashboard summary tile: one big number, a one-line label, a
 colour-coded delta, optional sparkline.
 
-![KPI card — Monthly Active Users, +12.4%, with sparkline](../assets/wisp-chart-web/kpi.png)
+<div style="position: relative; aspect-ratio: 320 / 200; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/kpi.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=kpi" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: KPI card"></iframe>
+</div>
 
 ## Public surface
 

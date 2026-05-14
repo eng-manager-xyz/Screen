@@ -4,7 +4,9 @@ A semicircular gauge — value vs target with colour-coded
 threshold zones and a needle indicator. The default ops/SLA
 dashboard chart.
 
-![Semicircle gauge at 73% with 3 threshold zones](../assets/wisp-chart-web/gauge.png)
+<div style="position: relative; aspect-ratio: 320 / 200; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/gauge.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
+  <iframe src="../demo/?chart=gauge" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: gauge chart"></iframe>
+</div>
 
 ## Public surface
 

@@ -50,6 +50,7 @@ web-sys = { version = "0.3", features = [
     "Element",
     "HtmlCanvasElement",
     "HtmlElement",
+    "Location",
     "Node",
     "Window",
     "console",

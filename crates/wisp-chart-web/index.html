@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -14,14 +14,23 @@
         margin: 0;
         padding: 0;
         font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-          Arial, sans-serif;
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
         background: #ffffff;
         color: #222222;
       }
       header {
         padding: 1rem 1.5rem;
         border-bottom: 1px solid #e5e5e5;
+        display: none;
+      }
+      body.standalone header {
+        display: block;
       }
       header h1 {
         margin: 0;
@@ -34,24 +43,31 @@
         color: #666;
       }
       main {
+        padding: 0;
+      }
+      body.standalone main {
         padding: 1.5rem;
       }
+      /* Canvas sized via CSS to fill its container. The actual
+         WebGPU surface backing it is set by the wasm bring-up
+         using canvas.width / canvas.height (intrinsic pixels). */
       #wisp-chart-canvas {
         display: block;
-        width: 1920px;
-        max-width: 100%;
-        height: 800px;
+        width: 100%;
+        height: 100%;
         background: #fafafa;
-        border: 1px solid #e5e5e5;
         box-sizing: border-box;
       }
       #status {
-        margin-top: 1rem;
+        margin-top: 0.5rem;
         font-size: 0.85rem;
         color: #888;
       }
       #status[data-state="error"] {
         color: #d55e00;
+      }
+      body.standalone #status {
+        margin: 1rem 1.5rem 0;
       }
       noscript {
         color: #d55e00;
@@ -63,20 +79,27 @@
     <header>
       <h1>wisp-chart — WebGPU demo</h1>
       <p>
-        Native Rust → WebAssembly → wgpu (BROWSER_WEBGPU) → HTML
-        canvas. Same crate as the native renderer.
+        Native Rust → WebAssembly → wgpu (BROWSER_WEBGPU) → HTML canvas. Use
+        <code>?chart=&lt;id&gt;</code> to swap demos. Known ids: gantt, bar,
+        line, grouped-bar, stacked-bar, scatter, bubble, area,
+        connected-scatter, kpi, gauge, bullet.
       </p>
     </header>
     <main>
       <noscript>This demo requires JavaScript + WebGPU.</noscript>
-      <canvas id="wisp-chart-canvas" width="1920" height="800"></canvas>
+      <canvas id="wisp-chart-canvas" width="960" height="640"></canvas>
       <p id="status">Loading wisp-chart-web.wasm…</p>
     </main>
     <script>
-      // Lightweight WebGPU probe. The Rust side will overwrite the
-      // status text once it gets going; this just gives a clear
-      // message in browsers that lack WebGPU entirely.
+      // Lightweight WebGPU probe + standalone-vs-iframe detection.
+      // - When loaded as the top page (no parent), enable the
+      //   header + padding for a friendly standalone view.
+      // - When loaded inside an <iframe>, strip the chrome so the
+      //   chart is the only thing rendered.
       (function () {
+        if (window.self === window.top) {
+          document.body.classList.add("standalone");
+        }
         const status = document.getElementById("status");
         if (!navigator.gpu) {
           status.textContent =

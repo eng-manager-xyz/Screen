@@ -52,7 +52,12 @@ fn shared_re() -> &'static Regex {
 
 fn asset_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r#"!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)""#).unwrap())
+    // Three capture groups: `![alt](path)` markdown, `src="path"`
+    // HTML attribute, `url('path')` / `url("path")` CSS value
+    // (typically inline `style="background: url(...)"`).
+    R.get_or_init(|| {
+        Regex::new(r#"!\[[^\]]*\]\(([^)]+)\)|src="([^"]+)"|url\(['"]?([^'")]+)['"]?\)"#).unwrap()
+    })
 }
 
 /// Walk `book_roots` and assert every `{{shared X}}` reference
@@ -103,7 +108,12 @@ pub fn check_snapshots(book_roots: &[&Path]) -> Vec<Issue> {
             let chapter_dir = md.parent().unwrap_or(Path::new("."));
             for_each_prose_line(&text, |line| {
                 for cap in asset_re().captures_iter(line) {
-                    let r = cap.get(1).or_else(|| cap.get(2)).unwrap().as_str();
+                    let r = cap
+                        .get(1)
+                        .or_else(|| cap.get(2))
+                        .or_else(|| cap.get(3))
+                        .unwrap()
+                        .as_str();
                     if r.starts_with("http://") || r.starts_with("https://") {
                         continue;
                     }
@@ -575,6 +585,37 @@ mod tests {
         let issues = check_snapshots(&[src.as_path()]);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].reference, "assets/real.png");
+    }
+
+    #[test]
+    fn check_snapshots_catches_css_url_refs() {
+        // CSS `url('path')` inside an inline `style="background:
+        // url(...)"` is the pattern wisp-chart's chapters use to
+        // place a PNG behind the live-WebGPU <iframe>. The gate
+        // must fail the build when that PNG is missing — same
+        // contract as `![](path)`.
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("book/src");
+        write(
+            src.join("chap.md"),
+            "<div style=\"background: url('assets/missing.png');\"></div>\n",
+        );
+        let issues = check_snapshots(&[src.as_path()]);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].reference, "assets/missing.png");
+    }
+
+    #[test]
+    fn check_snapshots_passes_css_url_when_asset_exists() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("book/src");
+        write(
+            src.join("chap.md"),
+            "<div style=\"background: url('assets/exists.png');\"></div>\n",
+        );
+        write(src.join("assets/exists.png"), "fake-png-bytes");
+        let issues = check_snapshots(&[src.as_path()]);
+        assert!(issues.is_empty(), "got {issues:?}");
     }
 
     #[test]
