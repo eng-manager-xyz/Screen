@@ -10,7 +10,7 @@
 //! 3. `run()` builds the wgpu surface from the canvas, hands the
 //!    context to a `wisp::Application`, then calls
 //!    [`crate::render_chart_to_view`] which dispatches to the
-//!    right per-chart fixture + emit_graphics path.
+//!    right per-chart fixture + `emit_graphics` path.
 //! 4. `frame.present()` posts the rendered chart to the canvas.
 //!
 //! Pages embedded in iframes typically pass `?chart=line` etc.
@@ -71,9 +71,7 @@ fn chart_id_from_url(window: &web_sys::Window) -> Option<ChartId> {
     let search = window.location().search().ok()?;
     let trimmed = search.trim_start_matches('?');
     for pair in trimmed.split('&') {
-        let mut kv = pair.splitn(2, '=');
-        let key = kv.next()?;
-        let value = kv.next()?;
+        let (key, value) = pair.split_once('=')?;
         if key.eq_ignore_ascii_case("chart") {
             return ChartId::parse(value);
         }
