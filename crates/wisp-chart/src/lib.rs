@@ -28,6 +28,7 @@
 pub mod axis;
 pub mod color;
 pub mod gantt;
+pub mod indicator;
 pub mod legend;
 pub mod palette;
 pub mod plot;

@@ -22,6 +22,10 @@
 - [Area chart](./charts/area.md)
 - [Connected scatterplot](./charts/connected-scatter.md)
 
+# Indicators
+
+- [KPI card](./charts/kpi.md)
+
 # Gantt
 
 - [Gantt overview](./charts/gantt/overview.md)

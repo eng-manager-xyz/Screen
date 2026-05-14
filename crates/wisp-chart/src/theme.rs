@@ -89,12 +89,20 @@ pub struct LegendTheme {
 pub struct IndicatorTheme {
     /// Big-number font size for KPI value displays.
     pub numeric_font_size: f32,
+    /// Label font size (the description under the big number).
+    pub label_font_size: f32,
+    /// Delta-text font size.
+    pub delta_font_size: f32,
     /// Colour for positive deltas (up arrows, green-positive).
     pub delta_up: Color,
     /// Colour for negative deltas (down arrows, red-negative).
     pub delta_down: Color,
     /// Colour for neutral deltas / no-change indicators.
     pub delta_neutral: Color,
+    /// Sparkline stroke colour.
+    pub sparkline_color: Color,
+    /// Sparkline stroke width in device pixels.
+    pub sparkline_width_px: f32,
 }
 
 /// Gantt-specific dimensions and style. Other chart families
@@ -192,9 +200,13 @@ impl Theme {
             },
             indicator: IndicatorTheme {
                 numeric_font_size: 32.0,
+                label_font_size: 14.0,
+                delta_font_size: 12.0,
                 delta_up: Color::from_hex("#27ae60").unwrap(),
                 delta_down: Color::from_hex("#e74c3c").unwrap(),
                 delta_neutral: Color::from_hex("#888888").unwrap(),
+                sparkline_color: Color::from_hex("#3a8ddb").unwrap(),
+                sparkline_width_px: 1.5,
             },
             gantt: GanttTheme {
                 row_alt_bg: Color::from_hex("#fafafa"),
