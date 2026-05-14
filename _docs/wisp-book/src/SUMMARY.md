@@ -14,6 +14,7 @@
   - [Animated click ripple](./wisp/chunks/graphics-ellipse.md)
   - [Gradient fills](./wisp/chunks/graphics-gradients.md)
   - [Bitmap text](./wisp/chunks/text-bitmap.md)
+  - [Text rotation](./wisp/chunks/text-rotation.md)
   - [Blur filter](./wisp/chunks/filter-blur.md)
   - [Drop shadow](./wisp/chunks/filter-drop-shadow.md)
   - [Motion blur](./wisp/chunks/filter-motion-blur.md)
