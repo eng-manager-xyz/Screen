@@ -8,6 +8,7 @@ mod s_color_matrix;
 mod s_dim_outside;
 mod s_drop_shadow;
 mod s_ellipse;
+mod s_graphics_arc;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
 mod s_graphics_rounded;
@@ -60,6 +61,7 @@ pub fn all_stories() -> Vec<Story> {
         s_text_mask::story(),
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
+        s_graphics_arc::story(),
         s_graphics_gradients::story(),
         s_blur_filter::story(),
         s_drop_shadow::story(),

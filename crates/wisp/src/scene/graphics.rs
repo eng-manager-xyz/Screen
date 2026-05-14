@@ -91,6 +91,23 @@ pub(crate) enum Primitive {
         width: f32,
         fill: Fill,
     },
+    /// Annular sector — pie slice (`r_inner = 0`), donut slice
+    /// (`r_inner > 0`), or stroked arc (`r_outer - r_inner` =
+    /// stroke band thickness).
+    ///
+    /// Angles are radians; `0` aligns with `+x`, CCW positive.
+    /// `start_angle < end_angle`; angular span clamps to
+    /// `[0, 2π]`. When `end - start ≥ 2π` the primitive becomes a
+    /// full ring (or filled disc when `r_inner = 0`).
+    AnnularSector {
+        center: Vec2,
+        r_inner: f32,
+        r_outer: f32,
+        start_angle: f32,
+        end_angle: f32,
+        fill: Fill,
+        stroke: Option<Stroke>,
+    },
 }
 
 /// Vector-primitive node. Holds an ordered list of primitives sharing the
@@ -165,6 +182,57 @@ impl Graphics {
             to,
             width,
             fill: self.current_fill,
+        });
+        self
+    }
+
+    /// Append a filled (and optionally stroked) annular sector —
+    /// a pie slice (when `r_inner = 0`) or donut slice. Angles in
+    /// radians, `0 = +x` axis, CCW positive. The angular span is
+    /// `end_angle - start_angle`; values are clamped to
+    /// `[0, 2π]`.
+    pub fn draw_annular_sector(
+        &mut self,
+        center: Vec2,
+        r_inner: f32,
+        r_outer: f32,
+        start_angle: f32,
+        end_angle: f32,
+    ) -> &mut Self {
+        self.primitives.push(Primitive::AnnularSector {
+            center,
+            r_inner,
+            r_outer,
+            start_angle,
+            end_angle,
+            fill: self.current_fill,
+            stroke: self.current_stroke,
+        });
+        self
+    }
+
+    /// Append a stroked arc — circular segment of the given
+    /// `radius`, drawn with `stroke_width` band thickness from
+    /// `start_angle` to `end_angle`. Internally an annular sector
+    /// with `r_inner = radius - stroke_width / 2`,
+    /// `r_outer = radius + stroke_width / 2`.
+    pub fn draw_arc(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        start_angle: f32,
+        end_angle: f32,
+        stroke_width: f32,
+    ) -> &mut Self {
+        let half = stroke_width * 0.5;
+        self.primitives.push(Primitive::AnnularSector {
+            center,
+            r_inner: (radius - half).max(0.0),
+            r_outer: radius + half,
+            start_angle,
+            end_angle,
+            fill: self.current_fill,
+            stroke: None,
         });
         self
     }
