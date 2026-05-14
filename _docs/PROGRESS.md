@@ -6,6 +6,24 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.13..16 — Connected scatter + KPI + Gauge + Bullet (AUT-193..196)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — final wave of P1 chart tickets. Branch `chart-p1-finish`. 4 commits, all gates green throughout.
+- **Linear:** [AUT-193](https://linear.app/harwood/issue/AUT-193) Connected scatter · [AUT-194](https://linear.app/harwood/issue/AUT-194) KPI · [AUT-195](https://linear.app/harwood/issue/AUT-195) Gauge · [AUT-196](https://linear.app/harwood/issue/AUT-196) Bullet.
+- **Files:**
+  - **AUT-193 (Connected scatter):** `Channel::Order` + `plot::order(field)`. `render_lines` now routes to `continuous_xy_series` (Linear/Log/Time X) or `band_xy_series` (categorical X) based on the X scale kind. Continuous path sorts each series by the Order column before emission. New `SeriesPoints` type alias keeps signatures concise. Chapter: `connected-scatter.md`.
+  - **AUT-194 (KPI):** New `crates/wisp-chart/src/indicator/` module — `Kpi { value, label, delta, sparkline }`, `Delta`, `DeltaKind { Up, Down, Neutral }`, `format_value` (1.23M / 456K / 789). Sparkline is `wisp::Graphics`, big-value + label + delta are `wisp::Text` via separate `emit_*` methods. IndicatorTheme grows `label_font_size`, `delta_font_size`, `sparkline_color`, `sparkline_width_px`. Chapter: `kpi.md`.
+  - **AUT-195 (Gauge):** `indicator::Gauge { value, domain, zones }` + `Zone { range, color }`. Reuses `wisp::Graphics::draw_annular_sector` from AUT-224 for track + zones; needle + hub use `draw_line` + `draw_ellipse`. `angle_for(value)`: domain min → π, max → 0. IndicatorTheme grows `gauge_track_width_px` + `gauge_needle_color`. Chapter: `gauge.md`.
+  - **AUT-196 (Bullet):** `indicator::Bullet { value, target, ranges: [f32; 3], orientation }` + `Orientation { Horizontal, Vertical }`. Three qualitative bands paint from 0 to each threshold (visible band = diff from previous); value bar is 40% of band thickness; target is a contrasting line. IndicatorTheme grows `bullet_{poor, ok, good, value, target}_color`. Chapter: `bullet.md`.
+  - **SUMMARY.md** adds an "Indicators" section linking all three; `connected-scatter.md` slots into the existing "Mark types" group.
+- **Verified:**
+  - `cargo test -p wisp-chart --lib` → 119/119 green (105 baseline → +14 net new).
+  - `just gate` green end-to-end after each commit (4 successful loops, several fmt + clippy fixes inside each loop — see commits for the recursive-fix discipline).
+- **What this closes:** the M-CHART P1 milestone. AUT-180..196 are all Done; remaining work is the P2 chart wave (M-CHART.17..42).
+- **Anti-patterns earned:** `wisp::math::Rect` is a value type without a `Default` impl — code that idiomatically defaulted via `Rect::default()` for a side-effect-only call (e.g. silencing unused-import noise) compiles fine until the import is removed, then fails confusingly with "associated function or constant not found". The fix is to just stop importing `Rect` when not used; don't add a placeholder call. Caught twice in this session (gauge.rs originally had a stray `let _ = Rect::default();` — removed in the same loop).
+
+---
+
 ## M-CHART.10 — Area chart mark (AUT-190)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Mark::Area { interpolation }` renders the region between a line and the baseline as filled quads. Branch `chart-axis-legend`.
