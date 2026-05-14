@@ -78,6 +78,7 @@ embedded inside each.
   <a class="card" href="../wisp-chart/charts/pie.html"><img loading="lazy" src="../assets/wisp-chart-web/pie.png" alt="Pie"><div class="label">Pie / donut</div><div class="desc">Categorical proportions</div></a>
   <a class="card" href="../wisp-chart/charts/sunburst.html"><img loading="lazy" src="../assets/wisp-chart-web/sunburst.png" alt="Sunburst"><div class="label">Sunburst</div><div class="desc">Radial hierarchy</div></a>
   <a class="card" href="../wisp-chart/charts/radar.html"><img loading="lazy" src="../assets/wisp-chart-web/radar.png" alt="Radar"><div class="label">Radar</div><div class="desc">Multi-axis polygon overlay</div></a>
+  <a class="card" href="../wisp-chart/charts/polar.html"><img loading="lazy" src="../assets/wisp-chart-web/polar.png" alt="Polar plot"><div class="label">Polar plot</div><div class="desc">Wind-rose / angular sectors</div></a>
 </div>
 
 ## Heatmaps
@@ -101,6 +102,7 @@ embedded inside each.
 <div class="wisp-chart-gallery">
   <a class="card" href="../wisp-chart/charts/boxplot.html"><img loading="lazy" src="../assets/wisp-chart-web/boxplot.png" alt="Box plot"><div class="label">Box plot</div><div class="desc">5-number summary per category</div></a>
   <a class="card" href="../wisp-chart/charts/parallel-coords.html"><img loading="lazy" src="../assets/wisp-chart-web/parallel-coords.png" alt="Parallel coordinates"><div class="label">Parallel coordinates</div><div class="desc">N axes polyline overlay</div></a>
+  <a class="card" href="../wisp-chart/charts/error-bars.html"><img loading="lazy" src="../assets/wisp-chart-web/error-bars.png" alt="Error bars overlay"><div class="label">Error bars</div><div class="desc">Uncertainty whiskers on bar / point / line</div></a>
 </div>
 
 ## Gantt

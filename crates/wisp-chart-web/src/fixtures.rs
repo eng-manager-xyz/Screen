@@ -16,7 +16,9 @@ use wisp_chart::indicator::{Bullet, Delta, DeltaKind, Gauge, Kpi, Orientation, Z
 use wisp_chart::multi::{Splom, SplomDimension};
 use wisp_chart::overlay::{ErrorBars, ErrorPoint};
 use wisp_chart::plot::{DataFrame, Value};
-use wisp_chart::polar::{Pie, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode};
+use wisp_chart::polar::{
+    Pie, PolarPlot, Radar, RadarAxis, RadarSeries, Slice, Sunburst, SunburstNode,
+};
 use wisp_chart::topology::{Funnel, FunnelStage, Treemap, TreemapNode};
 
 /// Bar fixture — 4-quarter single-series revenue.
@@ -474,6 +476,24 @@ pub fn parallel_coords_fixture() -> ParallelCoords {
             ParallelRow::new(vec![14.0, 8.0, 280.0, 4.4], c("#009e73")),
             ParallelRow::new(vec![12.0, 8.0, 300.0, 5.0], c("#3eb893")),
         ],
+    )
+}
+
+/// Polar plot fixture — wind rose (8 compass directions × hours).
+#[must_use]
+pub fn polar_plot_fixture() -> PolarPlot {
+    PolarPlot::new(
+        vec![
+            "N".into(),
+            "NE".into(),
+            "E".into(),
+            "SE".into(),
+            "S".into(),
+            "SW".into(),
+            "W".into(),
+            "NW".into(),
+        ],
+        vec![12.0, 18.0, 22.0, 30.0, 25.0, 16.0, 14.0, 8.0],
     )
 }
 

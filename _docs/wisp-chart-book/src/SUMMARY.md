@@ -34,6 +34,7 @@
 - [Pie / donut chart](./charts/pie.md)
 - [Sunburst chart](./charts/sunburst.md)
 - [Radar chart](./charts/radar.md)
+- [Polar coordinate plot](./charts/polar.md)
 
 # Finance + variant marks
 

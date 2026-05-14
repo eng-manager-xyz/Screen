@@ -80,6 +80,8 @@ pub enum ChartId {
     Splom,
     /// Bar chart with error-bar overlay.
     ErrorBars,
+    /// Polar coordinate plot (wind-rose style).
+    Polar,
 }
 
 impl ChartId {
@@ -119,6 +121,7 @@ impl ChartId {
             "parallel-coords" | "parallel" => Some(Self::ParallelCoords),
             "splom" => Some(Self::Splom),
             "error-bars" | "errorbars" => Some(Self::ErrorBars),
+            "polar" | "polar-plot" | "wind-rose" => Some(Self::Polar),
             _ => None,
         }
     }
@@ -375,6 +378,11 @@ pub fn render_chart_to_view(
             let bars = fixtures::error_bars_fixture();
             let overlay = bars.emit_graphics_in_rect(&theme, viewport_px, plot_rect);
             let _ = app.stage_mut().add_child(root, overlay);
+        }
+        ChartId::Polar => {
+            let plot = fixtures::polar_plot_fixture();
+            let graphics = plot.emit_graphics(&theme, viewport_px);
+            let _ = app.stage_mut().add_child(root, graphics);
         }
     }
 
