@@ -28,9 +28,11 @@
 pub mod color;
 pub mod gantt;
 pub mod palette;
+pub mod scale;
 pub mod theme;
 
 pub use color::Color;
 pub use gantt::{Bar, DateRange, Gantt, Person, PersonMap, Row};
 pub use palette::OwnerPalette;
+pub use scale::{BandScale, LinearScale, LogScale, OrdinalScale, TimeScale};
 pub use theme::Theme;
