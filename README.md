@@ -6,12 +6,18 @@
 > window. Library-first: the renderer (`wisp`) and the player
 > (`playback`) are reusable in their own right.
 
-> [!NOTE]
-> Two engineering books deploy from this repo to one GitHub Pages
-> site: the **[screen project book](https://eng-manager-xyz.github.io/Screen/)**
-> (recorder / capture / encoder) and the
-> **[wisp library book](https://eng-manager-xyz.github.io/Screen/wisp/)**
-> (publishable renderer reference).
+## 📖 Documentation
+
+The engineering site composes three mdBooks + one live WebGPU
+demo into one GitHub Pages deploy:
+
+| Site | What's there |
+|---|---|
+| **[Screen project book](https://eng-manager-xyz.github.io/Screen/)** | Recorder, capture, encoder, Tauri shell, Leptos UI |
+| **[`wisp` library book](https://eng-manager-xyz.github.io/Screen/wisp/)** | Publishable wgpu renderer reference (Pixi-equivalent) |
+| **[`wisp-chart` book](https://eng-manager-xyz.github.io/Screen/wisp-chart/)** | Grammar-of-graphics chart library — bar, line, scatter, gauge, bullet, KPI, Gantt, more |
+| **[Live WebGPU chart demo](https://eng-manager-xyz.github.io/Screen/wisp-chart/demo/)** | Every chart rendering live in your browser via wgpu's `BROWSER_WEBGPU` backend. Try `?chart=line`, `?chart=bubble`, `?chart=gauge`, etc. |
+| **[Rustdoc](https://eng-manager-xyz.github.io/Screen/api/)** | API reference for every crate |
 
 ## Architecture
 
