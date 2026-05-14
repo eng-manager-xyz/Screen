@@ -103,6 +103,10 @@ pub struct IndicatorTheme {
     pub sparkline_color: Color,
     /// Sparkline stroke width in device pixels.
     pub sparkline_width_px: f32,
+    /// Gauge arc-track width in device pixels (band thickness).
+    pub gauge_track_width_px: f32,
+    /// Gauge needle colour.
+    pub gauge_needle_color: Color,
 }
 
 /// Gantt-specific dimensions and style. Other chart families
@@ -207,6 +211,8 @@ impl Theme {
                 delta_neutral: Color::from_hex("#888888").unwrap(),
                 sparkline_color: Color::from_hex("#3a8ddb").unwrap(),
                 sparkline_width_px: 1.5,
+                gauge_track_width_px: 18.0,
+                gauge_needle_color: Color::from_hex("#222222").unwrap(),
             },
             gantt: GanttTheme {
                 row_alt_bg: Color::from_hex("#fafafa"),

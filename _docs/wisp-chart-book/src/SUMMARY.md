@@ -25,6 +25,7 @@
 # Indicators
 
 - [KPI card](./charts/kpi.md)
+- [Gauge chart](./charts/gauge.md)
 
 # Gantt
 
