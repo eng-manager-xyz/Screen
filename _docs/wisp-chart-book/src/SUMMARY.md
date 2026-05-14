@@ -20,6 +20,7 @@
 - [Scatterplot](./charts/scatter.md)
 - [Bubble chart](./charts/bubble.md)
 - [Area chart](./charts/area.md)
+- [Connected scatterplot](./charts/connected-scatter.md)
 
 # Gantt
 

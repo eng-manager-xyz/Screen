@@ -56,6 +56,11 @@ pub enum Channel {
     /// Numeric magnitude → marker size mapping (scatter +
     /// bubble charts). Source column must be numeric.
     Size,
+    /// Row ordering — rows are sorted by this encoding's column
+    /// before emission. Used by connected scatterplots so the
+    /// line traces through points in a meaningful sequence
+    /// (typically time).
+    Order,
 }
 
 /// One encoding — a channel + column + scale kind, optionally
@@ -142,4 +147,11 @@ pub fn x_offset(field: impl Into<String>) -> Encoding {
 #[must_use]
 pub fn size(field: impl Into<String>) -> Encoding {
     Encoding::new(Channel::Size, field).scale(ScaleKind::Linear)
+}
+
+/// Convenience: `Encoding::new(Channel::Order, field).scale(Linear)`.
+/// Sorts rows by the column's numeric value before emission.
+#[must_use]
+pub fn order(field: impl Into<String>) -> Encoding {
+    Encoding::new(Channel::Order, field).scale(ScaleKind::Linear)
 }

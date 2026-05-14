@@ -21,7 +21,7 @@ pub mod encoding;
 pub mod mark;
 
 pub use dataframe::{DataFrame, Value};
-pub use encoding::{Channel, Encoding, ScaleKind, SizeMapping, color, size, x, x_offset, y};
+pub use encoding::{Channel, Encoding, ScaleKind, SizeMapping, color, order, size, x, x_offset, y};
 pub use mark::{Interpolation, Mark, PointShape, PointStyle};
 
 /// Data transform applied before render. Composes with marks +
@@ -457,56 +457,14 @@ impl Plot {
         }
     }
 
-    fn render_lines(
-        &self,
-        theme: &Theme,
-        viewport_px: Vec2,
-        interpolation: mark::Interpolation,
-        marker: Option<mark::PointStyle>,
-        g: &mut Graphics,
-    ) {
-        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
-            return;
-        };
-
-        if self.axes_enabled {
-            let x_axis = axis::emit_x_axis_lines(
-                &layout.x_ticks,
-                layout.plot_rect,
-                viewport_px,
-                AxisPosition::Bottom,
-                &theme.axis,
-                &theme.plot,
-                theme.text_muted,
-            );
-            let y_axis = axis::emit_y_axis_lines(
-                &layout.y_ticks,
-                layout.plot_rect,
-                viewport_px,
-                AxisPosition::Left,
-                &theme.axis,
-                &theme.plot,
-                theme.text_muted,
-            );
-            g.append(&x_axis);
-            g.append(&y_axis);
-        }
-
-        let x_scale = layout.x_scale;
-        let y_scale = layout.y_scale;
-        let x_enc_field = layout.x_field;
-        let y_enc_field = layout.y_field;
-
-        // Color encoding → splits the data into series. When
-        // absent, the whole DataFrame is one series.
+    /// Build per-series `(x_centre_px, y_top_px)` lists from a
+    /// band-X cartesian layout. Used by line + area marks with
+    /// `ScaleKind::Band` X.
+    fn band_xy_series(&self, layout: &CartesianLayout) -> SeriesPoints {
         let color_enc = self.find_encoding(Channel::Color).cloned();
-        let x_col = self.data.column(&x_enc_field);
-        let y_col = self.data.column(&y_enc_field);
+        let x_col = self.data.column(&layout.x_field);
+        let y_col = self.data.column(&layout.y_field);
         let row_count = self.data.row_count();
-
-        // Build per-series point lists. Series_key is the colour
-        // category (when Color encoding present) or empty string
-        // for single-series.
         let mut series: Vec<(String, Vec<(f32, f32)>)> = Vec::new();
         for i in 0..row_count {
             let Some(x_val) = x_col.and_then(|c| c.get(i)).and_then(Value::as_category) else {
@@ -515,13 +473,14 @@ impl Plot {
             let Some(y_val) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
                 continue;
             };
-            let Some(bx_centre) = x_scale
+            let Some(bx_centre) = layout
+                .x_scale
                 .range_for(&x_val.to_owned())
                 .map(|(a, b)| (a + b) * 0.5)
             else {
                 continue;
             };
-            let py = y_scale.map(y_val);
+            let py = layout.y_scale.map(y_val);
             let key = match &color_enc {
                 Some(enc) => self
                     .data
@@ -537,6 +496,195 @@ impl Plot {
                 None => series.push((key, vec![(bx_centre, py)])),
             }
         }
+        series
+    }
+
+    /// Build per-series `(x_px, y_px)` lists for continuous
+    /// (Linear / Log / Time) X — also emits axes into `g`. When
+    /// an `Order` encoding is present, sorts each series by its
+    /// order value before returning. Returns `None` if the
+    /// X/Y encodings or numeric extents are missing.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "single pass builds continuous layout + axes + per-series point lists + optional Order sort. Splitting would obscure the shared scale state."
+    )]
+    fn continuous_xy_series(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+        g: &mut Graphics,
+    ) -> Option<SeriesPoints> {
+        let x_enc = self.find_encoding(Channel::X)?;
+        let y_enc = self.find_encoding(Channel::Y)?;
+        let header = 40.0;
+        let footer = 40.0;
+        let gutter = 60.0;
+        let plot_left = gutter;
+        let plot_right = viewport_px.x - 20.0;
+        let plot_top = header;
+        let plot_bottom = viewport_px.y - footer;
+        let plot_rect = Rect::new(
+            plot_left,
+            plot_top,
+            plot_right - plot_left,
+            plot_bottom - plot_top,
+        );
+        let (x_lo, x_hi) = self.data.numeric_extent(&x_enc.field)?;
+        let (y_lo, y_hi) = self.data.numeric_extent(&y_enc.field)?;
+        let x_scale = LinearScale::new((x_lo, x_hi), (plot_left, plot_right));
+        let y_scale = LinearScale::new((y_lo.min(0.0), y_hi), (plot_bottom, plot_top));
+
+        if self.axes_enabled {
+            let x_ticks: Vec<TickLabel> = x_scale
+                .ticks(theme.axis.tick_density_hint)
+                .into_iter()
+                .map(|t| TickLabel {
+                    position: t.position,
+                    label: format_tick_value(t.value),
+                })
+                .collect();
+            let y_ticks: Vec<TickLabel> = y_scale
+                .ticks(theme.axis.tick_density_hint)
+                .into_iter()
+                .map(|t| TickLabel {
+                    position: t.position,
+                    label: format_tick_value(t.value),
+                })
+                .collect();
+            let x_axis = axis::emit_x_axis_lines(
+                &x_ticks,
+                plot_rect,
+                viewport_px,
+                AxisPosition::Bottom,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            let y_axis = axis::emit_y_axis_lines(
+                &y_ticks,
+                plot_rect,
+                viewport_px,
+                AxisPosition::Left,
+                &theme.axis,
+                &theme.plot,
+                theme.text_muted,
+            );
+            g.append(&x_axis);
+            g.append(&y_axis);
+        }
+
+        let color_enc = self.find_encoding(Channel::Color).cloned();
+        let order_enc = self.find_encoding(Channel::Order).cloned();
+        let x_col = self.data.column(&x_enc.field);
+        let y_col = self.data.column(&y_enc.field);
+        let order_col = order_enc
+            .as_ref()
+            .and_then(|enc| self.data.column(&enc.field));
+        let row_count = self.data.row_count();
+
+        // Collect per-series points with order keys.
+        #[allow(
+            clippy::type_complexity,
+            reason = "intermediate vec carrying (key, [(order, x, y)]) — extracting a type alias makes the local less readable than the inline form."
+        )]
+        let mut series_keyed: Vec<(String, Vec<(f32, f32, f32)>)> = Vec::new();
+        for i in 0..row_count {
+            let Some(xv) = x_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let Some(yv) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                continue;
+            };
+            let order_key = order_col
+                .and_then(|c| c.get(i))
+                .and_then(Value::as_number)
+                .unwrap_or(usize_to_f32_safe(i));
+            let px = x_scale.map(xv);
+            let py = y_scale.map(yv);
+            let key = match &color_enc {
+                Some(enc) => self
+                    .data
+                    .column(&enc.field)
+                    .and_then(|c| c.get(i))
+                    .and_then(Value::as_category)
+                    .unwrap_or("")
+                    .to_owned(),
+                None => String::new(),
+            };
+            match series_keyed.iter_mut().find(|(k, _)| k == &key) {
+                Some((_, pts)) => pts.push((order_key, px, py)),
+                None => series_keyed.push((key, vec![(order_key, px, py)])),
+            }
+        }
+
+        // Sort each series by order key, then drop the key.
+        let series: SeriesPoints = series_keyed
+            .into_iter()
+            .map(|(k, mut pts)| {
+                pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                let stripped = pts.into_iter().map(|(_, x, y)| (x, y)).collect();
+                (k, stripped)
+            })
+            .collect();
+        Some(series)
+    }
+
+    fn render_lines(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+        interpolation: mark::Interpolation,
+        marker: Option<mark::PointStyle>,
+        g: &mut Graphics,
+    ) {
+        // Detect X scale kind. Linear X = connected-scatter
+        // layout (continuous numeric axes). Band X = standard
+        // categorical line chart.
+        let x_enc = self.find_encoding(Channel::X);
+        let is_continuous_x = matches!(
+            x_enc.map(|e| e.scale_kind),
+            Some(ScaleKind::Linear | ScaleKind::Log | ScaleKind::Time)
+        );
+
+        let series = if is_continuous_x {
+            let Some(series) = self.continuous_xy_series(theme, viewport_px, g) else {
+                return;
+            };
+            series
+        } else {
+            let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
+                return;
+            };
+            if self.axes_enabled {
+                let x_axis = axis::emit_x_axis_lines(
+                    &layout.x_ticks,
+                    layout.plot_rect,
+                    viewport_px,
+                    AxisPosition::Bottom,
+                    &theme.axis,
+                    &theme.plot,
+                    theme.text_muted,
+                );
+                let y_axis = axis::emit_y_axis_lines(
+                    &layout.y_ticks,
+                    layout.plot_rect,
+                    viewport_px,
+                    AxisPosition::Left,
+                    &theme.axis,
+                    &theme.plot,
+                    theme.text_muted,
+                );
+                g.append(&x_axis);
+                g.append(&y_axis);
+            }
+            self.band_xy_series(&layout)
+        };
+
+        let y_enc_field = self
+            .find_encoding(Channel::Y)
+            .map(|e| e.field.clone())
+            .unwrap_or_default();
+        let color_enc = self.find_encoding(Channel::Color).cloned();
 
         let line_w_ndc = theme.plot.line_width_px / viewport_px.y * 2.0;
 
@@ -921,6 +1069,12 @@ struct PixelRect {
     h: f32,
 }
 
+/// Per-series point list — series-key (colour category or
+/// empty string when no Color encoding) → pixel-space
+/// `(x, y)` pairs. Shared by line + area + connected-scatter
+/// emission.
+type SeriesPoints = Vec<(String, Vec<(f32, f32)>)>;
+
 /// Internal cartesian-layout cache returned by
 /// `Plot::cartesian_layout` and consumed by `render_bars` +
 /// `axis_text_labels`.
@@ -937,6 +1091,16 @@ struct CartesianLayout {
 
 /// Format a numeric tick value for display. Drops trailing zeros
 /// so `10.0` renders as `"10"`, `10.5` as `"10.5"`.
+fn usize_to_f32_safe(v: usize) -> f32 {
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "row index used as fallback order key; precision loss only matters past 16M rows"
+    )]
+    {
+        v as f32
+    }
+}
+
 fn format_tick_value(v: f32) -> String {
     if (v.fract()).abs() < 1e-6 {
         // Integer-like — format without decimal part. Clamp into
@@ -1228,6 +1392,86 @@ mod tests {
                 "shape {shape:?} should produce {expected} primitives, got {count}"
             );
         }
+    }
+
+    #[test]
+    fn connected_scatter_sorts_by_order_encoding() {
+        // Input rows are intentionally NOT in order; the Order
+        // encoding should sort them before line emission.
+        struct Row {
+            x: f32,
+            y: f32,
+            step: f32,
+        }
+        let rows = vec![
+            Row {
+                x: 4.0,
+                y: 4.0,
+                step: 3.0,
+            },
+            Row {
+                x: 1.0,
+                y: 1.0,
+                step: 1.0,
+            },
+            Row {
+                x: 3.0,
+                y: 3.0,
+                step: 2.0,
+            },
+        ];
+        let df = DataFrame::from_rows(&rows, |r| {
+            vec![
+                ("x".into(), Value::Number(r.x)),
+                ("y".into(), Value::Number(r.y)),
+                ("step".into(), Value::Number(r.step)),
+            ]
+        });
+        let plot = Plot::new(df)
+            .axes(false)
+            .mark(Mark::Line {
+                interpolation: Interpolation::Linear,
+                marker: Some(PointStyle::Circle),
+            })
+            .encode(x("x", ScaleKind::Linear))
+            .encode(y("y", ScaleKind::Linear))
+            .encode(encoding::order("step"));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 2 segments (3 points → 2 segments) + 3 markers.
+        assert_eq!(g.primitive_count(), 6);
+    }
+
+    #[test]
+    fn line_chart_with_linear_x_uses_continuous_layout() {
+        // No Order encoding — confirms Linear-X line still
+        // renders (rows in DataFrame order).
+        struct Sample {
+            t: f32,
+            v: f32,
+        }
+        let rows = vec![
+            Sample { t: 0.0, v: 1.0 },
+            Sample { t: 1.0, v: 3.0 },
+            Sample { t: 2.0, v: 2.0 },
+            Sample { t: 3.0, v: 5.0 },
+        ];
+        let df = DataFrame::from_rows(&rows, |s| {
+            vec![
+                ("t".into(), Value::Number(s.t)),
+                ("v".into(), Value::Number(s.v)),
+            ]
+        });
+        let plot = Plot::new(df)
+            .axes(false)
+            .mark(Mark::Line {
+                interpolation: Interpolation::Linear,
+                marker: None,
+            })
+            .encode(x("t", ScaleKind::Linear))
+            .encode(y("v", ScaleKind::Linear));
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 3 segments.
+        assert_eq!(g.primitive_count(), 4);
     }
 
     #[test]
