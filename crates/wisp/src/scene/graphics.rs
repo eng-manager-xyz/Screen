@@ -108,6 +108,20 @@ pub(crate) enum Primitive {
         fill: Fill,
         stroke: Option<Stroke>,
     },
+    /// Convex polygon defined by a vertex list in
+    /// counter-clockwise winding order. The polygon is implicitly
+    /// closed — the last vertex connects back to the first.
+    ///
+    /// **Convex-only for v1.** Non-convex input is undefined
+    /// behaviour today (fan triangulation produces visible
+    /// overlap). Non-convex support deferred to a follow-on
+    /// tessellator chunk.
+    ///
+    /// No edge anti-aliasing in v1 — polygon edges show pixel
+    /// jaggies. Apply an outline stroke (separate `draw_line`
+    /// calls along the perimeter) when crisp edges matter; SDF
+    /// AA polish is a follow-on.
+    Polygon { vertices: Vec<Vec2>, fill: Fill },
 }
 
 /// Vector-primitive node. Holds an ordered list of primitives sharing the
@@ -233,6 +247,25 @@ impl Graphics {
             end_angle,
             fill: self.current_fill,
             stroke: None,
+        });
+        self
+    }
+
+    /// Append a filled **convex** polygon. Vertices listed in
+    /// CCW winding order; the polygon is implicitly closed.
+    ///
+    /// Non-convex input is undefined behaviour for v1 — fan
+    /// triangulation from the first vertex produces visible
+    /// overlap when the polygon isn't convex. Strokes do not
+    /// apply to polygons in v1; outline a polygon with `draw_line`
+    /// segments along the perimeter when an outline is needed.
+    pub fn draw_polygon(&mut self, vertices: &[Vec2]) -> &mut Self {
+        if vertices.len() < 3 {
+            return self;
+        }
+        self.primitives.push(Primitive::Polygon {
+            vertices: vertices.to_vec(),
+            fill: self.current_fill,
         });
         self
     }

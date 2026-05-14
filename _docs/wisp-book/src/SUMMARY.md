@@ -13,6 +13,7 @@
   - [Rounded rect with stroke](./wisp/chunks/graphics-rounded.md)
   - [Animated click ripple](./wisp/chunks/graphics-ellipse.md)
   - [Arc + annular sector](./wisp/chunks/graphics-arc.md)
+  - [Convex polygon](./wisp/chunks/graphics-polygon.md)
   - [Gradient fills](./wisp/chunks/graphics-gradients.md)
   - [Bitmap text](./wisp/chunks/text-bitmap.md)
   - [Text rotation](./wisp/chunks/text-rotation.md)

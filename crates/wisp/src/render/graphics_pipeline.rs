@@ -69,8 +69,25 @@ const ATTR_LAYOUT: [wgpu::VertexAttribute; 13] = wgpu::vertex_attr_array![
     12 => Float32x4,
 ];
 
+/// One vertex of a polygon's fan triangulation. Position is in
+/// clip space — the world matrix is baked CPU-side during the
+/// scene walk, since polygon vertex counts are variable and don't
+/// fit the per-instance model the SDF primitives use.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(crate) struct PolygonVertex {
+    pub position: [f32; 2],
+    pub color: [f32; 4],
+}
+
+const POLYGON_ATTR_LAYOUT: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
+    0 => Float32x2,
+    1 => Float32x4,
+];
+
 pub(crate) struct GraphicsPipeline {
     pipelines: BlendPipelineMap,
+    polygon_pipelines: BlendPipelineMap,
 }
 
 impl GraphicsPipeline {
@@ -122,7 +139,52 @@ impl GraphicsPipeline {
             })
         });
 
-        Self { pipelines }
+        // Polygon (triangle-list) sub-pipeline. Separate WGSL +
+        // VertexBufferLayout because polygons have variable vertex
+        // counts and can't fit the instanced-quad model the SDF
+        // path uses.
+        let polygon_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("wisp::graphics_polygon"),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../../shaders/graphics_polygon.wgsl").into(),
+            ),
+        });
+        let polygon_pipelines = BlendPipelineMap::new(|blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("wisp::graphics polygon pipeline"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &polygon_shader,
+                    entry_point: Some("main_vs"),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<PolygonVertex>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &POLYGON_ATTR_LAYOUT,
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &polygon_shader,
+                    entry_point: Some("main_fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
+        });
+
+        Self {
+            pipelines,
+            polygon_pipelines,
+        }
     }
 
     pub(crate) fn draw_stage(
@@ -143,9 +205,18 @@ impl GraphicsPipeline {
         start: NodeId,
         exclude: &HashSet<NodeId>,
     ) -> (u32, u32) {
-        let (groups, logical_count) = collect_instance_groups(stage, start, exclude);
+        let CollectedGraphics {
+            instance_groups,
+            polygon_groups,
+            logical_count,
+        } = collect_graphics(stage, start, exclude);
         let mut draw_calls = 0u32;
-        for (mode, instances) in groups {
+
+        // SDF instance pass (rect / rounded rect / ellipse / line /
+        // annular sector). Issued first so polygons composite on
+        // top in scene-tree order, matching the existing primitive
+        // ordering semantics inside a single Graphics node.
+        for (mode, instances) in instance_groups {
             if instances.is_empty() {
                 continue;
             }
@@ -163,39 +234,86 @@ impl GraphicsPipeline {
             pass.draw(0..6, 0..count);
             draw_calls += 1;
         }
+
+        // Polygon triangle-list pass.
+        for (mode, vertices) in polygon_groups {
+            if vertices.is_empty() {
+                continue;
+            }
+            let vertex_count =
+                u32::try_from(vertices.len()).expect("polygon vertex count fits in u32");
+            let buffer = app
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("wisp::graphics polygon vertices"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            pass.set_pipeline(self.polygon_pipelines.get(mode));
+            pass.set_vertex_buffer(0, buffer.slice(..));
+            pass.draw(0..vertex_count, 0..1);
+            draw_calls += 1;
+        }
+
         (draw_calls, logical_count)
     }
 }
 
-/// Group emitted [`GraphicsInstance`]s by [`BlendMode`] in encounter
-/// order so each batch can bind its own pipeline.
-fn collect_instance_groups(
-    stage: &Stage,
-    start: NodeId,
-    exclude: &HashSet<NodeId>,
-) -> (Vec<(BlendMode, Vec<GraphicsInstance>)>, u32) {
-    let mut grouped: HashMap<BlendMode, Vec<GraphicsInstance>> = HashMap::new();
-    let mut order: Vec<BlendMode> = Vec::new();
+struct CollectedGraphics {
+    instance_groups: Vec<(BlendMode, Vec<GraphicsInstance>)>,
+    polygon_groups: Vec<(BlendMode, Vec<PolygonVertex>)>,
+    logical_count: u32,
+}
+
+/// Walk the scene and bucket every primitive a `Graphics` node
+/// emits, separated into:
+/// * SDF instances (rect / rounded rect / ellipse / line / arc),
+/// * polygon triangles (variable-vertex-count primitives that go
+///   through the dedicated `graphics_polygon.wgsl` path).
+///
+/// Both buckets group by blend mode in encounter order so each
+/// batch binds its matching pipeline.
+fn collect_graphics(stage: &Stage, start: NodeId, exclude: &HashSet<NodeId>) -> CollectedGraphics {
+    let mut instance_grouped: HashMap<BlendMode, Vec<GraphicsInstance>> = HashMap::new();
+    let mut polygon_grouped: HashMap<BlendMode, Vec<PolygonVertex>> = HashMap::new();
+    let mut instance_order: Vec<BlendMode> = Vec::new();
+    let mut polygon_order: Vec<BlendMode> = Vec::new();
     let mut logical = 0u32;
     walk_visible_subtree(stage, start, exclude, |_id, node, world| {
         let container = node.container();
         if let Node::Graphics(graphics) = node {
             let mode = container.blend_mode;
-            let bucket = grouped.entry(mode).or_insert_with(|| {
-                order.push(mode);
-                Vec::new()
-            });
             for primitive in &graphics.primitives {
                 logical = logical.saturating_add(1);
-                emit_primitive(primitive, world, container.alpha, bucket);
+                if matches!(primitive, Primitive::Polygon { .. }) {
+                    let bucket = polygon_grouped.entry(mode).or_insert_with(|| {
+                        polygon_order.push(mode);
+                        Vec::new()
+                    });
+                    emit_polygon(primitive, world, container.alpha, bucket);
+                } else {
+                    let bucket = instance_grouped.entry(mode).or_insert_with(|| {
+                        instance_order.push(mode);
+                        Vec::new()
+                    });
+                    emit_primitive(primitive, world, container.alpha, bucket);
+                }
             }
         }
     });
-    let groups = order
+    let instance_groups = instance_order
         .into_iter()
-        .filter_map(|m| grouped.remove(&m).map(|v| (m, v)))
+        .filter_map(|m| instance_grouped.remove(&m).map(|v| (m, v)))
         .collect();
-    (groups, logical)
+    let polygon_groups = polygon_order
+        .into_iter()
+        .filter_map(|m| polygon_grouped.remove(&m).map(|v| (m, v)))
+        .collect();
+    CollectedGraphics {
+        instance_groups,
+        polygon_groups,
+        logical_count: logical,
+    }
 }
 
 #[allow(
@@ -286,6 +404,12 @@ fn emit_primitive(p: &Primitive, world: Mat4, parent_alpha: f32, out: &mut Vec<G
                 MODE_FILL,
                 0.0,
             ));
+        }
+        Primitive::Polygon { .. } => {
+            // Handled by `emit_polygon` — separate triangle-list
+            // path. Reaching here would mean the dispatcher
+            // misrouted; bail rather than emit a malformed
+            // instance.
         }
         Primitive::AnnularSector {
             center,
@@ -382,6 +506,49 @@ fn ellipse_instance(
         grad_b: resolved.grad_b,
         kind_pack: [KIND_ELLIPSE, mode, resolved.fill_kind, 0],
         arc_data: [0.0; 4],
+    }
+}
+
+/// Fan-triangulate a convex polygon and bake each vertex into
+/// clip space via `world`. Non-convex polygons produce visible
+/// overlap — that's the documented v1 limitation.
+fn emit_polygon(p: &Primitive, world: Mat4, parent_alpha: f32, out: &mut Vec<PolygonVertex>) {
+    let Primitive::Polygon { vertices, fill } = p else {
+        return;
+    };
+    if vertices.len() < 3 {
+        return;
+    }
+    let color = apply_alpha(
+        match *fill {
+            Fill::Solid(c) => c,
+            // Gradients on polygons are deferred — flatten to the
+            // first colour stop so the primitive still renders.
+            Fill::LinearGradient { color_a, .. } | Fill::RadialGradient { color_a, .. } => color_a,
+        },
+        parent_alpha,
+    );
+    let to_clip = |v: Vec2| -> [f32; 2] {
+        let clip = world * glam::Vec4::new(v.x, v.y, 0.0, 1.0);
+        [clip.x, clip.y]
+    };
+    // Fan from vertex 0: (v0, v_i, v_{i+1}) for i in 1..n-1.
+    let v0 = to_clip(vertices[0]);
+    for i in 1..vertices.len() - 1 {
+        let vi = to_clip(vertices[i]);
+        let vj = to_clip(vertices[i + 1]);
+        out.push(PolygonVertex {
+            position: v0,
+            color,
+        });
+        out.push(PolygonVertex {
+            position: vi,
+            color,
+        });
+        out.push(PolygonVertex {
+            position: vj,
+            color,
+        });
     }
 }
 

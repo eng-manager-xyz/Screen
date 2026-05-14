@@ -11,6 +11,7 @@ mod s_ellipse;
 mod s_graphics_arc;
 mod s_graphics_ellipse;
 mod s_graphics_gradients;
+mod s_graphics_polygon;
 mod s_graphics_rounded;
 mod s_hello_quad;
 mod s_mask_combine;
@@ -62,6 +63,7 @@ pub fn all_stories() -> Vec<Story> {
         s_graphics_rounded::story(),
         s_graphics_ellipse::story(),
         s_graphics_arc::story(),
+        s_graphics_polygon::story(),
         s_graphics_gradients::story(),
         s_blur_filter::story(),
         s_drop_shadow::story(),
