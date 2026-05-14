@@ -16,6 +16,7 @@
 
 - [Line chart](./charts/line.md)
 - [Grouped bar chart](./charts/grouped-bar.md)
+- [Stacked bar chart](./charts/stacked-bar.md)
 
 # Gantt
 

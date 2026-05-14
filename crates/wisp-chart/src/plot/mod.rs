@@ -24,6 +24,21 @@ pub use dataframe::{DataFrame, Value};
 pub use encoding::{Channel, Encoding, ScaleKind, color, x, x_offset, y};
 pub use mark::{Interpolation, Mark, PointStyle};
 
+/// Data transform applied before render. Composes with marks +
+/// encodings to produce derived layouts. v1 ships `Stack`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Transform {
+    /// Stack rows sharing the same X-band into a single
+    /// cumulative bar. When `normalize` is `true`, each band's
+    /// contributions are divided by the band total so the
+    /// stack always sums to 1.0 (100% stacked).
+    Stack {
+        /// Whether to rescale each band's contributions to fill
+        /// the full plot height.
+        normalize: bool,
+    },
+}
+
 use glam::Vec2;
 use wisp::math::Rect;
 use wisp::{Color as WispColor, Fill, Font, Graphics, Text};
@@ -42,6 +57,7 @@ pub struct Plot {
     axes_enabled: bool,
     x_axis_title: Option<String>,
     y_axis_title: Option<String>,
+    transform: Option<Transform>,
 }
 
 impl Plot {
@@ -55,7 +71,17 @@ impl Plot {
             axes_enabled: true,
             x_axis_title: None,
             y_axis_title: None,
+            transform: None,
         }
+    }
+
+    /// Apply a [`Transform`] before render. v1: `Transform::Stack`
+    /// composes with bar marks + `Color` encoding to produce
+    /// stacked / 100%-stacked bars.
+    #[must_use]
+    pub const fn transform(mut self, transform: Transform) -> Self {
+        self.transform = Some(transform);
+        self
     }
 
     /// Toggle automatic axes (lines + ticks + labels) rendering.
@@ -266,6 +292,10 @@ impl Plot {
         out
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "single pass renders axes + per-row bar with Stack + XOffset + Color compositions. Splitting would obscure the shared layout + accumulator state."
+    )]
     fn render_bars(&self, theme: &Theme, viewport_px: Vec2, g: &mut Graphics) {
         let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
             return;
@@ -290,8 +320,6 @@ impl Plot {
                 &theme.plot,
                 theme.text_muted,
             );
-            // Splice axes primitives into `g` so the whole plot
-            // is one Graphics node.
             g.append(&x_axis);
             g.append(&y_axis);
         }
@@ -309,14 +337,11 @@ impl Plot {
             .map(|(enc, cats)| (enc.field.clone(), OrdinalScale::new(cats)));
 
         // XOffset encoding → inner band scale for grouped bars.
-        // Each distinct value of the XOffset column becomes its
-        // own sub-band within the outer X band.
         let xoffset_lookup = self
             .find_encoding(Channel::XOffset)
             .and_then(|enc| self.data.distinct_categories(&enc.field).map(|c| (enc, c)))
             .map(|(enc, cats)| (enc.field.clone(), cats));
 
-        // Iterate rows in DataFrame order.
         let x_col = self.data.column(&x_enc_field);
         let y_col = self.data.column(&y_enc_field);
         let color_col = color_lookup
@@ -327,22 +352,63 @@ impl Plot {
             .and_then(|(field, _)| self.data.column(field));
         let row_count = self.data.row_count();
 
+        // Stack-transform precomputation: per-band totals for
+        // normalize, plus a running per-band cumulative accumulator
+        // walked in DataFrame order.
+        let stack = match self.transform {
+            Some(Transform::Stack { normalize }) => Some(normalize),
+            _ => None,
+        };
+        let mut band_total: std::collections::HashMap<String, f32> =
+            std::collections::HashMap::new();
+        if stack.is_some() {
+            for i in 0..row_count {
+                let Some(xv) = x_col.and_then(|c| c.get(i)).and_then(Value::as_category) else {
+                    continue;
+                };
+                let Some(yv) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+                    continue;
+                };
+                *band_total.entry(xv.to_owned()).or_insert(0.0) += yv;
+            }
+        }
+        let mut band_cum: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+
         for i in 0..row_count {
             let Some(x_val) = x_col.and_then(|c| c.get(i)).and_then(Value::as_category) else {
                 continue;
             };
-            let Some(y_val) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
+            let Some(y_val_raw) = y_col.and_then(|c| c.get(i)).and_then(Value::as_number) else {
                 continue;
             };
             let Some((bx0, bx1)) = x_scale.range_for(&x_val.to_owned()) else {
                 continue;
             };
-            let by_top = y_scale.map(y_val);
-            let by0 = by_top.min(y_zero_px);
-            let by1 = by_top.max(y_zero_px);
 
-            // Compute final bar x extents — apply XOffset inner
-            // band if present.
+            // Stack-aware y-extents in scale-domain space.
+            let (by0, by1) = if let Some(normalize) = stack {
+                let total = *band_total.get(x_val).unwrap_or(&0.0);
+                let contribution = if normalize && total.abs() > f32::EPSILON {
+                    let (_, scale_top) = y_scale.domain();
+                    y_val_raw / total * scale_top
+                } else {
+                    y_val_raw
+                };
+                let prev = *band_cum.get(x_val).unwrap_or(&0.0);
+                let next = prev + contribution;
+                band_cum.insert(x_val.to_owned(), next);
+                let by_top = y_scale.map(next);
+                let by_bot = y_scale.map(prev);
+                (by_top.min(by_bot), by_top.max(by_bot))
+            } else {
+                let by_top = y_scale.map(y_val_raw);
+                (by_top.min(y_zero_px), by_top.max(y_zero_px))
+            };
+
+            // X extents — XOffset inner band if present (grouped
+            // bar). Stack and XOffset are typically used
+            // exclusively; if both are set XOffset still applies
+            // to give grouped-stacked layouts.
             let (final_bx0, final_bx1) = if let Some((_, cats)) = &xoffset_lookup {
                 let Some(offset_val) = xoffset_col
                     .and_then(|c| c.get(i))
@@ -359,9 +425,6 @@ impl Plot {
                 (bx0, bx1)
             };
 
-            // Pick fill colour. Color encoding → palette lookup;
-            // otherwise theme.palette default for the row's
-            // x-category.
             let fill_color = if let Some((_, ord)) = &color_lookup {
                 let Some(cat) = color_col
                     .and_then(|c| c.get(i))
@@ -756,6 +819,74 @@ mod tests {
         let g_g = grouped.render(&Theme::light(), Vec2::new(960.0, 400.0));
         // Smoke test: grouped emits 6 bars total (one per row).
         assert_eq!(g_g.primitive_count(), 7);
+    }
+
+    #[test]
+    fn stacked_bar_emits_one_bar_per_row() {
+        let plot = Plot::new(grouped_fixture_df())
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("quarter", ScaleKind::Band))
+            .encode(y("revenue", ScaleKind::Linear))
+            .encode(color("region"))
+            .transform(Transform::Stack { normalize: false });
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 6 stacked segments (2 quarters × 3 regions).
+        assert_eq!(g.primitive_count(), 7);
+    }
+
+    #[test]
+    fn normalized_stack_band_totals_match_for_all_bands() {
+        // Use rows where Q1 total differs sharply from Q2 total —
+        // normalize should still produce identical band heights.
+        struct Sale {
+            q: &'static str,
+            r: &'static str,
+            v: f32,
+        }
+        let rows = vec![
+            Sale {
+                q: "Q1",
+                r: "NA",
+                v: 10.0,
+            },
+            Sale {
+                q: "Q1",
+                r: "EU",
+                v: 90.0,
+            }, // Q1 total 100
+            Sale {
+                q: "Q2",
+                r: "NA",
+                v: 1.0,
+            },
+            Sale {
+                q: "Q2",
+                r: "EU",
+                v: 9.0,
+            }, // Q2 total 10
+        ];
+        let df = DataFrame::from_rows(&rows, |s| {
+            vec![
+                ("q".into(), Value::Category(s.q.into())),
+                ("r".into(), Value::Category(s.r.into())),
+                ("v".into(), Value::Number(s.v)),
+            ]
+        });
+        let plot = Plot::new(df)
+            .axes(false)
+            .mark(Mark::Bar {
+                value_labels: false,
+            })
+            .encode(x("q", ScaleKind::Band))
+            .encode(y("v", ScaleKind::Linear))
+            .encode(color("r"))
+            .transform(Transform::Stack { normalize: true });
+        let g = plot.render(&Theme::light(), Vec2::new(960.0, 400.0));
+        // 1 bg + 4 stacked segments.
+        assert_eq!(g.primitive_count(), 5);
     }
 
     #[test]

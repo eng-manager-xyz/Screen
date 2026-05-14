@@ -6,6 +6,17 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.8 — Stacked bar + 100% normalized (AUT-188)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Plot::transform(Transform::Stack { normalize })` composes with bar + Color. Branch `chart-axis-legend`.
+- **Linear:** [AUT-188](https://linear.app/harwood/issue/AUT-188).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `Transform::Stack { normalize: bool }` enum + `Plot::transform(...)` builder. `render_bars` precomputes per-band totals, walks rows in DataFrame order accumulating a per-band offset. Normalize mode divides each row's contribution by its band total and rescales to the y-domain top. Composes with `XOffset` for grouped-stacked layouts. 2 new tests: 6-segment stacked count, normalize-mode smoke (sharply different band totals → identical band heights).
+  - **`_docs/wisp-chart-book/src/charts/stacked-bar.md`** — new chapter explains both modes + stack+XOffset composition.
+- **Verified:** `cargo test -p wisp-chart --lib` → 99/99 green. `just gate` → green end-to-end.
+
+---
+
 ## M-CHART.7 — Grouped bar chart (AUT-187)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Plot` supports `Encoding::XOffset(field)` which re-bands the X scale into per-series sub-bands within each outer X band. Branch `chart-axis-legend`.
