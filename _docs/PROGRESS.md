@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.4 — Legend renderer (AUT-184)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `wisp-chart` ships a `legend` module mirroring the axis shape. `Plot::legend(theme)` auto-builds a `Legend` from the chart's `Color` encoding. Branch `chart-axis-legend`.
+- **Linear:** [AUT-184](https://linear.app/harwood/issue/AUT-184).
+- **Files:**
+  - **`crates/wisp-chart/src/legend/mod.rs`** (new) — `Legend`, `LegendItem`, `SwatchStyle` (`ColorBox` / `LineSample` / `PointMarker`), `LegendOrientation` (`Vertical` / `Horizontal`). `emit_graphics(...) -> Graphics` draws the swatches; `emit_text_labels(..., &Font) -> Vec<Text>` emits labels. `item_positions(...)` is exposed for tests + future stage-layout calls. Horizontal layouts wrap when the running x exceeds viewport. 5 unit tests covering vertical uniform spacing, horizontal advance, horizontal wrap, empty legend → empty Graphics, one-primitive-per-item.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — new `Plot::legend(theme) -> Legend` method that auto-builds from the `Color` encoding via the palette. Empty when the plot has no `Color` channel.
+  - **`crates/wisp-chart/src/lib.rs`** — `pub mod legend;`.
+  - **`_docs/wisp-chart-book/src/charts/legend.md`** — full chapter (was a placeholder shipped in AUT-183). Public-surface table, swatch-style guidance, manual + auto-build examples, orientation table.
+- **Verified:** `cargo test -p wisp-chart --lib` → 92/92 green. `just gate` → green end-to-end.
+- **What this unlocks:** AUT-186 (Bar) already takes a `Color` encoding via `OrdinalScale`; multi-series renders can now ship a legend for free. Grouped bar / stacked bar / multi-line / scatter-with-category (AUT-187..190) inherit the same emission path.
+
+---
+
 ## M-CHART.3 — Axis renderer (AUT-183)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `wisp-chart` now ships an `axis` module that emits axis lines, tick marks, gridlines, tick labels, and a rotated/horizontal axis title. `Plot::render` auto-emits axes by default (toggleable via `.axes(false)`). Branch `chart-axis-legend`.

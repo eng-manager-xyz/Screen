@@ -29,6 +29,7 @@ use wisp::math::Rect;
 use wisp::{Color as WispColor, Fill, Font, Graphics, Text};
 
 use crate::axis::{self, AxisPosition, TickLabel};
+use crate::legend::{Legend, LegendOrientation, SwatchStyle};
 use crate::scale::{BandScale, LinearScale, OrdinalScale};
 use crate::theme::Theme;
 
@@ -63,6 +64,30 @@ impl Plot {
     pub fn axes(mut self, enabled: bool) -> Self {
         self.axes_enabled = enabled;
         self
+    }
+
+    /// Build a [`Legend`] for the plot's `Color` encoding (if
+    /// any). Returns an empty legend when the chart has no
+    /// `Color` channel or when no rows have a colour value.
+    ///
+    /// Callers integrate the legend into the stage themselves —
+    /// it's not baked into `render` because positioning + layout
+    /// is application-specific (a card UI may put the legend in
+    /// a side rail; a small chart may overlay it).
+    #[must_use]
+    pub fn legend(&self, theme: &Theme) -> Legend {
+        let Some(color_enc) = self.find_encoding(Channel::Color) else {
+            return Legend::new();
+        };
+        let Some(cats) = self.data.distinct_categories(&color_enc.field) else {
+            return Legend::new();
+        };
+        let mut legend = Legend::new();
+        for cat in cats {
+            let chart_color = theme.palette.color_for(&cat);
+            legend = legend.item(cat, SwatchStyle::ColorBox(chart_color));
+        }
+        legend.orientation(LegendOrientation::Vertical)
     }
 
     /// Set the X-axis title (rendered below tick labels).
