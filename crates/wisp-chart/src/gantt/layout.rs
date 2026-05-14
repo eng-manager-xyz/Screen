@@ -65,7 +65,7 @@ pub fn date_to_x(date: Date, range: DateRange, gutter_width: f32, viewport_width
               below the 2^24 precision boundary of f32."
 )]
 pub fn row_top_y(row_index: usize, theme: &Theme) -> f32 {
-    theme.header_height + (row_index as f32) * theme.row_height
+    theme.gantt.header_height + (row_index as f32) * theme.gantt.row_height
 }
 
 /// Pixel rect for the bar centred inside its row.
@@ -84,21 +84,22 @@ pub fn bar_pixel_rect(
     let x_start = date_to_x(
         bar.range.start,
         gantt.range,
-        theme.gutter_width,
+        theme.gantt.gutter_width,
         viewport_width,
     );
     let x_end = date_to_x(
         bar.range.end,
         gantt.range,
-        theme.gutter_width,
+        theme.gantt.gutter_width,
         viewport_width,
     );
-    let y_top = row_top_y(row_index, theme) + (theme.row_height - theme.bar_height) * 0.5;
+    let y_top =
+        row_top_y(row_index, theme) + (theme.gantt.row_height - theme.gantt.bar_height) * 0.5;
     Some(PixelRect {
         x: x_start,
         y: y_top,
         w: (x_end - x_start).max(0.0),
-        h: theme.bar_height,
+        h: theme.gantt.bar_height,
     })
 }
 
@@ -174,9 +175,11 @@ mod tests {
     #[test]
     fn row_top_y_offsets_by_header() {
         let theme = light();
-        assert!((row_top_y(0, &theme) - theme.header_height).abs() < 1e-6);
+        assert!((row_top_y(0, &theme) - theme.gantt.header_height).abs() < 1e-6);
         assert!(
-            (row_top_y(2, &theme) - (theme.header_height + 2.0 * theme.row_height)).abs() < 1e-6
+            (row_top_y(2, &theme) - (theme.gantt.header_height + 2.0 * theme.gantt.row_height))
+                .abs()
+                < 1e-6
         );
     }
 
@@ -196,7 +199,7 @@ mod tests {
         let rect = bar_pixel_rect(bar, &gantt, &theme, 1920.0).expect("row resolves");
         // Row 1, y centred: 60 + 44 + (44 - 28) / 2 = 112.
         assert!((rect.y - 112.0).abs() < 1e-4);
-        assert!((rect.h - theme.bar_height).abs() < 1e-6);
+        assert!((rect.h - theme.gantt.bar_height).abs() < 1e-6);
         // Width > 0 — the bar spans 28 days, so a sliver of the
         // plot width.
         assert!(rect.w > 0.0);
