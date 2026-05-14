@@ -8,6 +8,19 @@
 //! the auto-derived domain via the builder methods on
 //! [`Encoding`].
 
+/// How a `Channel::Size` encoding maps numeric input to marker
+/// size on `Mark::Point`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SizeMapping {
+    /// Map value directly to marker radius. Visually misleading
+    /// for magnitudes — a 4× value looks 16× larger.
+    Radius,
+    /// Map value to marker *area*, then take sqrt for radius —
+    /// the bubble-chart default. A 4× value looks 4× larger.
+    #[default]
+    Area,
+}
+
 /// Which scale family the encoding's column maps through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScaleKind {
@@ -53,6 +66,7 @@ pub struct Encoding {
     pub(crate) field: String,
     pub(crate) scale_kind: ScaleKind,
     pub(crate) domain_override: Option<(f32, f32)>,
+    pub(crate) size_mapping: SizeMapping,
 }
 
 impl Encoding {
@@ -66,6 +80,7 @@ impl Encoding {
             field: field.into(),
             scale_kind: ScaleKind::Linear,
             domain_override: None,
+            size_mapping: SizeMapping::default(),
         }
     }
 
@@ -82,6 +97,16 @@ impl Encoding {
     #[must_use]
     pub fn domain(mut self, domain: (f32, f32)) -> Self {
         self.domain_override = Some(domain);
+        self
+    }
+
+    /// For [`Channel::Size`] encodings, choose between linear
+    /// radius mapping ([`SizeMapping::Radius`]) and the
+    /// perceptually-correct area mapping ([`SizeMapping::Area`],
+    /// the default).
+    #[must_use]
+    pub const fn size_mapping(mut self, mapping: SizeMapping) -> Self {
+        self.size_mapping = mapping;
         self
     }
 }

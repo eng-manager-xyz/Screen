@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.12 — Bubble chart via Size encoding + Area mapping (AUT-192)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — `Encoding::size(...).size_mapping(SizeMapping::Area)` lets the Point mark render area-correct bubbles. Default is Area (vs visually-misleading Radius). Branch `chart-axis-legend`.
+- **Linear:** [AUT-192](https://linear.app/harwood/issue/AUT-192).
+- **Files:**
+  - **`crates/wisp-chart/src/plot/encoding.rs`** — `SizeMapping::{Radius, Area}` enum (default Area). New `Encoding::size_mapping(...)` builder. Encoding struct grows `size_mapping` field.
+  - **`crates/wisp-chart/src/plot/mod.rs`** — `render_points` builds the size scale into `(r_min², r_max²)` (= 9..1600 px²) for Area mode, then `sqrt()` after map. Radius mode maps directly into `(r_min, r_max)` = (3..40 px). 1 unit test confirms 10× value renders 2 ellipses without panic.
+  - **`_docs/wisp-chart-book/src/charts/bubble.md`** — new chapter explains the perceptual reason for Area default (4× value → 4× visible bubble, not 16×).
+- **Verified:** `cargo test -p wisp-chart --lib` → 103/103 green. `just gate` → green end-to-end.
+
+---
+
 ## M-CHART.11 — Scatterplot mark (AUT-191)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — `Mark::Point { shape: PointShape }` with five shape variants (Circle / Square / Diamond / Triangle / Plus) and optional `Encoding::Size` for radius mapping. Branch `chart-axis-legend`.
