@@ -11,7 +11,7 @@ for detail.
 | `Driver` | clock | `Driver::realtime()` / `Driver::fixed(dt)` | [trait + Driver](./animation-trait-driver.md) |
 | `Animatable` trait | `Self` | impl on `f32`/`Vec2`/`Color`/… | [Animatable](./animatable.md) |
 | `Tween<V>` | `V` | `Tween::new(from, to, dur).ease(Ease::OutCubic)` | [Tween + Ease](./tween.md) |
-| `Ease` | `f32` | `Ease::OutBack` (24 variants) | [Tween + Ease](./tween.md) |
+| `Ease` | `f32` | `Ease::OutBack` (31 named + 4 parametric) | [Tween + Ease](./tween.md) |
 
 ## Composition
 

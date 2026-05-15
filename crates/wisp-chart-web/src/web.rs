@@ -133,6 +133,13 @@ pub enum AnimationKind {
     /// hammering 144 active tweens per frame via `BatchDriver`
     /// (M-ANIM.20 / AUT-247).
     Many,
+    /// Subtle "historical reveal" for timeline charts — the chart's
+    /// alpha eases from 0 → 1 over 1.5 s with `Ease::OutCubic` and
+    /// stops. One-shot; the in-chapter "Replay animation" button
+    /// reloads the iframe to trigger it again. Used by the
+    /// Great-Depression unemployment line chart + other historical
+    /// timeline charts.
+    HistoricalReveal,
 }
 
 impl AnimationKind {
@@ -158,6 +165,7 @@ impl AnimationKind {
             "color" | "color-spaces" | "colorspaces" | "oklab" => Some(Self::ColorSpaces),
             "batched" | "batch" => Some(Self::Batched),
             "many" | "swarm" => Some(Self::Many),
+            "reveal" | "historical" | "historical-reveal" => Some(Self::HistoricalReveal),
             _ => None,
         }
     }
@@ -293,6 +301,9 @@ async fn run(
 
     match animation {
         None => run_static(&mut app, &surface, surface_format, viewport, chart),
+        Some(AnimationKind::HistoricalReveal) => {
+            run_historical_reveal(app, surface, surface_format, viewport, chart)
+        }
         Some(kind) => run_animated(app, surface, surface_format, viewport, kind),
     }
 }
@@ -1008,6 +1019,13 @@ fn setup_animation(
                 mutator,
             })
         }
+        AnimationKind::HistoricalReveal => {
+            // HistoricalReveal is dispatched at the `run()` level via
+            // its own `run_historical_reveal` helper — it needs the
+            // user-selected `chart`, which `setup_animation` doesn't
+            // receive. This arm is unreachable in normal flow.
+            Err("HistoricalReveal should be dispatched via run_historical_reveal".to_owned())
+        }
     }
 }
 
@@ -1084,4 +1102,82 @@ fn now_ms() -> Result<f64, String> {
         .performance()
         .ok_or_else(|| "no `performance` for now()".to_owned())?;
     Ok(perf.now())
+}
+
+/// Chart-agnostic historical-reveal: render whatever
+/// `?chart=<id>` selected, capture the freshly-added root
+/// children, then fade their alpha 0 → 1 over 1.5 s with
+/// `Ease::OutCubic`. One-shot — when the tween completes the
+/// rAF loop continues but the alpha stays at 1.0.
+///
+/// Used by every "historical event" chart so the chart appears
+/// to *render itself* rather than blink into existence.
+fn run_historical_reveal(
+    mut app: Application,
+    surface: wgpu::Surface<'static>,
+    surface_format: wgpu::TextureFormat,
+    viewport: Vec2,
+    chart: ChartId,
+) -> Result<(), String> {
+    // Snapshot root children BEFORE the chart is rendered, so we
+    // can diff and find what got added.
+    let root = app.stage().root();
+    let before: Vec<NodeId> = app
+        .stage()
+        .get(root)
+        .map(|n| n.container().children().collect())
+        .unwrap_or_default();
+
+    // Build the chart graphics into the stage via the standard
+    // dispatch — labels, axes, marks all land.
+    let frame_dummy_view = {
+        let frame = surface
+            .get_current_texture()
+            .map_err(|e| format!("get_current_texture: {e}"))?;
+        frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
+    };
+    crate::render_chart_to_view(chart, &mut app, &frame_dummy_view, surface_format, viewport)
+        .map_err(|e| format!("render_chart_to_view: {e}"))?;
+    // Discard the dummy frame — render_chart_to_view drew once,
+    // but we want our own animated render path to take over.
+
+    let after: Vec<NodeId> = app
+        .stage()
+        .get(root)
+        .map(|n| n.container().children().collect())
+        .unwrap_or_default();
+    let new_ids: Vec<NodeId> = after
+        .into_iter()
+        .filter(|id| !before.contains(id))
+        .collect();
+
+    let renderer =
+        Renderer::new(&app, surface_format).map_err(|e| format!("Renderer::new: {e}"))?;
+    let mut driver = Driver::realtime();
+    driver.play();
+    let reveal = Tween::new(0.0_f32, 1.0, Duration::from_millis(1_500)).ease(Ease::OutCubic);
+
+    let mutator: FrameMutator = Box::new(move |d: &Driver, stage: &mut Stage| {
+        let alpha = reveal.sample(d.elapsed());
+        for id in &new_ids {
+            if let Some(node) = stage.get_mut(*id) {
+                node.container_mut().alpha = alpha;
+            }
+        }
+    });
+
+    let state = AnimState {
+        app,
+        surface,
+        renderer,
+        driver,
+        mutator,
+        last_tick_ms: now_ms()?,
+    };
+    let state = Rc::new(RefCell::new(state));
+    request_next_frame(&state)?;
+    log::info!("wisp-chart-web: HistoricalReveal({chart:?}) attached.");
+    Ok(())
 }

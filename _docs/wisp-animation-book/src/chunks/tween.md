@@ -27,13 +27,30 @@ let pulse = Tween::new(0.0_f32, 1.0, Duration::from_millis(700))
 let mid = wisp_animation::Animation::sample(&pulse, Duration::from_millis(350));
 ```
 
-Every named Penner ease is on the enum: `Linear`, `In{Quad, Cubic,
-Expo, Back, Elastic, Bounce}`, `Out{...}`, `InOut{...}`. Plus:
+**31 named eases** matching the [easings.net](https://easings.net)
+reference set, plus four parametric forms:
 
-- `Ease::CubicBezier(x1, y1, x2, y2)` — CSS-style parametric ease.
-- `Ease::Steps(n)` — `n`-plateau staircase (`@keyframes step` in CSS).
-- `Ease::ThereAndBack` — triangle `0 → 1 → 0` for reveal-and-hide.
-- `Ease::Fn(fn(f32) -> f32)` — custom rate function for full control.
+| Family | Variants | Use |
+|---|---|---|
+| `Linear` | `Linear` | constant velocity |
+| `Sine` | `InSine` / `OutSine` / `InOutSine` | gentle, organic in/out |
+| `Quad` | `InQuad` / `OutQuad` / `InOutQuad` | mild polynomial |
+| `Cubic` | `InCubic` / `OutCubic` / `InOutCubic` | most common UI default |
+| `Quart` | `InQuart` / `OutQuart` / `InOutQuart` | sharper than cubic |
+| `Quint` | `InQuint` / `OutQuint` / `InOutQuint` | very sharp; rare but exists |
+| `Expo` | `InExpo` / `OutExpo` / `InOutExpo` | extreme acceleration |
+| `Circ` | `InCirc` / `OutCirc` / `InOutCirc` | circular — slow start, fast finish |
+| `Back` | `InBack` / `OutBack` / `InOutBack` | anticipates / overshoots |
+| `Elastic` | `InElastic` / `OutElastic` / `InOutElastic` | springy rebound |
+| `Bounce` | `InBounce` / `OutBounce` / `InOutBounce` | rubber-ball bounce |
+| Parametric | `CubicBezier(x1, y1, x2, y2)` | CSS-style control points |
+| Parametric | `Steps(n)` | `n`-plateau staircase |
+| Parametric | `ThereAndBack` | triangle `0 → 1 → 0` |
+| Parametric | `Fn(fn(f32) -> f32)` | bring your own |
+
+**Every variant** can be passed to `Tween::ease(...)`, `Track::key_eased(...)`,
+`ColorTween::ease(...)`, and `NodeFlipTween::ease`. They're values; pass
+them anywhere a curve is needed.
 
 ## Why match an enum
 
