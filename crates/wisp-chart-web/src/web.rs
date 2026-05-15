@@ -35,7 +35,7 @@ use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Transform};
 use wisp_animation::{
     Animatable, Animation, AnimationRepeatExt, Driver, Ease, LinearRamp, RepeatCount,
-    RepeatStrategy, Sequence, Tween,
+    RepeatStrategy, Sequence, Spring, Tween,
 };
 
 use crate::ChartId;
@@ -75,6 +75,9 @@ pub enum AnimationKind {
     /// `Target<Vec2>`, demonstrating the Target abstraction
     /// (M-ANIM.5 / AUT-232).
     Slide,
+    /// Underdamped Spring scales the chart in with overshoot;
+    /// loops every 1.5s (M-ANIM.6 / AUT-233).
+    Spring,
 }
 
 impl AnimationKind {
@@ -90,6 +93,7 @@ impl AnimationKind {
             "storyline" | "sequence" => Some(Self::Storyline),
             "yoyo" | "mirror" | "repeat" => Some(Self::Yoyo),
             "slide" | "translate" => Some(Self::Slide),
+            "spring" | "bounce" => Some(Self::Spring),
             _ => None,
         }
     }
@@ -324,6 +328,30 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Spring => {
+            // Underdamped spring scales 0.4 → 1.0 with overshoot.
+            // Cycles every 1.5s.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let spring = Spring::underdamped(70.0, 1.0, 0.4).between(0.4, 1.0);
+            let cycle_ms = 1_500.0_f32;
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                let scale = spring.sample(Duration::from_secs_f32(pos_ms / 1000.0));
+                c.transform = Transform::from_scale(glam::Vec2::splat(scale.clamp(0.0, 2.0)));
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Slide => {
             // Slide the chart horizontally back and forth using a

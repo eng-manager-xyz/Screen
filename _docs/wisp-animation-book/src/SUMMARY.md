@@ -10,3 +10,7 @@
 - [Sequence + Parallel + Delay](./chunks/composition.md)
 - [Repeat + Reverse + Yoyo](./chunks/repeat.md)
 - [Target trait + NodeProperty](./chunks/target.md)
+
+# Motion primitives
+
+- [Spring physics](./chunks/spring.md)
