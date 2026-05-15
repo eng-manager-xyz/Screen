@@ -7,6 +7,7 @@
 - [Animation trait + Driver](./chunks/animation-trait-driver.md)
 - [Animatable trait](./chunks/animatable.md)
 - [Tween + Ease](./chunks/tween.md)
+- [Easing gallery](./chunks/easing-gallery.md)
 - [Sequence + Parallel + Delay](./chunks/composition.md)
 - [Repeat + Reverse + Yoyo](./chunks/repeat.md)
 - [Target trait + NodeProperty](./chunks/target.md)
