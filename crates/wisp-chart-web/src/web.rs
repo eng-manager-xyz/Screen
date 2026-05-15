@@ -7,13 +7,13 @@
 //! - **Animated** (`?chart=<id>&animate=<id>`) — bring up wgpu + the
 //!   chart graphics ONCE, capture the chart's `wisp::NodeId`, then
 //!   drive a `wisp_animation::Driver` per `requestAnimationFrame`
-//!   tick that mutates the chart node's rotation and re-renders.
-//!   This is what every `wisp-animation` chapter iframe uses to
-//!   demonstrate a primitive against a real chart.
+//!   tick that mutates the chart node's container in place and
+//!   re-renders. Every M-ANIM ticket plugs in a new
+//!   [`AnimationKind`] variant + a per-frame mutator closure.
 //!
-//! Today only `animate=spin` is recognised; future animations
-//! (`?animate=fade`, `?animate=draw-in`, …) plug in here as new
-//! enum variants on [`AnimationKind`].
+//! The dispatch in [`setup_animation`] is the single growth point —
+//! everything else (the rAF loop, the render call, the surface
+//! lifecycle) is shared by every animation kind.
 
 #![allow(
     clippy::cast_precision_loss,
@@ -32,22 +32,31 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::scene::{NodeId, Transform};
-use wisp_animation::{Animation, Driver, LinearRamp};
+use wisp::scene::{Container, NodeId, Transform};
+use wisp_animation::{Animatable, Animation, Driver, LinearRamp};
 
 use crate::ChartId;
+
+/// Per-frame mutator closure shared by every animated path. Takes
+/// the driver (caller can re-read elapsed, sample animations, etc.)
+/// and a mutable borrow of the chart node's container (to apply
+/// transform / alpha / blend changes).
+type FrameMutator = Box<dyn FnMut(&Driver, &mut Container)>;
 
 /// Which animation to drive against the active chart. Parsed from
 /// the URL's `?animate=…` query parameter. Unknown / missing →
 /// `None` → static (one-shot) render path.
+///
+/// Every M-ANIM ticket adds a variant here + a setup arm in
+/// [`setup_animation`]. The rAF infrastructure is shared.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnimationKind {
-    /// Loop the chart's container rotation through `0..2π` every
-    /// second. Driven by a `wisp_animation::Driver` sampling a
-    /// `LinearRamp` from `0.0` to `TAU`; the rAF loop applies the
-    /// sample to the chart node's `Container::transform.rotation`
-    /// each frame. Showcases the M-ANIM.0 Animation+Driver pair.
+    /// Rotation loop through `0..2π` once per second (M-ANIM.0 /
+    /// AUT-227).
     Spin,
+    /// Alpha fade 0.0 → 1.0 → 0.0 yoyo over 2s, driven by
+    /// `Animatable for f32` (M-ANIM.1 / AUT-228).
+    Fade,
 }
 
 impl AnimationKind {
@@ -58,6 +67,7 @@ impl AnimationKind {
     pub fn parse(id: &str) -> Option<Self> {
         match id.to_ascii_lowercase().as_str() {
             "spin" | "rotate" => Some(Self::Spin),
+            "fade" | "alpha" => Some(Self::Fade),
             _ => None,
         }
     }
@@ -193,7 +203,7 @@ async fn run(
 
     match animation {
         None => run_static(&mut app, &surface, surface_format, viewport, chart),
-        Some(AnimationKind::Spin) => run_spin(app, surface, surface_format, viewport),
+        Some(kind) => run_animated(app, surface, surface_format, viewport, kind),
     }
 }
 
@@ -221,78 +231,134 @@ fn run_static(
     Ok(())
 }
 
-/// Animated path: spin the polar chart's container rotation through
-/// `0..2π` once per second forever. Drives a `wisp_animation::Driver`
-/// in real-time mode from `requestAnimationFrame` callbacks; the
-/// stage is mutated in place (no re-add) so per-frame allocation is
-/// bounded.
-fn run_spin(
+/// Generic animated path: build a chart + a per-frame mutator
+/// closure via [`setup_animation`], then drive both forever via
+/// `requestAnimationFrame`.
+fn run_animated(
     mut app: Application,
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
     viewport: Vec2,
+    kind: AnimationKind,
 ) -> Result<(), String> {
-    // Build the polar plot once and keep its NodeId. Subsequent
-    // frames mutate this node's rotation; nothing else is touched.
-    let polar = crate::fixtures::polar_plot_fixture();
-    let theme = wisp_chart::Theme::light();
-    let graphics = polar.emit_graphics(&theme, viewport);
-    let root = app.stage().root();
-    let chart_id: NodeId = app
-        .stage_mut()
-        .add_child(root, graphics)
-        .ok_or_else(|| "add_child returned None — root id is stale".to_owned())?;
+    let setup = setup_animation(&mut app, viewport, kind)?;
 
     let renderer =
         Renderer::new(&app, surface_format).map_err(|e| format!("Renderer::new: {e}"))?;
 
-    // Realtime driver — host supplies dt per rAF tick. The animation
-    // value itself is timeless: a 1-second linear ramp from 0 to TAU
-    // that the driver wraps via modulo on each sample.
-    let mut driver = Driver::realtime();
-    driver.play();
-    let anim = LinearRamp::new(0.0, TAU, Duration::from_secs(1));
-
-    // Stash state in an Rc<RefCell<>> so the rAF closure can be
-    // re-invoked across many frames. The closure forgets itself
-    // into the global window and is never reclaimed for the page
-    // lifetime — acceptable for a demo iframe.
-    let state = SpinState {
+    let state = AnimState {
         app,
         surface,
         renderer,
-        chart_id,
-        driver,
-        anim,
+        chart_id: setup.chart_id,
+        driver: setup.driver,
+        mutator: setup.mutator,
         last_tick_ms: now_ms()?,
     };
     let state = Rc::new(RefCell::new(state));
     request_next_frame(&state)?;
-    log::info!("wisp-chart-web: spin animation loop attached.");
+    log::info!("wisp-chart-web: {kind:?} animation loop attached.");
     Ok(())
 }
 
-/// Holds everything the rAF callback needs to advance one frame.
-struct SpinState {
+/// Bundle returned by [`setup_animation`].
+struct AnimSetup {
+    chart_id: NodeId,
+    driver: Driver,
+    mutator: FrameMutator,
+}
+
+/// Per-AnimationKind setup. Builds the chart, picks the driver
+/// mode + animation value(s), returns the per-frame mutator closure
+/// that the rAF dispatch will invoke.
+///
+/// This is the single growth point for the M-ANIM roadmap — every
+/// new ticket adds one arm here.
+fn setup_animation(
+    app: &mut Application,
+    viewport: Vec2,
+    kind: AnimationKind,
+) -> Result<AnimSetup, String> {
+    let theme = wisp_chart::Theme::light();
+    let root = app.stage().root();
+
+    match kind {
+        AnimationKind::Spin => {
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let anim = LinearRamp::new(0.0, TAU, Duration::from_secs(1));
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let rotation = anim.sample(d.elapsed()) % TAU;
+                c.transform = Transform::from_rotation(rotation);
+            });
+            Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            })
+        }
+        AnimationKind::Fade => {
+            // Use a contour plot for variety. Fade its container's
+            // alpha 0 → 1 → 0 over a 2-second yoyo cycle. The lerp
+            // itself goes through `Animatable for f32`.
+            let chart = crate::fixtures::contour_fixture();
+            let graphics = chart.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let cycle = Duration::from_millis(2_000);
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                // Map [0, 2s) to [0, 1, 0] (yoyo). Cycle position
+                // wraps; first half ramps up, second half ramps
+                // down. Pure use of `Animatable::lerp(f32)`.
+                let cycle_pos = (d.elapsed().as_secs_f32() % cycle.as_secs_f32())
+                    / cycle.as_secs_f32();
+                let alpha = if cycle_pos < 0.5 {
+                    f32::lerp(&0.0, &1.0, cycle_pos * 2.0)
+                } else {
+                    f32::lerp(&1.0, &0.0, (cycle_pos - 0.5) * 2.0)
+                };
+                c.alpha = alpha;
+            });
+            Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            })
+        }
+    }
+}
+
+/// State the rAF closure pumps each frame.
+struct AnimState {
     app: Application,
     surface: wgpu::Surface<'static>,
     renderer: Renderer,
     chart_id: NodeId,
     driver: Driver,
-    anim: LinearRamp,
+    mutator: FrameMutator,
     last_tick_ms: f64,
 }
 
 /// Schedule the next animation frame against the shared state.
-fn request_next_frame(state: &Rc<RefCell<SpinState>>) -> Result<(), String> {
+fn request_next_frame(state: &Rc<RefCell<AnimState>>) -> Result<(), String> {
     let state = state.clone();
     let cb = Closure::wrap(Box::new(move || {
         if let Err(e) = step_one_frame(&state) {
-            web_sys::console::error_1(&JsValue::from_str(&format!("spin step: {e}")));
+            web_sys::console::error_1(&JsValue::from_str(&format!("anim step: {e}")));
             return;
         }
         if let Err(e) = request_next_frame(&state) {
-            web_sys::console::error_1(&JsValue::from_str(&format!("spin reschedule: {e}")));
+            web_sys::console::error_1(&JsValue::from_str(&format!("anim reschedule: {e}")));
         }
     }) as Box<dyn FnMut()>);
 
@@ -302,43 +368,31 @@ fn request_next_frame(state: &Rc<RefCell<SpinState>>) -> Result<(), String> {
         .map_err(|e| format!("request_animation_frame: {e:?}"))?;
     // Closure must outlive this scope; rAF only holds a weak JS
     // reference. `forget` leaks one Closure per frame — acceptable
-    // for a demo iframe; a long-lived host would recycle via a
-    // single persistent Closure + `Rc<RefCell<Option<Closure>>>`
-    // hand-off pattern.
+    // for a demo iframe; a long-lived host would recycle.
     cb.forget();
     Ok(())
 }
 
-/// Advance the driver, mutate the chart node's rotation, render.
-fn step_one_frame(state: &Rc<RefCell<SpinState>>) -> Result<(), String> {
+/// Advance the driver, run the per-frame mutator against the chart
+/// node's container, render, present.
+fn step_one_frame(state: &Rc<RefCell<AnimState>>) -> Result<(), String> {
     let mut s = state.borrow_mut();
-
-    // Caller-supplied dt from the browser's monotonic clock.
     let now = now_ms()?;
     let dt_ms = (now - s.last_tick_ms).max(0.0);
     s.last_tick_ms = now;
     let dt = Duration::from_secs_f64(dt_ms / 1000.0);
     s.driver.tick(dt);
 
-    // Sample the animation. The ramp clamps at TAU, so wrap the
-    // result via modulo to keep the loop seamless.
-    let raw = s.anim.sample(s.driver.elapsed());
-    let rotation = raw % TAU;
-
-    // Reach the chart node in place and mutate its container
-    // transform. No re-emit; no allocation in the hot path.
     let chart_id = s.chart_id;
+    // Split the mutable borrow: take the closure and the driver
+    // out of `s` so we can pass `&mut Container` to the closure
+    // without overlapping borrows of `s`.
+    let mut mutator = std::mem::replace(&mut s.mutator, Box::new(|_, _| {}));
+    let driver_snapshot = s.driver.clone();
     if let Some(node) = s.app.stage_mut().get_mut(chart_id) {
-        node.container_mut().transform = Transform::from_rotation(rotation);
+        mutator(&driver_snapshot, node.container_mut());
     }
-
-    // Wrap the driver clock once per cycle so `elapsed()` stays
-    // bounded forever (otherwise it'd creep toward Duration::MAX).
-    let cycle = s.anim.duration();
-    if s.driver.elapsed() >= cycle {
-        let wrapped = s.driver.elapsed().checked_sub(cycle).unwrap_or_default();
-        s.driver.seek(wrapped);
-    }
+    s.mutator = mutator;
 
     let frame = s
         .surface
@@ -354,8 +408,7 @@ fn step_one_frame(state: &Rc<RefCell<SpinState>>) -> Result<(), String> {
     Ok(())
 }
 
-/// Read the browser's high-resolution monotonic clock (in
-/// milliseconds). Used as the realtime driver's dt source.
+/// Read the browser's high-resolution monotonic clock (ms).
 fn now_ms() -> Result<f64, String> {
     let window = web_sys::window().ok_or_else(|| "no `window` for performance.now()".to_owned())?;
     let perf = window

@@ -52,6 +52,10 @@
 
 use std::time::Duration;
 
+pub mod animatable;
+
+pub use animatable::Animatable;
+
 /// A pure time→state animation.
 ///
 /// Implement this trait on any value that can produce an output for a
