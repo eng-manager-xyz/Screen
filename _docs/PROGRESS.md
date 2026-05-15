@@ -6,6 +6,20 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CHART.19 + .23 — Polar coord + Error bars (AUT-199, 203)
+- **Date:** 2026-05-14
+- **Status:** ✅ done — final two P2 chart tickets. AUT-203 ships error bars as a self-contained overlay value type that composes with any cartesian chart via `emit_graphics_in_rect`. AUT-199 ships a polar coord helper + wind-rose-style `PolarPlot`. Branch `chart-p2-tail`.
+- **Linear:** [AUT-203](https://linear.app/harwood/issue/AUT-203) · [AUT-199](https://linear.app/harwood/issue/AUT-199).
+- **Files:**
+  - **`crates/wisp-chart/src/overlay/mod.rs` + `error_bars.rs`** — `ErrorBars`, `ErrorPoint` (with `symmetric` / `asymmetric` helpers), `ErrorKind`. `emit_graphics` uses 16-px pad; `emit_graphics_in_rect` accepts the caller's primary-chart plot rect so whiskers align with bars / points.
+  - **`crates/wisp-chart/src/polar/coord.rs`** — `PolarCoord { centre, radius_px }` with `to_pixel(θ, r ∈ [0, 1])` projection; `PolarPlot` wind-rose value type (concentric grid + spokes + per-category radial sector). Compass orientation (start at top, go clockwise).
+  - **`crates/wisp-chart-web/`** — fixtures + 2 ChartId variants (`ErrorBars` composes Bar + ErrorBars in matching plot rect; `Polar` renders the wind rose). 2 PNG integration tests committed. Gallery + SUMMARY include both.
+- **Tests:** 10 net new wisp-chart unit tests (5 each). All native gate + wasm32 clippy green before push.
+- **Slippage caught:** ErrorBars's 16-px default plot rect doesn't match Plot::Bar's 60/40 gutter — first iteration of the overlay test had misaligned whiskers. Fix: added `emit_graphics_in_rect` API + documented the alignment gotcha as an `admonish important` in the chapter so callers don't repeat the mistake.
+- **What this closes:** the entire chart roadmap. AUT-180..222 all Done; only AUT-223 (animated bubble GUARDRAIL — intentional P3 deferral) remains open.
+
+---
+
 ## M-CHART.17..42 — P2 chart wave + gallery (AUT-197/198/202/204..207/211..213/215/216/218..222)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — 18 new charts across 7 batches on branch `chart-p2-wave`, each behind native + wasm32 clippy. Gallery page closes the wave.
