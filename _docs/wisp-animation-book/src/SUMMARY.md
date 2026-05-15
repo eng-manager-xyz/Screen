@@ -29,3 +29,4 @@
 
 - [FLIP layout transitions](./chunks/flip.md)
 - [AnimTheme](./chunks/theme.md)
+- [Chart Enter / Exit](./chunks/chart-enter-exit.md)
