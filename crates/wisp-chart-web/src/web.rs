@@ -140,6 +140,12 @@ pub enum AnimationKind {
     /// Great-Depression unemployment line chart + other historical
     /// timeline charts.
     HistoricalReveal,
+    /// 4 × 10 grid of mini easing-curve cards with a moving dot on
+    /// every card and a top-left progress readout. Loops 0 → 1 over
+    /// 2 s, then holds for 3 s, then repeats. See
+    /// [`crate::easing_grid`] for the curve / layout math reused by
+    /// the native hero snapshot.
+    EasingGrid,
 }
 
 impl AnimationKind {
@@ -166,6 +172,7 @@ impl AnimationKind {
             "batched" | "batch" => Some(Self::Batched),
             "many" | "swarm" => Some(Self::Many),
             "reveal" | "historical" | "historical-reveal" => Some(Self::HistoricalReveal),
+            "easing" | "easings" | "easing-grid" | "easing-gallery" => Some(Self::EasingGrid),
             _ => None,
         }
     }
@@ -227,6 +234,16 @@ async fn run(
     chart: ChartId,
     animation: Option<AnimationKind>,
 ) -> Result<(), String> {
+    // The EasingGrid demo bakes a 36-card grid + 8×8 bitmap-font
+    // labels into one canvas; the default 960×640 produces sub-5px
+    // glyphs. Resize before bring-up so the WebGPU surface matches
+    // the snapshot at `easing_grid::CANVAS_W/H`. CSS keeps the
+    // canvas filling its container — only the intrinsic surface
+    // resolution changes.
+    if animation == Some(AnimationKind::EasingGrid) {
+        canvas.set_width(crate::easing_grid::CANVAS_W);
+        canvas.set_height(crate::easing_grid::CANVAS_H);
+    }
     let width = canvas.width().max(1);
     let height = canvas.height().max(1);
     log::info!("wisp-chart-web: canvas is {width}x{height}");
@@ -1025,6 +1042,74 @@ fn setup_animation(
             // user-selected `chart`, which `setup_animation` doesn't
             // receive. This arm is unreachable in normal flow.
             Err("HistoricalReveal should be dispatched via run_historical_reveal".to_owned())
+        }
+        AnimationKind::EasingGrid => {
+            // 4×10 grid of mini easing-curve cards. The static layer
+            // (backdrop + 36 bordered cards + curves) is built once;
+            // the dot + progress-text layers refresh each frame via
+            // destroy + re-add. All layout/curve math lives in
+            // [`crate::easing_grid`] so the native hero test renders
+            // the same scene at a frozen `progress` value.
+            use wisp::Font;
+            let font = Font::bitmap_8x8(app);
+
+            let static_g = crate::easing_grid::build_static_layer();
+            let static_id = app
+                .stage_mut()
+                .add_child(root, static_g)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+
+            // Labels — once, then never touched again.
+            for label in crate::easing_grid::build_labels(&font) {
+                let _ = app.stage_mut().add_child(root, label);
+            }
+
+            // Placeholders for the per-frame layers so we can hold
+            // their NodeIds and destroy+re-add each tick.
+            let dot_id = app
+                .stage_mut()
+                .add_child(root, wisp::Graphics::new())
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let progress_id = app
+                .stage_mut()
+                .add_child(root, crate::easing_grid::build_progress_label(&font, 0.0))
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+
+            let dot_id_cell: Rc<RefCell<NodeId>> = Rc::new(RefCell::new(dot_id));
+            let progress_id_cell: Rc<RefCell<NodeId>> = Rc::new(RefCell::new(progress_id));
+
+            let mut driver = Driver::realtime();
+            driver.play();
+            let font_inner = font;
+            let dot_id_inner = dot_id_cell.clone();
+            let progress_id_inner = progress_id_cell.clone();
+
+            let mutator: FrameMutator = Box::new(move |d: &Driver, stage: &mut Stage| {
+                let progress = crate::easing_grid::progress_for_elapsed(d.elapsed());
+                let stage_root = stage.root();
+
+                // Refresh dot layer.
+                let dots = crate::easing_grid::build_dot_layer(progress);
+                let old_dot = *dot_id_inner.borrow();
+                stage.destroy(old_dot);
+                if let Some(new_id) = stage.add_child(stage_root, dots) {
+                    *dot_id_inner.borrow_mut() = new_id;
+                }
+
+                // Refresh progress text.
+                let label = crate::easing_grid::build_progress_label(&font_inner, progress);
+                let old_prog = *progress_id_inner.borrow();
+                stage.destroy(old_prog);
+                if let Some(new_id) = stage.add_child(stage_root, label) {
+                    *progress_id_inner.borrow_mut() = new_id;
+                }
+            });
+
+            return Ok(AnimSetup {
+                chart_id: static_id,
+                driver,
+                mutator,
+            });
         }
     }
 }

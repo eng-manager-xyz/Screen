@@ -50,6 +50,7 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod easing_grid;
 pub mod fixtures;
 pub mod render;
 
