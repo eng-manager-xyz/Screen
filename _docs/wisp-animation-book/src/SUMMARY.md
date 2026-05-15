@@ -14,3 +14,4 @@
 # Motion primitives
 
 - [Spring physics](./chunks/spring.md)
+- [Keyframe Track + Curve](./chunks/keyframe-track.md)

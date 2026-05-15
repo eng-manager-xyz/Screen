@@ -35,7 +35,7 @@ use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Transform};
 use wisp_animation::{
     Animatable, Animation, AnimationRepeatExt, Driver, Ease, LinearRamp, RepeatCount,
-    RepeatStrategy, Sequence, Spring, Tween,
+    RepeatStrategy, Sequence, Spring, Track, Tween,
 };
 
 use crate::ChartId;
@@ -78,6 +78,9 @@ pub enum AnimationKind {
     /// Underdamped Spring scales the chart in with overshoot;
     /// loops every 1.5s (M-ANIM.6 / AUT-233).
     Spring,
+    /// 4-keyframe scale walk via `Track<f32>` with per-segment
+    /// eases (M-ANIM.7 / AUT-234).
+    Keyframe,
 }
 
 impl AnimationKind {
@@ -94,6 +97,7 @@ impl AnimationKind {
             "yoyo" | "mirror" | "repeat" => Some(Self::Yoyo),
             "slide" | "translate" => Some(Self::Slide),
             "spring" | "bounce" => Some(Self::Spring),
+            "keyframe" | "track" | "waypoints" => Some(Self::Keyframe),
             _ => None,
         }
     }
@@ -328,6 +332,35 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Keyframe => {
+            // 4-keyframe scale walk: 1.0 → 0.5 → 1.2 → 0.8 over 2s.
+            // Each segment uses a different ease to show per-segment
+            // shaping.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let track: Track<f32> = Track::new()
+                .key(Duration::ZERO, 1.0)
+                .key_eased(Duration::from_millis(500), 0.5, Ease::InCubic)
+                .key_eased(Duration::from_millis(1_200), 1.2, Ease::OutBack)
+                .key_eased(Duration::from_millis(2_000), 0.8, Ease::InOutQuad);
+            let cycle_ms = 2_000.0_f32;
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                let scale = track.sample(Duration::from_secs_f32(pos_ms / 1000.0));
+                c.transform = Transform::from_scale(glam::Vec2::splat(scale.max(0.0)));
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Spring => {
             // Underdamped spring scales 0.4 → 1.0 with overshoot.

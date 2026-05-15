@@ -58,6 +58,7 @@ pub mod ease;
 pub mod repeat;
 pub mod spring;
 pub mod target;
+pub mod track;
 pub mod tween;
 
 pub use animatable::Animatable;
@@ -66,6 +67,7 @@ pub use ease::Ease;
 pub use repeat::{AnimationRepeatExt, Repeat, RepeatCount, RepeatStrategy};
 pub use spring::Spring;
 pub use target::{NodeProperty, Property, Target};
+pub use track::{Curve, Key, Track};
 pub use tween::Tween;
 
 /// A pure time→state animation.
