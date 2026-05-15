@@ -1,59 +1,17 @@
 //! Test suite for the `Animation` trait + `Driver`.
 //!
-//! Covers the three invariants from M-ANIM.0 / AUT-227:
-//!
-//! 1. **Determinism**: two `DriverMode::Fixed` drivers seeded
-//!    identically produce equal samples for 1000 frames.
-//! 2. **Pause/seek/scale round-trip**: explicit state mutations
-//!    behave as advertised.
-//! 3. **No-alloc on `tick`**: once a Driver is built, advancing it
-//!    never allocates (validated by direct heap-counter check; see
-//!    `tick_allocates_nothing`).
+//! Covers the determinism + state-mutation invariants from
+//! M-ANIM.0 / AUT-227. The no-alloc invariants moved out to
+//! `tests/no_alloc.rs` so they own their own test binary's
+//! heap-counting global allocator without interference from
+//! sibling tests.
 
-#![allow(
-    unsafe_code,
-    reason = "Test-only allocator that intercepts heap allocations to verify Driver::tick is alloc-free. The `unsafe impl GlobalAlloc` forwards to System verbatim."
-)]
-
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crate::{Animation, Driver, DriverMode, LinearRamp};
 
 // ---------------------------------------------------------------------
-// Allocation-counting global allocator
-//
-// Counts the number of `alloc` calls. Tests can take a baseline,
-// run code, and assert the delta is zero. Implemented inline (no
-// extra dep) — `Vec`s constructed in test setup happen *before*
-// the baseline snapshot, so they don't affect the assertion.
-// ---------------------------------------------------------------------
-
-struct CountingAllocator;
-
-static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        ALLOC_COUNT.fetch_add(1, Ordering::SeqCst);
-        // SAFETY: forwarding to the system allocator with the
-        // same layout the caller passed us.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: forwarding to the system allocator with the
-        // same pointer and layout the caller passed us.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-#[global_allocator]
-static GLOBAL: CountingAllocator = CountingAllocator;
-
-// ---------------------------------------------------------------------
-// Invariant 1: determinism
+// Determinism — two fixed-step drivers produce equal sample streams.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -69,14 +27,11 @@ fn fixed_driver_is_deterministic_across_1000_frames() {
     let mut left_samples = Vec::with_capacity(1000);
     let mut right_samples = Vec::with_capacity(1000);
     for _ in 0..1000 {
-        // Realtime `dt` is *ignored* in Fixed mode; pass garbage
-        // to prove the driver doesn't read it.
         left.tick(Duration::from_secs(999));
         right.tick(Duration::from_millis(1));
         left_samples.push(left.sample(&anim));
         right_samples.push(right.sample(&anim));
     }
-
     assert_eq!(left_samples, right_samples);
 }
 
@@ -86,7 +41,7 @@ fn fixed_driver_ignores_callers_dt() {
     let mut d = Driver::fixed(dt);
     d.play();
     let before = d.elapsed();
-    d.tick(Duration::from_secs(100)); // outlandish — should be ignored
+    d.tick(Duration::from_secs(100));
     assert_eq!(d.elapsed(), before + dt);
 }
 
@@ -101,7 +56,7 @@ fn realtime_driver_uses_callers_dt() {
 }
 
 // ---------------------------------------------------------------------
-// Invariant 2: pause / seek / time_scale round-trip
+// Pause / seek / time_scale round-trip.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -145,7 +100,6 @@ fn time_scale_doubles_step() {
         fast.tick(Duration::ZERO);
         slow.tick(Duration::ZERO);
     }
-    // 10 ticks × 100 ms × 2.0 = 2 s, × 0.5 = 500 ms.
     assert_eq!(fast.elapsed(), Duration::from_secs(2));
     assert_eq!(slow.elapsed(), Duration::from_millis(500));
 }
@@ -165,7 +119,7 @@ fn sample_clamps_past_end() {
     let anim = LinearRamp::new(0.0, 1.0, Duration::from_secs(1));
     let mut d = Driver::fixed(Duration::from_secs(2));
     d.play();
-    d.tick(Duration::ZERO); // elapsed = 2s — past anim.duration()
+    d.tick(Duration::ZERO);
     assert!((d.sample(&anim) - 1.0).abs() < f32::EPSILON);
     assert!((d.progress(&anim) - 1.0).abs() < f32::EPSILON);
 }
@@ -178,48 +132,7 @@ fn progress_returns_one_on_zero_duration() {
 }
 
 // ---------------------------------------------------------------------
-// Invariant 3: no-alloc on tick
-// ---------------------------------------------------------------------
-
-#[test]
-fn tick_allocates_nothing() {
-    let mut d = Driver::fixed(Duration::from_secs_f32(1.0 / 60.0));
-    d.play();
-    // Warm-up tick — ensures any lazy statics are initialised
-    // before we take the baseline.
-    d.tick(Duration::ZERO);
-
-    let before = ALLOC_COUNT.load(Ordering::SeqCst);
-    for _ in 0..1000 {
-        d.tick(Duration::ZERO);
-    }
-    let after = ALLOC_COUNT.load(Ordering::SeqCst);
-    assert_eq!(
-        after - before,
-        0,
-        "Driver::tick allocated {} time(s) across 1000 ticks",
-        after - before
-    );
-}
-
-#[test]
-fn sample_allocates_nothing() {
-    let anim = LinearRamp::new(0.0, 100.0, Duration::from_secs(1));
-    let mut d = Driver::fixed(Duration::from_secs_f32(1.0 / 60.0));
-    d.play();
-    d.tick(Duration::ZERO);
-
-    let before = ALLOC_COUNT.load(Ordering::SeqCst);
-    for _ in 0..1000 {
-        let _ = d.sample(&anim);
-        let _ = d.progress(&anim);
-    }
-    let after = ALLOC_COUNT.load(Ordering::SeqCst);
-    assert_eq!(after - before, 0);
-}
-
-// ---------------------------------------------------------------------
-// LinearRamp invariants (the only built-in animation in this ticket)
+// LinearRamp invariants.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -238,8 +151,6 @@ fn linear_ramp_midpoint() {
 #[test]
 fn linear_ramp_clamps_outside_window() {
     let r = LinearRamp::new(0.0, 1.0, Duration::from_secs(1));
-    // The Driver normally clamps, but `sample` itself must be safe
-    // when called directly past the end.
     assert!((r.sample(Duration::from_secs(5)) - 1.0).abs() < f32::EPSILON);
 }
 

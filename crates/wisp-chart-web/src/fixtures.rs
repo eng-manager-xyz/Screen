@@ -28,11 +28,25 @@ use wisp_chart::topology::{
     Funnel, FunnelStage, Sankey, SankeyLink, SankeyNode, Treemap, TreemapNode,
 };
 
-/// Bar fixture — 4-quarter single-series revenue.
+/// Bar fixture — **NASA's Apollo program: crewed missions per
+/// year, 1968–1972**. Each bar is the count of crewed Apollo
+/// flights (Apollo 7 through Apollo 17) flown that calendar
+/// year. Source: Wikipedia article "Apollo program".
+///
+/// Row schema is `(year_label, count)` rendered with the
+/// generic-Bar mark via Plot's `x("quarter", Band)` /
+/// `y("revenue", Linear)` encoding — the column names are
+/// historical artefacts of the original abstract fixture but
+/// don't appear in the rendered chart's title or axis labels.
 #[must_use]
 pub fn bar_fixture() -> DataFrame {
-    let rows: Vec<(&'static str, f32)> =
-        vec![("Q1", 38.0), ("Q2", 52.0), ("Q3", 47.0), ("Q4", 64.0)];
+    let rows: Vec<(&'static str, f32)> = vec![
+        ("1968", 2.0),
+        ("1969", 4.0),
+        ("1970", 2.0),
+        ("1971", 2.0),
+        ("1972", 1.0),
+    ];
     DataFrame::from_rows(&rows, |(q, r)| {
         vec![
             ("quarter".into(), Value::Category((*q).into())),
@@ -41,18 +55,31 @@ pub fn bar_fixture() -> DataFrame {
     })
 }
 
-/// Line fixture — 2 series (NA, EU) across 4 quarters.
+/// Line fixture — **US unemployment rate during the Great
+/// Depression, 1929–1941** (annual %, BLS-reconstructed historical
+/// series). Source: Wikipedia article "Unemployment in the United
+/// States" — historical statistics table.
+///
+/// Each row is `(year_label, series, annual_unemployment_rate_pct)`.
+/// The series is constant ("US") since this is a single-curve story,
+/// but the schema matches the existing chart fixtures so the demo
+/// wiring stays identical.
 #[must_use]
 pub fn line_fixture() -> DataFrame {
     let rows: Vec<(&'static str, &'static str, f32)> = vec![
-        ("Q1", "NA", 38.0),
-        ("Q2", "NA", 52.0),
-        ("Q3", "NA", 47.0),
-        ("Q4", "NA", 64.0),
-        ("Q1", "EU", 22.0),
-        ("Q2", "EU", 30.0),
-        ("Q3", "EU", 42.0),
-        ("Q4", "EU", 48.0),
+        ("1929", "US", 3.2),
+        ("1930", "US", 8.7),
+        ("1931", "US", 15.9),
+        ("1932", "US", 23.6),
+        ("1933", "US", 24.9),
+        ("1934", "US", 21.7),
+        ("1935", "US", 20.1),
+        ("1936", "US", 16.9),
+        ("1937", "US", 14.3),
+        ("1938", "US", 19.0),
+        ("1939", "US", 17.2),
+        ("1940", "US", 14.6),
+        ("1941", "US", 9.9),
     ];
     DataFrame::from_rows(&rows, |(q, r, v)| {
         vec![
@@ -159,17 +186,24 @@ pub fn bubble_fixture() -> DataFrame {
     })
 }
 
-/// Area chart fixture — single 7-period series.
+/// Area chart fixture — **NASA budget as % of the US federal
+/// budget, 1962–1972** (peak Apollo era through wind-down).
+/// 1966 was the peak at ~4.4 %; by 1972 it was below 2 %.
+/// Source: Wikipedia article "Budget of NASA".
 #[must_use]
 pub fn area_fixture() -> DataFrame {
     let rows: Vec<(&'static str, f32)> = vec![
-        ("Q1", 24.0),
-        ("Q2", 38.0),
-        ("Q3", 32.0),
-        ("Q4", 56.0),
-        ("Q5", 48.0),
-        ("Q6", 64.0),
-        ("Q7", 72.0),
+        ("1962", 1.18),
+        ("1963", 2.29),
+        ("1964", 3.52),
+        ("1965", 4.31),
+        ("1966", 4.41),
+        ("1967", 3.45),
+        ("1968", 2.65),
+        ("1969", 2.31),
+        ("1970", 1.92),
+        ("1971", 1.61),
+        ("1972", 1.48),
     ];
     DataFrame::from_rows(&rows, |(q, v)| {
         vec![
@@ -242,15 +276,30 @@ pub fn bullet_fixture() -> Bullet {
     }
 }
 
-/// Pie fixture — traffic-source mix.
+/// Pie fixture — **Causes of British army mortality in the
+/// Crimean War, April 1854 – March 1855** (Florence Nightingale's
+/// data, the basis for her famous polar-area "coxcomb" diagram).
+/// The vast majority of deaths were from preventable disease,
+/// not enemy fire — the finding that reshaped military medicine.
+/// Source: Wikipedia article "Florence Nightingale".
 #[must_use]
 pub fn pie_fixture() -> Pie {
     Pie::new(vec![
-        Slice::new(45.0, "Organic", ChartColor::from_hex("#0072b2").unwrap()),
-        Slice::new(25.0, "Paid", ChartColor::from_hex("#d55e00").unwrap()),
-        Slice::new(15.0, "Social", ChartColor::from_hex("#009e73").unwrap()),
-        Slice::new(10.0, "Referral", ChartColor::from_hex("#cc79a7").unwrap()),
-        Slice::new(5.0, "Direct", ChartColor::from_hex("#f0e442").unwrap()),
+        Slice::new(
+            83.0,
+            "Preventable disease",
+            ChartColor::from_hex("#0072b2").unwrap(),
+        ),
+        Slice::new(
+            8.0,
+            "Wounds in battle",
+            ChartColor::from_hex("#d55e00").unwrap(),
+        ),
+        Slice::new(
+            9.0,
+            "Other causes",
+            ChartColor::from_hex("#009e73").unwrap(),
+        ),
     ])
 }
 
