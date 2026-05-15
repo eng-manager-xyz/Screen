@@ -52,6 +52,7 @@ const BOOK_ROOTS: &[&str] = &[
     "_docs/book/src",
     "_docs/wisp-book/src",
     "_docs/wisp-chart-book/src",
+    "_docs/wisp-animation-book/src",
 ];
 const SHARED_ROOT: &str = "_docs/shared";
 

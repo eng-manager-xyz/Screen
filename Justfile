@@ -70,11 +70,12 @@ preprocessor-build:
 doc-gates-build:
     @cargo build -p doc-gates
 
-site: docs preprocessor-build site-screen site-wisp site-wisp-chart
+site: docs preprocessor-build site-screen site-wisp site-wisp-chart site-wisp-animation
     @echo
     @echo "Open: file://$(pwd)/target/book/index.html  (screen project book)"
     @echo "      file://$(pwd)/target/book/wisp/index.html  (wisp library book)"
     @echo "      file://$(pwd)/target/book/wisp-chart/index.html  (wisp-chart book)"
+    @echo "      file://$(pwd)/target/book/wisp-animation/index.html  (wisp-animation book)"
 
 # Build the screen project book. Standalone recipe so CI can target a
 # single book without rebuilding the other.
@@ -96,6 +97,16 @@ site-wisp: preprocessor-build
 site-wisp-chart: preprocessor-build
     @mkdir -p target/book
     PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-chart-book --dest-dir "$(pwd)/target/book/wisp-chart"
+
+# Build the wisp-animation book into `target/book/wisp-animation/`
+# (M-ANIM.0 / AUT-227). Fourth book in the multi-book composition,
+# mounted at `/Screen/wisp-animation/` on the deployed site. The
+# preprocessor falls back to `target = "screen"` for now — the
+# cross-link `Target` enum gains a dedicated `WispAnimation` variant
+# only if/when this book starts inlining shared fragments.
+site-wisp-animation: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-animation-book --dest-dir "$(pwd)/target/book/wisp-animation"
 
 # Regenerate per-feature screenshots / story HTML into _docs/book/src/assets/.
 # Used by mdBook chapters; commit the output so docs build is reproducible.

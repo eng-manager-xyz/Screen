@@ -1,0 +1,18 @@
+[package]
+name = "wisp-animation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Pure time→state animation primitives for `wisp` and `wisp-chart`. `Animation` is a value; `Driver` owns the clock. Same value runs in real-time (winit) and fixed-step (deterministic export)."
+
+[lints]
+workspace = true
+
+# `wisp-animation` is wasm-clean by construction. The crate does
+# not pull `winit`, `std::time::Instant`, threads, or filesystem
+# access. The `Driver` accepts a caller-supplied `Duration` per
+# tick, so the host owns the clock (real-time or deterministic).
+[dependencies]
+wisp.workspace = true
+glam.workspace = true

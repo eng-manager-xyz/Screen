@@ -9233,6 +9233,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "wisp-animation"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "screen-wisp",
+]
+
+[[package]]
 name = "wisp-chart"
 version = "0.1.0"
 dependencies = [
@@ -9262,6 +9270,7 @@ dependencies = [
  "wasm-bindgen-test",
  "web-sys",
  "wgpu",
+ "wisp-animation",
  "wisp-chart",
 ]
 
