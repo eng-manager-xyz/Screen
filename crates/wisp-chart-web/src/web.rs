@@ -34,8 +34,8 @@ use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
-    Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt, Driver,
-    Ease, EventReader, LinearRamp, RepeatCount, RepeatStrategy, Sequence, Spring, Stagger,
+    Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt, DrawIn,
+    Driver, Ease, EventReader, LinearRamp, RepeatCount, RepeatStrategy, Sequence, Spring, Stagger,
     StaggerFrom, Track, Tween,
 };
 
@@ -107,6 +107,9 @@ pub enum AnimationKind {
     /// `EventReader` each frame and logs Started/Completed events
     /// to the browser console (M-ANIM.9 / AUT-236).
     Callbacks,
+    /// Polar plot slides along an S-curve whose `DrawIn` reveals
+    /// the path 0..=1 over 2s, then loops (M-ANIM.10 / AUT-237).
+    DrawIn,
 }
 
 impl AnimationKind {
@@ -126,6 +129,7 @@ impl AnimationKind {
             "keyframe" | "track" | "waypoints" => Some(Self::Keyframe),
             "stagger" => Some(Self::Stagger),
             "callbacks" | "events" | "lifecycle" => Some(Self::Callbacks),
+            "drawin" | "draw-in" | "morph" => Some(Self::DrawIn),
             _ => None,
         }
     }
@@ -360,6 +364,51 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::DrawIn => {
+            // Polar plot slides along an S-curve whose DrawIn reveals
+            // the path over 2s. Demonstration: each frame, sample
+            // DrawIn → last point becomes the chart's translation.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            // 11-point S-curve in NDC space.
+            let path: Vec<glam::Vec2> = (0..=10)
+                .map(|i| {
+                    #[allow(
+                        clippy::cast_precision_loss,
+                        reason = "i <= 10"
+                    )]
+                    let t = i as f32 / 10.0;
+                    let x = -0.5 + t;
+                    let y = 0.3 * (t * std::f32::consts::TAU).sin();
+                    glam::Vec2::new(x, y)
+                })
+                .collect();
+            let drawin = DrawIn::new(path, Duration::from_secs(2));
+            let cycle_ms = 2_500.0_f32;
+            let mutator: FrameMutator = single_node_mutator(
+                chart_id,
+                move |d: &Driver, c: &mut Container| {
+                    let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                    let local = Duration::from_secs_f32((pos_ms / 1000.0).min(2.0));
+                    let revealed = drawin.sample(local);
+                    if let Some(tail) = revealed.last() {
+                        c.transform.position = *tail;
+                        c.transform.scale = glam::Vec2::splat(0.45);
+                    }
+                },
+            );
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Callbacks => {
             // Single-cycle spin wrapped with lifecycle callbacks.
