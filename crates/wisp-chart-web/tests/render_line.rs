@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Line-mark snapshot — captures a 3-series step / linear line
 //! chart with markers to `line.png` for the mdBook chapter
 //! `_docs/wisp-chart-book/src/charts/line.md`.

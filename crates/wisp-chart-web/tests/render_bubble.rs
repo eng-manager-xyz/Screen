@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Bubble-chart snapshot — Point mark + Size encoding (Area mapping).
 
 #![cfg(not(target_arch = "wasm32"))]

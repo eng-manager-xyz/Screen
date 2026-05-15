@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Area-chart snapshot — filled region between line + baseline.
 
 #![cfg(not(target_arch = "wasm32"))]

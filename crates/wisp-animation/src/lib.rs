@@ -52,6 +52,44 @@
 
 use std::time::Duration;
 
+pub mod animatable;
+pub mod chart;
+pub mod color_space;
+pub mod composition;
+pub mod decay;
+pub mod ease;
+pub mod flip;
+pub mod lifecycle;
+pub mod move_along_path;
+pub mod path_morph;
+pub mod repeat;
+pub mod spring;
+pub mod stagger;
+pub mod target;
+pub mod theme;
+pub mod track;
+pub mod tween;
+pub mod typewriter;
+
+pub use animatable::Animatable;
+pub use chart::{Enter, Exit};
+pub use color_space::{ColorSpace, ColorTween};
+pub use composition::{Delay, Parallel, Sequence};
+pub use decay::Decay;
+pub use ease::Ease;
+pub use flip::{Flip, FlipState, NodeFlipTween};
+pub use lifecycle::{AnimEvent, AnimId, AnimationLifecycleExt, EventReader, WithCallbacks};
+pub use move_along_path::{MoveAlongPath, PathPose};
+pub use path_morph::{DrawIn, PathMorph};
+pub use repeat::{AnimationRepeatExt, Repeat, RepeatCount, RepeatStrategy};
+pub use spring::Spring;
+pub use stagger::{Stagger, StaggerFrom};
+pub use target::{NodeProperty, Property, Target};
+pub use theme::AnimTheme;
+pub use track::{Curve, Key, Track};
+pub use tween::Tween;
+pub use typewriter::TypeWriter;
+
 /// A pure time→state animation.
 ///
 /// Implement this trait on any value that can produce an output for a
