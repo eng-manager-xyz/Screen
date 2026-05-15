@@ -33,7 +33,10 @@ use web_sys::HtmlCanvasElement;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Transform};
-use wisp_animation::{Animatable, Animation, Driver, Ease, LinearRamp, Sequence, Tween};
+use wisp_animation::{
+    Animatable, Animation, AnimationRepeatExt, Driver, Ease, LinearRamp, RepeatCount,
+    RepeatStrategy, Sequence, Tween,
+};
 
 use crate::ChartId;
 
@@ -64,6 +67,10 @@ pub enum AnimationKind {
     /// Three-step storyline via `Sequence`: fade-in → rotate
     /// quarter-turn → fade-out (M-ANIM.3 / AUT-230).
     Storyline,
+    /// Infinite mirrored-repeat (yoyo) of a scale Tween, driving
+    /// the chart between scale 0.6 and 1.0 forever (M-ANIM.4 /
+    /// AUT-231).
+    Yoyo,
 }
 
 impl AnimationKind {
@@ -77,6 +84,7 @@ impl AnimationKind {
             "fade" | "alpha" => Some(Self::Fade),
             "tween" | "scale" | "scale-in" => Some(Self::TweenScale),
             "storyline" | "sequence" => Some(Self::Storyline),
+            "yoyo" | "mirror" | "repeat" => Some(Self::Yoyo),
             _ => None,
         }
     }
@@ -311,6 +319,30 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Yoyo => {
+            // Tween 0.6 → 1.0, wrapped with infinite mirrored-
+            // repeat: scale bounces back-and-forth forever.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let pulse = Tween::new(0.6_f32, 1.0, Duration::from_millis(600))
+                .ease(Ease::InOutCubic)
+                .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let scale = pulse.sample(d.elapsed());
+                c.transform = Transform::from_scale(glam::Vec2::splat(scale));
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Storyline => {
             // 3-step alpha sequence: fade-in → hold → fade-out.

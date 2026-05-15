@@ -55,11 +55,13 @@ use std::time::Duration;
 pub mod animatable;
 pub mod composition;
 pub mod ease;
+pub mod repeat;
 pub mod tween;
 
 pub use animatable::Animatable;
 pub use composition::{Delay, Parallel, Sequence};
 pub use ease::Ease;
+pub use repeat::{AnimationRepeatExt, Repeat, RepeatCount, RepeatStrategy};
 pub use tween::Tween;
 
 /// A pure time→state animation.
