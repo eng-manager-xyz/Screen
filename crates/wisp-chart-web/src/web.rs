@@ -34,8 +34,9 @@ use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
-    Animatable, Animation, AnimationRepeatExt, Driver, Ease, LinearRamp, RepeatCount,
-    RepeatStrategy, Sequence, Spring, Stagger, StaggerFrom, Track, Tween,
+    Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt, Driver,
+    Ease, EventReader, LinearRamp, RepeatCount, RepeatStrategy, Sequence, Spring, Stagger,
+    StaggerFrom, Track, Tween,
 };
 
 use crate::ChartId;
@@ -102,6 +103,10 @@ pub enum AnimationKind {
     /// `Stagger::each().from(Center)` across multiple `NodeId`s
     /// (M-ANIM.8 / AUT-235).
     Stagger,
+    /// Spin loop wrapped with lifecycle callbacks — drains an
+    /// `EventReader` each frame and logs Started/Completed events
+    /// to the browser console (M-ANIM.9 / AUT-236).
+    Callbacks,
 }
 
 impl AnimationKind {
@@ -120,6 +125,7 @@ impl AnimationKind {
             "spring" | "bounce" => Some(Self::Spring),
             "keyframe" | "track" | "waypoints" => Some(Self::Keyframe),
             "stagger" => Some(Self::Stagger),
+            "callbacks" | "events" | "lifecycle" => Some(Self::Callbacks),
             _ => None,
         }
     }
@@ -354,6 +360,65 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Callbacks => {
+            // Single-cycle spin wrapped with lifecycle callbacks.
+            // The event reader gets drained inside the mutator
+            // each frame; events log to the browser console.
+            // Chart's alpha flashes briefly on the Completed event.
+            use std::cell::Cell;
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let reader = EventReader::default();
+            let inner = LinearRamp::new(0.0, TAU, Duration::from_millis(1_500))
+                .with_callbacks(AnimId(42))
+                .with_reader(reader.clone());
+            // Wrap with infinite mirrored repeat so the animation
+            // restarts after each completion — the reader will
+            // fire Started/Completed pairs every cycle.
+            let spin = inner
+                .repeat_with(RepeatCount::Infinite, RepeatStrategy::Loop);
+            let flash_until = Rc::new(Cell::new(Duration::ZERO));
+            let flash_until_inner = flash_until.clone();
+            let mutator: FrameMutator = single_node_mutator(
+                chart_id,
+                move |d: &Driver, c: &mut Container| {
+                    let rotation = spin.sample(d.elapsed()) % TAU;
+                    c.transform = Transform::from_rotation(rotation);
+                    // Drain events; log to console; trigger a flash
+                    // on Completed.
+                    for ev in reader.drain() {
+                        match ev {
+                            AnimEvent::Started(id) => log::info!("anim {id:?} started"),
+                            AnimEvent::Completed(id) => {
+                                log::info!("anim {id:?} completed");
+                                flash_until_inner
+                                    .set(d.elapsed() + Duration::from_millis(120));
+                            }
+                            AnimEvent::Cycle { id, n } => {
+                                log::info!("anim {id:?} cycle {n}");
+                            }
+                        }
+                    }
+                    // Apply the flash if still in window.
+                    c.alpha = if d.elapsed() < flash_until.get() {
+                        0.55
+                    } else {
+                        1.0
+                    };
+                },
+            );
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Stagger => {
             // Five dots in a horizontal row, alpha-pulsing from

@@ -16,3 +16,4 @@
 - [Spring physics](./chunks/spring.md)
 - [Keyframe Track + Curve](./chunks/keyframe-track.md)
 - [Stagger](./chunks/stagger.md)
+- [Lifecycle callbacks + EventReader](./chunks/lifecycle.md)
