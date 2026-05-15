@@ -32,19 +32,36 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::scene::{Container, NodeId, Transform};
+use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
     Animatable, Animation, AnimationRepeatExt, Driver, Ease, LinearRamp, RepeatCount,
-    RepeatStrategy, Sequence, Spring, Track, Tween,
+    RepeatStrategy, Sequence, Spring, Stagger, StaggerFrom, Track, Tween,
 };
 
 use crate::ChartId;
 
 /// Per-frame mutator closure shared by every animated path. Takes
-/// the driver (caller can re-read elapsed, sample animations, etc.)
-/// and a mutable borrow of the chart node's container (to apply
-/// transform / alpha / blend changes).
-type FrameMutator = Box<dyn FnMut(&Driver, &mut Container)>;
+/// the driver and a mutable borrow of the full Stage so closures
+/// that touch multiple nodes (Stagger across a grid, FLIP) can
+/// reach in.
+///
+/// For single-node demos there's a convenience wrapper —
+/// [`single_node_mutator`] — that adapts a `Fn(&Driver, &mut Container)`
+/// closure to the multi-node signature.
+type FrameMutator = Box<dyn FnMut(&Driver, &mut Stage)>;
+
+/// Adapt a single-node mutator (the most common case) to the
+/// full-Stage signature.
+fn single_node_mutator<F: FnMut(&Driver, &mut Container) + 'static>(
+    chart_id: NodeId,
+    mut inner: F,
+) -> FrameMutator {
+    Box::new(move |d: &Driver, stage: &mut Stage| {
+        if let Some(node) = stage.get_mut(chart_id) {
+            inner(d, node.container_mut());
+        }
+    })
+}
 
 /// Which animation to drive against the active chart. Parsed from
 /// the URL's `?animate=…` query parameter. Unknown / missing →
@@ -81,6 +98,10 @@ pub enum AnimationKind {
     /// 4-keyframe scale walk via `Track<f32>` with per-segment
     /// eases (M-ANIM.7 / AUT-234).
     Keyframe,
+    /// Five-dot row with center-out stagger on alpha — demonstrates
+    /// `Stagger::each().from(Center)` across multiple `NodeId`s
+    /// (M-ANIM.8 / AUT-235).
+    Stagger,
 }
 
 impl AnimationKind {
@@ -98,6 +119,7 @@ impl AnimationKind {
             "slide" | "translate" => Some(Self::Slide),
             "spring" | "bounce" => Some(Self::Spring),
             "keyframe" | "track" | "waypoints" => Some(Self::Keyframe),
+            "stagger" => Some(Self::Stagger),
             _ => None,
         }
     }
@@ -280,11 +302,11 @@ fn run_animated(
         app,
         surface,
         renderer,
-        chart_id: setup.chart_id,
         driver: setup.driver,
         mutator: setup.mutator,
         last_tick_ms: now_ms()?,
     };
+    let _ = setup.chart_id; // captured by the per-arm mutator closure
     let state = Rc::new(RefCell::new(state));
     request_next_frame(&state)?;
     log::info!("wisp-chart-web: {kind:?} animation loop attached.");
@@ -323,7 +345,7 @@ fn setup_animation(
             let mut driver = Driver::realtime();
             driver.play();
             let anim = LinearRamp::new(0.0, TAU, Duration::from_secs(1));
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let rotation = anim.sample(d.elapsed()) % TAU;
                 c.transform = Transform::from_rotation(rotation);
             });
@@ -332,6 +354,75 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Stagger => {
+            // Five dots in a horizontal row, alpha-pulsing from
+            // center outward via `Stagger::each(120ms).from(Center)`.
+            // Each dot is its own NodeId — the mutator captures all
+            // five and mutates them via stage iteration.
+            use wisp::scene::{Fill, Graphics};
+            let count = 5_usize;
+            let mut ids: Vec<NodeId> = Vec::with_capacity(count);
+            for i in 0..count {
+                let mut g = Graphics::new();
+                g.fill(Fill::Solid(wisp::Color {
+                    r: 0.0,
+                    g: 0.45,
+                    b: 0.7,
+                    a: 1.0,
+                }));
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "count <= 5"
+                )]
+                let i_f = i as f32;
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "count <= 5"
+                )]
+                let count_f = count as f32;
+                let centre_x = ((i_f / (count_f - 1.0)) - 0.5) * 1.2;
+                g.draw_ellipse(glam::Vec2::new(centre_x, 0.0), glam::Vec2::splat(0.08));
+                let id = app
+                    .stage_mut()
+                    .add_child(root, g)
+                    .ok_or_else(|| "add_child returned None".to_owned())?;
+                ids.push(id);
+            }
+            // Reuse `chart_id` as the first dot for the AnimSetup
+            // (the field is unused downstream — see run_animated).
+            let primary = ids[0];
+            let mut driver = Driver::realtime();
+            driver.play();
+            let stagger = Stagger::each(Duration::from_millis(120)).from(StaggerFrom::Center);
+            let pulse = Tween::new(0.2_f32, 1.0, Duration::from_millis(400))
+                .ease(Ease::InOutCubic);
+            let cycle_ms = 1_400.0_f32;
+            let mutator: FrameMutator = Box::new(move |d: &Driver, stage: &mut Stage| {
+                let cycle_pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                for (i, id) in ids.iter().enumerate() {
+                    let offset = stagger.offset_for(i, ids.len());
+                    let local_ms = cycle_pos_ms - offset.as_secs_f32() * 1000.0;
+                    let alpha = if local_ms < 0.0 {
+                        0.2
+                    } else if local_ms < 400.0 {
+                        pulse.sample(Duration::from_secs_f32(local_ms / 1000.0))
+                    } else if local_ms < 800.0 {
+                        // pulse out
+                        pulse.sample(Duration::from_secs_f32((800.0 - local_ms) / 1000.0))
+                    } else {
+                        0.2
+                    };
+                    if let Some(node) = stage.get_mut(*id) {
+                        node.container_mut().alpha = alpha;
+                    }
+                }
+            });
+            return Ok(AnimSetup {
+                chart_id: primary,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Keyframe => {
             // 4-keyframe scale walk: 1.0 → 0.5 → 1.2 → 0.8 over 2s.
@@ -351,7 +442,7 @@ fn setup_animation(
                 .key_eased(Duration::from_millis(1_200), 1.2, Ease::OutBack)
                 .key_eased(Duration::from_millis(2_000), 0.8, Ease::InOutQuad);
             let cycle_ms = 2_000.0_f32;
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
                 let scale = track.sample(Duration::from_secs_f32(pos_ms / 1000.0));
                 c.transform = Transform::from_scale(glam::Vec2::splat(scale.max(0.0)));
@@ -375,7 +466,7 @@ fn setup_animation(
             driver.play();
             let spring = Spring::underdamped(70.0, 1.0, 0.4).between(0.4, 1.0);
             let cycle_ms = 1_500.0_f32;
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
                 let scale = spring.sample(Duration::from_secs_f32(pos_ms / 1000.0));
                 c.transform = Transform::from_scale(glam::Vec2::splat(scale.clamp(0.0, 2.0)));
@@ -410,7 +501,7 @@ fn setup_animation(
             )
             .ease(Ease::InOutCubic)
             .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 c.transform.position = slide.sample(d.elapsed());
             });
             return Ok(AnimSetup {
@@ -433,7 +524,7 @@ fn setup_animation(
             let pulse = Tween::new(0.6_f32, 1.0, Duration::from_millis(600))
                 .ease(Ease::InOutCubic)
                 .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let scale = pulse.sample(d.elapsed());
                 c.transform = Transform::from_scale(glam::Vec2::splat(scale));
             });
@@ -465,7 +556,7 @@ fn setup_animation(
                 Duration::from_millis(2_000),
             );
             let cycle_ms = 2_000.0_f32;
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
                 let local = Duration::from_secs_f32(pos_ms / 1000.0);
                 c.alpha = alpha_seq.sample(local);
@@ -494,7 +585,7 @@ fn setup_animation(
             let cycle = Duration::from_millis(2_000);
             let grow = Tween::new(0.0_f32, 1.0, Duration::from_millis(700)).ease(Ease::OutBack);
             let shrink = Tween::new(1.0_f32, 0.0, Duration::from_millis(700)).ease(Ease::InCubic);
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 let cycle_ms = cycle.as_secs_f32() * 1000.0;
                 let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
                 let scale = if pos_ms < 700.0 {
@@ -527,7 +618,7 @@ fn setup_animation(
             let mut driver = Driver::realtime();
             driver.play();
             let cycle = Duration::from_millis(2_000);
-            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+            let mutator: FrameMutator = single_node_mutator(chart_id, move |d: &Driver, c: &mut Container| {
                 // Map [0, 2s) to [0, 1, 0] (yoyo). Cycle position
                 // wraps; first half ramps up, second half ramps
                 // down. Pure use of `Animatable::lerp(f32)`.
@@ -554,7 +645,6 @@ struct AnimState {
     app: Application,
     surface: wgpu::Surface<'static>,
     renderer: Renderer,
-    chart_id: NodeId,
     driver: Driver,
     mutator: FrameMutator,
     last_tick_ms: f64,
@@ -594,15 +684,15 @@ fn step_one_frame(state: &Rc<RefCell<AnimState>>) -> Result<(), String> {
     let dt = Duration::from_secs_f64(dt_ms / 1000.0);
     s.driver.tick(dt);
 
-    let chart_id = s.chart_id;
-    // Split the mutable borrow: take the closure and the driver
-    // out of `s` so we can pass `&mut Container` to the closure
-    // without overlapping borrows of `s`.
-    let mut mutator = std::mem::replace(&mut s.mutator, Box::new(|_, _| {}));
+    // Split the mutable borrow: take the closure and a snapshot of
+    // the driver out of `s` so the closure can call `s.app.stage_mut()`
+    // without overlapping borrows.
+    let mut mutator = std::mem::replace(
+        &mut s.mutator,
+        Box::new(|_: &Driver, _: &mut Stage| {}),
+    );
     let driver_snapshot = s.driver.clone();
-    if let Some(node) = s.app.stage_mut().get_mut(chart_id) {
-        mutator(&driver_snapshot, node.container_mut());
-    }
+    mutator(&driver_snapshot, s.app.stage_mut());
     s.mutator = mutator;
 
     let frame = s
