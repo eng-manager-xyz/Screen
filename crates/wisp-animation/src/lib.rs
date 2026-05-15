@@ -53,6 +53,7 @@
 use std::time::Duration;
 
 pub mod animatable;
+pub mod color_space;
 pub mod composition;
 pub mod ease;
 pub mod lifecycle;
@@ -67,6 +68,7 @@ pub mod tween;
 pub mod typewriter;
 
 pub use animatable::Animatable;
+pub use color_space::{ColorSpace, ColorTween};
 pub use composition::{Delay, Parallel, Sequence};
 pub use ease::Ease;
 pub use lifecycle::{AnimEvent, AnimId, AnimationLifecycleExt, EventReader, WithCallbacks};

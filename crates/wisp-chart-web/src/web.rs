@@ -34,9 +34,9 @@ use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
-    Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt, DrawIn,
-    Driver, Ease, EventReader, LinearRamp, MoveAlongPath, RepeatCount, RepeatStrategy, Sequence,
-    Spring, Stagger, StaggerFrom, Track, Tween, TypeWriter,
+    Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt,
+    ColorSpace, ColorTween, DrawIn, Driver, Ease, EventReader, LinearRamp, MoveAlongPath,
+    RepeatCount, RepeatStrategy, Sequence, Spring, Stagger, StaggerFrom, Track, Tween, TypeWriter,
 };
 
 use crate::ChartId;
@@ -116,6 +116,10 @@ pub enum AnimationKind {
     /// 10-step staircase scale driven by `TypeWriter` — visually
     /// reveals the chart character-by-character (M-ANIM.12 / AUT-239).
     TypeIn,
+    /// Three colour-tween ellipses (LinearRgb / Oklab / Oklch),
+    /// each cycling red → green → blue → red so the midpoint
+    /// brown/muddy region differs per space (M-ANIM.13 / AUT-240).
+    ColorSpaces,
 }
 
 impl AnimationKind {
@@ -138,6 +142,7 @@ impl AnimationKind {
             "drawin" | "draw-in" | "morph" => Some(Self::DrawIn),
             "move-path" | "movepath" | "follow" => Some(Self::MovePath),
             "type-in" | "typein" | "typewriter" => Some(Self::TypeIn),
+            "color" | "color-spaces" | "colorspaces" | "oklab" => Some(Self::ColorSpaces),
             _ => None,
         }
     }
@@ -372,6 +377,67 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::ColorSpaces => {
+            // Three ellipses, each color-cycling red→green→blue→red
+            // in a different colour space. Per-frame the ellipse is
+            // destroyed + re-added so the fill colour updates (Graphics
+            // primitives aren't externally mutable).
+            use wisp::scene::{Fill, Graphics};
+            let mut driver = Driver::realtime();
+            driver.play();
+            // Just remember the slots; primitive is recreated each frame.
+            let labels = [ColorSpace::LinearRgb, ColorSpace::Oklab, ColorSpace::Oklch];
+            let xs = [-0.6_f32, 0.0, 0.6];
+            // Insert placeholder graphics so we have NodeIds.
+            let mut initial_ids: Vec<NodeId> = Vec::with_capacity(3);
+            for _ in 0..3 {
+                let g = Graphics::new();
+                let id = app
+                    .stage_mut()
+                    .add_child(root, g)
+                    .ok_or_else(|| "add_child returned None".to_owned())?;
+                initial_ids.push(id);
+            }
+            let primary = initial_ids[0];
+            let ids_cell: Rc<RefCell<Vec<NodeId>>> = Rc::new(RefCell::new(initial_ids));
+            let red = wisp::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+            let green = wisp::Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+            let blue = wisp::Color { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+            let cycle_ms = 3_000.0_f32;
+            let ids_inner = ids_cell.clone();
+            let mutator: FrameMutator = Box::new(move |d: &Driver, stage: &mut Stage| {
+                let elapsed_ms = d.elapsed().as_secs_f32() * 1000.0 % cycle_ms;
+                let third = cycle_ms / 3.0;
+                let (from, to, local_ms) = if elapsed_ms < third {
+                    (red, green, elapsed_ms)
+                } else if elapsed_ms < 2.0 * third {
+                    (green, blue, elapsed_ms - third)
+                } else {
+                    (blue, red, elapsed_ms - 2.0 * third)
+                };
+                let mut ids = ids_inner.borrow_mut();
+                let stage_root = stage.root();
+                for (i, id) in ids.iter_mut().enumerate() {
+                    let space = labels[i];
+                    let mut tween =
+                        ColorTween::new(from, to, Duration::from_secs_f32(third / 1000.0));
+                    tween.space = space;
+                    let c = tween.sample(Duration::from_secs_f32(local_ms / 1000.0));
+                    stage.destroy(*id);
+                    let mut g = Graphics::new();
+                    g.fill(Fill::Solid(c));
+                    g.draw_ellipse(glam::Vec2::new(xs[i], 0.0), glam::Vec2::splat(0.22));
+                    if let Some(new_id) = stage.add_child(stage_root, g) {
+                        *id = new_id;
+                    }
+                }
+            });
+            return Ok(AnimSetup {
+                chart_id: primary,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::TypeIn => {
             // 10-step staircase scale via TypeWriter. Each step
