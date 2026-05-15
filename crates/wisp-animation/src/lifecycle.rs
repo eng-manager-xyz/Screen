@@ -27,7 +27,12 @@ pub enum AnimEvent {
     Started(AnimId),
     /// Fired when a cycle boundary passes (every cycle for
     /// `Repeat`-wrapped animations).
-    Cycle { id: AnimId, n: u32 },
+    Cycle {
+        /// Identifier of the animation that completed a cycle.
+        id: AnimId,
+        /// Zero-based index of the completed cycle.
+        n: u32,
+    },
     /// Fired exactly once when the animation reaches its
     /// terminal duration.
     Completed(AnimId),
@@ -47,6 +52,7 @@ impl EventReader {
     }
 
     /// Drain all queued events.
+    #[must_use = "drain returns the events; ignore returned Vec means the events are lost"]
     pub fn drain(&self) -> Vec<AnimEvent> {
         std::mem::take(&mut *self.queue.borrow_mut())
     }

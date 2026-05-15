@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the Spring chapter (M-ANIM.6 / AUT-233).
 //! Polar plot at scale 1.08 — the overshoot peak of an
 //! underdamped spring.

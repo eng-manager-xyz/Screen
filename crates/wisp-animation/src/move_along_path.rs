@@ -69,10 +69,7 @@ impl Animation for MoveAlongPath {
         let frac = if self.duration.is_zero() {
             1.0
         } else {
-            #[allow(
-                clippy::cast_possible_truncation,
-                reason = "progress is in [0, 1]"
-            )]
+            #[allow(clippy::cast_possible_truncation, reason = "progress is in [0, 1]")]
             let raw = (t.as_secs_f64() / self.duration.as_secs_f64()) as f32;
             raw.clamp(0.0, 1.0)
         };
@@ -89,6 +86,10 @@ impl Animation for MoveAlongPath {
                 angle,
             };
         }
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "polyline length well within f32 mantissa precision"
+        )]
         let segments = (self.path.len() - 1) as f32;
         let target = frac * segments;
         #[allow(

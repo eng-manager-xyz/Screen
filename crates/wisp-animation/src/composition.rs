@@ -13,9 +13,9 @@
 //! - **`Delay`** is a zero-output animation that just consumes
 //!   time. Use it inside a `Sequence` to pad gaps.
 //!
-//! Infix builders on the [`AnimationExt`] trait expose
-//! `a.then(b)` and `a.and(b)` syntax that returns boxed-trait
-//! values typed-erased through `Animation<Output = O>`.
+//! Compose directly through `Sequence::then` / `Parallel::with`.
+//! Boxed-trait erasure lets children of different concrete types
+//! share a common `Output = O`.
 
 use std::time::Duration;
 
@@ -112,7 +112,7 @@ impl<O: Default> Animation for Sequence<O> {
         self.children
             .iter()
             .map(|c| c.duration())
-            .fold(Duration::ZERO, |acc, d| acc.saturating_add(d))
+            .fold(Duration::ZERO, Duration::saturating_add)
     }
 
     fn sample(&self, t: Duration) -> O {
@@ -178,6 +178,7 @@ impl<O: Default> Parallel<O> {
     /// in declaration order. Allocates a `Vec` — for hot-path use
     /// the caller should `iter()` and call `Animation::sample`
     /// directly on each child.
+    #[must_use]
     pub fn sample_all(&self, t: Duration) -> Vec<O> {
         self.children.iter().map(|c| c.sample(t)).collect()
     }

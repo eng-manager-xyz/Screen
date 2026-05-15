@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! AUT-186 / M-CHART.6 — integration test for the Plot facade
 //! rendering a `Mark::Bar`.
 //!

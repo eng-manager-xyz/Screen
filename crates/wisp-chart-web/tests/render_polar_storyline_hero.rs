@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the Sequence/Parallel/Delay chapter
 //! (M-ANIM.3 / AUT-230). Polar plot mid-storyline: alpha 0.8,
 //! rotated 0.4 rad — captures the moment after the fade-in but

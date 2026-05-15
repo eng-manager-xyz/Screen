@@ -3,7 +3,7 @@
 //!
 //! Each variant maps to a concrete `Animation` value:
 //!
-//! - `Enter::Grow` → scale `Tween::new(0.0, 1.0, ...)` with OutBack.
+//! - `Enter::Grow` → scale `Tween::new(0.0, 1.0, ...)` with `OutBack`.
 //! - `Enter::DrawIn` → `DrawIn` over the path (caller supplies).
 //! - `Enter::Sweep` → rotation `Tween::new(0.0, TAU, ...)`.
 //! - `Enter::Fade` → alpha `Tween::new(0.0, 1.0, ...)`.
@@ -48,9 +48,7 @@ impl Enter {
     pub fn scale_tween(self, theme: &AnimTheme) -> Tween<f32> {
         match self {
             Self::Grow => Tween::new(0.0, 1.0, theme.default_duration).ease(Ease::OutBack),
-            Self::Sweep | Self::DrawIn | Self::Fade => {
-                Tween::new(1.0, 1.0, theme.default_duration)
-            }
+            Self::Sweep | Self::DrawIn | Self::Fade => Tween::new(1.0, 1.0, theme.default_duration),
         }
     }
 
@@ -69,8 +67,9 @@ impl Enter {
     #[must_use]
     pub fn rotation_tween(self, theme: &AnimTheme) -> Tween<f32> {
         match self {
-            Self::Sweep => Tween::new(0.0, std::f32::consts::TAU, theme.default_duration)
-                .ease(Ease::OutCubic),
+            Self::Sweep => {
+                Tween::new(0.0, std::f32::consts::TAU, theme.default_duration).ease(Ease::OutCubic)
+            }
             _ => Tween::new(0.0, 0.0, Duration::ZERO),
         }
     }

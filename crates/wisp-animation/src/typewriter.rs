@@ -56,10 +56,7 @@ impl Animation for TypeWriter {
         if self.total_chars == 0 || self.duration.is_zero() {
             return self.total_chars;
         }
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "progress bounded [0, 1]"
-        )]
+        #[allow(clippy::cast_possible_truncation, reason = "progress bounded [0, 1]")]
         let raw = (t.as_secs_f64() / self.duration.as_secs_f64()) as f32;
         let p = raw.clamp(0.0, 1.0);
         #[allow(

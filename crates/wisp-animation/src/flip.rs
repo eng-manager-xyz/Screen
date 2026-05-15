@@ -24,7 +24,7 @@ use crate::{Animation, Ease};
 /// Snapshot of every node's container transform.
 #[derive(Clone, Debug, Default)]
 pub struct FlipState {
-    /// Map of NodeId → captured local transform.
+    /// Map of `NodeId` → captured local transform.
     pub captures: HashMap<NodeId, Transform>,
 }
 
@@ -55,10 +55,7 @@ impl Animation for NodeFlipTween {
         if self.duration.is_zero() {
             return self.to;
         }
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "progress bounded [0, 1]"
-        )]
+        #[allow(clippy::cast_possible_truncation, reason = "progress bounded [0, 1]")]
         let raw = (t.as_secs_f64() / self.duration.as_secs_f64()) as f32;
         let p = self.ease.eval(raw.clamp(0.0, 1.0));
         Transform {
@@ -85,12 +82,12 @@ impl Flip {
         FlipState { captures }
     }
 
-    /// Build per-node tweens from a captured `FlipState` to the
+    /// Build per-node tweens from a captured [`FlipState`] to the
     /// stage's current transforms. Nodes whose transforms didn't
     /// change return zero tweens.
     #[must_use]
     pub fn from(
-        prev: FlipState,
+        prev: &FlipState,
         stage: &Stage,
         duration: Duration,
         ease: Ease,
@@ -130,7 +127,7 @@ mod tests {
         let g = Graphics::new();
         let _ = stage.add_child(root, g);
         let captured = Flip::capture(&stage);
-        let tweens = Flip::from(captured, &stage, Duration::from_millis(300), Ease::Linear);
+        let tweens = Flip::from(&captured, &stage, Duration::from_millis(300), Ease::Linear);
         assert!(tweens.is_empty());
     }
 
@@ -144,7 +141,7 @@ mod tests {
         if let Some(n) = stage.get_mut(node) {
             n.container_mut().transform.position = Vec2::new(0.5, 0.0);
         }
-        let tweens = Flip::from(captured, &stage, Duration::from_millis(300), Ease::Linear);
+        let tweens = Flip::from(&captured, &stage, Duration::from_millis(300), Ease::Linear);
         assert_eq!(tweens.len(), 1);
         assert_eq!(tweens[0].node, node);
         assert_eq!(tweens[0].from.position, Vec2::ZERO);

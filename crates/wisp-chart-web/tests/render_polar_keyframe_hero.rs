@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the Keyframe Track chapter (M-ANIM.7).
 //! Polar at scale 1.2 — the OutBack waypoint peak.
 

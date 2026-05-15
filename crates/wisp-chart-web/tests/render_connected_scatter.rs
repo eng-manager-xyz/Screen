@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Connected-scatterplot snapshot — `Mark::Line` with Linear X +
 //! Order encoding.
 

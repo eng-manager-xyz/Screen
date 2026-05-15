@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero for ColorSpace chapter (M-ANIM.13). Three ellipses
 //! showing the midpoint colour of red→green in LinearRgb /
 //! Oklab / Oklch. The differences are subtle but real.
@@ -35,8 +40,18 @@ fn color_spaces_hero_renders_to_snapshot() {
     let rt = RenderTexture::with_format(&app, W, H, wgpu::TextureFormat::Rgba8Unorm);
     let renderer = Renderer::new(&app, rt.format()).expect("renderer");
 
-    let red = Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-    let green = Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+    let red = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    let green = Color {
+        r: 0.0,
+        g: 1.0,
+        b: 0.0,
+        a: 1.0,
+    };
     let mid = Duration::from_millis(500);
 
     let lrgb = ColorTween::new(red, green, Duration::from_secs(1)).sample(mid);

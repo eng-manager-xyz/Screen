@@ -5,6 +5,14 @@
 //! linear sRGB. For perceptual blends — palette transitions, hue
 //! sweeps — opt into Oklab or Oklch via [`ColorTween`].
 
+#![allow(
+    clippy::many_single_char_names,
+    clippy::doc_markdown,
+    clippy::excessive_precision,
+    clippy::redundant_closure,
+    reason = "Single-char names match the Oklab spec exactly (L, a, b, l_, m_, s_); doc text references colour-space names that aren't Rust identifiers; precision in Oklab matrix coefficients is the spec's value."
+)]
+
 use std::time::Duration;
 
 use wisp::Color;
@@ -254,7 +262,10 @@ mod tests {
             + (mid_l.g - mid_o.g).powi(2)
             + (mid_l.b - mid_o.b).powi(2))
         .sqrt();
-        assert!(diff > 0.05, "oklab midpoint should differ measurably from sRGB; diff = {diff}");
+        assert!(
+            diff > 0.05,
+            "oklab midpoint should differ measurably from sRGB; diff = {diff}"
+        );
     }
 
     #[test]
@@ -276,6 +287,10 @@ mod tests {
         let mid = t.sample(Duration::from_millis(500));
         // Midpoint should still have low green; the short-arc path
         // goes via dark red → dark purple, not through green.
-        assert!(mid.g < 0.3, "expected short-arc red→magenta hue path, got mid.g = {}", mid.g);
+        assert!(
+            mid.g < 0.3,
+            "expected short-arc red→magenta hue path, got mid.g = {}",
+            mid.g
+        );
     }
 }

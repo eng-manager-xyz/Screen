@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for MoveAlongPath chapter (M-ANIM.11). Polar
 //! plot at the 3-o'clock position of a circular path, tangent-
 //! aligned (rotated π/2).

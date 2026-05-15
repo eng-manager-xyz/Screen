@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the `wisp-animation` book's
 //! `Animatable trait + impls` chapter (M-ANIM.1 / AUT-228).
 //!

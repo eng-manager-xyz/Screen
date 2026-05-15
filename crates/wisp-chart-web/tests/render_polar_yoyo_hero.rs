@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the Repeat/Reverse/Yoyo chapter
 //! (M-ANIM.4 / AUT-231). Polar at scale 0.8 — midway in the
 //! 0.6 → 1.0 yoyo cycle.

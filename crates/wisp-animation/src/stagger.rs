@@ -62,14 +62,16 @@ impl Stagger {
         if count == 0 {
             return Duration::ZERO;
         }
-        if let Some((rows, cols)) = self.grid {
-            if cols > 0 {
-                let row = index / cols;
-                let col = index % cols;
-                let (origin_row, origin_col) = self.grid_origin(rows, cols);
-                let dist = row.abs_diff(origin_row) + col.abs_diff(origin_col);
-                return self.each.saturating_mul(dist as u32);
-            }
+        if let Some((rows, cols)) = self.grid
+            && cols > 0
+        {
+            let row = index / cols;
+            let col = index % cols;
+            let (origin_row, origin_col) = self.grid_origin(rows, cols);
+            let dist = row.abs_diff(origin_row) + col.abs_diff(origin_col);
+            return self
+                .each
+                .saturating_mul(u32::try_from(dist).unwrap_or(u32::MAX));
         }
         let pivot = match self.from {
             StaggerFrom::Start => 0,
@@ -78,7 +80,8 @@ impl Stagger {
             StaggerFrom::Index(i) => i.min(count.saturating_sub(1)),
         };
         let dist = index.abs_diff(pivot);
-        self.each.saturating_mul(dist as u32)
+        self.each
+            .saturating_mul(u32::try_from(dist).unwrap_or(u32::MAX))
     }
 
     fn grid_origin(&self, rows: usize, cols: usize) -> (usize, usize) {

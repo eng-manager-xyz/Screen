@@ -64,9 +64,7 @@ impl<A: Animation> Animation for Repeat<A> {
     fn duration(&self) -> Duration {
         let cycle = self.inner.duration();
         match self.count {
-            RepeatCount::Finite(n) => {
-                cycle.saturating_mul(n.saturating_add(1).max(1))
-            }
+            RepeatCount::Finite(n) => cycle.saturating_mul(n.saturating_add(1).max(1)),
             RepeatCount::Infinite => Duration::MAX,
             RepeatCount::ForDuration(d) => d,
         }
@@ -91,14 +89,22 @@ impl<A: Animation> Animation for Repeat<A> {
         // the current cycle we are.
         let cycle_nanos = cycle.as_nanos();
         let t_nanos = t_clamped.as_nanos();
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "cycle index for animations stays within u64 in practice (animations don't run for 2^64 ns)"
+        )]
         let cycle_index = (t_nanos / cycle_nanos) as u64;
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "local nanos < cycle_nanos which fits u64"
+        )]
         let local_nanos = (t_nanos % cycle_nanos) as u64;
         let local = Duration::from_nanos(local_nanos);
 
         match self.strategy {
             RepeatStrategy::Loop => self.inner.sample(local),
             RepeatStrategy::MirroredRepeat => {
-                if cycle_index % 2 == 0 {
+                if cycle_index.is_multiple_of(2) {
                     self.inner.sample(local)
                 } else {
                     self.inner.sample(cycle.saturating_sub(local))
@@ -154,8 +160,8 @@ mod tests {
 
     #[test]
     fn infinite_duration_is_max() {
-        let r = LinearRamp::new(0.0_f32, 1.0, Duration::from_millis(100))
-            .repeat(RepeatCount::Infinite);
+        let r =
+            LinearRamp::new(0.0_f32, 1.0, Duration::from_millis(100)).repeat(RepeatCount::Infinite);
         assert_eq!(r.duration(), Duration::MAX);
     }
 
@@ -168,8 +174,7 @@ mod tests {
 
     #[test]
     fn finite_clamps_past_end_to_terminal_value() {
-        let r = Tween::new(0.0_f32, 1.0, Duration::from_millis(100))
-            .repeat(RepeatCount::Finite(0)); // play once, no repeat
+        let r = Tween::new(0.0_f32, 1.0, Duration::from_millis(100)).repeat(RepeatCount::Finite(0)); // play once, no repeat
         assert_eq!(r.duration(), Duration::from_millis(100));
         assert!((r.sample(Duration::from_millis(999)) - 1.0).abs() < 1e-3);
     }

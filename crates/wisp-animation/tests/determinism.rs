@@ -43,8 +43,7 @@ fn fixed_driver_is_deterministic_across_600_frames_with_complex_animation() {
             driver.tick(dt);
             // Feed garbage dt — Fixed mode ignores it.
             let yoyo_sample = wisp_animation::Animation::sample(&yoyo, driver.elapsed());
-            let spring_sample =
-                wisp_animation::Animation::sample(&spring, driver.elapsed());
+            let spring_sample = wisp_animation::Animation::sample(&spring, driver.elapsed());
             samples.push(yoyo_sample + spring_sample);
         }
     }
@@ -106,7 +105,7 @@ fn keyframe_track_per_segment_dispatch_is_deterministic() {
         .key(Duration::ZERO, 0.0)
         .key_eased(Duration::from_millis(300), 100.0, Ease::OutCubic)
         .key_eased(Duration::from_millis(700), 50.0, Ease::InOutBack)
-        .key_eased(Duration::from_millis(1_000), 80.0, Ease::Linear);
+        .key_eased(Duration::from_secs(1), 80.0, Ease::Linear);
     let probes = [50, 150, 300, 450, 650, 700, 850, 999];
     let first: Vec<f32> = probes
         .iter()

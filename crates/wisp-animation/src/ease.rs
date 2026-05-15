@@ -7,6 +7,12 @@
 //! `Linear`, parametric `CubicBezier`, discrete `Steps`, and a
 //! one-shot `ThereAndBack` rate function for reveal-then-hide.
 
+#![allow(
+    clippy::too_many_lines,
+    clippy::derivable_impls,
+    reason = "Ease::eval covers ~20 named curves; splitting it would just push the match into a private helper without reducing complexity. Default impl is explicit so the variant choice is documented."
+)]
+
 use std::f32::consts::TAU;
 
 /// Easing curve used by [`crate::Tween`] and other timeline-anchored
@@ -175,12 +181,9 @@ impl Ease {
                 } else {
                     let c5 = TAU / 4.5;
                     if t < 0.5 {
-                        -((2.0_f32).powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * c5).sin())
-                            * 0.5
+                        -((2.0_f32).powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * c5).sin()) * 0.5
                     } else {
-                        (2.0_f32).powf(-20.0 * t + 10.0)
-                            * ((20.0 * t - 11.125) * c5).sin()
-                            * 0.5
+                        (2.0_f32).powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * c5).sin() * 0.5
                             + 1.0
                     }
                 }
@@ -208,11 +211,7 @@ impl Ease {
             }
             Self::ThereAndBack => {
                 // Triangle wave: 0 → 1 → 0 with peak at t = 0.5.
-                if t < 0.5 {
-                    2.0 * t
-                } else {
-                    2.0 * (1.0 - t)
-                }
+                if t < 0.5 { 2.0 * t } else { 2.0 * (1.0 - t) }
             }
             Self::Fn(f) => f(t),
         }

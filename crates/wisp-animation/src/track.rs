@@ -103,11 +103,12 @@ impl<V: Animatable + Default> Animation for Track<V> {
                 if span.is_zero() {
                     return b.value.clone();
                 }
+                let delta = t.checked_sub(a.at).unwrap_or_default();
                 #[allow(
                     clippy::cast_possible_truncation,
                     reason = "progress is bounded in [0, 1]"
                 )]
-                let raw = ((t - a.at).as_secs_f64() / span.as_secs_f64()) as f32;
+                let raw = (delta.as_secs_f64() / span.as_secs_f64()) as f32;
                 let eased = b.ease.eval(raw.clamp(0.0, 1.0));
                 return V::lerp(&a.value, &b.value, eased);
             }
@@ -224,6 +225,10 @@ fn catmull_rom_sample(points: &[Vec2], s: f32) -> Vec2 {
     if n == 2 {
         return points[0].lerp(points[1], s);
     }
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "control point counts are well within f32 mantissa precision"
+    )]
     let segments = (n - 1) as f32;
     let seg_f = s * segments;
     #[allow(
@@ -256,7 +261,12 @@ fn bezier_chain_sample(points: &[Vec2], s: f32) -> Vec2 {
         return points[0];
     }
     let n_segments = (points.len() - 1) / 3;
-    let seg_f = s * n_segments as f32;
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "segment count well within f32 mantissa precision"
+    )]
+    let n_segments_f = n_segments as f32;
+    let seg_f = s * n_segments_f;
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -285,10 +295,10 @@ mod tests {
         let track: Track<f32> = Track::new()
             .key(Duration::ZERO, 0.0)
             .key(Duration::from_millis(500), 50.0)
-            .key(Duration::from_millis(1000), 100.0);
+            .key(Duration::from_secs(1), 100.0);
         assert!((track.sample(Duration::ZERO) - 0.0).abs() < 1e-3);
         assert!((track.sample(Duration::from_millis(500)) - 50.0).abs() < 1e-3);
-        assert!((track.sample(Duration::from_millis(1000)) - 100.0).abs() < 1e-3);
+        assert!((track.sample(Duration::from_secs(1)) - 100.0).abs() < 1e-3);
     }
 
     #[test]
@@ -304,9 +314,11 @@ mod tests {
         let linear: Track<f32> = Track::new()
             .key(Duration::ZERO, 0.0)
             .key(Duration::from_secs(1), 100.0);
-        let eased: Track<f32> = Track::new()
-            .key(Duration::ZERO, 0.0)
-            .key_eased(Duration::from_secs(1), 100.0, Ease::InQuad);
+        let eased: Track<f32> = Track::new().key(Duration::ZERO, 0.0).key_eased(
+            Duration::from_secs(1),
+            100.0,
+            Ease::InQuad,
+        );
         let t = Duration::from_millis(500);
         assert!((linear.sample(t) - 50.0).abs() < 1e-3);
         assert!((eased.sample(t) - 25.0).abs() < 1e-3); // InQuad: 0.5² × 100
@@ -322,7 +334,11 @@ mod tests {
 
     #[test]
     fn catmull_rom_passes_through_control_points() {
-        let pts = vec![Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0), Vec2::new(2.0, 0.0)];
+        let pts = vec![
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(2.0, 0.0),
+        ];
         let c = Curve::catmull_rom(pts, Duration::from_secs(1));
         // First control point at s=0; last at s=1.
         let first = c.sample_normalised(0.0);

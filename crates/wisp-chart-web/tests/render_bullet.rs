@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Bullet-chart snapshot — Few's compact performance-vs-target tile.
 
 #![cfg(not(target_arch = "wasm32"))]

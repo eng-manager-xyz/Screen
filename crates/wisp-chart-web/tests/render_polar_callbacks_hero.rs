@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for Lifecycle callbacks chapter (M-ANIM.9).
 //! Polar rotated 1.4 rad with alpha 0.55 — captures the
 //! Completed-event flash moment.

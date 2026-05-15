@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Native render test for [`wisp_chart_web::render_gantt`].
 //!
 //! Runs the full pipeline (`wisp::Application` → `wisp::Renderer`

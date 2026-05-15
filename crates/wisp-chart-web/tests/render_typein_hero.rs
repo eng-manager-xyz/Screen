@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero for TypeWriter chapter (M-ANIM.12). Polar at scale 0.6
 //! (i.e. typewriter at 6/10 visible chars).
 

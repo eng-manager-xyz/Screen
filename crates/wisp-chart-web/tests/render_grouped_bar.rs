@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Grouped-bar mark snapshot — quarterly revenue × 3 regions
 //! into `grouped-bar.png`.
 

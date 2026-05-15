@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Scatterplot snapshot — 30 points, 3 species, circle markers.
 
 #![cfg(not(target_arch = "wasm32"))]

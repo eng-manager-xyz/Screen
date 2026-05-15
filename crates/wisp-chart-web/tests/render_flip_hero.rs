@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero for FLIP chapter (M-ANIM.14). Two ellipses mid-swap —
 //! one is halfway from left → right, the other halfway from
 //! right → left. Captures what a FLIP transition looks like at
@@ -33,8 +38,18 @@ fn flip_hero_renders_to_snapshot() {
     .expect("Application::new");
     let rt = RenderTexture::with_format(&app, W, H, wgpu::TextureFormat::Rgba8Unorm);
     let renderer = Renderer::new(&app, rt.format()).expect("renderer");
-    let blue = Color { r: 0.0, g: 0.45, b: 0.7, a: 1.0 };
-    let red = Color { r: 0.85, g: 0.15, b: 0.15, a: 1.0 };
+    let blue = Color {
+        r: 0.0,
+        g: 0.45,
+        b: 0.7,
+        a: 1.0,
+    };
+    let red = Color {
+        r: 0.85,
+        g: 0.15,
+        b: 0.15,
+        a: 1.0,
+    };
     let root = app.stage().root();
     // Midpoint of left-right swap: both ellipses sit on top of
     // each other at x = 0.
@@ -46,7 +61,12 @@ fn flip_hero_renders_to_snapshot() {
         let _ = app.stage_mut().add_child(root, g);
     }
     // Ghost markers at the two anchor positions.
-    let ghost = Color { r: 0.7, g: 0.7, b: 0.7, a: 0.4 };
+    let ghost = Color {
+        r: 0.7,
+        g: 0.7,
+        b: 0.7,
+        a: 0.4,
+    };
     for x in [-0.5_f32, 0.5] {
         let mut g = Graphics::new();
         g.fill(Fill::Solid(ghost));

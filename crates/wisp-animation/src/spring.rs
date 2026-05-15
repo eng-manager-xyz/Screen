@@ -2,6 +2,11 @@
 //! `from` to `to`. Open-ended motion; the [`Animation`]
 //! impl reports a *settling* duration based on a small position
 //! + velocity threshold.
+
+#![allow(
+    clippy::many_single_char_names,
+    reason = "Spring math uses standard physics notation (m, k, c, ζ, ωn, ωd). Renaming to wordy forms hurts readability for anyone reading the closed-form expressions."
+)]
 //!
 //! Two springs ship today:
 //!

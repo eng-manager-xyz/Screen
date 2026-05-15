@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for PathMorph / DrawIn chapter (M-ANIM.10).
 //! Polar chart at S-curve's halfway point, scaled to 0.45.
 

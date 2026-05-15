@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the `wisp-animation` book's
 //! `Tween + Ease` chapter (M-ANIM.2 / AUT-229).
 //!

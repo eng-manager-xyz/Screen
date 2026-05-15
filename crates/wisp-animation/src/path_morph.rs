@@ -28,7 +28,11 @@ impl PathMorph {
     /// Construct with equal-length point lists.
     #[must_use]
     pub fn new(from: Vec<Vec2>, to: Vec<Vec2>, duration: Duration) -> Self {
-        debug_assert_eq!(from.len(), to.len(), "PathMorph requires equal vertex counts");
+        debug_assert_eq!(
+            from.len(),
+            to.len(),
+            "PathMorph requires equal vertex counts"
+        );
         Self { from, to, duration }
     }
 
@@ -38,10 +42,7 @@ impl PathMorph {
         if self.duration.is_zero() || self.from.len() != self.to.len() {
             return self.to.clone();
         }
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "progress bounded [0, 1]"
-        )]
+        #[allow(clippy::cast_possible_truncation, reason = "progress bounded [0, 1]")]
         let raw = (t.as_secs_f64() / self.duration.as_secs_f64()) as f32;
         let p = raw.clamp(0.0, 1.0);
         self.from
@@ -99,10 +100,7 @@ impl Animation for DrawIn {
         if self.duration.is_zero() {
             return self.path.clone();
         }
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "progress bounded [0, 1]"
-        )]
+        #[allow(clippy::cast_possible_truncation, reason = "progress bounded [0, 1]")]
         let raw = (t.as_secs_f64() / self.duration.as_secs_f64()) as f32;
         let p = raw.clamp(0.0, 1.0);
         if p <= 0.0 {
@@ -112,6 +110,10 @@ impl Animation for DrawIn {
             return self.path.clone();
         }
         // Find segment-fractional position along the polyline.
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "polyline length well within f32 mantissa precision"
+        )]
         let segments = (self.path.len() - 1) as f32;
         let target = p * segments;
         #[allow(

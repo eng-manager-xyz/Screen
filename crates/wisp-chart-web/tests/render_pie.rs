@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Pie chart snapshot.
 
 #![cfg(not(target_arch = "wasm32"))]

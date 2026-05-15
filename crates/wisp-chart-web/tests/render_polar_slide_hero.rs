@@ -1,3 +1,8 @@
+#![allow(
+    clippy::doc_markdown,
+    reason = "hero-test prose references variant names without backticks"
+)]
+
 //! Hero snapshot for the Target trait chapter (M-ANIM.5).
 //! Polar plot translated right by 0.3 NDC units — the extreme of
 //! the slide cycle.

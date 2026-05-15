@@ -1,15 +1,15 @@
 //! `AnimTheme` — default duration / ease / stagger gap used when
 //! callers omit those parameters. Two built-in presets:
-//! `snappy()` (250ms / OutCubic / 30ms) and `smooth()` (450ms /
-//! OutExpo / 60ms).
+//! `snappy()` (250ms / `OutCubic` / 30ms) and `smooth()` (450ms /
+//! `OutExpo` / 60ms).
 //!
 //! The theme is a plain value — callers pass it into `Tween::from_theme`,
 //! `Stagger::from_theme`, etc., so it composes without a global.
 
 use std::time::Duration;
 
-use crate::{Ease, Stagger, StaggerFrom, Tween};
 use crate::Animatable;
+use crate::{Ease, Stagger, StaggerFrom, Tween};
 
 /// Default motion parameters for a host app.
 #[derive(Clone, Copy, Debug)]
@@ -23,7 +23,7 @@ pub struct AnimTheme {
 }
 
 impl AnimTheme {
-    /// Snappy preset — 250ms / OutCubic / 30ms.
+    /// Snappy preset — 250ms / `OutCubic` / 30ms.
     #[must_use]
     pub const fn snappy() -> Self {
         Self {
@@ -33,7 +33,7 @@ impl AnimTheme {
         }
     }
 
-    /// Smooth preset — 450ms / OutExpo / 60ms.
+    /// Smooth preset — 450ms / `OutExpo` / 60ms.
     #[must_use]
     pub const fn smooth() -> Self {
         Self {
