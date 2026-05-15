@@ -30,3 +30,6 @@
 - [FLIP layout transitions](./chunks/flip.md)
 - [AnimTheme](./chunks/theme.md)
 - [Chart Enter / Exit](./chunks/chart-enter-exit.md)
+- [Storybook + book consolidation](./chunks/storybook.md)
+- [Deterministic export](./chunks/determinism.md)
+- [Decay (inertia)](./chunks/decay.md)
