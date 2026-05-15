@@ -22,3 +22,4 @@
 
 - [PathMorph + DrawIn](./chunks/path-morph.md)
 - [MoveAlongPath](./chunks/move-along-path.md)
+- [TypeWriter](./chunks/typewriter.md)

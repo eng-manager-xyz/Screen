@@ -64,6 +64,7 @@ pub mod stagger;
 pub mod target;
 pub mod track;
 pub mod tween;
+pub mod typewriter;
 
 pub use animatable::Animatable;
 pub use composition::{Delay, Parallel, Sequence};
@@ -77,6 +78,7 @@ pub use stagger::{Stagger, StaggerFrom};
 pub use target::{NodeProperty, Property, Target};
 pub use track::{Curve, Key, Track};
 pub use tween::Tween;
+pub use typewriter::TypeWriter;
 
 /// A pure time→state animation.
 ///

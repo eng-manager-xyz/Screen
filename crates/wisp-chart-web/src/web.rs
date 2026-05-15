@@ -36,7 +36,7 @@ use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
     Animatable, AnimEvent, AnimId, Animation, AnimationLifecycleExt, AnimationRepeatExt, DrawIn,
     Driver, Ease, EventReader, LinearRamp, MoveAlongPath, RepeatCount, RepeatStrategy, Sequence,
-    Spring, Stagger, StaggerFrom, Track, Tween,
+    Spring, Stagger, StaggerFrom, Track, Tween, TypeWriter,
 };
 
 use crate::ChartId;
@@ -113,6 +113,9 @@ pub enum AnimationKind {
     /// Polar plot follows a circular path with auto-rotate so it
     /// always faces the direction of motion (M-ANIM.11 / AUT-238).
     MovePath,
+    /// 10-step staircase scale driven by `TypeWriter` — visually
+    /// reveals the chart character-by-character (M-ANIM.12 / AUT-239).
+    TypeIn,
 }
 
 impl AnimationKind {
@@ -134,6 +137,7 @@ impl AnimationKind {
             "callbacks" | "events" | "lifecycle" => Some(Self::Callbacks),
             "drawin" | "draw-in" | "morph" => Some(Self::DrawIn),
             "move-path" | "movepath" | "follow" => Some(Self::MovePath),
+            "type-in" | "typein" | "typewriter" => Some(Self::TypeIn),
             _ => None,
         }
     }
@@ -368,6 +372,41 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::TypeIn => {
+            // 10-step staircase scale via TypeWriter. Each step
+            // increments visible count by 1; we map that to scale.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let total = 10_usize;
+            let typer = TypeWriter::new(total, Duration::from_millis(1_500));
+            let cycle_ms = 2_000.0_f32;
+            let mutator: FrameMutator = single_node_mutator(
+                chart_id,
+                move |d: &Driver, c: &mut Container| {
+                    let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                    let visible = typer.sample(Duration::from_secs_f32(
+                        (pos_ms / 1000.0).min(1.5),
+                    ));
+                    #[allow(
+                        clippy::cast_precision_loss,
+                        reason = "total <= 10"
+                    )]
+                    let scale = visible as f32 / total as f32;
+                    c.transform = Transform::from_scale(glam::Vec2::splat(scale));
+                },
+            );
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::MovePath => {
             // Polar follows a small circle with auto-rotate.
