@@ -449,6 +449,36 @@ jobs:
             echo "WISP_SKIP_GPU_FILTER_TESTS=1"
           } >> "$GITHUB_ENV"
 
+      # `rust-lld` parallel-link with ~150 rlibs in `screen-wisp`'s
+      # test binaries (`vector_render`, `render_polygon`, …) hits
+      # SIGBUS on the bare ubuntu-latest runner — its 16 GB RAM is
+      # tight once cargo's concurrent codegen is layered on top of
+      # the link's mmap pressure. Two cheap fixes, both targeted at
+      # the same root cause:
+      #
+      # 1. **6 GB swap file.** Gives the linker virtual-memory
+      #    headroom; pages out cold cargo state during the link.
+      #    Adds ~10 s setup; no impact on cached / fast paths.
+      # 2. **Cap CARGO_BUILD_JOBS=2.** Halves concurrent codegen
+      #    units so peak memory during the gate's compile-test
+      #    step stays bounded. Slightly slower wall-clock; well
+      #    inside the 30-min budget the existing run reports.
+      #
+      # This is *only* needed on ubuntu-latest — macOS runners get
+      # 14 GB RAM but native ld + faster I/O handle the link fine,
+      # and Windows uses the MSVC linker which doesn't share
+      # rust-lld's mmap-pressure shape.
+      - name: Add swap + cap cargo jobs (Ubuntu link-time OOM mitigation)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo fallocate -l 6G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Swap status:"
+          free -h
+          echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: extractions/setup-just@v2
 
