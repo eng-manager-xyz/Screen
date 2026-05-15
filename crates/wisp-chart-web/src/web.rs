@@ -71,6 +71,10 @@ pub enum AnimationKind {
     /// the chart between scale 0.6 and 1.0 forever (M-ANIM.4 /
     /// AUT-231).
     Yoyo,
+    /// Slide chart horizontally via `NodeProperty::translation`
+    /// `Target<Vec2>`, demonstrating the Target abstraction
+    /// (M-ANIM.5 / AUT-232).
+    Slide,
 }
 
 impl AnimationKind {
@@ -85,6 +89,7 @@ impl AnimationKind {
             "tween" | "scale" | "scale-in" => Some(Self::TweenScale),
             "storyline" | "sequence" => Some(Self::Storyline),
             "yoyo" | "mirror" | "repeat" => Some(Self::Yoyo),
+            "slide" | "translate" => Some(Self::Slide),
             _ => None,
         }
     }
@@ -319,6 +324,39 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Slide => {
+            // Slide the chart horizontally back and forth using a
+            // Tween<Vec2> wrapped in MirroredRepeat. Demonstrates
+            // `Target<Vec2>` semantics — the closure writes the
+            // sampled Vec2 to `container.transform.position`,
+            // equivalent to `NodeProperty::translation` from the
+            // Target trait.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            // NDC units — Stage's transform is in NDC where the
+            // viewport is `[-1, +1]`. Slide ±0.3 of the half-width.
+            let slide = Tween::new(
+                glam::Vec2::new(-0.3, 0.0),
+                glam::Vec2::new(0.3, 0.0),
+                Duration::from_millis(900),
+            )
+            .ease(Ease::InOutCubic)
+            .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                c.transform.position = slide.sample(d.elapsed());
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Yoyo => {
             // Tween 0.6 → 1.0, wrapped with infinite mirrored-
