@@ -9,13 +9,18 @@ depend on registration order or scheduler luck.
 mutator in `wisp-chart-web` does informally:
 
 1. **Read phase.** Sample every active animation. Stage the
-   resulting `(NodeId, Property, value)` triples into a reused
-   buffer. No stage mutations yet.
-2. **Write phase.** Walk the staging buffer back-to-front,
-   applying each triple. Skip entries whose
-   `(NodeId, Property)` was already claimed by a later write.
-3. **Render.** Caller invokes `Renderer::render_stage` exactly
-   once. (Same shape as today.)
+   resulting `(NodeId, Property, value, index)` tuples into a
+   reused buffer. No stage mutations yet.
+2. **Sort phase.** `sort_unstable_by` orders the buffer by
+   `(NodeId, Property)` with the original registration index as
+   a *descending* tiebreaker so the last-registered entry for
+   each `(NodeId, Property)` pair ends up first in its run.
+   pdqsort is in-place — no allocation.
+3. **Write phase.** Walk the sorted buffer forward; emit the
+   first entry of each `(NodeId, Property)` run; skip duplicates.
+   One stage write per distinct property per frame.
+4. **Render.** Caller invokes `Renderer::render_stage` exactly
+   once.
 
 <div style="position: relative; aspect-ratio: 1 / 1; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-animation/batched-hero.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
   <iframe src="https://eng-manager-xyz.github.io/Screen/wisp-chart/demo/?chart=polar&amp;animate=batched" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: BatchDriver writing alpha + rotation in one tick"></iframe>
@@ -59,8 +64,8 @@ flush; interleaving reads and writes is O(N²)).
 wisp has no layout, so the specific perf cliff doesn't apply —
 but the *architectural shape* is what gives us deterministic
 last-wins semantics for free. Same pattern, different reason.
-Once you batch reads, conflict resolution becomes a simple
-back-to-front walk; no need to track "who wrote when."
+Once you batch reads, conflict resolution becomes a `O(N log N)`
+sort plus a linear walk; no need to track "who wrote when".
 ```
 
 ## Last-wins semantics
@@ -77,14 +82,27 @@ reverse the slice before passing it to `tick_scalars`.
 ```admonish note
 - One `Animation::sample` per registered animation (`O(N)` over
   active animations).
-- One back-to-front walk with O(N²) inner dedup. In practice
-  the inner walk early-exits because most animations target
-  distinct properties. At 1000 active tweens with all distinct
-  targets, the bench in [Performance](./performance.md) hits
-  ~4 ms / frame on a debug-build CI runner — well inside RAIL's
-  10 ms budget.
+- One in-place `sort_unstable_by` over the staging buffer
+  (`O(N log N)`, no auxiliary allocation — `sort_by` would
+  allocate `O(N)` scratch and is deliberately avoided).
+- One forward walk emitting the first entry of each
+  `(NodeId, Property)` run (`O(N)`).
+- At 1000 active tweens with all distinct targets the bench in
+  [Performance](./performance.md) runs at **~66 µs / frame** in
+  debug on a fast Mac — far inside RAIL's 10 ms budget.
 - Zero allocations after the first tick (staging buffer is a
   reused `Vec` owned by `BatchDriver`).
+```
+
+```admonish info title="Why `sort_unstable_by` instead of `sort_by`"
+Rust's stable `slice::sort_by` allocates `O(N)` scratch memory
+every call — that would break the `batch_tick_allocates_nothing`
+invariant. `sort_unstable_by` (pdqsort) is in-place. To recover
+the stable-sort semantics needed for "last-wins by registration
+order", `BatchDriver` packs the original index into each staged
+tuple and uses it as a *descending* tiebreaker. After the sort,
+the latest-registered entry per `(NodeId, Property)` pair sorts
+first in its run; the linear walk takes that one.
 ```
 
 ## Test invariants

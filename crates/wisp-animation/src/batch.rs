@@ -66,13 +66,12 @@ impl BoundScalar {
 pub struct BatchDriver {
     /// Underlying driver clock.
     pub driver: Driver,
-    /// Reused staging buffer. `(NodeId, Property, sampled_value)`.
-    /// Last-wins is enforced by walking back-to-front + skipping
-    /// already-applied keys.
-    staged: Vec<(wisp::scene::NodeId, Property, f32)>,
-    /// Reused bit-set (`Vec<bool>`) for last-wins dedup. Indexed by
-    /// `staged` position; resized to match each tick.
-    applied: Vec<bool>,
+    /// Reused staging buffer. `(NodeId, Property, sampled_value,
+    /// registration_index)`. The trailing `u32` is the entry's
+    /// position in the caller's `&mut [BoundScalar]` slice and
+    /// serves as a tiebreaker so the dedup sort can stay
+    /// `sort_unstable` (alloc-free).
+    staged: Vec<(wisp::scene::NodeId, Property, f32, u32)>,
 }
 
 impl BatchDriver {
@@ -82,7 +81,6 @@ impl BatchDriver {
         Self {
             driver: Driver::realtime(),
             staged: Vec::with_capacity(64),
-            applied: Vec::with_capacity(64),
         }
     }
 
@@ -92,7 +90,6 @@ impl BatchDriver {
         Self {
             driver: Driver::fixed(dt),
             staged: Vec::with_capacity(64),
-            applied: Vec::with_capacity(64),
         }
     }
 
@@ -113,14 +110,26 @@ impl BatchDriver {
     }
 
     /// Read phase: sample every animation into the staging buffer.
-    /// Write phase: walk back-to-front, apply each `(NodeId,
-    /// Property, value)` triple unless a later entry already
-    /// claimed the same `(NodeId, Property)` key.
+    /// Write phase: sort by `(NodeId, Property)` with the original
+    /// registration index as a *descending* tiebreaker, then walk
+    /// forward and apply only the first entry per `(NodeId,
+    /// Property)` run — that entry has the highest registration
+    /// index, which is "last-wins" by construction.
     ///
     /// The two-phase split mirrors fastdom's measure/mutate
     /// separation — we don't get the forced-layout payoff (wisp
     /// has no layout) but we *do* get deterministic last-wins +
     /// zero per-frame allocation.
+    ///
+    /// # Performance
+    ///
+    /// `O(N log N)` per frame from the sort; `O(N)` from the
+    /// read phase and the dedup walk. The whole thing stays
+    /// alloc-free after warm-up because [`slice::sort_unstable_by`]
+    /// is in-place pdqsort. Stable sort (`sort_by`) would allocate
+    /// `O(N)` scratch every frame and is deliberately avoided —
+    /// the trailing-index tiebreaker recovers the stable-sort
+    /// semantics without the allocation.
     pub fn tick_scalars(
         &mut self,
         dt: Duration,
@@ -129,44 +138,51 @@ impl BatchDriver {
     ) -> Duration {
         let elapsed = self.driver.tick(dt);
 
-        // Read phase. Reuse buffers without allocating.
+        // Read phase. Reuse the staging buffer; no allocation
+        // after warm-up.
         self.staged.clear();
         self.staged.reserve(anims.len());
-        for anim in anims.iter() {
+        for (i, anim) in anims.iter().enumerate() {
             let v = anim.anim.sample(elapsed);
-            self.staged.push((anim.target.node, anim.target.prop, v));
+            // Cap the tiebreaker index at u32::MAX — far more than
+            // any realistic active-animation count, and 32 bits
+            // saves stack bytes per staged entry.
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "active-animation count is well under u32::MAX in practice"
+            )]
+            let idx = i as u32;
+            self.staged
+                .push((anim.target.node, anim.target.prop, v, idx));
         }
 
-        // Write phase with last-wins dedup. Walk back-to-front
-        // (so later registrations override earlier ones) and
-        // skip entries whose `(node, prop)` was already applied.
-        self.applied.clear();
-        self.applied.resize(self.staged.len(), false);
-        for i in (0..self.staged.len()).rev() {
-            if self.applied[i] {
+        // Sort: primary key = (node, prop) ascending; tiebreaker =
+        // registration index DESCENDING so the latest-registered
+        // entry per key lands first in each run.
+        self.staged
+            .sort_unstable_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)).then(b.3.cmp(&a.3)));
+
+        // Write phase: emit only the first entry of each
+        // (node, prop) run — that's the last-wins winner.
+        let mut last_key: Option<(wisp::scene::NodeId, Property)> = None;
+        for &(node, prop, value, _) in &self.staged {
+            if last_key == Some((node, prop)) {
                 continue;
             }
-            let (node, prop, value) = self.staged[i];
+            last_key = Some((node, prop));
             let target = NodeProperty { node, prop };
             <NodeProperty as Target<f32>>::write(&target, stage, value);
-            // Mark every prior entry with the same key as
-            // already-applied so we skip them.
-            for j in 0..i {
-                let (n2, p2, _) = self.staged[j];
-                if n2 == node && p2 == prop {
-                    self.applied[j] = true;
-                }
-            }
-            self.applied[i] = true;
         }
 
         elapsed
     }
 
     /// Drain staged writes since last `tick_scalars`. Test helper —
-    /// returns the staging buffer contents in registration order.
+    /// returns the staging buffer contents in sorted (key-major)
+    /// order, with the trailing `u32` being the original
+    /// registration index.
     #[must_use]
-    pub fn last_staged(&self) -> &[(wisp::scene::NodeId, Property, f32)] {
+    pub fn last_staged(&self) -> &[(wisp::scene::NodeId, Property, f32, u32)] {
         &self.staged
     }
 }

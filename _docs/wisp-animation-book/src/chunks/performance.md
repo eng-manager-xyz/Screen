@@ -36,8 +36,15 @@ then ticks 10 frames and measures wall clock.
 
 | Build | Per-frame cost (1000 tweens) | Budget |
 |---|---|---|
-| `cargo nextest run -p wisp-animation --test perf` (debug) | ~4.4 ms | 10 ms |
-| Release (`cargo run --release -p wisp-animation --test perf`) | ~0.4 ms (estimate; release is typically 10× faster) | 10 ms |
+| `cargo nextest run -p wisp-animation --test perf` (debug) | ~66 µs | 10 ms |
+| Release (estimated, release is typically ~10× faster) | ~10 µs | 10 ms |
+
+> The original `BatchDriver` had an O(N²) back-to-front dedup that
+> ran at ~4.4 ms in debug on a fast Mac and **failed the budget at
+> ~22 ms on a slower CI runner**. Switching the dedup to
+> `sort_unstable_by` with an index tiebreaker (in-place pdqsort,
+> alloc-free) was a ~67× win and restored both the budget and the
+> no-alloc invariant. Algorithm details in [multi-animation](./multi-animation.md).
 
 ```admonish info title="Override the budget locally"
 The default budget is 10 ms, sized for slow CI hardware. On
