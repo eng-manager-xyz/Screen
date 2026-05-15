@@ -28,3 +28,4 @@
 # Polish
 
 - [FLIP layout transitions](./chunks/flip.md)
+- [AnimTheme](./chunks/theme.md)
