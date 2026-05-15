@@ -33,7 +33,7 @@ use web_sys::HtmlCanvasElement;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Transform};
-use wisp_animation::{Animatable, Animation, Driver, Ease, LinearRamp, Tween};
+use wisp_animation::{Animatable, Animation, Driver, Ease, LinearRamp, Sequence, Tween};
 
 use crate::ChartId;
 
@@ -61,6 +61,9 @@ pub enum AnimationKind {
     /// `Ease::OutBack` so the chart overshoots before settling
     /// (M-ANIM.2 / AUT-229).
     TweenScale,
+    /// Three-step storyline via `Sequence`: fade-in → rotate
+    /// quarter-turn → fade-out (M-ANIM.3 / AUT-230).
+    Storyline,
 }
 
 impl AnimationKind {
@@ -73,6 +76,7 @@ impl AnimationKind {
             "spin" | "rotate" => Some(Self::Spin),
             "fade" | "alpha" => Some(Self::Fade),
             "tween" | "scale" | "scale-in" => Some(Self::TweenScale),
+            "storyline" | "sequence" => Some(Self::Storyline),
             _ => None,
         }
     }
@@ -307,6 +311,40 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Storyline => {
+            // 3-step alpha sequence: fade-in → hold → fade-out.
+            // Rotation runs in parallel via a separate LinearRamp
+            // (single value, no sequence needed).
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            let alpha_seq: Sequence<f32> = Sequence::new()
+                .then(Tween::new(0.0_f32, 1.0, Duration::from_millis(700)).ease(Ease::OutCubic))
+                .then(Tween::new(1.0_f32, 1.0, Duration::from_millis(600)))
+                .then(Tween::new(1.0_f32, 0.0, Duration::from_millis(700)).ease(Ease::InCubic));
+            let rotation = LinearRamp::new(
+                0.0,
+                std::f32::consts::FRAC_PI_2,
+                Duration::from_millis(2_000),
+            );
+            let cycle_ms = 2_000.0_f32;
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                let local = Duration::from_secs_f32(pos_ms / 1000.0);
+                c.alpha = alpha_seq.sample(local);
+                c.transform = Transform::from_rotation(rotation.sample(local));
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::TweenScale => {
             // Polar plot scales from 0 → 1 with an overshooting
