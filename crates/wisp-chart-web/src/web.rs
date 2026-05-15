@@ -33,7 +33,7 @@ use web_sys::HtmlCanvasElement;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Transform};
-use wisp_animation::{Animatable, Animation, Driver, LinearRamp};
+use wisp_animation::{Animatable, Animation, Driver, Ease, LinearRamp, Tween};
 
 use crate::ChartId;
 
@@ -57,6 +57,10 @@ pub enum AnimationKind {
     /// Alpha fade 0.0 → 1.0 → 0.0 yoyo over 2s, driven by
     /// `Animatable for f32` (M-ANIM.1 / AUT-228).
     Fade,
+    /// One-shot 0 → 1 → 0 scale pulse via a `Tween<f32>` with
+    /// `Ease::OutBack` so the chart overshoots before settling
+    /// (M-ANIM.2 / AUT-229).
+    TweenScale,
 }
 
 impl AnimationKind {
@@ -68,6 +72,7 @@ impl AnimationKind {
         match id.to_ascii_lowercase().as_str() {
             "spin" | "rotate" => Some(Self::Spin),
             "fade" | "alpha" => Some(Self::Fade),
+            "tween" | "scale" | "scale-in" => Some(Self::TweenScale),
             _ => None,
         }
     }
@@ -302,6 +307,43 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::TweenScale => {
+            // Polar plot scales from 0 → 1 with an overshooting
+            // OutBack ease, then yoyos back. Demonstrates the full
+            // `Tween<f32>` + `Ease::OutBack` shape.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            let mut driver = Driver::realtime();
+            driver.play();
+            // Cycle = grow (700 ms) + hold (200 ms) + shrink
+            // (700 ms) + hold (400 ms) for a 2 s loop.
+            let cycle = Duration::from_millis(2_000);
+            let grow = Tween::new(0.0_f32, 1.0, Duration::from_millis(700)).ease(Ease::OutBack);
+            let shrink = Tween::new(1.0_f32, 0.0, Duration::from_millis(700)).ease(Ease::InCubic);
+            let mutator: FrameMutator = Box::new(move |d: &Driver, c: &mut Container| {
+                let cycle_ms = cycle.as_secs_f32() * 1000.0;
+                let pos_ms = (d.elapsed().as_secs_f32() * 1000.0) % cycle_ms;
+                let scale = if pos_ms < 700.0 {
+                    grow.sample(Duration::from_secs_f32(pos_ms / 1000.0))
+                } else if pos_ms < 900.0 {
+                    1.0
+                } else if pos_ms < 1_600.0 {
+                    shrink.sample(Duration::from_secs_f32((pos_ms - 900.0) / 1000.0))
+                } else {
+                    0.0
+                };
+                c.transform = Transform::from_scale(glam::Vec2::splat(scale));
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::Fade => {
             // Use a contour plot for variety. Fade its container's

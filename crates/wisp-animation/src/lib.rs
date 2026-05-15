@@ -53,8 +53,12 @@
 use std::time::Duration;
 
 pub mod animatable;
+pub mod ease;
+pub mod tween;
 
 pub use animatable::Animatable;
+pub use ease::Ease;
+pub use tween::Tween;
 
 /// A pure time→state animation.
 ///
