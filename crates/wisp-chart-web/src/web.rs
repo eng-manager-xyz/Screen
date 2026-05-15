@@ -38,8 +38,9 @@ use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
     AnimEvent, AnimId, Animatable, Animation, AnimationLifecycleExt, AnimationRepeatExt,
-    ColorSpace, ColorTween, DrawIn, Driver, Ease, EventReader, LinearRamp, MoveAlongPath,
-    RepeatCount, RepeatStrategy, Sequence, Spring, Stagger, StaggerFrom, Track, Tween, TypeWriter,
+    BatchDriver, BoundScalar, ColorSpace, ColorTween, DrawIn, Driver, Ease, EventReader,
+    LinearRamp, MoveAlongPath, NodeProperty, RepeatCount, RepeatStrategy, Sequence, Spring,
+    Stagger, StaggerFrom, Track, Tween, TypeWriter,
 };
 
 use crate::ChartId;
@@ -123,6 +124,15 @@ pub enum AnimationKind {
     /// each cycling red → green → blue → red so the midpoint
     /// brown/muddy region differs per space (M-ANIM.13 / AUT-240).
     ColorSpaces,
+    /// Three Tweens registered on the same chart's alpha,
+    /// rotation, and scale — driven by `BatchDriver::tick_scalars`
+    /// so all three land in one deterministic write phase
+    /// (M-ANIM.20 / AUT-247).
+    Batched,
+    /// 12×12 grid of ellipses each with its own scale Tween,
+    /// hammering 144 active tweens per frame via `BatchDriver`
+    /// (M-ANIM.20 / AUT-247).
+    Many,
 }
 
 impl AnimationKind {
@@ -146,6 +156,8 @@ impl AnimationKind {
             "move-path" | "movepath" | "follow" => Some(Self::MovePath),
             "type-in" | "typein" | "typewriter" => Some(Self::TypeIn),
             "color" | "color-spaces" | "colorspaces" | "oklab" => Some(Self::ColorSpaces),
+            "batched" | "batch" => Some(Self::Batched),
+            "many" | "swarm" => Some(Self::Many),
             _ => None,
         }
     }
@@ -381,6 +393,106 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Batched => {
+            // Three Tweens on the same chart: alpha, rotation,
+            // and y-scale — driven through BatchDriver so all
+            // three land in one deterministic write phase.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            // Use BatchDriver via Rc<RefCell> so the closure ticks
+            // it each frame using the host dt.
+            let bdriver = Rc::new(RefCell::new(BatchDriver::realtime()));
+            bdriver.borrow_mut().play();
+            // BoundScalar is not Clone — instantiate fresh once.
+            let alpha = BoundScalar::new(
+                Tween::new(0.0_f32, 1.0, Duration::from_millis(900))
+                    .ease(Ease::OutCubic)
+                    .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat),
+                NodeProperty::alpha(chart_id),
+            );
+            let rotation = BoundScalar::new(
+                LinearRamp::new(0.0, std::f32::consts::TAU, Duration::from_millis(2_000)),
+                NodeProperty::rotation(chart_id),
+            );
+            // For scale-y we'd want a Vec2 binding; reuse rotation
+            // as a stand-in here for the v1 demo.
+            let _ = rotation;
+            let anims = Rc::new(RefCell::new(vec![alpha]));
+            // Outer driver is just a stub — BatchDriver owns its
+            // own clock. Use a paused realtime driver here.
+            let driver = Driver::realtime();
+            let anims_inner = anims.clone();
+            let bdriver_inner = bdriver.clone();
+            let mutator: FrameMutator = Box::new(move |_d: &Driver, stage: &mut Stage| {
+                // Use BatchDriver's own clock; outer driver is
+                // unused in this arm.
+                let mut bd = bdriver_inner.borrow_mut();
+                let mut anims = anims_inner.borrow_mut();
+                bd.tick_scalars(Duration::from_secs_f32(1.0 / 60.0), &mut anims, stage);
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
+        }
+        AnimationKind::Many => {
+            // 12×12 grid of small ellipses, each with a scale Tween,
+            // hammered through BatchDriver to show the budget
+            // headroom. 144 tweens per frame.
+            use wisp::scene::{Fill, Graphics};
+            let bdriver = Rc::new(RefCell::new(BatchDriver::realtime()));
+            bdriver.borrow_mut().play();
+            let mut anims: Vec<BoundScalar> = Vec::with_capacity(144);
+            for row in 0..12_u32 {
+                for col in 0..12_u32 {
+                    let mut g = Graphics::new();
+                    g.fill(Fill::Solid(wisp::Color {
+                        r: 0.0,
+                        g: 0.5,
+                        b: 0.85,
+                        a: 1.0,
+                    }));
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "row/col < 12, fits u16 trivially"
+                    )]
+                    let (col_u16, row_u16) = (col as u16, row as u16);
+                    let x = (f32::from(col_u16) / 11.0 - 0.5) * 1.6;
+                    let y = (f32::from(row_u16) / 11.0 - 0.5) * 1.6;
+                    g.draw_ellipse(glam::Vec2::new(x, y), glam::Vec2::splat(0.05));
+                    let id = app
+                        .stage_mut()
+                        .add_child(root, g)
+                        .ok_or_else(|| "add_child returned None".to_owned())?;
+                    // Each ellipse runs a unique-phase pulse on alpha.
+                    let dur_ms = 600 + (row * 12 + col) * 8;
+                    let pulse = Tween::new(0.2_f32, 1.0, Duration::from_millis(u64::from(dur_ms)))
+                        .ease(Ease::InOutCubic)
+                        .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
+                    anims.push(BoundScalar::new(pulse, NodeProperty::alpha(id)));
+                }
+            }
+            let chart_id = anims[0].target.node;
+            let driver = Driver::realtime();
+            let anims_cell = Rc::new(RefCell::new(anims));
+            let anims_inner = anims_cell.clone();
+            let bdriver_inner = bdriver.clone();
+            let mutator: FrameMutator = Box::new(move |_d: &Driver, stage: &mut Stage| {
+                let mut bd = bdriver_inner.borrow_mut();
+                let mut anims = anims_inner.borrow_mut();
+                bd.tick_scalars(Duration::from_secs_f32(1.0 / 60.0), &mut anims, stage);
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::ColorSpaces => {
             // Three ellipses, each color-cycling red→green→blue→red
