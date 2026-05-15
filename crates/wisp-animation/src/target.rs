@@ -22,7 +22,11 @@ pub trait Target<V> {
 
 /// Witness type for one of `Container`'s properties. Concrete
 /// constructors live below as `Property::*`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// `Ord` / `PartialOrd` are derived for [`BatchDriver`](crate::BatchDriver)'s
+/// sort-based dedup; the variant declaration order is the sort
+/// order and is part of the public contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Property {
     /// `Container::alpha` (`f32`).
     Alpha,

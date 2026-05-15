@@ -53,6 +53,7 @@
 use std::time::Duration;
 
 pub mod animatable;
+pub mod batch;
 pub mod chart;
 pub mod color_space;
 pub mod composition;
@@ -72,6 +73,7 @@ pub mod tween;
 pub mod typewriter;
 
 pub use animatable::Animatable;
+pub use batch::{BatchDriver, BoundScalar};
 pub use chart::{Enter, Exit};
 pub use color_space::{ColorSpace, ColorTween};
 pub use composition::{Delay, Parallel, Sequence};

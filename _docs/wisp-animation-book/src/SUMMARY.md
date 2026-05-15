@@ -33,3 +33,9 @@
 - [Storybook + book consolidation](./chunks/storybook.md)
 - [Deterministic export](./chunks/determinism.md)
 - [Decay (inertia)](./chunks/decay.md)
+
+# Reference
+
+- [Multi-animation batching](./chunks/multi-animation.md)
+- [Performance + RAIL budget](./chunks/performance.md)
+- [API cheat-sheet](./chunks/api-cheatsheet.md)

@@ -359,6 +359,27 @@ dev-wisp-chart-demo:
 site-wisp-chart-demo:
     @cd crates/wisp-chart-web && trunk build --release --public-url /Screen/wisp-chart/demo/ --dist "$(pwd)/../../target/wisp-chart-demo-dist"
 
+# Local full preview of the wisp-chart book including its
+# `?chart=…&animate=…` iframe demos. Builds the book + the wasm
+# demo, composes both under `target/book/wisp-chart/`, then serves
+# the whole thing on http://127.0.0.1:3010/ so chapter iframes
+# pointing at `../demo/?chart=…` resolve correctly (the same
+# composition docs.yml does for the deployed site).
+#
+# No live-reload — re-run the recipe after edits. For live-reload
+# during book authoring use `just dev-wisp-chart-book` (3003);
+# during chart-fixture / animation work use `just dev-wisp-chart-demo`
+# (8080); use `preview-wisp-chart` when you need the iframes to
+# *also* work.
+preview-wisp-chart: preprocessor-build
+    @mkdir -p target/book
+    PATH="$(pwd)/target/debug:$PATH" mdbook build _docs/wisp-chart-book --dest-dir "$(pwd)/target/book/wisp-chart"
+    @cd crates/wisp-chart-web && trunk build --public-url /demo/ --dist "$(pwd)/../../target/book/wisp-chart/demo"
+    @echo
+    @echo "Book + demo composed at target/book/wisp-chart/."
+    @echo "Open: http://127.0.0.1:3010/"
+    @cd target/book/wisp-chart && python3 -m http.server 3010
+
 # Publish all three books over Tailscale Serve (private to your tailnet).
 # Run `just dev-book` and `just dev-wisp-book` in separate terminals
 # first — this recipe only wires the Tailscale path proxies. After

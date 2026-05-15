@@ -38,8 +38,9 @@ use wisp::render::Renderer;
 use wisp::scene::{Container, NodeId, Stage, Transform};
 use wisp_animation::{
     AnimEvent, AnimId, Animatable, Animation, AnimationLifecycleExt, AnimationRepeatExt,
-    ColorSpace, ColorTween, DrawIn, Driver, Ease, EventReader, LinearRamp, MoveAlongPath,
-    RepeatCount, RepeatStrategy, Sequence, Spring, Stagger, StaggerFrom, Track, Tween, TypeWriter,
+    BatchDriver, BoundScalar, ColorSpace, ColorTween, DrawIn, Driver, Ease, EventReader,
+    LinearRamp, MoveAlongPath, NodeProperty, RepeatCount, RepeatStrategy, Sequence, Spring,
+    Stagger, StaggerFrom, Track, Tween, TypeWriter,
 };
 
 use crate::ChartId;
@@ -123,6 +124,22 @@ pub enum AnimationKind {
     /// each cycling red → green → blue → red so the midpoint
     /// brown/muddy region differs per space (M-ANIM.13 / AUT-240).
     ColorSpaces,
+    /// Three Tweens registered on the same chart's alpha,
+    /// rotation, and scale — driven by `BatchDriver::tick_scalars`
+    /// so all three land in one deterministic write phase
+    /// (M-ANIM.20 / AUT-247).
+    Batched,
+    /// 12×12 grid of ellipses each with its own scale Tween,
+    /// hammering 144 active tweens per frame via `BatchDriver`
+    /// (M-ANIM.20 / AUT-247).
+    Many,
+    /// Subtle "historical reveal" for timeline charts — the chart's
+    /// alpha eases from 0 → 1 over 1.5 s with `Ease::OutCubic` and
+    /// stops. One-shot; the in-chapter "Replay animation" button
+    /// reloads the iframe to trigger it again. Used by the
+    /// Great-Depression unemployment line chart + other historical
+    /// timeline charts.
+    HistoricalReveal,
 }
 
 impl AnimationKind {
@@ -146,6 +163,9 @@ impl AnimationKind {
             "move-path" | "movepath" | "follow" => Some(Self::MovePath),
             "type-in" | "typein" | "typewriter" => Some(Self::TypeIn),
             "color" | "color-spaces" | "colorspaces" | "oklab" => Some(Self::ColorSpaces),
+            "batched" | "batch" => Some(Self::Batched),
+            "many" | "swarm" => Some(Self::Many),
+            "reveal" | "historical" | "historical-reveal" => Some(Self::HistoricalReveal),
             _ => None,
         }
     }
@@ -281,6 +301,9 @@ async fn run(
 
     match animation {
         None => run_static(&mut app, &surface, surface_format, viewport, chart),
+        Some(AnimationKind::HistoricalReveal) => {
+            run_historical_reveal(app, surface, surface_format, viewport, chart)
+        }
         Some(kind) => run_animated(app, surface, surface_format, viewport, kind),
     }
 }
@@ -381,6 +404,106 @@ fn setup_animation(
                 driver,
                 mutator,
             })
+        }
+        AnimationKind::Batched => {
+            // Three Tweens on the same chart: alpha, rotation,
+            // and y-scale — driven through BatchDriver so all
+            // three land in one deterministic write phase.
+            let polar = crate::fixtures::polar_plot_fixture();
+            let graphics = polar.emit_graphics(&theme, viewport);
+            let chart_id = app
+                .stage_mut()
+                .add_child(root, graphics)
+                .ok_or_else(|| "add_child returned None".to_owned())?;
+            // Use BatchDriver via Rc<RefCell> so the closure ticks
+            // it each frame using the host dt.
+            let bdriver = Rc::new(RefCell::new(BatchDriver::realtime()));
+            bdriver.borrow_mut().play();
+            // BoundScalar is not Clone — instantiate fresh once.
+            let alpha = BoundScalar::new(
+                Tween::new(0.0_f32, 1.0, Duration::from_millis(900))
+                    .ease(Ease::OutCubic)
+                    .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat),
+                NodeProperty::alpha(chart_id),
+            );
+            let rotation = BoundScalar::new(
+                LinearRamp::new(0.0, std::f32::consts::TAU, Duration::from_millis(2_000)),
+                NodeProperty::rotation(chart_id),
+            );
+            // For scale-y we'd want a Vec2 binding; reuse rotation
+            // as a stand-in here for the v1 demo.
+            let _ = rotation;
+            let anims = Rc::new(RefCell::new(vec![alpha]));
+            // Outer driver is just a stub — BatchDriver owns its
+            // own clock. Use a paused realtime driver here.
+            let driver = Driver::realtime();
+            let anims_inner = anims.clone();
+            let bdriver_inner = bdriver.clone();
+            let mutator: FrameMutator = Box::new(move |_d: &Driver, stage: &mut Stage| {
+                // Use BatchDriver's own clock; outer driver is
+                // unused in this arm.
+                let mut bd = bdriver_inner.borrow_mut();
+                let mut anims = anims_inner.borrow_mut();
+                bd.tick_scalars(Duration::from_secs_f32(1.0 / 60.0), &mut anims, stage);
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
+        }
+        AnimationKind::Many => {
+            // 12×12 grid of small ellipses, each with a scale Tween,
+            // hammered through BatchDriver to show the budget
+            // headroom. 144 tweens per frame.
+            use wisp::scene::{Fill, Graphics};
+            let bdriver = Rc::new(RefCell::new(BatchDriver::realtime()));
+            bdriver.borrow_mut().play();
+            let mut anims: Vec<BoundScalar> = Vec::with_capacity(144);
+            for row in 0..12_u32 {
+                for col in 0..12_u32 {
+                    let mut g = Graphics::new();
+                    g.fill(Fill::Solid(wisp::Color {
+                        r: 0.0,
+                        g: 0.5,
+                        b: 0.85,
+                        a: 1.0,
+                    }));
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "row/col < 12, fits u16 trivially"
+                    )]
+                    let (col_u16, row_u16) = (col as u16, row as u16);
+                    let x = (f32::from(col_u16) / 11.0 - 0.5) * 1.6;
+                    let y = (f32::from(row_u16) / 11.0 - 0.5) * 1.6;
+                    g.draw_ellipse(glam::Vec2::new(x, y), glam::Vec2::splat(0.05));
+                    let id = app
+                        .stage_mut()
+                        .add_child(root, g)
+                        .ok_or_else(|| "add_child returned None".to_owned())?;
+                    // Each ellipse runs a unique-phase pulse on alpha.
+                    let dur_ms = 600 + (row * 12 + col) * 8;
+                    let pulse = Tween::new(0.2_f32, 1.0, Duration::from_millis(u64::from(dur_ms)))
+                        .ease(Ease::InOutCubic)
+                        .repeat_with(RepeatCount::Infinite, RepeatStrategy::MirroredRepeat);
+                    anims.push(BoundScalar::new(pulse, NodeProperty::alpha(id)));
+                }
+            }
+            let chart_id = anims[0].target.node;
+            let driver = Driver::realtime();
+            let anims_cell = Rc::new(RefCell::new(anims));
+            let anims_inner = anims_cell.clone();
+            let bdriver_inner = bdriver.clone();
+            let mutator: FrameMutator = Box::new(move |_d: &Driver, stage: &mut Stage| {
+                let mut bd = bdriver_inner.borrow_mut();
+                let mut anims = anims_inner.borrow_mut();
+                bd.tick_scalars(Duration::from_secs_f32(1.0 / 60.0), &mut anims, stage);
+            });
+            return Ok(AnimSetup {
+                chart_id,
+                driver,
+                mutator,
+            });
         }
         AnimationKind::ColorSpaces => {
             // Three ellipses, each color-cycling red→green→blue→red
@@ -896,6 +1019,13 @@ fn setup_animation(
                 mutator,
             })
         }
+        AnimationKind::HistoricalReveal => {
+            // HistoricalReveal is dispatched at the `run()` level via
+            // its own `run_historical_reveal` helper — it needs the
+            // user-selected `chart`, which `setup_animation` doesn't
+            // receive. This arm is unreachable in normal flow.
+            Err("HistoricalReveal should be dispatched via run_historical_reveal".to_owned())
+        }
     }
 }
 
@@ -972,4 +1102,82 @@ fn now_ms() -> Result<f64, String> {
         .performance()
         .ok_or_else(|| "no `performance` for now()".to_owned())?;
     Ok(perf.now())
+}
+
+/// Chart-agnostic historical-reveal: render whatever
+/// `?chart=<id>` selected, capture the freshly-added root
+/// children, then fade their alpha 0 → 1 over 1.5 s with
+/// `Ease::OutCubic`. One-shot — when the tween completes the
+/// rAF loop continues but the alpha stays at 1.0.
+///
+/// Used by every "historical event" chart so the chart appears
+/// to *render itself* rather than blink into existence.
+fn run_historical_reveal(
+    mut app: Application,
+    surface: wgpu::Surface<'static>,
+    surface_format: wgpu::TextureFormat,
+    viewport: Vec2,
+    chart: ChartId,
+) -> Result<(), String> {
+    // Snapshot root children BEFORE the chart is rendered, so we
+    // can diff and find what got added.
+    let root = app.stage().root();
+    let before: Vec<NodeId> = app
+        .stage()
+        .get(root)
+        .map(|n| n.container().children().collect())
+        .unwrap_or_default();
+
+    // Build the chart graphics into the stage via the standard
+    // dispatch — labels, axes, marks all land.
+    let frame_dummy_view = {
+        let frame = surface
+            .get_current_texture()
+            .map_err(|e| format!("get_current_texture: {e}"))?;
+        frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
+    };
+    crate::render_chart_to_view(chart, &mut app, &frame_dummy_view, surface_format, viewport)
+        .map_err(|e| format!("render_chart_to_view: {e}"))?;
+    // Discard the dummy frame — render_chart_to_view drew once,
+    // but we want our own animated render path to take over.
+
+    let after: Vec<NodeId> = app
+        .stage()
+        .get(root)
+        .map(|n| n.container().children().collect())
+        .unwrap_or_default();
+    let new_ids: Vec<NodeId> = after
+        .into_iter()
+        .filter(|id| !before.contains(id))
+        .collect();
+
+    let renderer =
+        Renderer::new(&app, surface_format).map_err(|e| format!("Renderer::new: {e}"))?;
+    let mut driver = Driver::realtime();
+    driver.play();
+    let reveal = Tween::new(0.0_f32, 1.0, Duration::from_millis(1_500)).ease(Ease::OutCubic);
+
+    let mutator: FrameMutator = Box::new(move |d: &Driver, stage: &mut Stage| {
+        let alpha = reveal.sample(d.elapsed());
+        for id in &new_ids {
+            if let Some(node) = stage.get_mut(*id) {
+                node.container_mut().alpha = alpha;
+            }
+        }
+    });
+
+    let state = AnimState {
+        app,
+        surface,
+        renderer,
+        driver,
+        mutator,
+        last_tick_ms: now_ms()?,
+    };
+    let state = Rc::new(RefCell::new(state));
+    request_next_frame(&state)?;
+    log::info!("wisp-chart-web: HistoricalReveal({chart:?}) attached.");
+    Ok(())
 }

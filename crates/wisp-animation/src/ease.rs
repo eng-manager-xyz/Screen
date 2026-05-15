@@ -62,6 +62,30 @@ pub enum Ease {
     OutBounce,
     /// Both ends bounce.
     InOutBounce,
+    /// `f(t) = 1 - cos(t · π/2)` — gentle accelerating in.
+    InSine,
+    /// `f(t) = sin(t · π/2)` — gentle decelerating out.
+    OutSine,
+    /// `f(t) = (1 - cos(t · π)) / 2` — gentle in-then-out.
+    InOutSine,
+    /// `f(t) = t⁴` — quartic accelerating in.
+    InQuart,
+    /// `f(t) = 1 - (1 - t)⁴`.
+    OutQuart,
+    /// Quartic in-then-out.
+    InOutQuart,
+    /// `f(t) = t⁵` — quintic accelerating in.
+    InQuint,
+    /// `f(t) = 1 - (1 - t)⁵`.
+    OutQuint,
+    /// Quintic in-then-out.
+    InOutQuint,
+    /// `f(t) = 1 - sqrt(1 - t²)` — circular accelerating in.
+    InCirc,
+    /// `f(t) = sqrt(1 - (1 - t)²)` — circular decelerating out.
+    OutCirc,
+    /// Circular in-then-out.
+    InOutCirc,
     /// CSS-style cubic-bezier with control points `(x1, y1, x2, y2)`.
     /// Endpoints are anchored at `(0,0)` and `(1,1)`.
     CubicBezier(f32, f32, f32, f32),
@@ -197,6 +221,49 @@ impl Ease {
                     (1.0 + out_bounce(2.0 * t - 1.0)) * 0.5
                 }
             }
+            Self::InSine => 1.0 - (t * std::f32::consts::FRAC_PI_2).cos(),
+            Self::OutSine => (t * std::f32::consts::FRAC_PI_2).sin(),
+            Self::InOutSine => 0.5 * (1.0 - (t * std::f32::consts::PI).cos()),
+            Self::InQuart => t * t * t * t,
+            Self::OutQuart => {
+                let u = 1.0 - t;
+                1.0 - u * u * u * u
+            }
+            Self::InOutQuart => {
+                if t < 0.5 {
+                    8.0 * t * t * t * t
+                } else {
+                    let u = 1.0 - t;
+                    1.0 - 8.0 * u * u * u * u
+                }
+            }
+            Self::InQuint => t * t * t * t * t,
+            Self::OutQuint => {
+                let u = 1.0 - t;
+                1.0 - u * u * u * u * u
+            }
+            Self::InOutQuint => {
+                if t < 0.5 {
+                    16.0 * t * t * t * t * t
+                } else {
+                    let u = 1.0 - t;
+                    1.0 - 16.0 * u * u * u * u * u
+                }
+            }
+            Self::InCirc => 1.0 - (1.0 - t * t).max(0.0).sqrt(),
+            Self::OutCirc => {
+                let u = 1.0 - t;
+                (1.0 - u * u).max(0.0).sqrt()
+            }
+            Self::InOutCirc => {
+                if t < 0.5 {
+                    let r = 2.0 * t;
+                    0.5 * (1.0 - (1.0 - r * r).max(0.0).sqrt())
+                } else {
+                    let r = 2.0 * t - 2.0;
+                    0.5 * ((1.0 - r * r).max(0.0).sqrt() + 1.0)
+                }
+            }
             Self::CubicBezier(x1, y1, x2, y2) => cubic_bezier_eval(x1, y1, x2, y2, t),
             Self::Steps(n) => {
                 if n == 0 {
@@ -323,6 +390,18 @@ mod tests {
             Ease::InBounce,
             Ease::OutBounce,
             Ease::InOutBounce,
+            Ease::InSine,
+            Ease::OutSine,
+            Ease::InOutSine,
+            Ease::InQuart,
+            Ease::OutQuart,
+            Ease::InOutQuart,
+            Ease::InQuint,
+            Ease::OutQuint,
+            Ease::InOutQuint,
+            Ease::InCirc,
+            Ease::OutCirc,
+            Ease::InOutCirc,
         ];
         for e in eases {
             assert!(approx(e.eval(0.0), 0.0), "{e:?}: f(0) != 0");
