@@ -451,33 +451,41 @@ jobs:
 
       # `rust-lld` parallel-link with ~150 rlibs in `screen-wisp`'s
       # test binaries (`vector_render`, `render_polygon`, …) hits
-      # SIGBUS on the bare ubuntu-latest runner — its 16 GB RAM is
-      # tight once cargo's concurrent codegen is layered on top of
-      # the link's mmap pressure. Two cheap fixes, both targeted at
-      # the same root cause:
+      # SIGBUS on the bare ubuntu-latest runner. Three converging
+      # mitigations on Ubuntu only:
       #
-      # 1. **6 GB swap file.** Gives the linker virtual-memory
-      #    headroom; pages out cold cargo state during the link.
-      #    Adds ~10 s setup; no impact on cached / fast paths.
-      # 2. **Cap CARGO_BUILD_JOBS=2.** Halves concurrent codegen
-      #    units so peak memory during the gate's compile-test
-      #    step stays bounded. Slightly slower wall-clock; well
-      #    inside the 30-min budget the existing run reports.
+      # 1. **Extra 6 GB swap** at `/mnt/extra-swap`. ubuntu-latest
+      #    already has a 4 GB `/swapfile` (its name is reserved);
+      #    we add a second file on the larger `/mnt` partition for
+      #    virtual-memory headroom under the link's mmap spike.
+      # 2. **`CARGO_BUILD_JOBS=2`.** Halves concurrent codegen units
+      #    so peak RAM during compile-test stays bounded.
+      # 3. **`-Wl,--threads=1`.** Forces rust-lld to link
+      #    single-threaded. SIGBUS in `rust-lld`'s `parallelFor`
+      #    has been observed under memory pressure on Linux — the
+      #    single-threaded link is slower (~5–10 s per binary) but
+      #    rock-solid against the failure shape we saw on main.
       #
-      # This is *only* needed on ubuntu-latest — macOS runners get
-      # 14 GB RAM but native ld + faster I/O handle the link fine,
-      # and Windows uses the MSVC linker which doesn't share
-      # rust-lld's mmap-pressure shape.
-      - name: Add swap + cap cargo jobs (Ubuntu link-time OOM mitigation)
+      # macOS + Windows are untouched; their linkers don't share
+      # rust-lld's mmap/parallel shape.
+      - name: Ubuntu link-time OOM mitigation (swap + jobs cap + serial linker)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          sudo fallocate -l 6G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          echo "Swap status:"
+          echo "Before:"
           free -h
-          echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+          df -h /mnt /
+          # /swapfile is already in use on ubuntu-latest — add a
+          # second swap on /mnt where the runner has ~75 GB free.
+          sudo fallocate -l 6G /mnt/extra-swap
+          sudo chmod 600 /mnt/extra-swap
+          sudo mkswap /mnt/extra-swap
+          sudo swapon /mnt/extra-swap
+          echo "After:"
+          free -h
+          {
+            echo "CARGO_BUILD_JOBS=2"
+            echo "RUSTFLAGS=-C link-arg=-Wl,--threads=1"
+          } >> "$GITHUB_ENV"
 
       - name: Install just
         uses: extractions/setup-just@v2
