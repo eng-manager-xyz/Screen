@@ -26,9 +26,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # `wisp-chart` builds the scene-graph subtree (Gantt::emit_graphics);
 # `wisp` owns the renderer that draws it; `glam` for Vec2 viewport
-# math; `jiff` for the fixture's date literals.
+# math; `jiff` for the fixture's date literals; `wisp-animation`
+# for the `?animate=spin` browser demo that ships with each
+# animation feature (M-ANIM.0+).
 wisp-chart = { path = "../wisp-chart" }
 wisp = { path = "../wisp", package = "screen-wisp" }
+wisp-animation = { path = "../wisp-animation" }
 glam.workspace = true
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 log = "0.4"
@@ -52,6 +55,7 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "Location",
     "Node",
+    "Performance",
     "Window",
     "console",
 ] }

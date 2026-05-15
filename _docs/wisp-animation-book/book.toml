@@ -1,0 +1,55 @@
+[book]
+authors = ["wisp-animation authors"]
+language = "en"
+src = "src"
+title = "wisp-animation — pure time→state animation on wisp"
+description = "Authored animation primitives for wisp + wisp-chart. Animation values are time→state functions; Driver owns the clock; realtime and deterministic export run the same value."
+text-direction = "ltr"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+no-section-label = false
+mathjax-support = false
+text-direction = "ltr"
+site-url = "/Screen/wisp-animation/"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["mdbook-admonish.css"]
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+
+[preprocessor.links]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0"
+
+[preprocessor.cmdrun]
+command = "mdbook-cmdrun"
+
+# Cross-book hyperlinks. wisp-animation is a new book; the
+# preprocessor's Target enum doesn't have a dedicated variant yet,
+# so we fall back to `screen` and ALL cross-book links resolve to
+# absolute URLs on the deployed site. The book is otherwise
+# self-contained for v0 (single chapter, no shared fragments).
+[preprocessor.cross]
+command = "mdbook-preprocessor-cross"
+target = "screen"
+shared-root = "../shared"
+wisp-base = "/Screen/wisp"
+wisp-chart-base = "/Screen/wisp-chart"
