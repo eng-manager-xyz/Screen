@@ -127,4 +127,6 @@ tmp/
 # `book/` subdirectory of the source root by default).
 /_docs/book/book/
 /_docs/wisp-book/book/
+/_docs/wisp-chart-book/book/
+/_docs/wisp-animation-book/book/
 .cargo/config.toml
