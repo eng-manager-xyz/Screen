@@ -212,7 +212,13 @@ impl Theme {
             axis: AxisTheme {
                 tick_length_px: 5.0,
                 tick_label_font_size: 12.0,
-                tick_density_hint: 8,
+                // Down from 8 — the previous default packed 9 stops
+                // into a 240 px y-axis (e.g. 0/0.5/1/1.5/2/2.5/3/3.5/4
+                // for a 0..4 range), which produced the labels-touch
+                // pattern in the bar chapter. 5 is the d3 / Google
+                // Sheets convention for short ranges; the `nice_step`
+                // rounding still picks round-numbered stops.
+                tick_density_hint: 5,
             },
             legend: LegendTheme {
                 swatch_size_px: 14.0,
