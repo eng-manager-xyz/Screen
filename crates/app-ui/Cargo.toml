@@ -13,6 +13,15 @@ workspace = true
 name = "app_ui"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# M-TRAY.1 / AUT-250 — gate the AppShell CSR-preview mount path. When
+# enabled, `run()` mounts a minimal `AppShell` with shipped fixtures
+# instead of the default drop-zone flow. Used by `just dev-appshell`
+# (and the CI wasm32 build smoke) to prove the shell tree mounts +
+# paints under CSR before M-TRAY.3 wires it for real.
+tray-appshell-preview = []
+
 [dependencies]
 leptos = { version = "0.8", default-features = false, features = ["csr"] }
 ui-storybook = { path = "../ui-storybook", default-features = false, features = ["csr"] }

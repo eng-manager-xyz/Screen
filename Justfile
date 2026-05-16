@@ -318,6 +318,18 @@ dev-remote-stop:
     -pkill -f "target/release/dev-server" || true
     @echo "Done."
 
+# M-TRAY.1 / AUT-250 — AppShell CSR preview via Trunk.
+#
+# Builds + serves `crates/app-ui` with the `tray-appshell-preview`
+# Cargo feature so the bundle mounts the storybook AppShell instead
+# of the default drop-zone shell. Used during the M-TRAY.1 audit to
+# verify the shell tree compiles + paints under CSR before
+# M-TRAY.3 wires it for real.
+#
+# Open http://localhost:8080 after this prints "Compiled successfully".
+dev-appshell:
+    cd crates/app-ui && trunk serve --features tray-appshell-preview
+
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
 # `mdbook serve` has built-in live reload (filesystem watch + websocket

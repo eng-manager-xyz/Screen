@@ -6,6 +6,39 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TRAY.1 — AppShell CSR audit + `tray-appshell-preview` smoke (AUT-250)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — audit doc shipped with concrete structural findings; CSR-readiness proven via the new `tray-appshell-preview` Cargo feature + `just dev-appshell` recipe; wasm32 build of the preview is green on both with-feature and default paths. Deferred: the `wasm-bindgen-test` interaction smoke (intentionally skipped per audit doc reasoning — see "Deferred" below).
+- **Linear:** [AUT-250](https://linear.app/harwood/issue/AUT-250) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `_docs/_research/m-tray-appshell-audit.md` — the audit deliverable. Compose-graph mermaid, public-API map, fixture deps, CSR-readiness analysis, three GFM callouts flagging structural findings that reshape M-TRAY.2 / .3 / .4 (see "Headline findings" below).
+  - `crates/app-ui/src/dev_appshell.rs` — `DevAppShellPreview` component that mounts the `ui_storybook` AppShell with `sample_nav_items` / `sample_workspace_badge` fixtures + `StatusBar` footer. Cfg-gated on the new `tray-appshell-preview` Cargo feature.
+- **Files changed:**
+  - `crates/app-ui/Cargo.toml` — new `[features]` table with `tray-appshell-preview = []` (no transitive feature deps).
+  - `crates/app-ui/src/lib.rs` — `mount_default()` helper with `#[cfg(feature = "tray-appshell-preview")]` variants; with-feature path mounts `DevAppShellPreview`, default path mounts the existing `<App />`. The M-TRAY.0 `?tray=stub` short-circuit short-cuts both.
+  - `Justfile` — new `just dev-appshell` recipe (`trunk serve --features tray-appshell-preview` from `crates/app-ui`).
+- **Headline findings from the audit** (see audit doc for full detail):
+  1. **`NavigationRail` items are inert today.** Each `<button>` renders correctly under SSR + CSR but carries no `on:click` handler. M-TRAY.4 must extend `NavigationRail`'s public API with `on_select: Callback<AppSection>` — it can't be a pure-wiring ticket.
+  2. **`AppShell` owns no state.** Pure slot composition. M-TRAY.2's `initial_surface` prop concept is the wrong shape — there's no signal inside AppShell for it to drive. The active-surface state must live in `crates/app-ui`. M-TRAY.2 shrinks accordingly.
+  3. **CSR-readiness is proven-by-construction.** Zero `#[server]` fns, zero `tachys::ssr`-only types, zero blocking `window.location.*` reads across all 7 shell sub-components. Build path verified via the new feature.
+- **Tests:** existing storybook snapshots unchanged (no shell changes); no new unit tests (audit is documentation-driven).
+- **Gates run (this commit's footprint, all green):**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` (default path) — green.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown --features tray-appshell-preview` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --features tray-appshell-preview -- -D warnings` — green (after back-ticking `AppShell` in two doc comments, doc_markdown).
+  - `cargo run --release -p doc-gates -- mermaid-check` — green (audit doc's mermaid block parses; no ASCII slipped in).
+- **Deferred** (file as immediate follow-ups before M-TRAY.1 closes):
+  - **`wasm-bindgen-test` interaction smoke** — the ticket's "click every NavRail item and assert state change" test. **Deliberately deferred** because (a) the audit finding shows NavRail clicks are inert today, so the test would fail by design until M-TRAY.4 lands; (b) setting up wasm-bindgen-test + headless-chromedriver infrastructure for a workspace that's never used it is its own chunk. Better picked up in M-TRAY.4's PR alongside the `on_select` callback.
+  - **wasm32 CI step** — `gate.yml` already runs the default-feature wasm32 build but not the `--features tray-appshell-preview` variant. Worth wiring; not strictly blocking since `just gate` would catch a regression locally.
+- **Impact on subsequent tickets:**
+  - **M-TRAY.2 shrinks:** no AppShell prop change. Instead, add `on_select: Callback<AppSection>` to `NavigationRail` + 5 stories. (Effectively the M-TRAY.4 prep, brought forward.)
+  - **M-TRAY.3** owns the section signal in `crates/app-ui`; parses `?surface=` query; threads `RwSignal<AppSection>` into AppShell slots.
+  - **M-TRAY.4** wires the now-existing `Callback<AppSection>` to the signal setter; no AppShell-prop work needed.
+- **What this closes:** the audit half of M-TRAY.1 (the documentation deliverable + CSR-readiness proof). The interaction-smoke deliverable migrates to M-TRAY.4 where it's load-bearing.
+
+---
+
 ## M-TRAY.0 — Menubar tray icon + blank popover toggle (AUT-249)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — core code + unit tests + cross-platform compile gates green on branch `tray-webcam-appshell`. Storybook story + mdBook chapter + hero PNG screenshots **deferred** to a follow-up commit (see "Deferred" below). The shippable round-trip — `cargo run -p screen-app` → filled circle on menubar → click toggles a blank rectangular popover — works end-to-end on macOS.

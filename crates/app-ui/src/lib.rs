@@ -23,6 +23,8 @@
 )]
 
 pub mod app;
+#[cfg(feature = "tray-appshell-preview")]
+pub mod dev_appshell;
 pub mod player_ipc;
 
 use leptos::prelude::*;
@@ -37,22 +39,32 @@ use wasm_bindgen::prelude::*;
 /// **URL-based view selection (M-TRAY.0 / AUT-249):** when the
 /// `tray-popover` Tauri window opens this bundle with `?tray=stub` in
 /// the URL, we render only an empty rectangle placeholder instead of
-/// the full app. The else branch keeps the existing M-INT.1 drop-zone
-/// shell (`<App />`); the AppShell mount path is deliberately deferred
-/// to M-TRAY.3 (AUT-252), which requires the M-TRAY.1 CSR-readiness
-/// audit (AUT-250) to land first. Referencing `<AppShell />` here
-/// before the audit would break `trunk serve` for anyone running it
-/// without the audit's prerequisites in place.
+/// the full app.
+///
+/// **`AppShell` CSR preview (M-TRAY.1 / AUT-250):** when built with
+/// the `tray-appshell-preview` Cargo feature, the else branch mounts
+/// [`dev_appshell::DevAppShellPreview`] instead of `<App />`. This is
+/// a developer affordance for the audit smoke; production builds are
+/// unaffected. M-TRAY.3 (AUT-252) supersedes the feature-gate with
+/// the real URL-routed mount.
 #[wasm_bindgen(start)]
 pub fn run() {
     console_error_panic_hook::set_once();
     if is_tray_stub() {
-        leptos::mount::mount_to_body(|| {
-            view! { <div class="tray-popover-stub" /> }
-        });
-    } else {
-        leptos::mount::mount_to_body(app::App);
+        leptos::mount::mount_to_body(|| view! { <div class="tray-popover-stub" /> });
+        return;
     }
+    mount_default();
+}
+
+#[cfg(not(feature = "tray-appshell-preview"))]
+fn mount_default() {
+    leptos::mount::mount_to_body(app::App);
+}
+
+#[cfg(feature = "tray-appshell-preview")]
+fn mount_default() {
+    leptos::mount::mount_to_body(dev_appshell::DevAppShellPreview);
 }
 
 /// `true` when the current page URL carries `?tray=stub`. Used to
