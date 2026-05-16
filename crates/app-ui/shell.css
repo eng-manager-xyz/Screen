@@ -82,3 +82,16 @@
   font-size: 11px;
   pointer-events: none;
 }
+
+/* Tray-popover stub surface (M-TRAY.0 / AUT-249). Rendered when the
+ * Tauri `tray-popover` window opens the bundle with `?tray=stub` in
+ * the URL — a deliberately empty filled rectangle so the click→show
+ * round-trip is visible. The `transparent: true` window flag in
+ * tauri.conf.json means we MUST paint a background here, or the popover
+ * would be invisible (footgun documented in CLAUDE.md / AUT-249). */
+.tray-popover-stub {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-1, #1a1d21);
+  border-radius: 12px;
+}

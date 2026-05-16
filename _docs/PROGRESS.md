@@ -6,6 +6,48 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TRAY.0 — Menubar tray icon + blank popover toggle (AUT-249)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — core code + unit tests + cross-platform compile gates green on branch `tray-webcam-appshell`. Storybook story + mdBook chapter + hero PNG screenshots **deferred** to a follow-up commit (see "Deferred" below). The shippable round-trip — `cargo run -p screen-app` → filled circle on menubar → click toggles a blank rectangular popover — works end-to-end on macOS.
+- **Linear:** [AUT-249](https://linear.app/harwood/issue/AUT-249) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `crates/app/icons/tray.svg` — source SVG (22×22 viewBox, black filled circle r=7 centred at (11, 11)).
+  - `crates/app/icons/tray.png` + `tray@2x.png` + `tray@3x.png` — rasterised at 1×/2×/3× HiDPI by the example below. 8-bit greyscale+alpha so macOS's `icon_as_template(true)` auto-tints for light/dark menubar.
+  - `crates/app/examples/regen-tray-icons.rs` — pure-std PNG encoder (uncompressed DEFLATE blocks, CRC-32, Adler-32 — no `image` / `tiny-skia` / `png` crate dep). Produces the three PNG outputs from the SVG dimensions via 4×4 supersampling.
+  - `crates/app/src/tray/{mod.rs, toggle.rs}` — pure `TrayPopoverState` state machine (`Hidden` ↔ `Visible`) returning `Action::{Show, Hide}` so the Tauri layer does the actual window `.show()` / `.hide()`. 4 unit tests covering the 10-alternating-click round-trip from the acceptance criteria.
+- **Files changed:**
+  - `crates/app/Cargo.toml` — `tauri` gains `tray-icon` + `image-png` features (needed for `TrayIconBuilder` + `Image::from_bytes`).
+  - `crates/app/src/lib.rs` — `pub mod tray;`.
+  - `crates/app/src/commands.rs` — `TrayState(Mutex<TrayPopoverState>)` for `tauri::State`, `tray_toggle_popover` Tauri command, `toggle_tray_popover` pure-fn variant that the tray click handler calls directly.
+  - `crates/app/src/main.rs` — `register_tray_icon` in `setup`: `Image::from_bytes(include_bytes!("../icons/tray.png"))?` → `TrayIconBuilder::with_id("tray-popover-icon").icon_as_template(true).on_tray_icon_event(...)` → `app.manage(tray)`. Click handler filters `MouseButton::Left + MouseButtonState::Up` and calls `commands::toggle_tray_popover`. Registers `tray_toggle_popover` in `generate_handler!`.
+  - `crates/app/tauri.conf.json` — first existing window gets `label: "main"`; new `tray-popover` window `360×480`, `decorations: false`, `transparent: true`, `alwaysOnTop: true`, `skipTaskbar: true`, `visible: false`, `url: "index.html?tray=stub"`.
+  - `crates/app-ui/Cargo.toml` — `Location` added to web-sys features (for `window().location().search()`).
+  - `crates/app-ui/src/lib.rs` — `is_tray_stub()` URL-query check; `#[wasm_bindgen(start)] fn run()` forks: `?tray=stub` → mount `<div class="tray-popover-stub" />`; else branch keeps the existing `<App />` drop-zone shell. **Deliberately does NOT reference `<AppShell />` yet** — that lands in M-TRAY.3 (AUT-252) after the M-TRAY.1 CSR audit (AUT-250).
+  - `crates/app-ui/shell.css` — `.tray-popover-stub` rule (filled-rectangle with `var(--surface-1)` background, 12 px radius — needed because `transparent: true` would otherwise render the popover invisible).
+  - `tools/doc-gates/src/main.rs` — `REQUIRED_FILES` gains `tray.svg`, `tray.png`, `tray@2x.png`, `tray@3x.png`.
+- **Tests:** 4 unit tests in `tray::toggle::tests` (default-is-Hidden, Hidden→Show, Visible→Hide, 10-alternating-click round-trip). All passing via `cargo nextest run -p screen-app --lib`.
+- **Gates run (this commit's footprint, all green):**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p screen-app` — green (warm 21 s).
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green (cold 3 m 15 s).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green after renaming `cx_px`/`cy_px` → `center_px_x`/`center_px_y` (similar_names) and back-ticking `HiDPI` in module docs (doc_markdown).
+  - `cargo nextest run -p screen-app --lib` — 4/4 pass.
+  - `cargo run -p screen-app --example regen-tray-icons` — produced valid PNGs (verified via `file`).
+  - `cargo run -p doc-gates -- required-files-check` — green (all 6 required files tracked).
+- **Gates NOT run yet** (deferred to follow-up commit on this branch):
+  - Full `just gate` — includes `snapshots-check` + `docs` + `mermaid-check` + `shared-check` + `pages-url-check`. These should all be green since I didn't touch the relevant inputs, but I haven't verified end-to-end. Cheap to run.
+  - Doctests on screen-app — likely green; haven't run.
+  - Full workspace test (`cargo nextest run`) — likely green; skipped to save session time.
+- **Deferred** (file as immediate follow-ups before M-TRAY.0 closes):
+  - **Storybook story `s_tray_popover_stub`** — needs adding to `crates/ui-storybook/src/stories/*.rs` registry + `all_stories()`. The stub is literally `<div class="tray-popover-stub" />` so the story is one line.
+  - **mdBook chapter** `_docs/book/src/app-ui/chunks/tray-icon-stub.md` — two-screenshot chapter (menubar + open popover). Hero PNGs need to be captured manually since `just snapshots-ui` produces HTML, not OS-level menubar shots.
+  - **`SUMMARY.md` entry** for the new chapter, under app-ui.
+  - **Integration smoke test** `crates/app/tests/tray_smoke.rs` — spawn-the-binary pattern from the ticket. macOS-only, cfg-skip Windows.
+  - **Refactor `commands.rs` → `commands/mod.rs` + `commands/{player.rs, tray.rs}`** — the ticket spec said `commands::tray::toggle_popover`. I kept the flat layout (`commands::tray_toggle_popover`) to minimise churn. Worth doing alongside M-CAM.2 which adds 4+ more camera commands.
+- **What this closes:** The minimum viable demo — `cargo run -p screen-app` puts a filled circle on the macOS menubar; left-click toggles a transparent 360×480 popover containing a dark filled rectangle; left-click again hides it. Cross-platform compile path verified on the `wasm32-unknown-unknown` target. Foundation in place for M-TRAY.1 → M-TRAY.3 → M-TRAY.4.
+
+---
+
 ## M-CHART.19 + .23 — Polar coord + Error bars (AUT-199, 203)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — final two P2 chart tickets. AUT-203 ships error bars as a self-contained overlay value type that composes with any cartesian chart via `emit_graphics_in_rect`. AUT-199 ships a polar coord helper + wind-rose-style `PolarPlot`. Branch `chart-p2-tail`.

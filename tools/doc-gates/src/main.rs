@@ -77,6 +77,14 @@ const REQUIRED_FILES: &[&str] = &[
     // script aborts with `icons/icon.ico not found`. Regen via
     // `cargo run -p screen-app --example regen-icons`.
     "crates/app/icons/icon.ico",
+    // Tray-icon raster outputs (M-TRAY.0 / AUT-249) — embedded into
+    // the binary via `include_bytes!` in `crates/app/src/main.rs`,
+    // so a missing file is a compile failure with a misleading error.
+    // Regen via `cargo run -p screen-app --example regen-tray-icons`.
+    "crates/app/icons/tray.svg",
+    "crates/app/icons/tray.png",
+    "crates/app/icons/tray@2x.png",
+    "crates/app/icons/tray@3x.png",
 ];
 
 fn main() -> ExitCode {

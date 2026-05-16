@@ -13,7 +13,7 @@ workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 playback = { path = "../playback" }
 decode = { path = "../decode" }
 wisp = { workspace = true }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tray icon source — M-TRAY.0 (AUT-249).
+
+  A single black filled circle on a 22×22 viewBox (macOS menubar
+  icon convention). Pure-alpha monochrome so macOS's template-icon
+  auto-tinting works: macOS reads only the alpha channel and paints
+  the icon in the current menubar foreground colour.
+
+  The committed raster PNGs (`tray.png`, `tray@2x.png`, `tray@3x.png`)
+  are generated from this SVG by `cargo run -p screen-app --example
+  regen-tray-icons`. The example uses a pure-std PNG encoder (no
+  external image-decoding dep) to draw a centred filled circle with
+  anti-aliased edges directly to the alpha channel at the three
+  HiDPI sizes (22, 44, 66 px).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <circle cx="11" cy="11" r="7" fill="#000"/>
+</svg>

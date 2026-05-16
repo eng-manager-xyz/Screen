@@ -11,10 +11,67 @@
 )]
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::player_session::{PlayerSession, PlayerStatus};
+use crate::tray::toggle::{Action, TrayPopoverState};
+
+/// Tauri-managed wrapper around the tray-popover toggle state machine
+/// (M-TRAY.0 / AUT-249). Held in `tauri::State` so the click handler in
+/// `main.rs` and the `tray_toggle_popover` command share one source of
+/// truth. `Mutex` rather than `parking_lot::Mutex` to avoid adding a new
+/// workspace dep just for the tray; contention is non-existent (only
+/// the click handler ever touches it).
+#[derive(Default)]
+pub struct TrayState(pub Mutex<TrayPopoverState>);
+
+/// Tray-popover toggle command (M-TRAY.0 / AUT-249).
+///
+/// Resolves the bound popover window by its `tauri.conf.json` label
+/// (`tray-popover`), advances the state machine, then performs the
+/// corresponding `show()`/`hide()` on the window. Returning `()` rather
+/// than `Result` matches the existing player_* commands' shape — failure
+/// paths log via `tracing::warn!` so the click is never user-facing
+/// silent.
+#[tauri::command]
+pub fn tray_toggle_popover(app: tauri::AppHandle, state: State<'_, TrayState>) {
+    toggle_tray_popover(&app, &state);
+}
+
+/// Pure function variant of [`tray_toggle_popover`] — not a Tauri
+/// command. The click handler in `main.rs` calls this directly so it
+/// doesn't have to round-trip through the IPC command bus.
+pub fn toggle_tray_popover(app: &tauri::AppHandle, state: &TrayState) {
+    let Some(window) = app.get_webview_window("tray-popover") else {
+        tracing::warn!("tray-popover window not found; tauri.conf.json may be missing it");
+        return;
+    };
+    let action = {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.on_click()
+    };
+    match action {
+        Action::Show => {
+            if let Err(err) = window.show() {
+                tracing::warn!(?err, "failed to show tray-popover window");
+                return;
+            }
+            if let Err(err) = window.set_focus() {
+                tracing::warn!(?err, "failed to focus tray-popover window");
+            }
+        }
+        Action::Hide => {
+            if let Err(err) = window.hide() {
+                tracing::warn!(?err, "failed to hide tray-popover window");
+            }
+        }
+    }
+}
 
 /// Open a video file and start it paused at frame 0.
 #[tauri::command]

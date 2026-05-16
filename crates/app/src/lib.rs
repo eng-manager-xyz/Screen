@@ -14,3 +14,4 @@
 
 pub mod commands;
 pub mod player_session;
+pub mod tray;
