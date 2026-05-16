@@ -82,7 +82,11 @@ fn open_args_for_current_os(_url: &str) -> Vec<String> {
     Vec::new()
 }
 
-#[cfg(test)]
+// All tests in this module are cfg-gated to specific OSes (macOS or
+// Windows). On Linux neither test compiles, leaving `use super::*`
+// dead — which trips `-D unused-imports` in CI's `just lint` run on
+// the ubuntu runner. Gate the imports to match.
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod tests {
     use super::*;
 
