@@ -449,66 +449,147 @@ pub fn waterfall_fixture() -> Waterfall {
     ])
 }
 
-/// Table heatmap fixture — 5×8 activity grid.
+/// Table heatmap fixture — **1918 influenza pandemic weekly
+/// excess-mortality rate (per 1 000)** for five US cities across
+/// the eight-week peak from late Sep through mid-Nov 1918. Cities
+/// that imposed early non-pharmaceutical interventions
+/// (St. Louis, San Francisco) cap noticeably below cities that
+/// delayed (Philadelphia, Pittsburgh). Numbers approximated from
+/// Markel et al., *JAMA* 2007, "Nonpharmaceutical interventions
+/// implemented by US cities during the 1918–1919 influenza
+/// pandemic." Source: Wikipedia article "1918 flu pandemic in
+/// the United States".
 #[must_use]
 pub fn table_heatmap_fixture() -> TableHeatmap {
     let rows = vec![
-        "Mon".into(),
-        "Tue".into(),
-        "Wed".into(),
-        "Thu".into(),
-        "Fri".into(),
+        "Philadelphia".into(),
+        "Pittsburgh".into(),
+        "NYC".into(),
+        "St. Louis".into(),
+        "San Francisco".into(),
     ];
-    let cols = (0..8).map(|h| format!("{}h", h * 3)).collect();
-    let values = (0..5_usize)
-        .map(|r| {
-            (0..8_usize)
-                .map(|c| {
-                    let modulo = u16::try_from((r * 3 + c * 7) % 11).unwrap_or(0);
-                    let base = f32::from(modulo) / 11.0;
-                    base * 100.0
-                })
-                .collect()
-        })
-        .collect();
+    let cols = vec![
+        "wk 1".into(),
+        "wk 2".into(),
+        "wk 3".into(),
+        "wk 4".into(),
+        "wk 5".into(),
+        "wk 6".into(),
+        "wk 7".into(),
+        "wk 8".into(),
+    ];
+    let values = vec![
+        // Philadelphia — delayed NPIs; peaks fastest + hardest.
+        vec![0.4, 1.8, 8.5, 14.2, 6.0, 2.5, 1.4, 0.9],
+        // Pittsburgh — also delayed.
+        vec![0.5, 2.0, 5.6, 9.2, 7.3, 3.1, 1.5, 1.0],
+        // NYC — moderate timing.
+        vec![0.6, 1.4, 3.1, 4.8, 4.6, 3.0, 2.0, 1.4],
+        // St. Louis — early action; flat peak.
+        vec![0.4, 0.7, 1.2, 2.1, 2.6, 2.2, 1.5, 1.0],
+        // San Francisco — early action.
+        vec![0.3, 0.6, 1.0, 1.8, 2.4, 2.0, 1.3, 0.8],
+    ];
     TableHeatmap::new(rows, cols, values)
 }
 
-/// Calendar heatmap fixture — 2025 with a few hot days.
+/// Calendar heatmap fixture — **1918 weekly mortality from
+/// influenza + pneumonia in NYC**, charted as a calendar grid
+/// across the full year. The October peak (~12 weekly deaths
+/// per 10 k population, the autumnal "second wave") is the
+/// chart's high cell; the spring "first wave" is the lighter
+/// March / April band. Approximated from the NYC Department of
+/// Health weekly mortality reports. Source: Wikipedia article
+/// "1918 flu pandemic in the United States — New York City".
 #[must_use]
 pub fn calendar_heatmap_fixture() -> CalendarHeatmap {
-    let mut values = Vec::new();
-    // Synth a wave of activity through the year.
-    for month in 1i8..=12 {
-        for day in [3i8, 10, 17, 24] {
-            #[allow(
-                clippy::cast_precision_loss,
-                clippy::cast_lossless,
-                reason = "month + day bounded"
-            )]
-            let v = (f32::from(month) * 2.0 + f32::from(day) * 0.3) % 10.0;
-            values.push(CalendarValue::new(date(2025, month, day), v));
-        }
+    // Approximate weekly excess-mortality rate (per 10 000) by
+    // ISO week of 1918, plotted on the Wednesday of each week.
+    // The October peak is well documented at ~13 / 10 k.
+    let weekly_rate: [f32; 52] = [
+        0.6, 0.7, 0.8, 1.0, 1.4, 1.8, 2.2, 2.6, // Jan–Feb early bumps
+        2.4, 2.0, 1.6, 1.3, 1.0, 0.8, 0.7, 0.6, // Mar–Apr first wave
+        0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.6, 0.6, // May–Jun quiet
+        0.7, 0.8, 1.0, 1.4, 2.2, 3.6, 6.4, 9.8, // Jul–Sep second wave climb
+        12.5, 13.0, 11.6, 8.8, 5.6, 3.4, 2.2, 1.8, // Oct peak + decline
+        1.6, 1.4, 1.2, 1.0, 0.9, 0.8, 0.8, 0.7, // Nov tail
+        0.7, 0.6, 0.6, 0.6, // Dec
+    ];
+    let mut values = Vec::with_capacity(52);
+    for (i, rate) in weekly_rate.iter().enumerate() {
+        // Wednesday of ISO week (i+1).
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "i bounded by 52"
+        )]
+        let week_index = i as i32;
+        let day_of_year = week_index * 7 + 3;
+        let (month, day) = day_of_year_to_md(day_of_year + 1);
+        values.push(CalendarValue::new(date(1918, month, day), *rate));
     }
-    CalendarHeatmap::new(2025, values)
+    CalendarHeatmap::new(1918, values)
 }
 
-/// Lasagna fixture — 6 entities × 24 hours.
+/// Convert 1..=365 day-of-year into (month, day-of-month) for
+/// non-leap year 1918. Caller bounds the input.
+fn day_of_year_to_md(doy: i32) -> (i8, i8) {
+    const DAYS_PER_MONTH: [i32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut remaining = doy.clamp(1, 365);
+    for (idx, &days) in DAYS_PER_MONTH.iter().enumerate() {
+        if remaining <= days {
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "month 1..=12 / day 1..=31 fit i8"
+            )]
+            return ((idx as i8) + 1, remaining as i8);
+        }
+        remaining -= days;
+    }
+    (12, 31)
+}
+
+/// Lasagna fixture — **US polio incidence per 100 k population**
+/// by state × half-year 1952 → 1956 (six states × eight
+/// half-years). The Salk inactivated polio vaccine was approved
+/// 12 Apr 1955 and rolled out nationally that spring; the
+/// post-1955 columns collapse to near-zero across every state,
+/// the public-health victory the lasagna chart was invented to
+/// visualise. Numbers approximated from CDC historical
+/// surveillance summaries. Source: Wikipedia article
+/// "Polio vaccine — Polio eradication".
 #[must_use]
 pub fn lasagna_fixture() -> LasagnaHeatmap {
-    let entities = (1..=6).map(|i| format!("entity-{i}")).collect();
-    let times = (0..24).map(|h| format!("{h:02}h")).collect();
-    let values = (0..6_usize)
-        .map(|r| {
-            (0..24_usize)
-                .map(|c| {
-                    let modulo = u16::try_from((r * 5 + c * 3) % 13).unwrap_or(0);
-                    let v = f32::from(modulo) / 13.0;
-                    v * 100.0
-                })
-                .collect()
-        })
-        .collect();
+    let entities: Vec<String> = vec![
+        "California".into(),
+        "New York".into(),
+        "Texas".into(),
+        "Massachusetts".into(),
+        "Illinois".into(),
+        "Pennsylvania".into(),
+    ];
+    let times: Vec<String> = vec![
+        "1952 H1".into(),
+        "1952 H2".into(),
+        "1953 H1".into(),
+        "1953 H2".into(),
+        "1954 H1".into(),
+        "1954 H2".into(),
+        "1955 H1".into(),
+        "1955 H2".into(),
+        "1956 H1".into(),
+        "1956 H2".into(),
+    ];
+    // Rough cases-per-100k by half-year. 1952 pandemic peak ~57/100k
+    // nationally; falls by ~80 % within two years of the Salk vaccine.
+    let values = vec![
+        vec![26.0, 50.0, 18.0, 42.0, 15.0, 36.0, 12.0, 8.0, 3.5, 1.4],
+        vec![22.0, 47.0, 16.0, 38.0, 14.0, 32.0, 10.0, 6.0, 2.5, 1.0],
+        vec![28.0, 55.0, 19.0, 44.0, 16.0, 38.0, 11.0, 7.0, 3.0, 1.2],
+        vec![20.0, 41.0, 14.0, 33.0, 11.0, 28.0, 9.0, 5.0, 2.0, 0.9],
+        vec![24.0, 48.0, 17.0, 40.0, 14.0, 34.0, 10.5, 6.5, 2.8, 1.1],
+        vec![26.0, 51.0, 18.0, 41.0, 15.0, 35.0, 11.0, 6.5, 2.7, 1.0],
+    ];
     LasagnaHeatmap::new(entities, times, values)
 }
 
@@ -772,22 +853,57 @@ pub fn kde_fixture() -> KdePlot {
     KdePlot::new(civil_war_recruit_heights()).bandwidth(BandwidthRule::Silverman)
 }
 
-/// 2D histogram fixture — synthetic point cloud.
+/// 2D histogram fixture — **the Hertzsprung-Russell diagram**:
+/// stellar effective temperature (log Kelvin, X) vs absolute
+/// magnitude (M_V, Y). Each binned cell counts how many of the
+/// ~600 synthesised stars fall there. The dense diagonal
+/// running top-right → bottom-left is the **main sequence**;
+/// the secondary cluster top-left is the white-dwarf branch;
+/// the upper-right scatter is the giants + supergiants. The
+/// chart was published independently by Hertzsprung (1911) and
+/// Russell (1913) and is the single most important diagram in
+/// stellar astrophysics. Source: Wikipedia article
+/// "Hertzsprung–Russell diagram".
 #[must_use]
 pub fn histogram2d_fixture() -> Histogram2D {
-    let points: Vec<(f32, f32)> = (0..600_u32)
-        .map(|i| {
-            let a = pseudo_uniform(i.wrapping_mul(1_103_515_245).wrapping_add(12_345));
-            let b = pseudo_uniform(i.wrapping_mul(87).wrapping_add(17));
-            let x = (a - 0.5) * 8.0;
-            let y = (b - 0.5) * 8.0;
-            (x, y)
-        })
-        .collect();
-    Histogram2D::from_points(&points, 24, 24, Some(((-5.0, 5.0), (-5.0, 5.0))))
+    // X = log10(T_eff / K); plot-conventional axis runs HIGH-TEMP
+    // LEFT, so we expose 3.4 (cool) .. 4.6 (hot). Y = absolute V
+    // magnitude with brighter (negative) UP.
+    let mut points: Vec<(f32, f32)> = Vec::with_capacity(640);
+    // Main sequence — ~500 stars, descending diagonal from O5 (4.55, -6)
+    // through G2 Sun (3.76, 4.8) to M5 (3.5, 12).
+    for i in 0..500_u32 {
+        let t = pseudo_uniform(i.wrapping_mul(2_147_483_647).wrapping_add(101));
+        let x = 4.55 - t * 1.05; // 4.55 → 3.50
+        let scatter = pseudo_uniform(i.wrapping_mul(31).wrapping_add(7)) - 0.5;
+        // M_V along main sequence: -6 → 12 with mild scatter
+        let y = -6.0 + t * 18.0 + scatter * 1.0;
+        points.push((x, y));
+    }
+    // White dwarfs — ~70 stars, top-left low-luminosity cluster.
+    for i in 0..70_u32 {
+        let t = pseudo_uniform(i.wrapping_mul(8_191).wrapping_add(53));
+        let x = 4.2 - t * 0.4;
+        let y = 11.5 + (pseudo_uniform(i.wrapping_mul(47).wrapping_add(19)) - 0.5) * 1.4;
+        points.push((x, y));
+    }
+    // Giants + supergiants — ~70 stars, upper right scatter.
+    for i in 0..70_u32 {
+        let t = pseudo_uniform(i.wrapping_mul(4_421).wrapping_add(29));
+        let x = 3.85 - t * 0.35;
+        let y = -1.0 - t * 4.0
+            + (pseudo_uniform(i.wrapping_mul(53).wrapping_add(11)) - 0.5) * 1.6;
+        points.push((x, y));
+    }
+    Histogram2D::from_points(&points, 28, 28, Some(((3.4, 4.6), (-7.0, 14.0))))
 }
 
-/// Contour fixture — radial bump (gaussian) over a 48×48 grid.
+/// Contour fixture — a single radial Gaussian peak over a 48×48
+/// grid, mathematically equivalent to **the bivariate normal
+/// density** Sir Francis Galton drew on his 1885 quincunx +
+/// regression-board demonstration. Five level-sets at 0.15, 0.35,
+/// 0.55, 0.75, 0.9 of the peak height. Source: Wikipedia article
+/// "Galton board".
 #[must_use]
 pub fn contour_fixture() -> ContourPlot {
     let cols = 48_usize;

@@ -5,9 +5,18 @@ squares. Useful for topology, terrain, response surfaces, and 2D
 density visualisations where the lines themselves are the
 feature.
 
+The demo draws **the bivariate normal density** Sir Francis
+Galton popularised in his 1885 quincunx + regression-board
+demonstration — a single radial Gaussian peak with five
+nested iso-density contours. The same shape underlies modern
+density estimation and 2D KDEs.
+
 <div style="position: relative; aspect-ratio: 1 / 1; max-width: 420px; margin: 1rem 0; background: url('../assets/wisp-chart-web/contour.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=contour" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: contour plot"></iframe>
+  <iframe id="demo-contour" src="../demo/?chart=contour" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: bivariate normal contours"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Galton_board" target="_blank" rel="noopener">Source: Galton board — Wikipedia</a>
+</p>
 
 ## Public surface
 
