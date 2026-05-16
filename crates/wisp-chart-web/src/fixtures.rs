@@ -907,7 +907,6 @@ fn pseudo_uniform(seed: u32) -> f32 {
     f32::from(modded) / 1000.0
 }
 
-
 /// Heights (inches) of Union Army white volunteers, drawn from
 /// **Benjamin A. Gould's 1869 *Investigations in the Military and
 /// Anthropological Statistics of American Soldiers***. Gould
@@ -987,8 +986,7 @@ pub fn histogram2d_fixture() -> Histogram2D {
     for i in 0..70_u32 {
         let t = pseudo_uniform(i.wrapping_mul(4_421).wrapping_add(29));
         let x = 3.85 - t * 0.35;
-        let y = -1.0 - t * 4.0
-            + (pseudo_uniform(i.wrapping_mul(53).wrapping_add(11)) - 0.5) * 1.6;
+        let y = -1.0 - t * 4.0 + (pseudo_uniform(i.wrapping_mul(53).wrapping_add(11)) - 0.5) * 1.6;
         points.push((x, y));
     }
     Histogram2D::from_points(&points, 28, 28, Some(((3.4, 4.6), (-7.0, 14.0))))
