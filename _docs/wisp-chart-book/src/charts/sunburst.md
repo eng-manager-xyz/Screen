@@ -4,9 +4,21 @@ Radial hierarchical layout — root at the centre, each depth
 radiates outward as a concentric ring. Child segments span the
 angular range of their parent.
 
+The demo decomposes the **Apollo program's $25.4 B lifetime cost
+(1973 dollars)** by NASA centre and then by program element.
+The inner ring groups the four big centres (Marshall →
+Saturn V, Manned Spacecraft Center → CSM + LM, Kennedy →
+launch + tracking, HQ → R&D + ops); the outer ring breaks each
+group into its program-element line items. Marshall's Saturn V
+slice alone is 36 % of the whole pie — the most expensive single
+machine ever built.
+
 <div style="position: relative; aspect-ratio: 1 / 1; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/sunburst.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=sunburst" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: sunburst"></iframe>
+  <iframe id="demo-sunburst" src="../demo/?chart=sunburst" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo program cost hierarchy"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_program#Costs" target="_blank" rel="noopener">Source: Apollo program — Costs — Wikipedia</a>
+</p>
 
 ## Public surface
 

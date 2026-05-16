@@ -24,6 +24,22 @@
         background: #ffffff;
         color: #222222;
       }
+      /* Iframe mode (no `.standalone`): the canvas is the entire
+         page. Without `height: 100%` on every ancestor the
+         `#wisp-chart-canvas { height: 100% }` rule resolves to
+         the canvas's intrinsic 640 px, and any iframe shorter
+         than that (e.g. the 5:1 bullet chapter) gets a vertical
+         scrollbar. Cascading 100% all the way down kills the
+         scroll. */
+      html,
+      body:not(.standalone),
+      body:not(.standalone) main {
+        height: 100%;
+        width: 100%;
+      }
+      body:not(.standalone) #status {
+        display: none;
+      }
       header {
         padding: 1rem 1.5rem;
         border-bottom: 1px solid #e5e5e5;

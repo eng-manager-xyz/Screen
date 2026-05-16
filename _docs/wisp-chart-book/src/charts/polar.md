@@ -5,9 +5,22 @@ bearing, time-of-day distributions. v1 ships a wind-rose-style
 polar bar variant: concentric grid + radial spokes + one filled
 sector per category, sized to its value.
 
+The demo plots **Florence Nightingale's monthly disease deaths
+in the British Army during the Crimean War, April–November
+1854** — the per-month breakdown behind her famous *coxcomb*
+diagram in *Notes on Matters Affecting the Health, Efficiency,
+and Hospital Administration of the British Army* (1858). The
+[pie chapter](./pie.md) shows the aggregate three-category
+summary; this polar view shows the same data sliced by month —
+the Sep–Nov peak driven by the Scutari hospital sanitation
+crisis stands out immediately.
+
 <div style="position: relative; aspect-ratio: 1 / 1; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/polar.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=polar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: polar plot"></iframe>
+  <iframe id="demo-polar" src="../demo/?chart=polar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Nightingale Crimean War monthly deaths"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Florence_Nightingale" target="_blank" rel="noopener">Source: Florence Nightingale — Wikipedia</a>
+</p>
 
 ## Public surface
 

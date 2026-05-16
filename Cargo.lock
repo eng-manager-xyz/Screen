@@ -9249,6 +9249,7 @@ dependencies = [
  "jiff",
  "pollster",
  "screen-wisp",
+ "wgpu",
 ]
 
 [[package]]

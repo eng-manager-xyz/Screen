@@ -55,6 +55,12 @@ pub struct PlotTheme {
     /// Radius of a `PointStyle::Circle` marker on a line chart in
     /// device pixels.
     pub line_marker_radius_px: f32,
+    /// Corner radius for `Mark::Bar` / `Mark::Column` rectangles in
+    /// device pixels. Default `0.0` (square corners — the modern
+    /// data-vis convention). Callers that want rounded bars set
+    /// this to a non-zero value before rendering; the Gantt family
+    /// reads its own [`GanttTheme::bar_corner_radius`] independently.
+    pub bar_corner_radius: f32,
 }
 
 /// Shared axis-renderer knobs. Read by the cartesian axis
@@ -201,11 +207,18 @@ impl Theme {
                 gridline_minor: grid_minor,
                 line_width_px: 2.0,
                 line_marker_radius_px: 3.0,
+                bar_corner_radius: 0.0,
             },
             axis: AxisTheme {
                 tick_length_px: 5.0,
                 tick_label_font_size: 12.0,
-                tick_density_hint: 8,
+                // Down from 8 — the previous default packed 9 stops
+                // into a 240 px y-axis (e.g. 0/0.5/1/1.5/2/2.5/3/3.5/4
+                // for a 0..4 range), which produced the labels-touch
+                // pattern in the bar chapter. 5 is the d3 / Google
+                // Sheets convention for short ranges; the `nice_step`
+                // rounding still picks round-numbered stops.
+                tick_density_hint: 5,
             },
             legend: LegendTheme {
                 swatch_size_px: 14.0,

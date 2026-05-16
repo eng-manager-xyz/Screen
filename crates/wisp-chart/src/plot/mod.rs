@@ -40,8 +40,10 @@ pub enum Transform {
 }
 
 use glam::Vec2;
+use wisp::application::Application;
 use wisp::math::Rect;
-use wisp::{Color as WispColor, Fill, Font, Graphics, Text};
+use wisp::text::TextTexturePipeline;
+use wisp::{Color as WispColor, Fill, FlexText, Graphics};
 
 use crate::axis::{self, AxisPosition, TickLabel};
 use crate::legend::{Legend, LegendOrientation, SwatchStyle};
@@ -190,8 +192,9 @@ impl Plot {
 
     /// Internal cartesian layout — plot rect + scales + tick
     /// lists used by both `render_bars` and
-    /// `axis_text_labels`. Returns `None` when the encodings
-    /// don't define a renderable chart (missing X / Y, etc.).
+    /// [`axis_text_nodes`](Self::axis_text_nodes). Returns `None`
+    /// when the encodings don't define a renderable chart (missing
+    /// X / Y, etc.).
     fn cartesian_layout(&self, theme: &Theme, viewport_px: Vec2) -> Option<CartesianLayout> {
         let _ = theme;
         let x_enc = self.find_encoding(Channel::X)?;
@@ -261,13 +264,24 @@ impl Plot {
         })
     }
 
-    /// Emit axis text labels (and optional titles) using `font`.
-    /// `Plot::render` itself can't produce these because Text
-    /// nodes need a Font, which wisp-chart doesn't carry. The
-    /// caller (typically `wisp-chart-web`) builds a Font once
-    /// and feeds it in.
+    /// Emit axis text labels (and optional titles) as Inter-rendered
+    /// [`FlexText`] nodes. The caller (typically `wisp-chart-web`)
+    /// constructs a [`TextTexturePipeline`] via
+    /// [`crate::chart_text::pipeline_with_inter`] and threads it in;
+    /// the returned nodes render in wisp's *late pass*, on top of
+    /// every chart [`Graphics`] primitive.
+    ///
+    /// Replaces the old bitmap-`Font` `axis_text_labels` path
+    /// (deleted alongside the Inter rollout — the 8×8 atlas only
+    /// rendered legibly at 16-pixel ranges no chart actually uses).
     #[must_use]
-    pub fn axis_text_labels(&self, theme: &Theme, viewport_px: Vec2, font: &Font) -> Vec<Text> {
+    pub fn axis_text_nodes(
+        &self,
+        app: &Application,
+        pipeline: &TextTexturePipeline,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> Vec<FlexText> {
         let mut out = Vec::new();
         if !self.axes_enabled {
             return out;
@@ -276,6 +290,8 @@ impl Plot {
             return out;
         };
         out.extend(axis::emit_x_axis_text(
+            app,
+            pipeline,
             &layout.x_ticks,
             layout.plot_rect,
             viewport_px,
@@ -283,9 +299,10 @@ impl Plot {
             &theme.axis,
             theme.text_muted,
             self.x_axis_title.as_deref(),
-            font,
         ));
         out.extend(axis::emit_y_axis_text(
+            app,
+            pipeline,
             &layout.y_ticks,
             layout.plot_rect,
             viewport_px,
@@ -293,7 +310,6 @@ impl Plot {
             &theme.axis,
             theme.text_muted,
             self.y_axis_title.as_deref(),
-            font,
         ));
         out
     }
@@ -451,7 +467,7 @@ impl Plot {
                 h: by1 - by0,
             };
             let ndc = pixel_rect_to_ndc(rect_px, viewport_px);
-            let corner_ndc = theme.gantt.bar_corner_radius / viewport_px.y * 2.0;
+            let corner_ndc = theme.plot.bar_corner_radius / viewport_px.y * 2.0;
             g.fill(Fill::Solid(chart_to_wisp(fill_color)));
             g.draw_rounded_rect(ndc, corner_ndc);
         }
@@ -1077,7 +1093,7 @@ type SeriesPoints = Vec<(String, Vec<(f32, f32)>)>;
 
 /// Internal cartesian-layout cache returned by
 /// `Plot::cartesian_layout` and consumed by `render_bars` +
-/// `axis_text_labels`.
+/// `axis_text_nodes`.
 struct CartesianLayout {
     plot_rect: Rect,
     x_scale: BandScale<String>,

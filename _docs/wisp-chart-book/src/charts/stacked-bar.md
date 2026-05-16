@@ -5,9 +5,19 @@ region as fractions of the quarterly total. Normalized mode
 divides each segment by its band's total, producing 100%-stacked
 bars where every band reaches the plot top.
 
+The demo plots the **Apollo program's annual outlay by NASA
+centre, 1962–1972** ($B in 1973 dollars). Same dataset the
+[grouped-bar chapter](./grouped-bar.md) shows side-by-side, but
+stacked: total program spend per year reads off the top of each
+bar, and the Marshall (Saturn V) slice growing through 1966
+before tapering tells the program-arc story in one chart.
+
 <div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/stacked-bar.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=stacked-bar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: stacked bar chart"></iframe>
+  <iframe id="demo-stacked-bar" src="../demo/?chart=stacked-bar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo annual budget stacked"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_program#Costs" target="_blank" rel="noopener">Source: Apollo program — Costs — Wikipedia</a>
+</p>
 
 ## Public surface
 

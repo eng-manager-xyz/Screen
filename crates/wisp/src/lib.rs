@@ -39,6 +39,11 @@ pub mod path {
     pub use crate::scene::path::{Path, PathBuilder, PathCommand};
 }
 
+// Re-export wgpu so downstream crates (wisp-chart, etc.) can name
+// wgpu types like `TextureFormat` without depending on wgpu directly
+// — keeps wgpu's major version pinned in one place.
+pub use wgpu;
+
 pub use blend::BlendMode;
 pub use color::Color;
 pub use error::Error;
@@ -48,9 +53,9 @@ pub use filter::{
 pub use math::{Mat3, Mat4, Rect, Vec2, Vec3, Vec4};
 pub use render::mask_combine::MaskCombineOp;
 pub use scene::{
-    BlurStrength, Callout, Container, DimOutside, DimStrength, Fill, Font, Graphics, Highlight,
-    MaskShape, Mesh, Node, NodeId, Path, PathBuilder, PathCommand, PrivacyBlur, Sprite, Stage,
-    Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
+    BlurStrength, Callout, Container, DimOutside, DimStrength, Fill, FlexText, Font, Graphics,
+    Highlight, MaskShape, Mesh, Node, NodeId, Path, PathBuilder, PathCommand, PrivacyBlur, Sprite,
+    Stage, Stroke, Text, Transform, Vector, VectorShape, VectorStroke,
 };
 pub use text::{
     AtlasGlyphInstance, AtlasTextEngine, AtlasTextLayout, FlexibleTextEngine, FlexibleTextLayout,

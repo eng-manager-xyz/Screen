@@ -6,7 +6,6 @@
 
 use glam::Vec2;
 use wgpu::TextureView;
-use wisp::Font;
 use wisp::application::Application;
 use wisp::render::Renderer;
 use wisp_chart::Theme;
@@ -272,8 +271,8 @@ pub fn render_chart_to_view(
             let kpi = fixtures::kpi_fixture();
             let graphics = kpi.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
-            let font = Font::bitmap_8x8(app);
-            for t in kpi.emit_text_labels(&theme, viewport_px, &font) {
+            let pipeline = wisp_chart::chart_text::pipeline_with_inter(app, surface_format);
+            for t in kpi.emit_text_nodes(app, &pipeline, &theme, viewport_px) {
                 let _ = app.stage_mut().add_child(root, t);
             }
         }
@@ -281,8 +280,8 @@ pub fn render_chart_to_view(
             let gauge = fixtures::gauge_fixture();
             let graphics = gauge.emit_graphics(&theme, viewport_px);
             let _ = app.stage_mut().add_child(root, graphics);
-            let font = Font::bitmap_8x8(app);
-            for t in gauge.emit_text_labels(&theme, viewport_px, &font) {
+            let pipeline = wisp_chart::chart_text::pipeline_with_inter(app, surface_format);
+            for t in gauge.emit_text_nodes(app, &pipeline, &theme, viewport_px) {
                 let _ = app.stage_mut().add_child(root, t);
             }
         }
@@ -456,8 +455,11 @@ fn attach_plot(
 ) {
     let graphics = plot.render(theme, viewport_px);
     let _ = app.stage_mut().add_child(root, graphics);
-    let font = Font::bitmap_8x8(app);
-    for t in plot.axis_text_labels(theme, viewport_px, &font) {
-        let _ = app.stage_mut().add_child(root, t);
+    // Inter labels via the late-pass FlexText pipeline so axis ticks
+    // / titles render on top of the bars + gridlines.
+    let pipeline =
+        wisp_chart::chart_text::pipeline_with_inter(app, wisp::wgpu::TextureFormat::Rgba8UnormSrgb);
+    for node in plot.axis_text_nodes(app, &pipeline, theme, viewport_px) {
+        let _ = app.stage_mut().add_child(root, node);
     }
 }

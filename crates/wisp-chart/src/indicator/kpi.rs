@@ -2,8 +2,11 @@
 //! sparkline. The default top-of-dashboard summary tile.
 
 use glam::Vec2;
-use wisp::{Color, Fill, Font, Graphics, Text};
+use wisp::application::Application;
+use wisp::text::TextTexturePipeline;
+use wisp::{Color, Fill, FlexText, Graphics, WispFontWeight};
 
+use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_node};
 use crate::color::Color as ChartColor;
 use crate::theme::Theme;
 
@@ -108,60 +111,69 @@ impl Kpi {
         g
     }
 
-    /// Emit the big-value + label + delta as `wisp::Text` nodes.
+    /// Emit the big-value + label + delta as [`FlexText`] nodes
+    /// (Inter via the late-pass render pipeline so the text reads
+    /// on top of any sparkline or background graphic).
     ///
-    /// Layout: big value at `y = 12 px`, label below at
-    /// `y = numeric_font_size + 20 px`, delta below label at
-    /// `y = numeric_font_size + label_font_size + 36 px`. All
-    /// left-aligned with `8 px` left padding.
+    /// Layout: big value at `y = 12 px`, label below it, delta
+    /// below the label. All left-aligned with `8 px` left padding.
     #[must_use]
-    pub fn emit_text_labels(&self, theme: &Theme, viewport_px: Vec2, font: &Font) -> Vec<Text> {
+    pub fn emit_text_nodes(
+        &self,
+        app: &Application,
+        pipeline: &TextTexturePipeline,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> Vec<FlexText> {
         let mut out = Vec::new();
-        let cell_pixels = f32_from_u32(font.cell_pixels());
-
         let pad_x = 8.0_f32;
-        let val_cell = theme.indicator.numeric_font_size / cell_pixels / viewport_px.y * 2.0;
-        let label_cell = theme.indicator.label_font_size / cell_pixels / viewport_px.y * 2.0;
-        let delta_cell = theme.indicator.delta_font_size / cell_pixels / viewport_px.y * 2.0;
 
         // Big value.
         let value_str = format_value(self.value);
-        let mut value_text = Text::new(font.clone(), value_str).with_cell_size(val_cell);
-        value_text.color = chart_to_wisp(theme.text_primary);
-        let val_anchor = pixel_to_ndc(Vec2::new(pad_x, 12.0), viewport_px);
-        value_text.container.transform.position = val_anchor;
-        out.push(value_text);
+        let value_spec = ChartTextSpec {
+            content: value_str,
+            anchor_px: Vec2::new(pad_x, 12.0),
+            size_px: theme.indicator.numeric_font_size,
+            color: theme.text_primary,
+            anchor: TextAnchor::TopLeft,
+            weight: WispFontWeight::Bold,
+        };
+        out.push(build_text_node(app, pipeline, viewport_px, &value_spec));
 
         // Label.
-        let mut label_text = Text::new(font.clone(), self.label.clone()).with_cell_size(label_cell);
-        label_text.color = chart_to_wisp(theme.text_muted);
         let label_y = 12.0 + theme.indicator.numeric_font_size + 8.0;
-        let label_anchor = pixel_to_ndc(Vec2::new(pad_x, label_y), viewport_px);
-        label_text.container.transform.position = label_anchor;
-        out.push(label_text);
+        let label_spec = ChartTextSpec {
+            content: self.label.clone(),
+            anchor_px: Vec2::new(pad_x, label_y),
+            size_px: theme.indicator.label_font_size,
+            color: theme.text_muted,
+            anchor: TextAnchor::TopLeft,
+            weight: WispFontWeight::Regular,
+        };
+        out.push(build_text_node(app, pipeline, viewport_px, &label_spec));
 
         // Delta.
         if let Some(delta) = self.delta.as_ref() {
             let glyph = match delta.kind {
-                DeltaKind::Up => "^ ",
-                DeltaKind::Down => "v ",
-                DeltaKind::Neutral => "- ",
+                DeltaKind::Up => "▲ ",
+                DeltaKind::Down => "▼ ",
+                DeltaKind::Neutral => "– ",
             };
             let colour = match delta.kind {
                 DeltaKind::Up => theme.indicator.delta_up,
                 DeltaKind::Down => theme.indicator.delta_down,
                 DeltaKind::Neutral => theme.indicator.delta_neutral,
             };
-            let mut delta_text = Text::new(
-                font.clone(),
-                format!("{glyph}{text}", text = delta.formatted),
-            )
-            .with_cell_size(delta_cell);
-            delta_text.color = chart_to_wisp(colour);
             let delta_y = label_y + theme.indicator.label_font_size + 8.0;
-            let delta_anchor = pixel_to_ndc(Vec2::new(pad_x, delta_y), viewport_px);
-            delta_text.container.transform.position = delta_anchor;
-            out.push(delta_text);
+            let delta_spec = ChartTextSpec {
+                content: format!("{glyph}{text}", text = delta.formatted),
+                anchor_px: Vec2::new(pad_x, delta_y),
+                size_px: theme.indicator.delta_font_size,
+                color: colour,
+                anchor: TextAnchor::TopLeft,
+                weight: WispFontWeight::Regular,
+            };
+            out.push(build_text_node(app, pipeline, viewport_px, &delta_spec));
         }
 
         out
@@ -208,16 +220,6 @@ fn chart_to_wisp(c: ChartColor) -> Color {
         g: c.g,
         b: c.b,
         a: c.a,
-    }
-}
-
-fn f32_from_u32(v: u32) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "atlas cell pixels fit in f32 mantissa (8 today)"
-    )]
-    {
-        v as f32
     }
 }
 

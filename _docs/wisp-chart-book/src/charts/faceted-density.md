@@ -5,9 +5,18 @@ A composition pattern, not a separate value type. Render one
 the [trellis](./trellis.md) small-multiples layout — same data
 shape, repeated per facet.
 
+The single-facet demo below reuses the [KDE chapter](./kde.md)'s
+Civil War recruit-height dataset (Gould 1869). A genuine faceted
+build would render one panel per recruit-age bracket (e.g.
+18-21 / 22-25 / 26-29 / 30-34) so the reader could compare the
+distribution shape across cohorts at a glance.
+
 <div style="position: relative; aspect-ratio: 3 / 2; max-width: 540px; margin: 1rem 0; background: url('../assets/wisp-chart-web/kde.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=kde" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: faceted KDE (single facet)"></iframe>
+  <iframe id="demo-faceted-density" src="../demo/?chart=kde" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: faceted KDE (single facet)"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Anthropometric_history" target="_blank" rel="noopener">Source: Anthropometric history — Wikipedia</a>
+</p>
 
 ## Pattern
 

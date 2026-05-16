@@ -18,8 +18,8 @@ hard appear.
   <iframe id="demo-line" src="../demo/?chart=line&animate=reveal" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: US unemployment 1929–1941"></iframe>
 </div>
 <p style="margin: 0.5rem 0 1.25rem;">
-  <button type="button" onclick="(function(){var f=document.getElementById('demo-line');f.src=f.src.split('&_t=')[0]+'&_t='+Date.now();})()" style="padding: 0.35rem 0.8rem; border: 1px solid #888; background: #fff; cursor: pointer; font: inherit;">↻ Replay animation</button>
-  <a href="https://en.wikipedia.org/wiki/Unemployment_in_the_United_States" target="_blank" rel="noopener" style="margin-left: 0.75rem;">Source: Unemployment in the United States — Wikipedia</a>
+  <button type="button" class="replay-btn" onclick="(function(){var f=document.getElementById('demo-line');f.src=f.src.split('&_t=')[0]+'&_t='+Date.now();})()"><span class="replay-icon">↻</span> Replay animation</button>
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Unemployment_in_the_United_States" target="_blank" rel="noopener">Source: Unemployment in the United States — Wikipedia</a>
 </p>
 
 ## Public surface

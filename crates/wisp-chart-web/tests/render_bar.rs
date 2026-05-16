@@ -30,9 +30,9 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use pollster::block_on;
+use wisp::RenderTexture;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::{Font, RenderTexture};
 use wisp_chart::Theme;
 use wisp_chart::plot::{self, DataFrame, Mark, Plot, ScaleKind, Value};
 
@@ -105,12 +105,15 @@ fn plot_facade_renders_4_quarter_bar_chart() {
     let root = app.stage().root();
     let _ = app.stage_mut().add_child(root, graphics);
 
-    // Axis text — Plot can't bake these into Graphics because
-    // Text needs a Font. Wire the bitmap_8x8 font here and add
-    // each label / title as a sibling Text node.
-    let font = Font::bitmap_8x8(&app);
-    for text in plot.axis_text_labels(&theme, viewport, &font) {
-        let _ = app.stage_mut().add_child(root, text);
+    // Axis text — Plot emits Inter-rendered FlexText nodes via
+    // the chart_text helper. The pipeline lives for this single
+    // render call.
+    let pipeline = wisp_chart::chart_text::pipeline_with_inter(
+        &app,
+        wisp::wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
+    for node in plot.axis_text_nodes(&app, &pipeline, &theme, viewport) {
+        let _ = app.stage_mut().add_child(root, node);
     }
 
     app.device().push_error_scope(wgpu::ErrorFilter::Validation);
