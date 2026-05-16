@@ -6,6 +6,32 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CAM.0 + M-CAM.1 — `autovideosrc` frames + camera enumeration (AUT-254, AUT-255)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — combined commit since both tickets are pure data-layer additions to `crates/media` with no UI / Tauri seam involvement.
+- **Linear:** [AUT-254](https://linear.app/harwood/issue/AUT-254) + [AUT-255](https://linear.app/harwood/issue/AUT-255) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/media/src/camera.rs` — `CameraDevice` (serde-derived `{id, label, is_default}`), `list_cameras()` shelling out to `gst-device-monitor-1.0 Video/Source`, `parse_device_monitor_output()` text parser, `stable_id_for()` FNV-1a hash so label-only IDs survive macOS AVFoundation ID instability. 6 unit tests including 2 captured-output fixtures (single-camera macOS + synthetic two-camera).
+  - `_docs/_research/macos-permissions.md` — tracker for `NS*UsageDescription` strings the app needs (current + future M-MIC / M-SCK / accessibility).
+- **Files changed:**
+  - `crates/media/src/gstreamer_video.rs` — new `GstreamerVideoCapture::from_default_camera(w, h, fps)` constructor wrapping `autovideosrc ! videoconvert ! BGRA ! fdsink fd=1`. New `default_camera_available()` probe via `gst-device-monitor-1.0` for runtime test skipping.
+  - `crates/media/src/lib.rs` — `pub mod camera;` + `pub use camera::{CameraDevice, list_cameras};`.
+  - `crates/media/Cargo.toml` — `serde` (with derive) moved to main deps for `CameraDevice` to cross the future M-CAM.2 Tauri seam; `serde_json` to dev-deps for the round-trip test.
+  - `crates/app/tauri.conf.json` — unchanged content; documented in `macos-permissions.md` that `NSCameraUsageDescription` is pending bundle re-enable. The dev binary inherits whatever permission the user has granted.
+- **Tests:** 6 new camera::tests (parser single-cam, parser two-cam-with-default-first, parser empty, stable-ID determinism, stable-ID prefix, serde round-trip). All 77 `cargo nextest run -p media --lib` tests pass.
+- **Gates run, all green:**
+  - `cargo check -p media` — green.
+  - `cargo check -p screen-app` — green (confirms `tauri.conf.json` parses).
+  - `cargo nextest run -p media --lib` — 77/77.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green.
+  - `cargo fmt --all --check` — green.
+- **Deferred:**
+  - Runtime camera-capture integration test (would need an actual camera + macOS permission; runtime-skips via `default_camera_available()` are wired but the test file isn't yet — easy follow-up).
+  - `NSCameraUsageDescription` in Info.plist (deferred until `bundle.active = true`; documented in `macos-permissions.md`).
+- **What this closes:** the data-layer foundation for the camera pipeline — frames arrive in Rust from `autovideosrc`, devices enumerate to `Vec<CameraDevice>`. M-CAM.2 (Tauri seam) builds on both.
+
+---
+
 ## M-TRAY.3 + M-TRAY.4 — Tray click renders AppShell + NavRail switching (AUT-252, AUT-253)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — combined commit per the M-TRAY.1 audit doc's recommended sequencing (the two tickets are tightly coupled once the M-TRAY.2 `on_select` callback exists). Click tray → main app window opens with the full `AppShell` mounted; NavigationRail clicks swap the right-pane surface AND rewrite the URL via `history.replaceState`.

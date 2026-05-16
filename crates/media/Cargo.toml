@@ -17,10 +17,15 @@ path = "src/lib.rs"
 decode = { path = "../decode", version = "0.1.0" }
 thiserror = "2"
 tracing = { workspace = true }
+# M-CAM.1 / AUT-255 — `CameraDevice` serializes across the Tauri seam
+# in M-CAM.2 (AUT-256), so serde stays in the main deps.
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 image = "0.25"
 tracing-subscriber = { workspace = true }
+# M-CAM.1 serde round-trip test for `CameraDevice`.
+serde_json = "1"
 # Examples only — `gst_video_to_wisp` boots a headless wisp Application
 # and renders captured frames to PNG. The `media` library itself stays
 # wgpu-free; this dep is dev-only and never re-exported.
