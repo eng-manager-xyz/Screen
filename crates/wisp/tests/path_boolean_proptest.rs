@@ -108,6 +108,10 @@ fn subpath_count(path: &Path) -> usize {
 /// bug is fixed.
 #[test]
 #[ignore = "AUT-PB-COMMUT: combine() not commutative on near-coincident edges; un-ignore after fix"]
+#[allow(
+    clippy::unreadable_literal,
+    reason = "These float literals are the verbatim minimised input proptest produced on Windows CI. Reformatting them with `_` separators would obscure the bit-exact values future debug sessions need to reproduce the failure."
+)]
 fn regression_commutative_near_coincident_edges() {
     let a = PathBuilder::new()
         .move_to(Vec2::new(0.12207058, -0.3966554))
