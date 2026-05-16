@@ -4,9 +4,21 @@ Area chart split by a horizontal reference line — fill above the
 baseline in one colour (profit), below in another (loss).
 Common for diff series, deviation-from-target, gains-vs-losses.
 
+The demo plots the **US Federal Funds Rate, 1965–1985**,
+baselined against the long-run 5 % anchor most macro texts use
+when discussing the Volcker disinflation. The visible spikes
+above the baseline track the late-60s Vietnam-era overheating,
+the post-oil-shock inflation, and the **Volcker shock of
+1979–82** that crushed double-digit inflation by taking the
+funds rate above 16 % — a peak you can read straight off the
+1981 fill.
+
 <div style="position: relative; aspect-ratio: 480 / 240; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/baseline.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=baseline" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: baseline chart"></iframe>
+  <iframe id="demo-baseline" src="../demo/?chart=baseline" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: US Fed Funds Rate vs 5%"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Federal_funds_rate" target="_blank" rel="noopener">Source: Federal funds rate — Wikipedia</a>
+</p>
 
 ## Public surface
 

@@ -367,46 +367,65 @@ pub fn sunburst_fixture() -> Sunburst {
     .ring_width_px(30.0)
 }
 
-/// Candlestick fixture — 8 OHLC periods.
+/// Daily Dow Jones Industrial Average around the **Wall Street
+/// Crash of 1929** — eight trading days from Mon Oct 21 1929
+/// through Wed Oct 30 1929 spanning Black Thursday (Oct 24),
+/// Black Monday (Oct 28), and Black Tuesday (Oct 29). Source:
+/// Wikipedia article "Wall Street Crash of 1929" + the
+/// reproduced ticker tables in Galbraith's *The Great Crash 1929*.
+/// `Period::new(open, high, low, close)` per day; the dramatic
+/// red candles on Oct 24 / 28 / 29 tell the crash story.
+fn wall_street_crash_1929() -> Vec<Period> {
+    vec![
+        // Mon Oct 21 — already softening
+        Period::new(324.0, 328.0, 318.0, 320.9),
+        // Tue Oct 22
+        Period::new(320.9, 326.0, 313.0, 326.5),
+        // Wed Oct 23 — sharp drop
+        Period::new(326.5, 326.5, 304.0, 305.9),
+        // Thu Oct 24 — Black Thursday. 12.9M shares; recovers slightly.
+        Period::new(305.9, 305.9, 272.3, 299.5),
+        // Fri Oct 25 — fragile rally
+        Period::new(299.5, 305.0, 295.0, 301.2),
+        // Mon Oct 28 — Black Monday. Closes 38 pts down.
+        Period::new(301.2, 301.2, 256.0, 260.6),
+        // Tue Oct 29 — Black Tuesday. 16.4M shares; -23%.
+        Period::new(260.6, 264.0, 212.3, 230.1),
+        // Wed Oct 30 — dead-cat bounce
+        Period::new(230.1, 258.0, 230.0, 258.5),
+    ]
+}
+
+/// Candlestick fixture — Dow Jones daily during the Wall Street
+/// Crash of 1929. See [`wall_street_crash_1929`].
 #[must_use]
 pub fn candlestick_fixture() -> Candlestick {
-    Candlestick::new(vec![
-        Period::new(100.0, 110.0, 95.0, 108.0),
-        Period::new(108.0, 115.0, 105.0, 102.0),
-        Period::new(102.0, 109.0, 100.0, 107.0),
-        Period::new(107.0, 112.0, 103.0, 111.0),
-        Period::new(111.0, 118.0, 109.0, 116.0),
-        Period::new(116.0, 119.0, 112.0, 113.0),
-        Period::new(113.0, 117.0, 110.0, 109.0),
-        Period::new(109.0, 114.0, 106.0, 113.0),
-    ])
+    Candlestick::new(wall_street_crash_1929())
 }
 
-/// OHLC fixture — same periods as candlestick.
+/// OHLC fixture — same Wall Street Crash 1929 dataset as the
+/// candlestick view, in tick-bar form (left tick = open, right
+/// tick = close, range = high–low).
 #[must_use]
 pub fn ohlc_fixture() -> Ohlc {
-    Ohlc::new(vec![
-        Period::new(100.0, 110.0, 95.0, 108.0),
-        Period::new(108.0, 115.0, 105.0, 102.0),
-        Period::new(102.0, 109.0, 100.0, 107.0),
-        Period::new(107.0, 112.0, 103.0, 111.0),
-        Period::new(111.0, 118.0, 109.0, 116.0),
-        Period::new(116.0, 119.0, 112.0, 113.0),
-        Period::new(113.0, 117.0, 110.0, 109.0),
-        Period::new(109.0, 114.0, 106.0, 113.0),
-    ])
+    Ohlc::new(wall_street_crash_1929())
 }
 
-/// Waterfall fixture — P&L bridge.
+/// Waterfall fixture — **Apollo program lifetime cost** ($25.4 B
+/// in 1973 dollars) decomposed by major spending category.
+/// Starts at zero, accumulates the four big buckets, lands at
+/// the final total. Numbers from the 1973 NASA budget closeout
+/// reported to Congress. Source: Wikipedia article "Apollo
+/// program — Costs".
 #[must_use]
 pub fn waterfall_fixture() -> Waterfall {
     Waterfall::new(vec![
-        WaterfallRow::summary("Start", 100.0),
-        WaterfallRow::contribution("Revenue", 80.0),
-        WaterfallRow::contribution("COGS", -30.0),
-        WaterfallRow::contribution("Opex", -25.0),
-        WaterfallRow::contribution("Tax", -10.0),
-        WaterfallRow::summary("End", 115.0),
+        WaterfallRow::summary("Start", 0.0),
+        WaterfallRow::contribution("Saturn V", 9.3),
+        WaterfallRow::contribution("Spacecraft", 8.1),
+        WaterfallRow::contribution("Ground / ops", 4.7),
+        WaterfallRow::contribution("R&D + other", 3.3),
+        WaterfallRow::summary("Total ($B)", 25.4),
     ])
 }
 
@@ -473,21 +492,28 @@ pub fn lasagna_fixture() -> LasagnaHeatmap {
     LasagnaHeatmap::new(entities, times, values)
 }
 
-/// Baseline fixture — signal crossing zero a few times.
+/// Baseline fixture — **US Federal Funds Rate** (effective annual
+/// average, %) over 1965–1985, baselined against the long-run
+/// 5 % anchor most macro texts use when discussing the Volcker
+/// disinflation. The series spans the late-60s Vietnam-era
+/// expansion through the 1979–82 Volcker shock that crushed
+/// double-digit inflation. Source: FRED series `FEDFUNDS`,
+/// summarised on Wikipedia "Federal funds rate".
 #[must_use]
 pub fn baseline_fixture() -> BaselineChart {
     BaselineChart::new(
         vec![
-            (0.0, 10.0),
-            (1.0, 25.0),
-            (2.0, 15.0),
-            (3.0, -10.0),
-            (4.0, -25.0),
-            (5.0, -5.0),
-            (6.0, 15.0),
-            (7.0, 30.0),
+            (1965.0, 4.1),
+            (1968.0, 5.7),
+            (1971.0, 4.7),
+            (1974.0, 11.0),
+            (1977.0, 5.5),
+            (1979.0, 11.2),
+            (1981.0, 16.4),
+            (1983.0, 9.1),
+            (1985.0, 8.1),
         ],
-        0.0,
+        5.0,
     )
 }
 

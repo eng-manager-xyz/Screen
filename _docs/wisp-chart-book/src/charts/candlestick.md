@@ -3,9 +3,20 @@
 OHLC price per period rendered as a body (open → close) with a
 thin wick spanning the period high → low.
 
+The demo plots **the Dow Jones Industrial Average around the Wall
+Street Crash of 1929** — eight trading days from Mon Oct 21
+through Wed Oct 30 1929, spanning *Black Thursday* (Oct 24),
+*Black Monday* (Oct 28), and *Black Tuesday* (Oct 29). The
+Oct 28 candle's body is the day the Dow lost 13 % in a single
+session; Oct 29 cut another 12 %, then a partial recovery on
+the 30th set the tone for the Great Depression to come.
+
 <div style="position: relative; aspect-ratio: 480 / 240; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/candlestick.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=candlestick" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: candlestick"></iframe>
+  <iframe id="demo-candlestick" src="../demo/?chart=candlestick" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Wall Street Crash 1929"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Wall_Street_Crash_of_1929" target="_blank" rel="noopener">Source: Wall Street Crash of 1929 — Wikipedia</a>
+</p>
 
 ## Public surface
 
