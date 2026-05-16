@@ -17,7 +17,8 @@
         "width": 1280,
         "height": 800,
         "dragDropEnabled": true,
-        "resizable": true
+        "resizable": true,
+        "visible": false
       },
       {
         "label": "tray-popover",

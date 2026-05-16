@@ -51,8 +51,12 @@ pub fn pick_monitor(
         .or_else(|| monitors.first().copied())
 }
 
-/// Suggested position for the main window — below the tray click,
-/// clamped so the window fits entirely within the monitor's bounds.
+/// Suggested top-left position for the popover — its **top-right
+/// corner** aligned with the tray click, clamped so the window stays
+/// inside the monitor. Matches the macOS menubar-dropdown convention:
+/// the icon lives near the top-right of the screen, the popover
+/// hangs down and to the left of it.
+///
 /// Returns top-left `(x, y)` in screen coordinates.
 #[must_use]
 pub fn position_window_below_click(
@@ -62,13 +66,13 @@ pub fn position_window_below_click(
     window_height: i32,
     monitor: MonitorBounds,
 ) -> (i32, i32) {
-    // Centre horizontally on the click, ensure fully on-screen.
-    let half_w = window_width / 2;
-    let raw_x = click_x - half_w;
+    // Right-anchor: window's right edge sits at the click, so the
+    // left edge is `click_x - window_width`.
+    let raw_x = click_x - window_width;
     let max_x = monitor.x + monitor.width - window_width;
     let x = raw_x.clamp(monitor.x, max_x.max(monitor.x));
 
-    // Place below the menubar (assume ~24px on macOS).
+    // Place below the menubar (assume ~24px on macOS, ~4px of breathing room).
     let raw_y = click_y + 4;
     let max_y = monitor.y + monitor.height - window_height;
     let y = raw_y.clamp(monitor.y, max_y.max(monitor.y));
@@ -118,24 +122,28 @@ mod tests {
     }
 
     #[test]
-    fn position_window_below_click_centres_horizontally() {
+    fn position_window_top_right_aligns_window_right_edge_with_click() {
         let mon = mon(0, 0, 1920, 1080);
-        let (x, _) = position_window_below_click(960, 24, 800, 600, mon);
-        assert_eq!(x, 560);
+        // Click near the right edge of the menubar — the popover's
+        // right edge should land on the click point.
+        let (x, _) = position_window_below_click(1820, 12, 800, 600, mon);
+        // 1820 - 800 = 1020 → window spans [1020..1820], right edge at click.
+        assert_eq!(x, 1020);
     }
 
     #[test]
-    fn position_window_below_click_clamps_right_edge() {
+    fn position_window_clamps_right_when_click_past_monitor_right_edge() {
         let mon = mon(0, 0, 1920, 1080);
-        let (x, _) = position_window_below_click(1900, 24, 800, 600, mon);
-        // Click is near right edge; window should clamp to keep
-        // fully on-screen.
-        assert_eq!(x, 1120); // 1920 - 800
+        // Off-by-a-pixel: click x = 2000 on a 1920-wide monitor.
+        // raw_x = 2000 - 800 = 1200; max_x = 1920 - 800 = 1120; clamp pulls to 1120.
+        let (x, _) = position_window_below_click(2000, 12, 800, 600, mon);
+        assert_eq!(x, 1120);
     }
 
     #[test]
-    fn position_window_below_click_clamps_left_edge() {
+    fn position_window_clamps_left_when_click_is_near_origin() {
         let mon = mon(0, 0, 1920, 1080);
+        // Click at x=10 → raw_x = 10 - 800 = -790, clamps to 0.
         let (x, _) = position_window_below_click(10, 24, 800, 600, mon);
         assert_eq!(x, 0);
     }
