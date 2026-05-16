@@ -75,6 +75,7 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
                 <crate::camera_picker::CameraPicker />
                 <crate::camera_preview::CameraPreview />
                 <BubbleToggleButton />
+                <BubbleClickthroughToggle />
             </section>
         </Show>
     }
@@ -94,6 +95,41 @@ fn BubbleToggleButton() -> impl IntoView {
             on:click=move |_| crate::bubble_ipc::toggle_webcam_bubble()
         >
             "Show webcam bubble"
+        </button>
+    }
+}
+
+/// Toggle whole-window click-through on the webcam bubble
+/// (M-BUBBLE.1 v0 / AUT-274). When enabled, the bubble window passes
+/// every mouse event through to whatever's underneath — useful when
+/// recording the bubble overlaying slides or a browser. To turn it
+/// back off, click this button again (the bubble itself can't catch
+/// clicks while passthrough is on, hence the AppShell-side toggle).
+///
+/// The "active" state lives in a local Leptos signal — the Rust
+/// side doesn't currently report ignore-cursor-events status back to
+/// the UI, so the signal can drift if the user manually overrides
+/// the window state via a future menu / IPC. Acceptable for v0.
+#[component]
+fn BubbleClickthroughToggle() -> impl IntoView {
+    let clickthrough = RwSignal::new(false);
+    let on_click = move |_| {
+        let next = !clickthrough.get();
+        clickthrough.set(next);
+        crate::bubble_ipc::set_bubble_clickthrough(next);
+    };
+    view! {
+        <button
+            type="button"
+            class="bubble-toggle bubble-toggle--clickthrough"
+            data-active=move || if clickthrough.get() { "true" } else { "false" }
+            on:click=on_click
+        >
+            {move || if clickthrough.get() {
+                "Click-through ON — click to disable"
+            } else {
+                "Make bubble click-through"
+            }}
         </button>
     }
 }

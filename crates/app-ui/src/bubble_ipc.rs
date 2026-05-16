@@ -18,6 +18,11 @@ extern "C" {
     /// `__screenToggleBubble()` in `index.html` — returns `Promise<void>`.
     #[wasm_bindgen(js_name = __screenToggleBubble, catch)]
     pub async fn toggle_webcam_bubble_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenSetBubbleClickthrough(enabled)` in `index.html` —
+    /// returns `Promise<void>`. M-BUBBLE.1 v0 / AUT-274.
+    #[wasm_bindgen(js_name = __screenSetBubbleClickthrough, catch)]
+    pub async fn set_bubble_clickthrough_js(enabled: bool) -> Result<JsValue, JsValue>;
 }
 
 /// Fire-and-forget toggle. Spawns the IPC call as a wasm-bindgen
@@ -29,6 +34,22 @@ pub fn toggle_webcam_bubble() {
         if let Err(err) = toggle_webcam_bubble_js().await {
             web_sys::console::warn_2(
                 &JsValue::from_str("[bubble_ipc] toggle_webcam_bubble failed:"),
+                &err,
+            );
+        }
+    });
+}
+
+/// Fire-and-forget click-through toggle. `enabled = true` makes the
+/// bubble pass mouse events through; `false` restores normal
+/// interaction (drag works again). Failures log to the JS console;
+/// the Rust side also logs via `tracing::warn!`. M-BUBBLE.1 v0 /
+/// AUT-274.
+pub fn set_bubble_clickthrough(enabled: bool) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = set_bubble_clickthrough_js(enabled).await {
+            web_sys::console::warn_2(
+                &JsValue::from_str("[bubble_ipc] set_bubble_clickthrough failed:"),
                 &err,
             );
         }

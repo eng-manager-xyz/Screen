@@ -90,6 +90,14 @@
       // them to the user.
       window.__screenToggleBubble = () =>
         window.__TAURI__?.core?.invoke("toggle_webcam_bubble") ?? Promise.resolve();
+
+      // M-BUBBLE.1 v0 / AUT-274 — whole-window click-through toggle.
+      // When `enabled = true`, the bubble window passes mouse events
+      // to whatever's underneath (the bubble cannot be dragged or
+      // clicked while in this mode). Disable from the AppShell's
+      // "Click-through bubble" toggle (the only out-of-band path).
+      window.__screenSetBubbleClickthrough = (enabled) =>
+        window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
     </script>
   </head>
   <body>

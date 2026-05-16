@@ -300,6 +300,41 @@ pub fn update_bubble_position_from_event(state: &BubbleState, physical_x: i32, p
     });
 }
 
+/// Toggle whether the webcam-bubble window passes mouse events
+/// through to whatever's underneath (M-BUBBLE.1 v0 / AUT-274).
+///
+/// When `enabled = true`, the entire bubble window is mouse-event
+/// transparent — clicks and hovers reach the window below. Useful
+/// when recording the bubble overlaying slides / a browser, so the
+/// user can interact with the underlying app without the bubble
+/// catching the click. To disable (let the user drag the bubble
+/// again), the `AppShell`'s "Click-through bubble" button is the
+/// out-of-band trigger; the bubble itself can't receive the click
+/// while passthrough is on (chicken-and-egg).
+///
+/// Implementation is the macOS-blessed
+/// `NSWindow.setIgnoresMouseEvents:` path exposed through Tauri 2's
+/// `WebviewWindow::set_ignore_cursor_events`. The same call works on
+/// Windows (`WS_EX_TRANSPARENT`) and Linux (compositor-dependent).
+/// **Whole-window** — clicks on the visible bubble circle ALSO pass
+/// through when enabled. Per-pixel hit-testing (only the circle
+/// intercepts, corners pass through) needs an `NSView` subclass via
+/// `objc2` and is deferred to a v1 follow-up under the same ticket.
+#[tauri::command]
+pub fn set_bubble_clickthrough(app: tauri::AppHandle, enabled: bool) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; clickthrough toggle no-op");
+        return;
+    };
+    if let Err(err) = window.set_ignore_cursor_events(enabled) {
+        tracing::warn!(
+            ?err,
+            enabled,
+            "set_ignore_cursor_events on webcam-bubble failed"
+        );
+    }
+}
+
 /// `true` if `path` looks like the file `save_bubble_position` would
 /// produce. Used in the persistence integration test (which writes a
 /// canned file and verifies `load_bubble_position` reads it back).

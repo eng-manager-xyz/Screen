@@ -83,28 +83,10 @@ pub fn is_on_any_monitor(
         let mon_bottom = m.y + m.height;
 
         // Standard axis-aligned rectangle intersection.
-        win_left < mon_right
-            && win_right > mon_left
-            && win_top < mon_bottom
-            && win_bottom > mon_top
+        win_left < mon_right && win_right > mon_left && win_top < mon_bottom && win_bottom > mon_top
     })
 }
 
-/// If the bubble's top-left is within `snap_radius_px` of any
-/// monitor's nearest corner (measured corner-to-corner of the window
-/// vs monitor), snap to that corner's exact position and return the
-/// snapped `(BubblePosition, Corner)`. Otherwise `None`.
-///
-/// "Nearest corner of the monitor for this window position" means:
-///
-/// * Top-left  → window's top-left  near monitor's top-left
-/// * Top-right → window's top-right near monitor's top-right
-/// * Bottom-* → analogous
-///
-/// So the comparison is between matching corners of the window and
-/// the monitor. Snapping rewrites the window's top-left so the
-/// matched corners align exactly (with optional inset — see
-/// `inset_px`).
 /// Internal helper type — pairs a corner identity with the screen
 /// coordinates of two matching points (the window's corner and the
 /// monitor's corner) used to compute the Manhattan distance between
