@@ -18,6 +18,7 @@ use tauri::{LogicalPosition, Manager, State};
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{CameraError, PreviewLifecycle, PreviewState};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
 use crate::tray::toggle::{Action, TrayPopoverState};
 
 /// Tauri-managed wrapper around the tray-popover toggle state machine
@@ -28,6 +29,50 @@ use crate::tray::toggle::{Action, TrayPopoverState};
 /// the click handler ever touches it).
 #[derive(Default)]
 pub struct TrayState(pub Mutex<TrayPopoverState>);
+
+/// Tauri-managed wrapper around the webcam-bubble visibility state
+/// machine (M-BUBBLE.0 / AUT-273). Mirrors [`TrayState`]'s shape; the
+/// "Show webcam bubble" button in the Recorder surface invokes
+/// `toggle_webcam_bubble` which mutates this state.
+#[derive(Default)]
+pub struct BubbleState(pub Mutex<BubbleVisibility>);
+
+/// Webcam-bubble toggle command (M-BUBBLE.0 / AUT-273).
+///
+/// Resolves the bound bubble window by its `tauri.conf.json` label
+/// (`webcam-bubble`), advances the state machine, then performs the
+/// corresponding `show()`/`hide()` on the window. Returns `()` to
+/// match the existing tray-toggle command shape — failures log via
+/// `tracing::warn!` so the click is never user-facing silent.
+///
+/// Notably does NOT call `set_focus()` on show — the bubble is a
+/// peripheral overlay and shouldn't steal focus from the `AppShell`.
+#[tauri::command]
+pub fn toggle_webcam_bubble(app: tauri::AppHandle, state: State<'_, BubbleState>) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; tauri.conf.json may be missing it");
+        return;
+    };
+    let action = {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.on_click()
+    };
+    match action {
+        BubbleAction::Show => {
+            if let Err(err) = window.show() {
+                tracing::warn!(?err, "failed to show webcam-bubble window");
+            }
+        }
+        BubbleAction::Hide => {
+            if let Err(err) = window.hide() {
+                tracing::warn!(?err, "failed to hide webcam-bubble window");
+            }
+        }
+    }
+}
 
 /// Tray-popover toggle command (M-TRAY.0 / AUT-249).
 ///

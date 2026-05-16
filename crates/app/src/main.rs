@@ -18,7 +18,7 @@ use std::time::Duration;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
-use screen_app::commands::{self, TrayState};
+use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::PreviewState;
 
@@ -40,6 +40,7 @@ fn main() {
     tauri::Builder::default()
         .manage(PlayerSession::new())
         .manage(TrayState::default())
+        .manage(BubbleState::default())
         .manage(PreviewState::default())
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
@@ -54,6 +55,7 @@ fn main() {
                     commands::player_pause,
                     commands::player_status,
                     commands::tray_toggle_popover,
+                    commands::toggle_webcam_bubble,
                     commands::list_cameras,
                     commands::camera_permission_status,
                     commands::start_preview,
@@ -72,6 +74,7 @@ fn main() {
                     commands::player_pause,
                     commands::player_status,
                     commands::tray_toggle_popover,
+                    commands::toggle_webcam_bubble,
                     commands::list_cameras,
                     commands::camera_permission_status,
                     commands::start_preview,

@@ -83,6 +83,13 @@
       // fallback for the `trunk serve` standalone path).
       window.__screenConvertFileSrc = (path) =>
         window.__TAURI__?.core?.convertFileSrc?.(path);
+
+      // M-BUBBLE.0 / AUT-273 — toggle the borderless webcam-bubble
+      // window. Returns the underlying Promise (resolves to undefined)
+      // so the Rust caller can await + log failures without surfacing
+      // them to the user.
+      window.__screenToggleBubble = () =>
+        window.__TAURI__?.core?.invoke("toggle_webcam_bubble") ?? Promise.resolve();
     </script>
   </head>
   <body>

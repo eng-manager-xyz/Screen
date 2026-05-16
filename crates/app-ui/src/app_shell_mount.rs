@@ -74,8 +74,27 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
                 <h1>"Recorder"</h1>
                 <crate::camera_picker::CameraPicker />
                 <crate::camera_preview::CameraPreview />
+                <BubbleToggleButton />
             </section>
         </Show>
+    }
+}
+
+/// Toggle the floating webcam-bubble window (M-BUBBLE.0 / AUT-273).
+/// Pure presentational button — the Tauri-side state machine owns the
+/// shown/hidden flag, so this component intentionally doesn't track
+/// open/closed state. M-BUBBLE.3 (AUT-276) will subscribe to a Tauri
+/// event to drive an "active" visual state.
+#[component]
+fn BubbleToggleButton() -> impl IntoView {
+    view! {
+        <button
+            type="button"
+            class="bubble-toggle"
+            on:click=move |_| crate::bubble_ipc::toggle_webcam_bubble()
+        >
+            "Show webcam bubble"
+        </button>
     }
 }
 
