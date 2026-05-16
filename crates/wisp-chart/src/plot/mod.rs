@@ -43,7 +43,7 @@ use glam::Vec2;
 use wisp::application::Application;
 use wisp::math::Rect;
 use wisp::text::TextTexturePipeline;
-use wisp::{Color as WispColor, Fill, Font, Graphics, Sprite, Text};
+use wisp::{Color as WispColor, Fill, FlexText, Graphics};
 
 use crate::axis::{self, AxisPosition, TickLabel};
 use crate::legend::{Legend, LegendOrientation, SwatchStyle};
@@ -263,22 +263,24 @@ impl Plot {
         })
     }
 
-    /// Emit axis text labels (and optional titles) using `font`.
-    /// `Plot::render` itself can't produce these because Text nodes
-    /// need a Font, which wisp-chart doesn't carry. The caller
-    /// (typically `wisp-chart-web`) builds a Font once and feeds it
-    /// in.
+    /// Emit axis text labels (and optional titles) as Inter-rendered
+    /// [`FlexText`] nodes. The caller (typically `wisp-chart-web`)
+    /// constructs a [`TextTexturePipeline`] via
+    /// [`crate::chart_text::pipeline_with_inter`] and threads it in;
+    /// the returned nodes render in wisp's *late pass*, on top of
+    /// every chart [`Graphics`] primitive.
     ///
-    /// Today every chapter renders axes with bitmap `Font` via this
-    /// method; the parallel [`axis_text_sprites`] path is plumbed but
-    /// not wired in by default because of wisp's pipeline-bucket
-    /// order (sprite → graphics → text). Wiring it in requires a
-    /// flexible-text *scene node* that lives in the text pass — a
-    /// wisp-level addition deferred to a follow-up.
-    ///
-    /// [`axis_text_sprites`]: Self::axis_text_sprites
+    /// Replaces the old bitmap-`Font` `axis_text_labels` path
+    /// (deleted alongside the Inter rollout — the 8×8 atlas only
+    /// rendered legibly at 16-pixel ranges no chart actually uses).
     #[must_use]
-    pub fn axis_text_labels(&self, theme: &Theme, viewport_px: Vec2, font: &Font) -> Vec<Text> {
+    pub fn axis_text_nodes(
+        &self,
+        app: &Application,
+        pipeline: &TextTexturePipeline,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> Vec<FlexText> {
         let mut out = Vec::new();
         if !self.axes_enabled {
             return out;
@@ -287,50 +289,6 @@ impl Plot {
             return out;
         };
         out.extend(axis::emit_x_axis_text(
-            &layout.x_ticks,
-            layout.plot_rect,
-            viewport_px,
-            AxisPosition::Bottom,
-            &theme.axis,
-            theme.text_muted,
-            self.x_axis_title.as_deref(),
-            font,
-        ));
-        out.extend(axis::emit_y_axis_text(
-            &layout.y_ticks,
-            layout.plot_rect,
-            viewport_px,
-            AxisPosition::Left,
-            &theme.axis,
-            theme.text_muted,
-            self.y_axis_title.as_deref(),
-            font,
-        ));
-        out
-    }
-
-    /// Emit axis text labels (and optional titles) as Inter-rendered
-    /// [`Sprite`] nodes. Not wired into the default render path —
-    /// charts that opt into this must work around the wisp pipeline-
-    /// bucket order (sprites paint *under* the Graphics primitives
-    /// the chart emits). See module-level docs for the follow-up
-    /// work needed to make this the default text path.
-    #[must_use]
-    pub fn axis_text_sprites(
-        &self,
-        app: &Application,
-        pipeline: &TextTexturePipeline,
-        theme: &Theme,
-        viewport_px: Vec2,
-    ) -> Vec<Sprite> {
-        let mut out = Vec::new();
-        if !self.axes_enabled {
-            return out;
-        }
-        let Some(layout) = self.cartesian_layout(theme, viewport_px) else {
-            return out;
-        };
-        out.extend(axis::emit_x_axis_text_sprites(
             app,
             pipeline,
             &layout.x_ticks,
@@ -341,7 +299,7 @@ impl Plot {
             theme.text_muted,
             self.x_axis_title.as_deref(),
         ));
-        out.extend(axis::emit_y_axis_text_sprites(
+        out.extend(axis::emit_y_axis_text(
             app,
             pipeline,
             &layout.y_ticks,

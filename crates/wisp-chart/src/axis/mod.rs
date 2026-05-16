@@ -27,11 +27,10 @@
 use glam::Vec2;
 use wisp::application::Application;
 use wisp::math::Rect;
-use wisp::scene::{Container, Transform};
 use wisp::text::TextTexturePipeline;
-use wisp::{Color, Fill, Font, Graphics, Sprite, Text, WispFontWeight};
+use wisp::{Color, Fill, Graphics, WispFontWeight};
 
-use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_sprite};
+use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_node};
 use crate::color::Color as ChartColor;
 use crate::theme::{AxisTheme, PlotTheme};
 
@@ -181,169 +180,17 @@ pub fn emit_y_axis_lines(
     g
 }
 
-/// Emit X-axis tick labels + optional title as `Text` nodes.
-///
-/// Glyphs use the supplied bitmap font; size is keyed off
-/// `axis_theme.tick_label_font_size`. Caller adds each `Text` to
-/// the scene stage.
-#[must_use]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "axis text emission unavoidably needs: tick data, plot bounds, viewport, side, theme, color, optional title, font. Grouping into a struct would just rename the same 8 fields."
-)]
-pub fn emit_x_axis_text(
-    ticks: &[TickLabel],
-    plot_rect: Rect,
-    viewport_px: Vec2,
-    position: AxisPosition,
-    axis_theme: &AxisTheme,
-    text_color: ChartColor,
-    title: Option<&str>,
-    font: &Font,
-) -> Vec<Text> {
-    let mut out = Vec::new();
-    if !matches!(position, AxisPosition::Bottom | AxisPosition::Top) {
-        return out;
-    }
-    let axis_y = if matches!(position, AxisPosition::Bottom) {
-        plot_rect.max().y
-    } else {
-        plot_rect.min.y
-    };
-    let cell_pixels = f32_from_u32(font.cell_pixels());
-    let cell_size_ndc = axis_theme.tick_label_font_size / cell_pixels / viewport_px.y * 2.0;
-    let glyph_w_ndc = cell_size_ndc * cell_pixels / viewport_px.x * viewport_px.y;
-    let label_offset_y = axis_theme.tick_length_px + axis_theme.tick_label_font_size * 0.4;
-    let label_y_dir: f32 = if matches!(position, AxisPosition::Bottom) {
-        1.0
-    } else {
-        -1.0
-    };
 
-    for tick in ticks {
-        let mut text = Text::new(font.clone(), tick.label.clone()).with_cell_size(cell_size_ndc);
-        text.color = chart_color_to_wisp(text_color);
-        // Centre the label under (or over) the tick.
-        let label_width_ndc = glyph_w_ndc * usize_to_f32(tick.label.chars().count());
-        let centre_ndc = pixel_to_ndc(
-            Vec2::new(tick.position, axis_y + label_offset_y * label_y_dir),
-            viewport_px,
-        );
-        text.container.transform.position =
-            Vec2::new(centre_ndc.x - label_width_ndc * 0.5, centre_ndc.y);
-        out.push(text);
-    }
-
-    if let Some(t) = title {
-        let mut title_text = Text::new(font.clone(), t.to_owned()).with_cell_size(cell_size_ndc);
-        title_text.color = chart_color_to_wisp(text_color);
-        let title_offset_y = label_offset_y + axis_theme.tick_label_font_size * 1.8;
-        let centre_x = (plot_rect.min.x + plot_rect.max().x) * 0.5;
-        let title_width_ndc = glyph_w_ndc * usize_to_f32(t.chars().count());
-        let centre_ndc = pixel_to_ndc(
-            Vec2::new(centre_x, axis_y + title_offset_y * label_y_dir),
-            viewport_px,
-        );
-        title_text.container.transform.position =
-            Vec2::new(centre_ndc.x - title_width_ndc * 0.5, centre_ndc.y);
-        out.push(title_text);
-    }
-    out
-}
-
-/// Emit Y-axis tick labels + optional rotated title as `Text`
-/// nodes.
-#[must_use]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "axis text emission unavoidably needs: tick data, plot bounds, viewport, side, theme, color, optional title, font. Grouping into a struct would just rename the same 8 fields."
-)]
-pub fn emit_y_axis_text(
-    ticks: &[TickLabel],
-    plot_rect: Rect,
-    viewport_px: Vec2,
-    position: AxisPosition,
-    axis_theme: &AxisTheme,
-    text_color: ChartColor,
-    title: Option<&str>,
-    font: &Font,
-) -> Vec<Text> {
-    let mut out = Vec::new();
-    if !matches!(position, AxisPosition::Left | AxisPosition::Right) {
-        return out;
-    }
-    let axis_x = if matches!(position, AxisPosition::Left) {
-        plot_rect.min.x
-    } else {
-        plot_rect.max().x
-    };
-    let cell_pixels = f32_from_u32(font.cell_pixels());
-    let cell_size_ndc = axis_theme.tick_label_font_size / cell_pixels / viewport_px.y * 2.0;
-    let glyph_w_ndc = cell_size_ndc * cell_pixels / viewport_px.x * viewport_px.y;
-    let label_offset_x = axis_theme.tick_length_px + axis_theme.tick_label_font_size * 0.4;
-    let label_x_dir: f32 = if matches!(position, AxisPosition::Left) {
-        -1.0
-    } else {
-        1.0
-    };
-
-    for tick in ticks {
-        let mut text = Text::new(font.clone(), tick.label.clone()).with_cell_size(cell_size_ndc);
-        text.color = chart_color_to_wisp(text_color);
-        let label_width_ndc = glyph_w_ndc * usize_to_f32(tick.label.chars().count());
-        let anchor_ndc = pixel_to_ndc(
-            Vec2::new(axis_x + label_offset_x * label_x_dir, tick.position),
-            viewport_px,
-        );
-        // Right-align (Left axis) or left-align (Right axis).
-        let x_anchor = if matches!(position, AxisPosition::Left) {
-            anchor_ndc.x - label_width_ndc
-        } else {
-            anchor_ndc.x
-        };
-        // Centre vertically: cell origin is top-left so nudge up
-        // by half a cell.
-        let y_anchor = anchor_ndc.y + cell_size_ndc * cell_pixels * 0.5;
-        text.container.transform.position = Vec2::new(x_anchor, y_anchor);
-        out.push(text);
-    }
-
-    if let Some(t) = title {
-        let mut title_text = Text::new(font.clone(), t.to_owned()).with_cell_size(cell_size_ndc);
-        title_text.color = chart_color_to_wisp(text_color);
-        // Rotated -90° so text reads bottom-to-top on Left axis.
-        title_text.container.transform = Transform {
-            rotation: -std::f32::consts::FRAC_PI_2,
-            ..Default::default()
-        };
-        let title_offset_x = label_offset_x + axis_theme.tick_label_font_size * 1.8;
-        let centre_y = (plot_rect.min.y + plot_rect.max().y) * 0.5;
-        let title_anchor = pixel_to_ndc(
-            Vec2::new(axis_x + title_offset_x * label_x_dir, centre_y),
-            viewport_px,
-        );
-        // After rotation, position is the pivot in parent space.
-        let title_width_ndc = glyph_w_ndc * usize_to_f32(t.chars().count());
-        title_text.container.transform.position =
-            Vec2::new(title_anchor.x, title_anchor.y - title_width_ndc * 0.5);
-        // Suppress unused-import noise if Container ever stops
-        // being needed in this scope.
-        let _ = Container::default();
-        out.push(title_text);
-    }
-    out
-}
-
-/// Emit X-axis tick labels + optional title as Inter-text [`Sprite`]
+/// Emit X-axis tick labels + optional title as Inter-text [`wisp::FlexText`]
 /// nodes. The new path that replaces the bitmap-font
 /// [`emit_x_axis_text`] — every chart that emits text should call
-/// this and `emit_y_axis_text_sprites` instead.
+/// this and `emit_y_axis_text` instead.
 #[must_use]
 #[allow(
     clippy::too_many_arguments,
     reason = "axis text emission unavoidably needs: app, pipeline, tick data, plot bounds, viewport, side, theme, color, optional title. Grouping into a struct would just rename the same 9 fields."
 )]
-pub fn emit_x_axis_text_sprites(
+pub fn emit_x_axis_text(
     app: &Application,
     pipeline: &TextTexturePipeline,
     ticks: &[TickLabel],
@@ -353,7 +200,7 @@ pub fn emit_x_axis_text_sprites(
     axis_theme: &AxisTheme,
     text_color: ChartColor,
     title: Option<&str>,
-) -> Vec<Sprite> {
+) -> Vec<wisp::FlexText> {
     let mut out = Vec::new();
     if !matches!(position, AxisPosition::Bottom | AxisPosition::Top) {
         return out;
@@ -387,7 +234,7 @@ pub fn emit_x_axis_text_sprites(
             },
             weight: WispFontWeight::Regular,
         };
-        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+        out.push(build_text_node(app, pipeline, viewport_px, &spec));
     }
 
     if let Some(t) = title {
@@ -402,13 +249,14 @@ pub fn emit_x_axis_text_sprites(
             anchor: TextAnchor::TopCentre,
             weight: WispFontWeight::Regular,
         };
-        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+        out.push(build_text_node(app, pipeline, viewport_px, &spec));
     }
     out
 }
 
 /// Emit Y-axis tick labels + optional rotated title as Inter-text
-/// [`Sprite`] nodes. Replaces the bitmap-font [`emit_y_axis_text`].
+/// [`wisp::FlexText`] nodes. Replaces the bitmap-font
+/// [`emit_y_axis_text`].
 ///
 /// The y-axis title is rendered horizontally for now (rotated text
 /// flow needs container-level rotation which the sprite path
@@ -418,7 +266,7 @@ pub fn emit_x_axis_text_sprites(
     clippy::too_many_arguments,
     reason = "axis text emission unavoidably needs: app, pipeline, tick data, plot bounds, viewport, side, theme, color, optional title."
 )]
-pub fn emit_y_axis_text_sprites(
+pub fn emit_y_axis_text(
     app: &Application,
     pipeline: &TextTexturePipeline,
     ticks: &[TickLabel],
@@ -428,7 +276,7 @@ pub fn emit_y_axis_text_sprites(
     axis_theme: &AxisTheme,
     text_color: ChartColor,
     title: Option<&str>,
-) -> Vec<Sprite> {
+) -> Vec<wisp::FlexText> {
     let mut out = Vec::new();
     if !matches!(position, AxisPosition::Left | AxisPosition::Right) {
         return out;
@@ -459,7 +307,7 @@ pub fn emit_y_axis_text_sprites(
             },
             weight: WispFontWeight::Regular,
         };
-        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+        out.push(build_text_node(app, pipeline, viewport_px, &spec));
     }
 
     if let Some(t) = title {
@@ -474,10 +322,10 @@ pub fn emit_y_axis_text_sprites(
             anchor: TextAnchor::MiddleCentre,
             weight: WispFontWeight::Regular,
         };
-        let mut sprite = build_text_sprite(app, pipeline, viewport_px, &spec);
+        let mut node = build_text_node(app, pipeline, viewport_px, &spec);
         // Rotate -90° so the y-axis title reads bottom-to-top.
-        sprite.container.transform.rotation = -std::f32::consts::FRAC_PI_2;
-        out.push(sprite);
+        node.container.transform.rotation = -std::f32::consts::FRAC_PI_2;
+        out.push(node);
     }
     out
 }
@@ -503,30 +351,6 @@ fn chart_to_wisp(c: ChartColor) -> Color {
         g: c.g,
         b: c.b,
         a: c.a,
-    }
-}
-
-fn chart_color_to_wisp(c: ChartColor) -> Color {
-    chart_to_wisp(c)
-}
-
-fn f32_from_u32(v: u32) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "atlas cell pixels fit easily in f32 mantissa (8 today)"
-    )]
-    {
-        v as f32
-    }
-}
-
-fn usize_to_f32(v: usize) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "label char counts fit in f32 mantissa (~8M chars max). Axis labels are at most ~32 chars."
-    )]
-    {
-        v as f32
     }
 }
 
@@ -599,6 +423,21 @@ mod tests {
         assert_eq!(g.primitive_count(), 5);
     }
 
+    fn boot_pipeline() -> (
+        wisp::application::Application,
+        wisp::text::TextTexturePipeline,
+    ) {
+        let app = pollster::block_on(wisp::application::Application::new(
+            wisp::application::AppConfig::default(),
+        ))
+        .expect("app");
+        let pipeline = crate::chart_text::pipeline_with_inter(
+            &app,
+            wisp::wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
+        (app, pipeline)
+    }
+
     #[test]
     fn x_axis_text_count_matches_ticks_plus_title() {
         let ticks = vec![
@@ -612,12 +451,10 @@ mod tests {
             },
         ];
         let theme = theme();
-        let app = pollster::block_on(wisp::application::Application::new(
-            wisp::application::AppConfig::default(),
-        ))
-        .expect("app");
-        let font = Font::bitmap_8x8(&app);
+        let (app, pipeline) = boot_pipeline();
         let texts = emit_x_axis_text(
+            &app,
+            &pipeline,
             &ticks,
             plot_rect(),
             Vec2::new(480.0, 320.0),
@@ -625,7 +462,6 @@ mod tests {
             &theme.axis,
             theme.text_primary,
             Some("Quarter"),
-            &font,
         );
         // 2 tick labels + 1 title.
         assert_eq!(texts.len(), 3);
@@ -634,12 +470,10 @@ mod tests {
     #[test]
     fn y_axis_title_has_negative_pi_over_2_rotation() {
         let theme = theme();
-        let app = pollster::block_on(wisp::application::Application::new(
-            wisp::application::AppConfig::default(),
-        ))
-        .expect("app");
-        let font = Font::bitmap_8x8(&app);
+        let (app, pipeline) = boot_pipeline();
         let texts = emit_y_axis_text(
+            &app,
+            &pipeline,
             &[TickLabel {
                 position: 100.0,
                 label: "10".into(),
@@ -650,7 +484,6 @@ mod tests {
             &theme.axis,
             theme.text_primary,
             Some("Revenue"),
-            &font,
         );
         // Last text is the title; verify its rotation.
         let title = texts.last().expect("title");
@@ -665,12 +498,10 @@ mod tests {
     #[test]
     fn axis_with_no_title_omits_title_text() {
         let theme = theme();
-        let app = pollster::block_on(wisp::application::Application::new(
-            wisp::application::AppConfig::default(),
-        ))
-        .expect("app");
-        let font = Font::bitmap_8x8(&app);
+        let (app, pipeline) = boot_pipeline();
         let texts = emit_x_axis_text(
+            &app,
+            &pipeline,
             &[TickLabel {
                 position: 100.0,
                 label: "Q1".into(),
@@ -681,7 +512,6 @@ mod tests {
             &theme.axis,
             theme.text_primary,
             None,
-            &font,
         );
         assert_eq!(texts.len(), 1);
     }

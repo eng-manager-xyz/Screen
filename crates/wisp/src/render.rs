@@ -14,6 +14,7 @@ mod advanced_blend;
 mod blend_pipeline;
 mod blit;
 mod clip;
+mod flex_text_pipeline;
 mod graphics_pipeline;
 mod mask_cache;
 pub mod mask_combine;
@@ -28,6 +29,7 @@ mod sprite_pipeline;
 mod text_pipeline;
 mod triangle_pipeline;
 
+use flex_text_pipeline::FlexTextPipeline;
 use graphics_pipeline::GraphicsPipeline;
 use mesh_pipeline::MeshPipeline;
 use quad_pipeline::QuadPipeline;
@@ -57,6 +59,9 @@ pub struct RenderStats {
     pub glyphs_drawn: u32,
     /// Total meshes rendered.
     pub meshes_drawn: u32,
+    /// Total [`crate::scene::FlexText`] nodes rendered in the late
+    /// pass (rendered after [`Graphics`](crate::scene::Graphics)).
+    pub flex_text_drawn: u32,
 }
 
 /// 2D renderer.
@@ -69,6 +74,7 @@ pub struct Renderer {
     sprite: SpritePipeline,
     graphics: GraphicsPipeline,
     text: TextPipeline,
+    flex_text: FlexTextPipeline,
     mesh: MeshPipeline,
     advanced_blend: advanced_blend::AdvancedBlendPipelines,
     blit: blit::BlitPipeline,
@@ -94,6 +100,7 @@ impl Renderer {
         let sprite = SpritePipeline::new(app, output_format);
         let graphics = GraphicsPipeline::new(app, output_format);
         let text = TextPipeline::new(app, output_format);
+        let flex_text = FlexTextPipeline::new(app, output_format);
         let mesh = MeshPipeline::new(app, output_format);
         let advanced_blend = advanced_blend::AdvancedBlendPipelines::new(app, output_format);
         let blit_pipeline = blit::BlitPipeline::new(app, output_format);
@@ -110,6 +117,7 @@ impl Renderer {
             sprite,
             graphics,
             text,
+            flex_text,
             mesh,
             advanced_blend,
             blit: blit_pipeline,
@@ -1088,11 +1096,18 @@ impl Renderer {
             let (graphics_calls, graphics_drawn) = self.graphics.draw_stage(app, pass, stage);
             let (text_calls, glyphs_drawn) = self.text.draw_stage(app, pass, stage);
             let (mesh_calls, meshes_drawn) = self.mesh.draw_stage(app, pass, stage);
-            stats.draw_calls = sprite_calls + graphics_calls + text_calls + mesh_calls;
+            // FlexText runs LAST so its textured-quad output (typically
+            // cosmic-text–rasterised chart labels) paints on top of
+            // every Graphics primitive — the whole point of having a
+            // separate node type from Sprite.
+            let (flex_calls, flex_drawn) = self.flex_text.draw_stage(app, pass, stage);
+            stats.draw_calls =
+                sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
             stats.sprites_drawn = sprites_drawn;
             stats.graphics_drawn = graphics_drawn;
             stats.glyphs_drawn = glyphs_drawn;
             stats.meshes_drawn = meshes_drawn;
+            stats.flex_text_drawn = flex_drawn;
         });
         stats
     }
@@ -1149,6 +1164,7 @@ impl Renderer {
             stats.graphics_drawn += sub_stats.graphics_drawn;
             stats.glyphs_drawn += sub_stats.glyphs_drawn;
             stats.meshes_drawn += sub_stats.meshes_drawn;
+            stats.flex_text_drawn += sub_stats.flex_text_drawn;
 
             // If a clip is set, apply it: foreground → masked. Otherwise
             // the foreground is the source as-is.
@@ -1195,11 +1211,16 @@ impl Renderer {
                 self.graphics.draw_subtree(app, pass, stage, start, exclude);
             let (text_calls, glyphs) = self.text.draw_subtree(app, pass, stage, start, exclude);
             let (mesh_calls, meshes) = self.mesh.draw_subtree(app, pass, stage, start, exclude);
-            stats.draw_calls = sprite_calls + graphics_calls + text_calls + mesh_calls;
+            let (flex_calls, flex) =
+                self.flex_text
+                    .draw_subtree(app, pass, stage, start, exclude);
+            stats.draw_calls =
+                sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
             stats.sprites_drawn = sprites;
             stats.graphics_drawn = graphics;
             stats.glyphs_drawn = glyphs;
             stats.meshes_drawn = meshes;
+            stats.flex_text_drawn = flex;
         });
         stats
     }

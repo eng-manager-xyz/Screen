@@ -30,7 +30,7 @@
 //! cosmic-text's top-down render so glyphs land right-side-up.
 
 use glam::Vec2;
-use wisp::Sprite;
+use wisp::FlexText;
 use wisp::application::Application;
 use wisp::text::{TextTexturePipeline, WispFontWeight, WispText, WispTextStyle};
 
@@ -46,7 +46,7 @@ const INTER_BOLD_TTF: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
 /// Build a [`TextTexturePipeline`] seeded with the bundled Inter
 /// font set (Regular + Bold). Every chart that emits text via
-/// [`build_text_sprite`] should route through a pipeline built this
+/// [`build_text_node`] should route through a pipeline built this
 /// way — the family lookup in `WispText::with_font_family("Inter")`
 /// requires Inter to be in the font database.
 #[must_use]
@@ -68,9 +68,9 @@ pub fn pipeline_with_inter(
 /// closest installed family).
 pub const INTER_FONT_FAMILY: &str = "Inter";
 
-/// Where the sprite's reference point lives on its quad. Maps to the
-/// `anchor: Vec2` field on [`Sprite`] (`0.0` = top/left, `1.0` =
-/// bottom/right within the texture's local rect).
+/// Where the `FlexText`'s reference point lives on its quad. Maps to
+/// the `anchor: Vec2` field on [`FlexText`] (`0.0` = top / left,
+/// `1.0` = bottom / right within the texture's local rect).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextAnchor {
     /// Top-left of the rendered glyph box at the position.
@@ -147,17 +147,18 @@ impl ChartTextSpec {
     }
 }
 
-/// Build a single text sprite for `spec` against `pipeline` and add
-/// it to the caller's sprite list. Returns `None` only when the
-/// engine produces an empty layout for `spec.content` (e.g. all
-/// whitespace) — every legitimate label produces `Some`.
+/// Build a single [`FlexText`] node for `spec` against `pipeline`
+/// and return it to the caller. The returned node renders in wisp's
+/// late pass — *after* every chart [`wisp::Graphics`] primitive —
+/// so axis labels / legend entries / KPI numbers read on top of the
+/// chart instead of being painted under bars and gridlines.
 #[must_use]
-pub fn build_text_sprite(
+pub fn build_text_node(
     app: &Application,
     pipeline: &TextTexturePipeline,
     viewport_px: Vec2,
     spec: &ChartTextSpec,
-) -> Sprite {
+) -> FlexText {
     // RT allocation. The flexible renderer scales glyph output by
     // `rt_height_px / REFERENCE_PX` (= 1000), so the `size_ndc` we
     // pass into `WispTextStyle::with_size` must be expressed as the
@@ -199,14 +200,14 @@ pub fn build_text_sprite(
     let texture = rt.as_texture();
 
     // Scale + flip: cosmic-text renders top-down into the RT; the
-    // Sprite quad samples bottom-up in scene NDC, so the `-Y`
+    // `FlexText` quad samples bottom-up in scene NDC, so the `-Y`
     // multiplier on `scale.y` makes glyphs land right-side-up.
     let scale = Vec2::new(
         rt_width_px / viewport_px.x * 2.0,
         -rt_height_px / viewport_px.y * 2.0,
     );
 
-    // Anchor pixel coord → NDC. The sprite's `anchor` field then
+    // Anchor pixel coord → NDC. The node's `anchor` field then
     // shifts the local rect so this NDC point coincides with the
     // chosen corner / midpoint of the glyph box.
     let anchor_ndc = Vec2::new(
@@ -214,10 +215,10 @@ pub fn build_text_sprite(
         1.0 - spec.anchor_px.y / viewport_px.y * 2.0,
     );
 
-    let mut sprite = Sprite::from_texture(texture).with_anchor(spec.anchor.to_vec2());
-    sprite.container.transform.position = anchor_ndc;
-    sprite.container.transform.scale = scale;
-    sprite
+    let mut node = FlexText::from_texture(texture).with_anchor(spec.anchor.to_vec2());
+    node.container.transform.position = anchor_ndc;
+    node.container.transform.scale = scale;
+    node
 }
 
 #[cfg(test)]
@@ -234,11 +235,11 @@ mod tests {
     }
 
     #[test]
-    fn build_text_sprite_positions_top_centre() {
+    fn build_text_node_positions_top_centre() {
         let (app, pipeline) = boot();
         let viewport = Vec2::new(800.0, 400.0);
         let spec = ChartTextSpec::axis_tick("100", Vec2::new(400.0, 50.0), 14.0, Color::BLACK);
-        let sprite = build_text_sprite(&app, &pipeline, viewport, &spec);
+        let sprite = build_text_node(&app, &pipeline, viewport, &spec);
         // Anchor at viewport centre x = NDC 0.0; top y at 50/400*2 - 1 = -0.75, but pixel→NDC
         // inverts: 1 - 50/400*2 = 1 - 0.25 = 0.75.
         assert!(
@@ -280,11 +281,11 @@ mod tests {
     }
 
     #[test]
-    fn build_text_sprite_flips_y_scale() {
+    fn build_text_node_flips_y_scale() {
         let (app, pipeline) = boot();
         let viewport = Vec2::new(800.0, 400.0);
         let spec = ChartTextSpec::axis_tick("12.34", Vec2::ZERO, 14.0, Color::BLACK);
-        let sprite = build_text_sprite(&app, &pipeline, viewport, &spec);
+        let sprite = build_text_node(&app, &pipeline, viewport, &spec);
         // Y-scale must be negative to flip cosmic-text's top-down render.
         assert!(sprite.container.transform.scale.y < 0.0);
         // X-scale stays positive.

@@ -3,6 +3,7 @@
 use slotmap::new_key_type;
 
 use crate::scene::container::Container;
+use crate::scene::flex_text::FlexText;
 use crate::scene::graphics::Graphics;
 use crate::scene::mesh::Mesh;
 use crate::scene::sprite::Sprite;
@@ -24,6 +25,11 @@ pub enum Node {
     Graphics(Graphics),
     /// Bitmap-font text run.
     Text(Text),
+    /// Late-pass textured quad — renders after every
+    /// [`Graphics`] primitive so axis labels / legends / KPI numbers
+    /// composed via wisp's flexible-text path read on top of the
+    /// chart. See [`FlexText`].
+    FlexText(FlexText),
     /// Indexed triangle mesh (currently used for the perspective demo).
     Mesh(Mesh),
 }
@@ -38,6 +44,7 @@ impl Node {
             Self::Sprite(s) => &s.container,
             Self::Graphics(g) => &g.container,
             Self::Text(t) => &t.container,
+            Self::FlexText(f) => &f.container,
             Self::Mesh(m) => &m.container,
         }
     }
@@ -49,6 +56,7 @@ impl Node {
             Self::Sprite(s) => &mut s.container,
             Self::Graphics(g) => &mut g.container,
             Self::Text(t) => &mut t.container,
+            Self::FlexText(f) => &mut f.container,
             Self::Mesh(m) => &mut m.container,
         }
     }
@@ -75,6 +83,12 @@ impl From<Graphics> for Node {
 impl From<Text> for Node {
     fn from(t: Text) -> Self {
         Self::Text(t)
+    }
+}
+
+impl From<FlexText> for Node {
+    fn from(f: FlexText) -> Self {
+        Self::FlexText(f)
     }
 }
 
