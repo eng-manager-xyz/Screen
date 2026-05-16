@@ -23,6 +23,8 @@
 )]
 
 pub mod app;
+pub mod bubble;
+pub mod bubble_ipc;
 #[cfg(feature = "tray-appshell-preview")]
 pub mod dev_appshell;
 pub mod player_ipc;
@@ -31,13 +33,17 @@ use wasm_bindgen::prelude::*;
 
 /// Trunk entry point — installs panic hooks and mounts the app to `<body>`.
 ///
-/// **URL-based view selection (M-TRAY.3 / AUT-252):** when the URL
-/// query string carries `?surface=<recorder|library|editor|cursor|prefs>`
-/// the bundle mounts the full ui-storybook `AppShell` with the
-/// `NavigationRail` rooted at the requested surface. When no
-/// `?surface=` is present the existing M-INT.1 drop-zone shell
-/// (`<App />`) renders — preserving the `trunk serve` browser flow
-/// for one-off Leptos iteration.
+/// **URL-based view selection (M-TRAY.3 / AUT-252, M-BUBBLE.0 / AUT-273):**
+/// the dispatch routes on the page's query string via
+/// [`routing::parse_mount_point`]:
+///
+/// * `?surface=<recorder|library|editor|cursor|prefs>` → full
+///   ui-storybook `AppShell` rooted at the requested surface (the
+///   tray-launched main window).
+/// * `?mount=bubble` → the borderless `<BubbleRoot />` component for
+///   the webcam-bubble window.
+/// * Otherwise → existing M-INT.1 drop-zone shell (`<App />`) — keeps
+///   `trunk serve` browser flow working for one-off Leptos iteration.
 ///
 /// **`AppShell` CSR preview (M-TRAY.1 / AUT-250):** when built with
 /// the `tray-appshell-preview` Cargo feature, `mount_default` (the
@@ -49,13 +55,34 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(start)]
 pub fn run() {
     console_error_panic_hook::set_once();
-    if let Some(section) = parse_surface_from_query() {
-        leptos::mount::mount_to_body(move || {
-            app_shell_mount::AppShellRoot(app_shell_mount::AppShellRootProps { initial: section })
-        });
-        return;
+    match mount_point_from_query() {
+        routing::MountPoint::AppShell(section) => {
+            leptos::mount::mount_to_body(move || {
+                app_shell_mount::AppShellRoot(app_shell_mount::AppShellRootProps {
+                    initial: section,
+                })
+            });
+        }
+        routing::MountPoint::Bubble => {
+            leptos::mount::mount_to_body(bubble::BubbleRoot);
+        }
+        routing::MountPoint::DropZone => mount_default(),
     }
-    mount_default();
+}
+
+/// Pull the live page URL's query string, parse it via
+/// [`routing::parse_mount_point`]. Falls back to
+/// [`routing::MountPoint::DropZone`] outside a browser so the calling
+/// site's match arm has a sensible default.
+#[must_use]
+pub fn mount_point_from_query() -> routing::MountPoint {
+    let Some(window) = web_sys::window() else {
+        return routing::MountPoint::DropZone;
+    };
+    let Ok(search) = window.location().search() else {
+        return routing::MountPoint::DropZone;
+    };
+    routing::parse_mount_point(&search)
 }
 
 #[cfg(not(feature = "tray-appshell-preview"))]

@@ -32,6 +32,19 @@
         "alwaysOnTop": false,
         "skipTaskbar": false,
         "visible": false
+      },
+      {
+        "label": "webcam-bubble",
+        "url": "index.html?mount=bubble",
+        "title": "Webcam",
+        "width": 200,
+        "height": 200,
+        "decorations": false,
+        "resizable": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

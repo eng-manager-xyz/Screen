@@ -1,11 +1,55 @@
-//! Pure-Rust URL-routing helpers (M-TRAY.4 / AUT-253).
+//! Pure-Rust URL-routing helpers (M-TRAY.4 / AUT-253, M-BUBBLE.0 / AUT-273).
 //!
 //! The browser-facing entry points in [`crate`] pull the query string
-//! off `window.location.search()` and hand it to [`parse_surface`].
+//! off `window.location.search()` and hand it to [`parse_surface`]
+//! (for the in-`AppShell` surface) or [`parse_mount_point`] (for the
+//! window-level mount dispatch — `AppShell` vs `Bubble` vs `DropZone`).
 //! Splitting the parse out of the wasm-only path makes it testable
 //! on every OS (no `web_sys`, no Tauri runtime).
 
 use ui_storybook::components::shell::AppSection;
+
+/// Which Leptos tree the current page mounts — drives the top-level
+/// dispatch in [`crate::run`].
+///
+/// Distinct from [`AppSection`] (which is for navigation-rail items
+/// inside the `AppShell`). A `?mount=bubble` page renders the bubble
+/// canvas, not a `NavigationRail` surface; keeping the two enums
+/// separate prevents `AppShell`-internal navigation from accidentally
+/// reaching the bubble or vice versa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MountPoint {
+    /// `?surface=<recorder|library|editor|cursor|prefs>` —
+    /// the in-`AppShell` `NavigationRail` surface (M-TRAY.3 / AUT-252).
+    AppShell(AppSection),
+    /// `?mount=bubble` — the borderless webcam overlay window
+    /// (M-BUBBLE.0 / AUT-273).
+    Bubble,
+    /// No recognised query — falls back to the legacy drop-zone shell
+    /// preserved for `trunk serve` browser dev (M-INT.1 flow).
+    DropZone,
+}
+
+/// Parse a URL query string (with or without the leading `?`) into a
+/// [`MountPoint`]. `?surface=…` wins over `?mount=…` so the `AppShell`
+/// surface query takes precedence — matters only if both ever appear
+/// in the same URL, which they shouldn't.
+#[must_use]
+pub fn parse_mount_point(query: &str) -> MountPoint {
+    if let Some(section) = parse_surface(query) {
+        return MountPoint::AppShell(section);
+    }
+    let stripped = query.strip_prefix('?').unwrap_or(query);
+    for pair in stripped.split('&') {
+        if let Some((key, value)) = pair.split_once('=')
+            && key == "mount"
+            && value == "bubble"
+        {
+            return MountPoint::Bubble;
+        }
+    }
+    MountPoint::DropZone
+}
 
 /// Parse a URL query string (with or without the leading `?`) for a
 /// `surface=<slug>` parameter. Returns the matching [`AppSection`]
@@ -108,5 +152,37 @@ mod tests {
         // convention is `recorder`. We accept both.
         assert_eq!(parse_surface("?surface=record"), Some(AppSection::Record));
         assert_eq!(parse_surface("?surface=recorder"), Some(AppSection::Record));
+    }
+
+    #[test]
+    fn mount_point_dispatches_appshell_for_surface_query() {
+        assert_eq!(
+            parse_mount_point("?surface=recorder"),
+            MountPoint::AppShell(AppSection::Record)
+        );
+    }
+
+    #[test]
+    fn mount_point_dispatches_bubble_for_mount_query() {
+        assert_eq!(parse_mount_point("?mount=bubble"), MountPoint::Bubble);
+        assert_eq!(parse_mount_point("mount=bubble"), MountPoint::Bubble);
+    }
+
+    #[test]
+    fn mount_point_falls_back_to_drop_zone_for_unknown_query() {
+        assert_eq!(parse_mount_point(""), MountPoint::DropZone);
+        assert_eq!(parse_mount_point("?foo=bar"), MountPoint::DropZone);
+        assert_eq!(parse_mount_point("?mount=unknown"), MountPoint::DropZone);
+    }
+
+    #[test]
+    fn mount_point_appshell_wins_when_both_queries_present() {
+        // Defensive: shouldn't happen in practice, but if both are
+        // set we route to the AppShell surface (the higher-information
+        // signal).
+        assert_eq!(
+            parse_mount_point("?surface=library&mount=bubble"),
+            MountPoint::AppShell(AppSection::Library)
+        );
     }
 }

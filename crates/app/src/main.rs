@@ -18,7 +18,7 @@ use std::time::Duration;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
-use screen_app::commands::{self, TrayState};
+use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::PreviewState;
 
@@ -40,6 +40,7 @@ fn main() {
     tauri::Builder::default()
         .manage(PlayerSession::new())
         .manage(TrayState::default())
+        .manage(BubbleState::default())
         .manage(PreviewState::default())
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
@@ -54,6 +55,8 @@ fn main() {
                     commands::player_pause,
                     commands::player_status,
                     commands::tray_toggle_popover,
+                    commands::toggle_webcam_bubble,
+                    commands::set_bubble_clickthrough,
                     commands::list_cameras,
                     commands::camera_permission_status,
                     commands::start_preview,
@@ -72,6 +75,8 @@ fn main() {
                     commands::player_pause,
                     commands::player_status,
                     commands::tray_toggle_popover,
+                    commands::toggle_webcam_bubble,
+                    commands::set_bubble_clickthrough,
                     commands::list_cameras,
                     commands::camera_permission_status,
                     commands::start_preview,
@@ -81,6 +86,19 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
+            // M-BUBBLE.3 / AUT-276: keep the webcam-bubble's in-memory
+            // position cache in sync while the user drags. Disk
+            // persistence happens on Hide (see `toggle_webcam_bubble`),
+            // not here — `WindowEvent::Moved` fires per-frame during a
+            // macOS drag and writing to disk at that rate would burn
+            // I/O. The in-memory write is a single mutex acquire +
+            // i32 pair copy, cheap enough for the high-frequency path.
+            if let WindowEvent::Moved(physical) = event
+                && window.label() == "webcam-bubble"
+            {
+                let state = window.app_handle().state::<commands::BubbleState>();
+                commands::update_bubble_position_from_event(&state, physical.x, physical.y);
+            }
             // Three event flavors flow to the webview:
             //   - file-drag-enter: drop-zone shows the active visual.
             //   - file-drag-leave: drop-zone reverts. Also emitted after

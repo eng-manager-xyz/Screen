@@ -8,4 +8,5 @@
 //! testable cross-OS without a Tauri runtime; the integration with
 //! Tauri's [`tauri::tray::TrayIconBuilder`] lives in `main.rs`.
 
+pub mod bubble_toggle;
 pub mod toggle;

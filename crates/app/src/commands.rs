@@ -10,14 +10,16 @@
     reason = "tauri::command requires State<T> by value (the macro's signature inspection rejects &State<T>)"
 )]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use tauri::{LogicalPosition, Manager, State};
+use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{CameraError, PreviewLifecycle, PreviewState};
+use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
 use crate::tray::toggle::{Action, TrayPopoverState};
 
 /// Tauri-managed wrapper around the tray-popover toggle state machine
@@ -28,6 +30,319 @@ use crate::tray::toggle::{Action, TrayPopoverState};
 /// the click handler ever touches it).
 #[derive(Default)]
 pub struct TrayState(pub Mutex<TrayPopoverState>);
+
+/// Tauri-managed state for the webcam-bubble window (M-BUBBLE.0 /
+/// AUT-273 + M-BUBBLE.3 / AUT-276). Tracks both the visibility state
+/// machine and the in-memory last-known position so position
+/// persistence survives hide/show cycles.
+///
+/// `last_position = None` means "no remembered position — first-show
+/// will compute a sensible default." Once set (either by loading from
+/// disk on first show, by `WindowEvent::Moved` mid-session, or by
+/// `set_last_position` for tests), the value is the source of truth
+/// for the next show.
+#[derive(Default)]
+pub struct BubbleState {
+    visibility: Mutex<BubbleVisibility>,
+    last_position: Mutex<Option<BubblePosition>>,
+}
+
+impl BubbleState {
+    /// Snapshot the current remembered position (or `None` if unset).
+    /// Used by the `WindowEvent::Moved` handler in `main.rs` to keep
+    /// the in-memory cache fresh during drags.
+    #[must_use]
+    pub fn last_position(&self) -> Option<BubblePosition> {
+        *self
+            .last_position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Replace the remembered position. Cheap (one mutex acquire + an
+    /// `i32` pair copy) so safe to call on every `WindowEvent::Moved`.
+    pub fn set_last_position(&self, pos: BubblePosition) {
+        *self
+            .last_position
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pos);
+    }
+}
+
+/// Default inset (px) from the monitor edge for the bubble's
+/// first-open position. Matches typical macOS-overlay convention.
+const BUBBLE_DEFAULT_INSET_PX: i32 = 16;
+
+/// Default bubble dimensions used when the live window can't be
+/// queried (shouldn't happen — `tauri.conf.json` declares 200×200 —
+/// but defensive so the show path never blocks on a query failure).
+const BUBBLE_FALLBACK_W: i32 = 200;
+const BUBBLE_FALLBACK_H: i32 = 200;
+
+/// Webcam-bubble toggle command (M-BUBBLE.0 / AUT-273).
+///
+/// Resolves the bound bubble window by its `tauri.conf.json` label
+/// (`webcam-bubble`), advances the state machine, then performs the
+/// corresponding `show()`/`hide()` on the window. Returns `()` to
+/// match the existing tray-toggle command shape — failures log via
+/// `tracing::warn!` so the click is never user-facing silent.
+///
+/// Persistence (M-BUBBLE.3 / AUT-276): on Show, restore the last
+/// remembered position (in-memory or, if first show of the session,
+/// loaded from `bubble-position.txt` in the app's config dir). On
+/// Hide, snapshot the window's current position into the in-memory
+/// state and persist to disk so a future app launch reopens at the
+/// same spot.
+///
+/// Notably does NOT call `set_focus()` on show — the bubble is a
+/// peripheral overlay and shouldn't steal focus from the `AppShell`.
+#[tauri::command]
+pub fn toggle_webcam_bubble(app: tauri::AppHandle, state: State<'_, BubbleState>) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; tauri.conf.json may be missing it");
+        return;
+    };
+    let action = {
+        let mut guard = state
+            .visibility
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.on_click()
+    };
+    match action {
+        BubbleAction::Show => {
+            restore_bubble_position(&app, &state, &window);
+            if let Err(err) = window.show() {
+                tracing::warn!(?err, "failed to show webcam-bubble window");
+            }
+        }
+        BubbleAction::Hide => {
+            snapshot_and_persist_bubble_position(&app, &state, &window);
+            if let Err(err) = window.hide() {
+                tracing::warn!(?err, "failed to hide webcam-bubble window");
+            }
+        }
+    }
+}
+
+/// Look up the bubble window's last-known position (in-memory first;
+/// then disk; then `default_position` on the primary monitor) and
+/// apply it via `set_position` BEFORE `show()` so the window doesn't
+/// flicker through a stale OS-default location.
+fn restore_bubble_position(
+    app: &tauri::AppHandle,
+    state: &BubbleState,
+    window: &tauri::WebviewWindow,
+) {
+    // 1. Hot path: in-memory state set by a previous Hide / Moved.
+    if let Some(pos) = state.last_position() {
+        apply_position(window, pos);
+        return;
+    }
+    // 2. Cold path: try disk load. If found, hydrate the in-memory
+    //    cache so future shows hit the hot path.
+    if let Some(pos) = load_bubble_position(app) {
+        let monitors = collect_monitor_bounds(app);
+        let (w, h) = window_dims(window);
+        if is_on_any_monitor(pos, w, h, &monitors) {
+            state.set_last_position(pos);
+            apply_position(window, pos);
+            return;
+        }
+        tracing::info!(
+            ?pos,
+            "saved bubble position is off-screen (display unplugged?); falling back to default"
+        );
+    }
+    // 3. Fallback: compute default for the primary monitor.
+    if let Some(pos) = compute_default_position(app, window) {
+        state.set_last_position(pos);
+        apply_position(window, pos);
+    }
+}
+
+/// Read the window's current outer position, store it in the
+/// in-memory state, and persist to disk. Called on Hide so a
+/// subsequent show (this session OR a later launch) restores the
+/// user's chosen position.
+fn snapshot_and_persist_bubble_position(
+    app: &tauri::AppHandle,
+    state: &BubbleState,
+    window: &tauri::WebviewWindow,
+) {
+    let Ok(physical) = window.outer_position() else {
+        tracing::warn!("could not read webcam-bubble position; persistence skipped this cycle");
+        return;
+    };
+    let pos = BubblePosition {
+        x: physical.x,
+        y: physical.y,
+    };
+    state.set_last_position(pos);
+    if let Err(err) = save_bubble_position(app, pos) {
+        tracing::warn!(?err, "failed to persist webcam-bubble position to disk");
+    }
+}
+
+/// Apply a position to the bubble window using a `PhysicalPosition`
+/// (the same coordinate system `outer_position()` returns + the same
+/// coordinate system `MonitorBounds` is in, per
+/// `crate::recp::tray_positioning`).
+fn apply_position(window: &tauri::WebviewWindow, pos: BubblePosition) {
+    if let Err(err) = window.set_position(PhysicalPosition::new(pos.x, pos.y)) {
+        tracing::warn!(?err, "set_position on webcam-bubble failed");
+    }
+}
+
+/// Build a `MonitorBounds` vec from `app.available_monitors()`.
+/// Empty on failure — callers must handle that case.
+fn collect_monitor_bounds(app: &tauri::AppHandle) -> Vec<MonitorBounds> {
+    let Ok(monitors) = app.available_monitors() else {
+        return Vec::new();
+    };
+    monitors
+        .iter()
+        .map(|m| MonitorBounds {
+            x: m.position().x,
+            y: m.position().y,
+            width: i32::try_from(m.size().width).unwrap_or(i32::MAX),
+            height: i32::try_from(m.size().height).unwrap_or(i32::MAX),
+        })
+        .collect()
+}
+
+/// Resolve the window's physical inner-size into integer width/height,
+/// falling back to the `tauri.conf.json` declared 200×200 if the live
+/// query fails.
+fn window_dims(window: &tauri::WebviewWindow) -> (i32, i32) {
+    window
+        .inner_size()
+        .map_or((BUBBLE_FALLBACK_W, BUBBLE_FALLBACK_H), |size| {
+            (
+                i32::try_from(size.width).unwrap_or(BUBBLE_FALLBACK_W),
+                i32::try_from(size.height).unwrap_or(BUBBLE_FALLBACK_H),
+            )
+        })
+}
+
+/// First-launch default: bottom-right of the primary monitor with a
+/// 16 px inset. Returns `None` only when the OS reports zero monitors
+/// — defensive; in practice `available_monitors()` always yields ≥1
+/// when a webview is up.
+fn compute_default_position(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Option<BubblePosition> {
+    let monitors = collect_monitor_bounds(app);
+    let primary = monitors.first().copied()?;
+    let (w, h) = window_dims(window);
+    Some(default_position(w, h, primary, BUBBLE_DEFAULT_INSET_PX))
+}
+
+/// Persisted-position file path: `<app-config-dir>/bubble-position.txt`.
+/// The format is `"{x},{y}\n"` — two integers + a comma + a newline.
+/// We deliberately avoid `serde_json` (no new workspace dep) and
+/// avoid TOML (overkill for two integers); the file is human-readable
+/// + trivially repairable + small enough to parse by hand.
+fn bubble_position_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    Some(dir.join("bubble-position.txt"))
+}
+
+/// Persist `pos` to disk. Creates the app-config dir if it doesn't
+/// exist yet (first-ever app launch).
+fn save_bubble_position(app: &tauri::AppHandle, pos: BubblePosition) -> std::io::Result<()> {
+    let path = bubble_position_path(app).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "app config dir unavailable")
+    })?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, encode_position(pos))
+}
+
+/// Load `BubblePosition` from disk; returns `None` on missing file,
+/// I/O error, or malformed contents.
+fn load_bubble_position(app: &tauri::AppHandle) -> Option<BubblePosition> {
+    let path = bubble_position_path(app)?;
+    let raw = std::fs::read_to_string(&path).ok()?;
+    decode_position(&raw)
+}
+
+/// Format helper extracted for unit testing.
+#[must_use]
+fn encode_position(pos: BubblePosition) -> String {
+    format!("{},{}\n", pos.x, pos.y)
+}
+
+/// Parse helper extracted for unit testing. Tolerant of trailing
+/// whitespace + missing newline; strict about the comma separator
+/// and integer parsing (returns `None` on any malformed input).
+#[must_use]
+fn decode_position(raw: &str) -> Option<BubblePosition> {
+    let trimmed = raw.trim();
+    let (x, y) = trimmed.split_once(',')?;
+    Some(BubblePosition {
+        x: x.trim().parse().ok()?,
+        y: y.trim().parse().ok()?,
+    })
+}
+
+/// Update the bubble window's in-memory position cache. Called from
+/// `main.rs`'s `on_window_event` handler whenever the user drags the
+/// bubble. Persistence happens on Hide (not on every Moved) to avoid
+/// hammering the disk during a drag — per-frame `Moved` events on
+/// macOS would otherwise cause thousands of writes per drag.
+pub fn update_bubble_position_from_event(state: &BubbleState, physical_x: i32, physical_y: i32) {
+    state.set_last_position(BubblePosition {
+        x: physical_x,
+        y: physical_y,
+    });
+}
+
+/// Toggle whether the webcam-bubble window passes mouse events
+/// through to whatever's underneath (M-BUBBLE.1 v0 / AUT-274).
+///
+/// When `enabled = true`, the entire bubble window is mouse-event
+/// transparent — clicks and hovers reach the window below. Useful
+/// when recording the bubble overlaying slides / a browser, so the
+/// user can interact with the underlying app without the bubble
+/// catching the click. To disable (let the user drag the bubble
+/// again), the `AppShell`'s "Click-through bubble" button is the
+/// out-of-band trigger; the bubble itself can't receive the click
+/// while passthrough is on (chicken-and-egg).
+///
+/// Implementation is the macOS-blessed
+/// `NSWindow.setIgnoresMouseEvents:` path exposed through Tauri 2's
+/// `WebviewWindow::set_ignore_cursor_events`. The same call works on
+/// Windows (`WS_EX_TRANSPARENT`) and Linux (compositor-dependent).
+/// **Whole-window** — clicks on the visible bubble circle ALSO pass
+/// through when enabled. Per-pixel hit-testing (only the circle
+/// intercepts, corners pass through) needs an `NSView` subclass via
+/// `objc2` and is deferred to a v1 follow-up under the same ticket.
+#[tauri::command]
+pub fn set_bubble_clickthrough(app: tauri::AppHandle, enabled: bool) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; clickthrough toggle no-op");
+        return;
+    };
+    if let Err(err) = window.set_ignore_cursor_events(enabled) {
+        tracing::warn!(
+            ?err,
+            enabled,
+            "set_ignore_cursor_events on webcam-bubble failed"
+        );
+    }
+}
+
+/// `true` if `path` looks like the file `save_bubble_position` would
+/// produce. Used in the persistence integration test (which writes a
+/// canned file and verifies `load_bubble_position` reads it back).
+#[doc(hidden)]
+#[must_use]
+pub fn __debug_is_bubble_position_path(path: &Path) -> bool {
+    path.file_name().is_some_and(|n| n == "bubble-position.txt")
+}
 
 /// Tray-popover toggle command (M-TRAY.0 / AUT-249).
 ///
@@ -424,5 +739,74 @@ mod tests {
         // be negative; clamp pulls left edge to monitor.x.
         let (x, _) = compute_popover_anchor(50, 12, 800, 600, &monitors).expect("Some(_)");
         assert_eq!(x, 0);
+    }
+
+    // ── M-BUBBLE.3 / AUT-276 — position persistence file format ──
+
+    #[test]
+    fn encode_position_uses_canonical_format() {
+        let s = encode_position(BubblePosition { x: 100, y: 200 });
+        assert_eq!(s, "100,200\n");
+    }
+
+    #[test]
+    fn encode_position_handles_negative_coords() {
+        // Multi-monitor layouts often have negative coords (secondary
+        // monitor to the left of the primary).
+        let s = encode_position(BubblePosition { x: -500, y: 0 });
+        assert_eq!(s, "-500,0\n");
+    }
+
+    #[test]
+    fn decode_position_round_trips_encoded_value() {
+        let pos = BubblePosition { x: 1234, y: -56 };
+        let encoded = encode_position(pos);
+        assert_eq!(decode_position(&encoded), Some(pos));
+    }
+
+    #[test]
+    fn decode_position_tolerates_missing_trailing_newline() {
+        assert_eq!(
+            decode_position("42,99"),
+            Some(BubblePosition { x: 42, y: 99 })
+        );
+    }
+
+    #[test]
+    fn decode_position_tolerates_whitespace_around_values() {
+        assert_eq!(
+            decode_position(" 7 , 11 \n"),
+            Some(BubblePosition { x: 7, y: 11 })
+        );
+    }
+
+    #[test]
+    fn decode_position_rejects_missing_comma() {
+        assert_eq!(decode_position("123 456"), None);
+    }
+
+    #[test]
+    fn decode_position_rejects_non_integer() {
+        assert_eq!(decode_position("3.14,2.71"), None);
+        assert_eq!(decode_position("abc,def"), None);
+        assert_eq!(decode_position(",100"), None);
+    }
+
+    #[test]
+    fn decode_position_rejects_empty_input() {
+        assert_eq!(decode_position(""), None);
+        assert_eq!(decode_position("   \n"), None);
+    }
+
+    #[test]
+    fn bubble_state_update_position_round_trips() {
+        let state = BubbleState::default();
+        assert_eq!(state.last_position(), None);
+        state.set_last_position(BubblePosition { x: 50, y: 60 });
+        assert_eq!(state.last_position(), Some(BubblePosition { x: 50, y: 60 }));
+        // update_bubble_position_from_event is the public hook the
+        // WindowEvent::Moved handler uses.
+        update_bubble_position_from_event(&state, 99, -7);
+        assert_eq!(state.last_position(), Some(BubblePosition { x: 99, y: -7 }));
     }
 }
