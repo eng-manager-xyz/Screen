@@ -16,7 +16,9 @@ use std::sync::Mutex;
 use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
 use crate::player_session::{PlayerSession, PlayerStatus};
-use crate::preview::{CameraError, PreviewLifecycle, PreviewState};
+use crate::preview::{
+    CameraError, CameraPipeline, CameraPipelineHandle, PreviewLifecycle, PreviewState,
+};
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
 use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
@@ -593,38 +595,71 @@ pub fn camera_permission_status() -> CameraPermission {
 /// running) or — once M-CAM.3 lands — when the gst pipeline fails
 /// to produce frames.
 #[tauri::command]
-pub fn start_preview(state: State<'_, PreviewState>, camera_id: String) -> Result<(), CameraError> {
-    let mut guard = state
-        .0
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let new_state = guard.try_start();
-    if new_state == *guard {
-        // Already starting / running / stopping — nothing to do.
-        return Ok(());
+pub fn start_preview(
+    app: tauri::AppHandle,
+    state: State<'_, PreviewState>,
+    pipeline_state: State<'_, CameraPipelineHandle>,
+    camera_id: String,
+) -> Result<(), CameraError> {
+    // Advance lifecycle Idle → Starting. Re-entrant calls (already
+    // Starting / Running / Stopping) are no-ops so the caller can
+    // safely double-invoke.
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let new_state = guard.try_start();
+        if new_state == *guard {
+            return Ok(());
+        }
+        *guard = new_state;
     }
-    *guard = new_state;
-    tracing::info!(camera_id = %camera_id, "preview Starting (state-only stub; M-CAM.3 wires the pipeline)");
-    // M-CAM.3 will set state to Running after the first frame
-    // arrives. For now mark Running immediately so single-process
-    // smoke tests can observe a stable state.
-    *guard = guard.mark_running();
+    tracing::info!(
+        camera_id = %camera_id,
+        "preview Starting — spawning gst worker (M-CAM.3 partial; wisp render in follow-up)"
+    );
+    // Spawn the M-CAM.3 worker. The worker advances Starting →
+    // Running on first frame; on gst spawn failure it logs + resets
+    // the lifecycle to Idle so the UI shows a recovery state.
+    let pipeline = CameraPipeline::spawn(app)?;
+    pipeline_state.install(pipeline);
     Ok(())
 }
 
-/// Stop the camera preview pipeline (M-CAM.2 / AUT-256).
+/// Stop the camera preview pipeline (M-CAM.2 / AUT-256 + M-CAM.3 /
+/// AUT-257).
 ///
-/// State-machine only today; M-CAM.3 wires the actual gst child
-/// kill + wisp Stage drop here.
+/// Drops the [`CameraPipeline`] worker — which cancels the loop,
+/// joins the thread, and (via `gstreamer_video::VideoStream`'s own
+/// `Drop`) kills the gst-launch child. The worker thread itself
+/// resets the lifecycle to `Idle` on its way out, but we also do it
+/// here as a belt-and-braces guard in case the worker already exited
+/// (gst failure path).
 #[tauri::command]
-pub fn stop_preview(state: State<'_, PreviewState>) {
-    let mut guard = state
-        .0
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    *guard = guard.try_stop();
-    *guard = guard.finish_stop();
-    tracing::info!("preview Stopped (state-only stub; M-CAM.3 wires the teardown)");
+pub fn stop_preview(
+    state: State<'_, PreviewState>,
+    pipeline_state: State<'_, CameraPipelineHandle>,
+) {
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop();
+    }
+    // Drop the pipeline — Drop impl cancels + joins. This blocks
+    // briefly (one gst frame interval, ~33ms at 30fps); acceptable
+    // for a user-initiated stop.
+    pipeline_state.shutdown();
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.finish_stop();
+    }
+    tracing::info!("preview Stopped");
 }
 
 /// Snapshot the current preview lifecycle (M-CAM.2 / AUT-256).

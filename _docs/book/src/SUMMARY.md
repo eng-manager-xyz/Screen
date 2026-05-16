@@ -60,6 +60,7 @@
   - [Testing tiers (M-TEST.1 / .2)](./app-ui/testing.md)
   - [Tray → AppShell → NavRail routing (M-TRAY.0..4)](./app-ui/chunks/tray-to-appshell.md)
   - [Webcam bubble overlay (M-BUBBLE.0 + .3)](./app-ui/chunks/webcam-bubble.md)
+  - [Camera pipeline worker (M-CAM.3 gst layer)](./app-ui/chunks/camera-pipeline.md)
 
 # `ui-storybook` — Leptos UI
 
