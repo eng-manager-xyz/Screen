@@ -41,10 +41,8 @@ use crate::color::Color as ChartColor;
 /// and `wasm32-unknown-unknown` targets. Both files originate from
 /// the [Inter project](https://github.com/rsms/inter) under the SIL
 /// Open Font License 1.1.
-const INTER_REGULAR_TTF: &[u8] =
-    include_bytes!("../assets/fonts/Inter-Regular.ttf");
-const INTER_BOLD_TTF: &[u8] =
-    include_bytes!("../assets/fonts/Inter-Bold.ttf");
+const INTER_REGULAR_TTF: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+const INTER_BOLD_TTF: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
 /// Build a [`TextTexturePipeline`] seeded with the bundled Inter
 /// font set (Regular + Bold). Every chart that emits text via
@@ -132,7 +130,12 @@ impl ChartTextSpec {
     /// Convenience constructor for axis / legend labels — Regular
     /// weight, the chart's `text_muted` colour, top-centre anchor.
     #[must_use]
-    pub fn axis_tick(content: impl Into<String>, anchor_px: Vec2, size_px: f32, color: ChartColor) -> Self {
+    pub fn axis_tick(
+        content: impl Into<String>,
+        anchor_px: Vec2,
+        size_px: f32,
+        color: ChartColor,
+    ) -> Self {
         Self {
             content: content.into(),
             anchor_px,
@@ -169,16 +172,16 @@ pub fn build_text_sprite(
     // Allocate generously — Inter glyph widths run 0.45–0.85 ems
     // depending on character. ~0.7 em per char + a 1 em pad keeps
     // every short label fitting in its RT with margin to spare.
-    let rt_w_px = ((char_count_f * 0.7 + 1.0) * spec.size_px).ceil().max(16.0);
-    let rt_h_px = (spec.size_px * 1.6).ceil().max(16.0);
+    let rt_width_px = ((char_count_f * 0.7 + 1.0) * spec.size_px).ceil().max(16.0);
+    let rt_height_px = (spec.size_px * 1.6).ceil().max(16.0);
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "RT dims clamped to [16, viewport_px]; safe for u32"
+        reason = "RT dims clamped to [16, viewport_px]; safe for u32."
     )]
-    let (rt_w_u, rt_h_u) = (rt_w_px as u32, rt_h_px as u32);
+    let (rt_width_u, rt_height_u) = (rt_width_px as u32, rt_height_px as u32);
 
-    let size_ndc = spec.size_px / rt_h_px;
+    let size_ndc = spec.size_px / rt_height_px;
     let style = WispTextStyle::default()
         .with_size(size_ndc)
         .with_color(wisp::Color::rgba(
@@ -192,15 +195,15 @@ pub fn build_text_sprite(
         .with_style(style)
         .with_font_family(INTER_FONT_FAMILY);
 
-    let rt = pipeline.render(app, &text, rt_w_u, rt_h_u);
+    let rt = pipeline.render(app, &text, rt_width_u, rt_height_u);
     let texture = rt.as_texture();
 
     // Scale + flip: cosmic-text renders top-down into the RT; the
     // Sprite quad samples bottom-up in scene NDC, so the `-Y`
     // multiplier on `scale.y` makes glyphs land right-side-up.
     let scale = Vec2::new(
-        rt_w_px / viewport_px.x * 2.0,
-        -rt_h_px / viewport_px.y * 2.0,
+        rt_width_px / viewport_px.x * 2.0,
+        -rt_height_px / viewport_px.y * 2.0,
     );
 
     // Anchor pixel coord → NDC. The sprite's `anchor` field then

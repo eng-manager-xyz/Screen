@@ -152,10 +152,7 @@ impl FlexibleTextEngine {
         for data in bytes {
             db.load_font_data(data);
         }
-        Self::with_font_system(FontSystem::new_with_locale_and_db(
-            "en-US".to_owned(),
-            db,
-        ))
+        Self::with_font_system(FontSystem::new_with_locale_and_db("en-US".to_owned(), db))
     }
 
     /// Borrow the shared `FontSystem` handle. The
