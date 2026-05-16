@@ -117,6 +117,49 @@ state machine.
 > repo root errors with `tauri.conf.json not found`. First build is
 > ~2–5 min; subsequent runs are incremental.
 
+### Manually smoke the recorder track (M-RECORDER-V0)
+
+```bash
+just test-recorder
+```
+
+One-shot clean-slate verification of the tray + AppShell + camera
+picker chain shipped across the [M-RECORDER-V0 milestone](https://linear.app/harwood/issue/AUT-249)
+(M-TRAY.0..4 + M-CAM.0..4 + M-REC.1). The recipe wipes the stale
+`crates/app-ui/dist/` wasm bundle, removes the `screen-app` +
+`app-ui` build artifacts via `cargo clean`, rebuilds the wasm
+bundle through `trunk build`, and launches the Tauri binary —
+making sure you're not staring at a webview loaded from a
+month-old `dist/` (a real gotcha when developing the recorder
+track because plain `cargo run -p screen-app` does **not**
+auto-rebuild the bundle the way `cargo tauri dev` does).
+
+> [!IMPORTANT]
+> Use `just test-recorder` for **fresh-build verification**. Use
+> `cd crates/app && cargo tauri dev` for **active development** —
+> it has hot-reload and is much faster on the second-run-onwards.
+
+**What you should see when the window opens:**
+
+| Step | Expected |
+|---|---|
+| 1 | Small filled-circle icon on the macOS menubar (Windows tray / Linux app-indicator). |
+| 2 | **Left-click tray** → 1200×720 window opens with the AppShell mounted. |
+| 3 | NavigationRail on the left has 5 items (Record / Library / Editor / Cursor / Preferences). |
+| 4 | **Click rail items** → right-pane swaps surfaces; URL updates to `?surface=<slug>`. |
+| 5 | Recorder surface shows a **camera picker dropdown** above a 240×240 canvas. |
+| 6 | **Click the dropdown** → your real attached cameras enumerate (via `gst-device-monitor-1.0`). |
+| 7 | The preview canvas itself stays **blank** — the wisp pipeline body is the M-CAM.3 deferred follow-up. See [`_docs/PROGRESS.md`](_docs/PROGRESS.md) for the explicit list of deferred items. |
+| 8 | **Left-click tray again** → window hides. Re-click reopens it. |
+
+> [!NOTE]
+> macOS will prompt for camera access the first time the picker
+> queries `gst-device-monitor-1.0`. Grant it. The picker uses the
+> permission state to drive its empty / permission-needed states.
+
+**Total time:** ~5–8 min on a cold build (wasm + native +
+GStreamer linking), ~30s warm.
+
 ### See real wisp video playback (no Tauri)
 
 ```bash

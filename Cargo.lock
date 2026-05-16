@@ -201,6 +201,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "ui-storybook",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
@@ -3882,6 +3883,8 @@ dependencies = [
  "image",
  "pollster",
  "screen-wisp",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
@@ -6081,6 +6084,7 @@ name = "screen-app"
 version = "0.1.0"
 dependencies = [
  "decode",
+ "media",
  "playback",
  "pollster",
  "screen-wisp",
@@ -6088,6 +6092,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -7001,6 +7006,7 @@ dependencies = [
  "heck 0.5.0",
  "http 1.4.0",
  "http-range",
+ "image",
  "jni 0.21.1",
  "libc",
  "log",

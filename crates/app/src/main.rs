@@ -15,10 +15,19 @@
 use std::thread;
 use std::time::Duration;
 
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
-use screen_app::commands;
+use screen_app::commands::{self, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
+use screen_app::preview::PreviewState;
+
+/// Embedded tray-icon bytes (M-TRAY.0 / AUT-249). `include_bytes!`
+/// resolves at compile time so the bundled binary doesn't need
+/// filesystem access to render the icon at runtime. Regenerated from
+/// `icons/tray.svg` by `cargo run -p screen-app --example
+/// regen-tray-icons`.
+const TRAY_ICON_PNG: &[u8] = include_bytes!("../icons/tray.png");
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
 
@@ -30,6 +39,8 @@ const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 fn main() {
     tauri::Builder::default()
         .manage(PlayerSession::new())
+        .manage(TrayState::default())
+        .manage(PreviewState::default())
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
             // tests (M-TEST.2). Release builds omit it entirely — the
@@ -42,6 +53,12 @@ fn main() {
                     commands::player_play,
                     commands::player_pause,
                     commands::player_status,
+                    commands::tray_toggle_popover,
+                    commands::list_cameras,
+                    commands::camera_permission_status,
+                    commands::start_preview,
+                    commands::stop_preview,
+                    commands::preview_status,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -54,6 +71,12 @@ fn main() {
                     commands::player_play,
                     commands::player_pause,
                     commands::player_status,
+                    commands::tray_toggle_popover,
+                    commands::list_cameras,
+                    commands::camera_permission_status,
+                    commands::start_preview,
+                    commands::stop_preview,
+                    commands::preview_status,
                 ]
             }
         })
@@ -105,6 +128,7 @@ fn main() {
         })
         .setup(|app| {
             spawn_tick_thread(app.handle().clone());
+            register_tray_icon(app)?;
 
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.show();
@@ -113,6 +137,47 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Register the menubar / tray icon (M-TRAY.0 / AUT-249).
+///
+/// Left-click toggles the `tray-popover` window via the state machine
+/// at [`screen_app::tray::toggle::TrayPopoverState`]. The icon is
+/// rendered as a macOS template image so the OS handles light/dark
+/// menubar tinting automatically; on Windows + Linux the raw PNG is
+/// used as-is (template semantics are macOS-only).
+///
+/// Errors propagate up to Tauri's `setup` so the app fails to boot
+/// rather than silently launching without a tray icon — the icon IS
+/// the user's only entry point to the popover today.
+fn register_tray_icon(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // `Image::from_bytes` requires Tauri's `image-png` feature — see
+    // `Cargo.toml`. It decodes the PNG to raw RGBA at load time.
+    let icon = tauri::image::Image::from_bytes(TRAY_ICON_PNG)?;
+    let tray = TrayIconBuilder::with_id("tray-popover-icon")
+        .icon(icon)
+        .icon_as_template(true)
+        .on_tray_icon_event(|tray, event| {
+            // Filter to left-mouse-up only — ignore right-click
+            // (future M-TRAY.5+ context menu), button-down events,
+            // hover-enter/leave, and the future motion variants
+            // that `TrayIconEvent` is `#[non_exhaustive]` for.
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                let state = app.state::<TrayState>();
+                commands::toggle_tray_popover(app, &state);
+            }
+        })
+        .build(app)?;
+    // Persist via Tauri-managed state so the icon survives `setup` return.
+    app.manage(tray);
+    tracing::info!("tray icon registered");
+    Ok(())
 }
 
 /// Spin up the tick thread. Lives for the lifetime of the process.

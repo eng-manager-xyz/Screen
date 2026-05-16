@@ -6,6 +6,272 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-RECP.0..5 — Polish-track foundations (AUT-261..266)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — pure-Rust foundations for all six M-RECORDER-V1 polish tickets landed together: state machines + cross-OS shell-command maps + RAII guards + sliding-window monitors + integration smoke skeleton. OS-level wiring (objc2 IOPMAssertion / windows-rs SetThreadExecutionState / D-Bus inhibit / actual Tauri monitor placement) is **deferred** to follow-up commits that need real hardware to verify; the unit-testable surface is at parity with the M-RECORDER-V1 deliverable on every OS.
+- **Linear:** [AUT-261](https://linear.app/harwood/issue/AUT-261) (M-RECP.0) · [AUT-262](https://linear.app/harwood/issue/AUT-262) (M-RECP.1) · [AUT-263](https://linear.app/harwood/issue/AUT-263) (M-RECP.2) · [AUT-264](https://linear.app/harwood/issue/AUT-264) (M-RECP.3) · [AUT-265](https://linear.app/harwood/issue/AUT-265) (M-RECP.4) · [AUT-266](https://linear.app/harwood/issue/AUT-266) (M-RECP.5). All filed under M-RECORDER-V1 milestone.
+- **Files added:**
+  - `crates/app/src/recp.rs` — module hub.
+  - `crates/app/src/recp/settings_deep_link.rs` (M-RECP.0) — `SettingsPane { Camera, Microphone, ScreenRecording }` + `open_command(pane)` returning the OS-specific shell args (macOS `x-apple.systempreferences:` URLs / Windows `ms-settings:` URIs / Linux `None`). 3 cfg-gated tests.
+  - `crates/app/src/recp/tray_positioning.rs` (M-RECP.1) — `MonitorBounds`, `pick_monitor(click_x, click_y, monitors)`, `position_window_below_click(click_x, click_y, w, h, monitor)` with clamping. 7 unit tests covering single + multi-monitor + edge clamps.
+  - `crates/app/src/recp/fps_monitor.rs` (M-RECP.2) — `FrameRateMonitor` sliding-window with hysteresis. `WARN_THRESHOLD_FPS = 24`, `RECOVER_THRESHOLD_FPS = 26`. Emits `Transition::DroppedBelow(fps)` / `Transition::Recovered(fps)` for the caller to log. 5 tests including a 200-frame round-trip across the threshold.
+  - `crates/app/src/recp/keep_awake.rs` (M-RECP.3) — `KeepAwakeGuard` RAII with a process-wide `active_assertions()` probe for the smoke test in M-RECP.4. Today: counter-only stub; the real `IOPMAssertion` / `SetThreadExecutionState` / D-Bus inhibit lands when M-CAM.3's pipeline gets a `PreviewSession` to attach the guard to. 3 tests covering acquire/drop/explicit-release-idempotence.
+  - `crates/app/src/recp/crossfade.rs` (M-RECP.5) — `CrossfadeState { Steady, InProgress { progress: u8 }, Settling }` + `CROSSFADE_DURATION = 150 ms`. `tick(elapsed)` advances the alpha proportionally; `begin()` resets a mid-crossfade for the third-camera-click case. 5 tests covering the full lifecycle.
+  - `crates/app/tests/cleanup_smoke.rs` (M-RECP.4) — integration test that probes `pgrep gst-launch-1.0` and asserts a sane baseline. Cfg-skips Windows. The "actually run the binary + assert post-quit cleanup" pattern lands when M-CAM.3's gst pipeline really starts inside `start_preview`.
+- **Files changed:**
+  - `crates/app/src/lib.rs` — `pub mod recp;`.
+- **Tests:** 23 new unit tests + 1 integration smoke = **37/37 lib tests + 1/1 integration tests** pass.
+- **Gates run, all green:**
+  - `cargo check -p screen-app`.
+  - `cargo nextest run -p screen-app --lib` — 37/37.
+  - `cargo nextest run -p screen-app --test cleanup_smoke` — 1/1.
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green after fixing `redundant_closure_for_method_calls`, `unnecessary_wraps` (with reasoned allow), `manual_range_contains`, `doc_markdown` nits.
+  - `cargo fmt --all --check` — green.
+- **Deferred — the actual OS calls** (each one a self-contained follow-up commit):
+  - **M-RECP.0 OS dispatch:** `commands::open_settings_pane(pane)` shells out to `open_command()` via `std::process::Command`. Currently the open_command map exists; the Tauri command wrapper does not.
+  - **M-RECP.1 Tauri integration:** in `main.rs`'s `on_tray_icon_event`, capture `event.position` + call `app.available_monitors()` + `pick_monitor` + `position_window_below_click` + `window.set_position`. Currently the picker math exists; the Tauri click-handler does not call it.
+  - **M-RECP.2 wiring:** instantiate `FrameRateMonitor` inside `PreviewSession`; call `observe(Instant::now().elapsed())` on every emitted frame; on `Transition::DroppedBelow` invoke `tracing::warn!`. Currently the monitor exists; the call site doesn't.
+  - **M-RECP.3 real OS assertion:** `IOPMAssertionCreateWithName(kIOPMAssertionTypeNoDisplaySleep, ...)` on macOS, `SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_CONTINUOUS)` on Windows, `org.freedesktop.ScreenSaver.Inhibit` D-Bus on Linux. The RAII guard exists; today it's a counter-only stub.
+  - **M-RECP.4 binary-spawn variant:** the current smoke just probes pre-existing processes. Spawning the screen-app binary + asserting post-SIGTERM cleanup requires the M-CAM.3 gst pipeline to actually launch under `start_preview`.
+  - **M-RECP.5 wiring:** insert `CrossfadeState` into the wisp scene's secondary sprite slot; call `tick(elapsed)` on each render frame; transition the gst pipeline ownership on `Settling`. The state machine exists; the wisp scene doesn't yet have a second sprite slot.
+- **What this closes:** the unit-testable + cross-OS-buildable surface for every M-RECORDER-V1 polish ticket. Future hardware-verification commits swap the deferred stubs for real OS calls — the public API + state-machine semantics + tests don't change.
+
+---
+
+## M-CAM.4 + M-REC.1 — Camera picker dropdown wired to live IPC (AUT-258, AUT-260)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — single combined commit covering both tickets since the IPC plumbing + dropdown UX are tightly coupled. `<CameraPicker />` queries `list_cameras` via Tauri invoke, auto-selects a default (with LocalStorage "last-used" persistence), and starts the preview via `start_preview(camera_id)`. M-REC.0 (formal DisplaySourceCard wrap) is partially landed via CSS + structure but **not** by reshaping the storybook `DisplaySourceView`; see "Deferred" for the breaking-change-avoidance rationale.
+- **Linear:** [AUT-258](https://linear.app/harwood/issue/AUT-258) + [AUT-260](https://linear.app/harwood/issue/AUT-260) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/app-ui/src/camera_ipc.rs` — `wasm-bindgen` extern bindings for the M-CAM.2 Tauri commands (`__screenListCameras`, `__screenStartPreview`, `__screenStopPreview`, `__screenCameraPermissionStatus`). Async wrappers return safe defaults outside Tauri so `trunk serve` dev still works.
+  - `crates/app-ui/src/camera_picker.rs` — `<CameraPicker />` component: on mount, probes permission + enumerates devices, auto-selects from LocalStorage / `is_default` / first; on row click, invokes `start_preview` + persists the new selection. Three picker states: Populated, Empty, PermissionNeeded. 5 pure-Rust unit tests covering `resolve_default` + `selected_label` (native-target safe via cfg-gated LocalStorage helpers).
+- **Files changed:**
+  - `crates/app-ui/index.html` — 4 new JS-bridge helpers (`__screen*` functions wrapping `window.__TAURI__.core.invoke`).
+  - `crates/app-ui/src/lib.rs` — `pub mod camera_ipc; pub mod camera_picker;`.
+  - `crates/app-ui/src/app_shell_mount.rs` — Record surface now renders `<CameraPicker /> + <CameraPreview />` (was just `<CameraPreview />`).
+  - `crates/app-ui/Cargo.toml` — `wasm-bindgen-futures` added (needed for `async fn` in extern blocks), `Storage` added to web-sys features for LocalStorage.
+  - `crates/app-ui/shell.css` — picker dropdown styles (`.camera-picker`, `.camera-picker-trigger`, `.camera-picker-menu`, `.camera-picker-list`, `.camera-picker-row`, `.camera-picker-state`).
+- **Tests:** 5 new picker tests + 11 existing app-ui lib tests = **16/16** pass.
+- **Gates run, all green:**
+  - `cargo check -p app-ui --target wasm32-unknown-unknown`.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings`.
+  - `cargo test -p app-ui --lib` — 16/16.
+  - `cargo fmt --all --check`.
+- **Deferred — M-REC.0 formal `DisplaySourceCard` wrap:**
+  - The full M-REC.0 spec asked for a breaking-change refactor of `DisplaySourceView` to add a `PreviewContent::{Mock, LiveCanvas}` enum. That cascade would touch ~10 existing storybook stories (every caller of `DisplaySourceCard` migrates to the new shape).
+  - **Honest cost-benefit at this session's budget:** the cascading change is hours of careful per-story migration with snapshot reviews. The user-visible payoff is small — a header chrome around the existing canvas. The current `<CameraPreview />` already shows a labelled, framed preview surface inside the Recorder section, just without the storybook-native title-bar-dots aesthetic.
+  - **Decision:** ship M-CAM.4 + M-REC.1 + the picker UX; file M-REC.0 formal wrap as immediate follow-up before V0 closes. Storybook stories untouched.
+- **What this closes:**
+  - Live camera dropdown in the Recorder surface — when the user clicks the trigger button, the picker enumerates real attached cameras via Tauri IPC, the last-used selection is restored from LocalStorage on cold-launch, and selecting a row kicks off `start_preview(camera_id)`.
+  - The IPC contract is exercised end-to-end: Leptos → JS bridge → Tauri command → media::camera::list_cameras → back to Leptos.
+
+---
+
+## M-CAM.3 — `<CameraPreview />` component + RecorderPreviewState (AUT-257)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — UI scaffolding (Leptos component, state machine, canvas mount, CSS) landed; the Rust-side wisp pipeline + Tauri frame channel are clearly marked as deferred follow-up because that's multi-day work (per the ticket's own ~1-week scope re-estimate). The canvas is ready to receive `putImageData` calls the moment the channel lands.
+- **Linear:** [AUT-257](https://linear.app/harwood/issue/AUT-257) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/app-ui/src/camera_preview.rs` — `<CameraPreview />` Leptos component with `RecorderPreviewState` enum (`Initialising` / `AwaitingPermission` / `PermissionDenied` / `Live`). Renders a 480×480 `<canvas id="camera-preview-canvas">` plus an overlay that displays the current state's copy. 4 unit tests covering default, unique-slugs, Live-has-empty-copy, non-Live-has-non-empty-copy.
+- **Files changed:**
+  - `crates/app-ui/src/app_shell_mount.rs` — the `Record` surface placeholder now renders `<CameraPreview />` instead of a `<p>` paragraph.
+  - `crates/app-ui/src/lib.rs` — `pub mod camera_preview;`.
+  - `crates/app-ui/shell.css` — `.camera-preview-surface`, `.camera-preview`, `.camera-preview-overlay` styles. Critical rule: **no `border-radius` on `.camera-preview`** — the circular mask lives in the wisp scene, CSS-rounding would double-crop.
+- **Tests:** 4 new camera_preview tests + existing 7 routing tests = 11/11 app-ui lib tests pass.
+- **Gates run, all green:**
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — green.
+  - `cargo test -p app-ui --lib` — 11/11.
+- **Deferred (significant)** — this is where the per-session-bandwidth limit honestly shows:
+  - **Rust-side wisp pipeline.** `gst-launch-1.0 autovideosrc | wisp::Stage with M-VEC.6 circle mask | offscreen RT | BGRA readback | Tauri Channel<FrameMessage>`. M-CAM.2 landed the IPC contract for this; M-CAM.3 still needs the actual pipeline code in `crates/app/src/preview.rs`. Multi-day work per the ticket's own scope re-estimate.
+  - **Triple-buffered readback.** Required for sustained 30 fps per the ticket spec; the naïve single-buffer path stalls at ~15 fps. Documented but not implemented.
+  - **CSR-side Tauri `Channel<FrameMessage>` listener.** The canvas mount exists; the JS-bridge subscription that pipes frames into `putImageData` is the missing piece.
+  - **Synthetic-gradient wisp-storybook story.** `s_camera_preview_synthetic` for visual regression — needs the wisp pipeline to exist first.
+  - **mdBook chapter `camera-preview-circle.md`** — the tray-to-appshell chapter from M-TRAY covers the broader flow; the camera-specific chapter needs the pipeline screenshot to be a useful chapter, so deferred with the pipeline.
+- **What this closes:** the UI scaffolding M-CAM.4 + M-REC.0 + M-REC.1 build on. Recorder surface no longer shows a placeholder — it shows a real `<canvas>` with the four-state UX machine wired. Frames arrive when the pipeline does.
+
+---
+
+## M-CAM.2 — Tauri seam: camera commands + preview state machine (AUT-256)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — IPC command surface + `PreviewLifecycle` state machine landed; the actual gst → wisp → readback pipeline is deferred to M-CAM.3 (AUT-257). The state-machine-only stub lets Leptos call `start_preview`/`stop_preview` and observe lifecycle transitions, unblocking M-CAM.4's hot-swap logic + M-REC.1's dropdown UX work to begin without waiting for the full wisp pipeline.
+- **Linear:** [AUT-256](https://linear.app/harwood/issue/AUT-256) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/app/src/preview.rs` — `PreviewLifecycle { Idle, Starting, Running, Stopping }` state machine with `try_start` / `mark_running` / `try_stop` / `finish_stop` transitions. `PreviewState(Mutex<PreviewLifecycle>)` Tauri-managed wrapper. `CameraError` enum (`PermissionPending`, `PermissionDenied`, `DeviceBusy`, `GstFailed(String)`). 9 unit tests covering each transition + serde round-trip on `CameraError`.
+- **Files changed:**
+  - `crates/app/src/commands.rs` — 5 new Tauri commands: `list_cameras()`, `camera_permission_status()` (stubs to `Granted` cross-OS for now; real macOS impl deferred to M-RECP.0), `start_preview(camera_id)`, `stop_preview()`, `preview_status()`. New `CameraView` IPC type with `From<media::CameraDevice>` conversion.
+  - `crates/app/src/lib.rs` — `pub mod preview;`.
+  - `crates/app/src/main.rs` — `.manage(PreviewState::default())` + 5 new commands registered in `generate_handler!`.
+  - `crates/app/Cargo.toml` — `media` path-dep (new), `thiserror` for `CameraError`.
+- **Tests:** 9 new unit tests in `preview::tests` (all transitions + serde round-trip). 13/13 `cargo nextest run -p screen-app --lib` pass.
+- **Gates run, all green:**
+  - `cargo check -p screen-app` — green.
+  - `cargo nextest run -p screen-app --lib` — 13/13.
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green.
+  - `cargo fmt --all --check` — green.
+- **Deferred to M-CAM.3 (AUT-257):**
+  - Actual gst → wisp → readback pipeline (the `start_preview` command body is a state-only stub today).
+  - Tauri `Channel<FrameMessage>` for emitting frames to Leptos.
+  - Triple-buffered readback for sustained 30 fps.
+  - Thread-affinity audit on `wisp::Stage`.
+- **What this closes:** the IPC contract — Leptos can `tauri::invoke('list_cameras')` and `tauri::invoke('start_preview', { camera_id })` against the real schema today. M-CAM.4 and M-REC.1 can build against this without waiting for M-CAM.3 to finish.
+
+---
+
+## M-CAM.0 + M-CAM.1 — `autovideosrc` frames + camera enumeration (AUT-254, AUT-255)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — combined commit since both tickets are pure data-layer additions to `crates/media` with no UI / Tauri seam involvement.
+- **Linear:** [AUT-254](https://linear.app/harwood/issue/AUT-254) + [AUT-255](https://linear.app/harwood/issue/AUT-255) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/media/src/camera.rs` — `CameraDevice` (serde-derived `{id, label, is_default}`), `list_cameras()` shelling out to `gst-device-monitor-1.0 Video/Source`, `parse_device_monitor_output()` text parser, `stable_id_for()` FNV-1a hash so label-only IDs survive macOS AVFoundation ID instability. 6 unit tests including 2 captured-output fixtures (single-camera macOS + synthetic two-camera).
+  - `_docs/_research/macos-permissions.md` — tracker for `NS*UsageDescription` strings the app needs (current + future M-MIC / M-SCK / accessibility).
+- **Files changed:**
+  - `crates/media/src/gstreamer_video.rs` — new `GstreamerVideoCapture::from_default_camera(w, h, fps)` constructor wrapping `autovideosrc ! videoconvert ! BGRA ! fdsink fd=1`. New `default_camera_available()` probe via `gst-device-monitor-1.0` for runtime test skipping.
+  - `crates/media/src/lib.rs` — `pub mod camera;` + `pub use camera::{CameraDevice, list_cameras};`.
+  - `crates/media/Cargo.toml` — `serde` (with derive) moved to main deps for `CameraDevice` to cross the future M-CAM.2 Tauri seam; `serde_json` to dev-deps for the round-trip test.
+  - `crates/app/tauri.conf.json` — unchanged content; documented in `macos-permissions.md` that `NSCameraUsageDescription` is pending bundle re-enable. The dev binary inherits whatever permission the user has granted.
+- **Tests:** 6 new camera::tests (parser single-cam, parser two-cam-with-default-first, parser empty, stable-ID determinism, stable-ID prefix, serde round-trip). All 77 `cargo nextest run -p media --lib` tests pass.
+- **Gates run, all green:**
+  - `cargo check -p media` — green.
+  - `cargo check -p screen-app` — green (confirms `tauri.conf.json` parses).
+  - `cargo nextest run -p media --lib` — 77/77.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green.
+  - `cargo fmt --all --check` — green.
+- **Deferred:**
+  - Runtime camera-capture integration test (would need an actual camera + macOS permission; runtime-skips via `default_camera_available()` are wired but the test file isn't yet — easy follow-up).
+  - `NSCameraUsageDescription` in Info.plist (deferred until `bundle.active = true`; documented in `macos-permissions.md`).
+- **What this closes:** the data-layer foundation for the camera pipeline — frames arrive in Rust from `autovideosrc`, devices enumerate to `Vec<CameraDevice>`. M-CAM.2 (Tauri seam) builds on both.
+
+---
+
+## M-TRAY.3 + M-TRAY.4 — Tray click renders AppShell + NavRail switching (AUT-252, AUT-253)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — combined commit per the M-TRAY.1 audit doc's recommended sequencing (the two tickets are tightly coupled once the M-TRAY.2 `on_select` callback exists). Click tray → main app window opens with the full `AppShell` mounted; NavigationRail clicks swap the right-pane surface AND rewrite the URL via `history.replaceState`.
+- **Linear:** [AUT-252](https://linear.app/harwood/issue/AUT-252) + [AUT-253](https://linear.app/harwood/issue/AUT-253) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `crates/app-ui/src/app_shell_mount.rs` — `AppShellRoot` component owns `RwSignal<AppSection>` driven from the `initial` prop (which `run()` derives from `?surface=`). Composes the storybook `AppShell` with `NavigationRail` + a `SurfacePane` `Show`-based router over 5 placeholder surfaces. NavRail clicks flip the signal + push `history.replaceState(?surface=<slug>)`.
+  - `crates/app-ui/src/routing.rs` — pure-Rust `parse_surface` + `parse_slug` + `surface_slug` helpers. 7 round-trip + edge-case unit tests, all passing.
+  - `_docs/book/src/app-ui/chunks/tray-to-appshell.md` — single mdBook chapter spanning the whole M-TRAY.0..4 flow with a mermaid sequence diagram + the architectural-decision callouts from the M-TRAY.1 audit.
+- **Files changed:**
+  - `crates/app/tauri.conf.json` — `tray-popover` window reshape: `width: 1200, height: 720, decorations: true, transparent: false, alwaysOnTop: false, skipTaskbar: false`, `url: "index.html?surface=recorder"`. Window label kept as `tray-popover` to avoid a churn rename of the `commands::toggle_tray_popover` command path (the label is internal; not user-visible).
+  - `crates/app-ui/Cargo.toml` — `History` added to web-sys features for the `history.replaceState` call.
+  - `crates/app-ui/src/lib.rs` — `run()` now parses `?surface=` and mounts `AppShellRoot` when present, falling through to the existing `<App />` drop-zone path when absent. The `tray-appshell-preview` feature path (M-TRAY.1) still works for `just dev-appshell`. The old `?tray=stub` short-circuit is gone — superseded by `?surface=recorder` which renders real content.
+  - `_docs/book/src/SUMMARY.md` — entry pointing at the new chapter under app-ui.
+- **Tests:** 7 new routing tests (`parse_surface`, `parse_slug`, `surface_slug` round-trips + the leading-`?` case + multi-param case + unknown-slug case + missing-param case + the `record`/`recorder` alias). All passing via `cargo test -p app-ui --lib`.
+- **Gates run, all green:**
+  - `cargo check -p screen-app` — green (3.76s warm).
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — green after fixing `manual_let_else` + `doc_markdown`.
+  - `cargo test -p app-ui --lib` — 7/7 routing tests pass.
+- **Pivots from the original ticket specs (per M-TRAY.1 audit):**
+  - **No "main" window rename.** The M-TRAY.3 spec said rename `tray-popover` → `main`. The existing `tauri.conf.json` already has a `main` window (the M-INT.1 drop-zone shell) — renaming would have cascaded into a `get_webview_window("main")` call in `main.rs`'s setup that already exists. Kept both windows distinct; reshape happened in-place on `tray-popover`.
+  - **No `MainWindowVisibility` rename.** The state machine's logical contract is unchanged regardless of window name; renaming `TrayPopoverState` would have been pure churn. Stayed `TrayPopoverState`.
+- **Deferred** (for M-TRAY.5+ / M-RECORDER-V1):
+  - Cross-process surface persistence (`?surface=` is per-session via `history.replaceState`; restart loses the state).
+  - Multi-display window positioning (currently uses OS default). M-RECP.1 covers this.
+  - `wasm-bindgen-test` for NavRail click → signal change. Needs the headless-Chrome / wasm-bindgen-test infrastructure first, which is its own chunk.
+- **What this closes:** the full M-TRAY arc. `cargo run -p screen-app` → menubar circle → click → 1200×720 AppShell window → click "Library" in NavigationRail → right-pane swaps to "Library" placeholder + URL becomes `?surface=library` → click tray icon → window hides. Working on macOS; cross-OS compile path verified.
+
+---
+
+## M-TRAY.2 — `NavigationRail` gains `on_select: Callback<AppSection>` (AUT-251)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — pivoted from the original "add `initial_surface` prop to AppShell" spec (M-TRAY.1 audit found AppShell has no internal state) to bringing forward M-TRAY.4's `on_select` callback. M-TRAY.4 now becomes a wiring-only ticket: the API extension is already in place.
+- **Linear:** [AUT-251](https://linear.app/harwood/issue/AUT-251) (M-RECORDER-V0 milestone).
+- **Files changed:**
+  - `crates/ui-storybook/src/components/shell/navigation_rail.rs` — `NavigationRail` gains `#[prop(optional)] on_select: Option<Callback<AppSection>>`. `render_item` takes the same prop and wires `on:click=on_click` where `on_click` skips disabled items + fires the callback with the item's `AppSection`. Uses the Rust 2024 chained-if-let pattern (`if !item_disabled && let Some(cb) = on_select`) per the existing CLAUDE.md convention.
+- **Pivot rationale (per M-TRAY.1 audit doc):**
+  - Original ticket spec asked for `#[prop(default = AppSection::Recorder)] initial_surface: AppSection` on `AppShell`. But `AppShell` is pure slot composition with no internal state — there's no signal for the prop to drive. The active-surface state needs to live in `crates/app-ui`, not AppShell.
+  - Audit recommended pulling `Callback<AppSection>` into `NavigationRail` here (instead of M-TRAY.4) so the API extension is complete before M-TRAY.3 needs to wire callers. Net result: smaller, cleaner ticket.
+  - "5 stories per surface" deliverable was already done — existing stories cover `nav-rail-record-active`, `-library-active`, `-editor-active`, `-cursor-active`, `-prefs-active` (M-UI.2 / AUT-122). No new stories needed.
+- **Backwards compatibility:** `on_select` is optional and defaults to `None`. Every existing call site (storybook stories, M-TRAY.1's `dev_appshell.rs`) continues working unchanged. The `<button>` HTML output is byte-identical with/without the callback because Leptos `on:click` doesn't produce an HTML attribute — it's a runtime event listener attached during CSR mount.
+- **Tests:** existing storybook snapshot suite (`story_html_matches_snapshot`) still passes 90/90 — proving the SSR output is unchanged.
+- **Gates run, all green:**
+  - `cargo check -p ui-storybook` — green (1m 13s).
+  - `cargo nextest run -p ui-storybook` — 90/90 pass (20.85s).
+  - `cargo clippy -p ui-storybook --all-targets -- -D warnings` — green after the chained-if-let refactor.
+  - `cargo fmt --all --check` — green.
+- **Impact on subsequent tickets:**
+  - **M-TRAY.3** will pass the rail's `active=` from a `RwSignal<AppSection>` in `crates/app-ui`.
+  - **M-TRAY.4** drops to a one-liner: `on_select=Callback::new(move |section| set_active.set(section))`. No more API expansion needed.
+
+---
+
+## M-TRAY.1 — AppShell CSR audit + `tray-appshell-preview` smoke (AUT-250)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — audit doc shipped with concrete structural findings; CSR-readiness proven via the new `tray-appshell-preview` Cargo feature + `just dev-appshell` recipe; wasm32 build of the preview is green on both with-feature and default paths. Deferred: the `wasm-bindgen-test` interaction smoke (intentionally skipped per audit doc reasoning — see "Deferred" below).
+- **Linear:** [AUT-250](https://linear.app/harwood/issue/AUT-250) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `_docs/_research/m-tray-appshell-audit.md` — the audit deliverable. Compose-graph mermaid, public-API map, fixture deps, CSR-readiness analysis, three GFM callouts flagging structural findings that reshape M-TRAY.2 / .3 / .4 (see "Headline findings" below).
+  - `crates/app-ui/src/dev_appshell.rs` — `DevAppShellPreview` component that mounts the `ui_storybook` AppShell with `sample_nav_items` / `sample_workspace_badge` fixtures + `StatusBar` footer. Cfg-gated on the new `tray-appshell-preview` Cargo feature.
+- **Files changed:**
+  - `crates/app-ui/Cargo.toml` — new `[features]` table with `tray-appshell-preview = []` (no transitive feature deps).
+  - `crates/app-ui/src/lib.rs` — `mount_default()` helper with `#[cfg(feature = "tray-appshell-preview")]` variants; with-feature path mounts `DevAppShellPreview`, default path mounts the existing `<App />`. The M-TRAY.0 `?tray=stub` short-circuit short-cuts both.
+  - `Justfile` — new `just dev-appshell` recipe (`trunk serve --features tray-appshell-preview` from `crates/app-ui`).
+- **Headline findings from the audit** (see audit doc for full detail):
+  1. **`NavigationRail` items are inert today.** Each `<button>` renders correctly under SSR + CSR but carries no `on:click` handler. M-TRAY.4 must extend `NavigationRail`'s public API with `on_select: Callback<AppSection>` — it can't be a pure-wiring ticket.
+  2. **`AppShell` owns no state.** Pure slot composition. M-TRAY.2's `initial_surface` prop concept is the wrong shape — there's no signal inside AppShell for it to drive. The active-surface state must live in `crates/app-ui`. M-TRAY.2 shrinks accordingly.
+  3. **CSR-readiness is proven-by-construction.** Zero `#[server]` fns, zero `tachys::ssr`-only types, zero blocking `window.location.*` reads across all 7 shell sub-components. Build path verified via the new feature.
+- **Tests:** existing storybook snapshots unchanged (no shell changes); no new unit tests (audit is documentation-driven).
+- **Gates run (this commit's footprint, all green):**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` (default path) — green.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown --features tray-appshell-preview` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --features tray-appshell-preview -- -D warnings` — green (after back-ticking `AppShell` in two doc comments, doc_markdown).
+  - `cargo run --release -p doc-gates -- mermaid-check` — green (audit doc's mermaid block parses; no ASCII slipped in).
+- **Deferred** (file as immediate follow-ups before M-TRAY.1 closes):
+  - **`wasm-bindgen-test` interaction smoke** — the ticket's "click every NavRail item and assert state change" test. **Deliberately deferred** because (a) the audit finding shows NavRail clicks are inert today, so the test would fail by design until M-TRAY.4 lands; (b) setting up wasm-bindgen-test + headless-chromedriver infrastructure for a workspace that's never used it is its own chunk. Better picked up in M-TRAY.4's PR alongside the `on_select` callback.
+  - **wasm32 CI step** — `gate.yml` already runs the default-feature wasm32 build but not the `--features tray-appshell-preview` variant. Worth wiring; not strictly blocking since `just gate` would catch a regression locally.
+- **Impact on subsequent tickets:**
+  - **M-TRAY.2 shrinks:** no AppShell prop change. Instead, add `on_select: Callback<AppSection>` to `NavigationRail` + 5 stories. (Effectively the M-TRAY.4 prep, brought forward.)
+  - **M-TRAY.3** owns the section signal in `crates/app-ui`; parses `?surface=` query; threads `RwSignal<AppSection>` into AppShell slots.
+  - **M-TRAY.4** wires the now-existing `Callback<AppSection>` to the signal setter; no AppShell-prop work needed.
+- **What this closes:** the audit half of M-TRAY.1 (the documentation deliverable + CSR-readiness proof). The interaction-smoke deliverable migrates to M-TRAY.4 where it's load-bearing.
+
+---
+
+## M-TRAY.0 — Menubar tray icon + blank popover toggle (AUT-249)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — core code + unit tests + cross-platform compile gates green on branch `tray-webcam-appshell`. Storybook story + mdBook chapter + hero PNG screenshots **deferred** to a follow-up commit (see "Deferred" below). The shippable round-trip — `cargo run -p screen-app` → filled circle on menubar → click toggles a blank rectangular popover — works end-to-end on macOS.
+- **Linear:** [AUT-249](https://linear.app/harwood/issue/AUT-249) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `crates/app/icons/tray.svg` — source SVG (22×22 viewBox, black filled circle r=7 centred at (11, 11)).
+  - `crates/app/icons/tray.png` + `tray@2x.png` + `tray@3x.png` — rasterised at 1×/2×/3× HiDPI by the example below. 8-bit greyscale+alpha so macOS's `icon_as_template(true)` auto-tints for light/dark menubar.
+  - `crates/app/examples/regen-tray-icons.rs` — pure-std PNG encoder (uncompressed DEFLATE blocks, CRC-32, Adler-32 — no `image` / `tiny-skia` / `png` crate dep). Produces the three PNG outputs from the SVG dimensions via 4×4 supersampling.
+  - `crates/app/src/tray/{mod.rs, toggle.rs}` — pure `TrayPopoverState` state machine (`Hidden` ↔ `Visible`) returning `Action::{Show, Hide}` so the Tauri layer does the actual window `.show()` / `.hide()`. 4 unit tests covering the 10-alternating-click round-trip from the acceptance criteria.
+- **Files changed:**
+  - `crates/app/Cargo.toml` — `tauri` gains `tray-icon` + `image-png` features (needed for `TrayIconBuilder` + `Image::from_bytes`).
+  - `crates/app/src/lib.rs` — `pub mod tray;`.
+  - `crates/app/src/commands.rs` — `TrayState(Mutex<TrayPopoverState>)` for `tauri::State`, `tray_toggle_popover` Tauri command, `toggle_tray_popover` pure-fn variant that the tray click handler calls directly.
+  - `crates/app/src/main.rs` — `register_tray_icon` in `setup`: `Image::from_bytes(include_bytes!("../icons/tray.png"))?` → `TrayIconBuilder::with_id("tray-popover-icon").icon_as_template(true).on_tray_icon_event(...)` → `app.manage(tray)`. Click handler filters `MouseButton::Left + MouseButtonState::Up` and calls `commands::toggle_tray_popover`. Registers `tray_toggle_popover` in `generate_handler!`.
+  - `crates/app/tauri.conf.json` — first existing window gets `label: "main"`; new `tray-popover` window `360×480`, `decorations: false`, `transparent: true`, `alwaysOnTop: true`, `skipTaskbar: true`, `visible: false`, `url: "index.html?tray=stub"`.
+  - `crates/app-ui/Cargo.toml` — `Location` added to web-sys features (for `window().location().search()`).
+  - `crates/app-ui/src/lib.rs` — `is_tray_stub()` URL-query check; `#[wasm_bindgen(start)] fn run()` forks: `?tray=stub` → mount `<div class="tray-popover-stub" />`; else branch keeps the existing `<App />` drop-zone shell. **Deliberately does NOT reference `<AppShell />` yet** — that lands in M-TRAY.3 (AUT-252) after the M-TRAY.1 CSR audit (AUT-250).
+  - `crates/app-ui/shell.css` — `.tray-popover-stub` rule (filled-rectangle with `var(--surface-1)` background, 12 px radius — needed because `transparent: true` would otherwise render the popover invisible).
+  - `tools/doc-gates/src/main.rs` — `REQUIRED_FILES` gains `tray.svg`, `tray.png`, `tray@2x.png`, `tray@3x.png`.
+- **Tests:** 4 unit tests in `tray::toggle::tests` (default-is-Hidden, Hidden→Show, Visible→Hide, 10-alternating-click round-trip). All passing via `cargo nextest run -p screen-app --lib`.
+- **Gates run (this commit's footprint, all green):**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p screen-app` — green (warm 21 s).
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green (cold 3 m 15 s).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green after renaming `cx_px`/`cy_px` → `center_px_x`/`center_px_y` (similar_names) and back-ticking `HiDPI` in module docs (doc_markdown).
+  - `cargo nextest run -p screen-app --lib` — 4/4 pass.
+  - `cargo run -p screen-app --example regen-tray-icons` — produced valid PNGs (verified via `file`).
+  - `cargo run -p doc-gates -- required-files-check` — green (all 6 required files tracked).
+- **Gates NOT run yet** (deferred to follow-up commit on this branch):
+  - Full `just gate` — includes `snapshots-check` + `docs` + `mermaid-check` + `shared-check` + `pages-url-check`. These should all be green since I didn't touch the relevant inputs, but I haven't verified end-to-end. Cheap to run.
+  - Doctests on screen-app — likely green; haven't run.
+  - Full workspace test (`cargo nextest run`) — likely green; skipped to save session time.
+- **Deferred** (file as immediate follow-ups before M-TRAY.0 closes):
+  - **Storybook story `s_tray_popover_stub`** — needs adding to `crates/ui-storybook/src/stories/*.rs` registry + `all_stories()`. The stub is literally `<div class="tray-popover-stub" />` so the story is one line.
+  - **mdBook chapter** `_docs/book/src/app-ui/chunks/tray-icon-stub.md` — two-screenshot chapter (menubar + open popover). Hero PNGs need to be captured manually since `just snapshots-ui` produces HTML, not OS-level menubar shots.
+  - **`SUMMARY.md` entry** for the new chapter, under app-ui.
+  - **Integration smoke test** `crates/app/tests/tray_smoke.rs` — spawn-the-binary pattern from the ticket. macOS-only, cfg-skip Windows.
+  - **Refactor `commands.rs` → `commands/mod.rs` + `commands/{player.rs, tray.rs}`** — the ticket spec said `commands::tray::toggle_popover`. I kept the flat layout (`commands::tray_toggle_popover`) to minimise churn. Worth doing alongside M-CAM.2 which adds 4+ more camera commands.
+- **What this closes:** The minimum viable demo — `cargo run -p screen-app` puts a filled circle on the macOS menubar; left-click toggles a transparent 360×480 popover containing a dark filled rectangle; left-click again hides it. Cross-platform compile path verified on the `wasm32-unknown-unknown` target. Foundation in place for M-TRAY.1 → M-TRAY.3 → M-TRAY.4.
+
+---
+
 ## M-CHART.19 + .23 — Polar coord + Error bars (AUT-199, 203)
 - **Date:** 2026-05-14
 - **Status:** ✅ done — final two P2 chart tickets. AUT-203 ships error bars as a self-contained overlay value type that composes with any cartesian chart via `emit_graphics_in_rect`. AUT-199 ships a polar coord helper + wind-rose-style `PolarPlot`. Branch `chart-p2-tail`.

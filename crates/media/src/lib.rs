@@ -88,6 +88,7 @@
 //! | [`manifest`] | M-MEDIA.20 (AUT-116) | scaffolded |
 
 pub mod audio;
+pub mod camera;
 pub mod clock;
 pub mod gstreamer;
 pub mod gstreamer_audio;
@@ -100,6 +101,7 @@ pub mod video;
 pub mod waveform;
 
 pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
+pub use camera::{CameraDevice, list_cameras};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
 pub use histogram::{AudioBar, AudioHistogram};
 pub use mock_audio::{SilenceSource, SineWaveSource, StepPulseSource};

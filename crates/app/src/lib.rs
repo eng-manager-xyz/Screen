@@ -14,3 +14,6 @@
 
 pub mod commands;
 pub mod player_session;
+pub mod preview;
+pub mod recp;
+pub mod tray;

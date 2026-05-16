@@ -84,6 +84,75 @@ impl std::fmt::Debug for GstreamerVideoCapture {
 }
 
 impl GstreamerVideoCapture {
+    /// Build a capture from the **default OS camera** via gst's
+    /// `autovideosrc` (M-CAM.0 / AUT-254).
+    ///
+    /// On macOS `autovideosrc` routes to `avfvideosrc`; on Linux
+    /// `v4l2src`; on Windows `mfvideosrc`. Caller picks the output
+    /// dimensions + framerate — gst's `videoconvert` step resizes /
+    /// converts whatever the camera natively produces.
+    ///
+    /// ```admonish important
+    /// **macOS gotcha:** `avfvideosrc` requires
+    /// `NSCameraUsageDescription` in the bundled app's Info.plist.
+    /// Without it the gst pipeline fails with a misleading "device
+    /// busy" error AND the OS permission prompt never shows. See
+    /// `crates/app/tauri.conf.json` for the project's declaration.
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::InvalidFormat`] if any dimension is zero.
+    /// - [`Error::Spawn`] if `gst-launch-1.0` isn't on `PATH`.
+    /// - [`Error::NoStdout`] if the child's stdout pipe is missing
+    ///   (shouldn't happen — we request it explicitly).
+    ///
+    /// Cross-OS behaviour: on a host without a default camera the
+    /// pipeline spawns but `next_frame` returns
+    /// [`Error::EndOfStream`] as soon as the OS denies access /
+    /// reports no device. Integration tests should call
+    /// [`default_camera_available`] first and skip cleanly.
+    pub fn from_default_camera(width: u32, height: u32, framerate: u32) -> Result<Self, Error> {
+        if width == 0 || height == 0 || framerate == 0 {
+            return Err(Error::InvalidFormat {
+                width,
+                height,
+                framerate: f64::from(framerate),
+            });
+        }
+        let caps = format!(
+            "video/x-raw,format=BGRA,width={width},height={height},framerate={framerate}/1"
+        );
+        let mut cmd = Command::new("gst-launch-1.0");
+        cmd.args([
+            "-q",
+            "autovideosrc",
+            "!",
+            "videoconvert",
+            "!",
+            &caps,
+            "!",
+            "fdsink",
+            "fd=1",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+        let mut child = cmd.spawn().map_err(|source| Error::Spawn {
+            source,
+            path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+        })?;
+        let stdout = child.stdout.take().ok_or(Error::NoStdout)?;
+        Ok(Self {
+            child,
+            stdout,
+            width,
+            height,
+            framerate: f64::from(framerate),
+            next_index: 0,
+            raw_buffer: Vec::new(),
+        })
+    }
+
     /// Build a capture from `videotestsrc` at the given dimensions +
     /// framerate. The default `videotestsrc` pattern is the SMPTE
     /// colorbars — useful for visual smoke checks because every frame
@@ -198,6 +267,32 @@ impl Drop for GstreamerVideoCapture {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// Best-effort probe for "is there at least one video capture device
+/// the OS will hand us?" (M-CAM.0 / AUT-254).
+///
+/// Spawns `gst-device-monitor-1.0 Video/Source` with a short timeout
+/// and parses the output for at least one device line. Returns `false`
+/// if the binary isn't on `PATH`, returns `false` if no devices are
+/// listed — never panics. Integration tests use this to skip cleanly
+/// on a host without a webcam.
+#[must_use]
+pub fn default_camera_available() -> bool {
+    let output = Command::new("gst-device-monitor-1.0")
+        .args(["Video/Source"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            // The text format has `Device found:` lines, one per
+            // device. Any match = at least one camera.
+            stdout.contains("Device found:")
+        }
+        _ => false,
     }
 }
 

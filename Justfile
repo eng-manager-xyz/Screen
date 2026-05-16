@@ -318,6 +318,55 @@ dev-remote-stop:
     -pkill -f "target/release/dev-server" || true
     @echo "Done."
 
+# M-TRAY.1 / AUT-250 — AppShell CSR preview via Trunk.
+#
+# Builds + serves `crates/app-ui` with the `tray-appshell-preview`
+# Cargo feature so the bundle mounts the storybook AppShell instead
+# of the default drop-zone shell. Used during the M-TRAY.1 audit to
+# verify the shell tree compiles + paints under CSR before
+# M-TRAY.3 wires it for real.
+#
+# Open http://localhost:8080 after this prints "Compiled successfully".
+dev-appshell:
+    cd crates/app-ui && trunk serve --features tray-appshell-preview
+
+# M-RECORDER-V0 (AUT-249..260) + M-RECORDER-V1 (AUT-261..266) —
+# clean-slate manual smoke test for the recorder track.
+#
+# One-shot: nukes the stale wasm bundle, removes the `app-ui` +
+# `screen-app` build artifacts, rebuilds the wasm bundle via trunk,
+# then `cargo run -p screen-app`. Use for "does the tray icon + the
+# AppShell + the camera picker actually work end-to-end on my
+# machine?" before opening a PR or filing a bug.
+#
+# For *active* development use `cd crates/app && cargo tauri dev`
+# instead — it has hot-reload (trunk serve watches app-ui sources
+# + Tauri restarts the binary on Rust changes). `test-recorder` is
+# the heavy fresh-build alternative for when you specifically want
+# to verify a from-scratch build path.
+#
+# Expected when the window opens:
+#   • Small filled-circle icon on the macOS menubar.
+#   • Left-click → 1200×720 AppShell window opens (NavigationRail on
+#     the left, Recorder surface in the middle).
+#   • NavigationRail clicks swap surfaces; URL updates `?surface=…`.
+#   • Recorder surface shows a camera picker dropdown. Clicking it
+#     enumerates your real cameras via `gst-device-monitor-1.0`.
+#   • Preview canvas stays BLANK — the wisp pipeline body is the
+#     M-CAM.3 deferred follow-up (see _docs/PROGRESS.md).
+#   • Left-click tray again → window hides.
+#
+# Total time: ~5–8 min cold (wasm + native rebuilds), ~30s warm.
+test-recorder:
+    @echo "→ [1/3] Cleaning stale wasm bundle + screen-app build artifacts…"
+    rm -rf crates/app-ui/dist
+    -cargo clean -p app-ui -p screen-app 2>/dev/null
+    @echo "→ [2/3] Building app-ui wasm bundle via trunk…"
+    cd crates/app-ui && trunk build
+    @echo "→ [3/3] Launching screen-app — click the menubar circle to open the AppShell."
+    @echo ""
+    cargo run -p screen-app
+
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
 # `mdbook serve` has built-in live reload (filesystem watch + websocket
