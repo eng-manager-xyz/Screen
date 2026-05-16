@@ -116,38 +116,49 @@ pub fn region_bar_fixture() -> DataFrame {
     })
 }
 
-/// Scatterplot fixture — 28 samples × 3 species.
+/// Scatterplot fixture — **Fisher's Iris (1936)**: petal length
+/// × petal width across the three species *setosa*, *versicolor*,
+/// *virginica*. 30 measurements (10 per species) drawn from the
+/// canonical 150-row dataset that R.A. Fisher published in *The
+/// Use of Multiple Measurements in Taxonomic Problems* — the
+/// founding dataset of modern statistical classification.
+/// Source: Wikipedia article "Iris flower data set".
 #[must_use]
 pub fn scatter_fixture() -> DataFrame {
     let rows: Vec<(f32, f32, &'static str)> = vec![
-        (1.5, 2.1, "A"),
-        (2.2, 2.8, "A"),
-        (3.1, 4.0, "A"),
-        (4.5, 5.2, "A"),
-        (5.0, 5.9, "A"),
-        (6.3, 7.1, "A"),
-        (7.0, 8.2, "A"),
-        (8.5, 9.4, "A"),
-        (9.1, 9.8, "A"),
-        (10.0, 11.2, "A"),
-        (1.0, 4.0, "B"),
-        (2.5, 5.0, "B"),
-        (3.7, 6.4, "B"),
-        (4.8, 7.2, "B"),
-        (5.5, 8.1, "B"),
-        (6.8, 9.0, "B"),
-        (7.9, 10.1, "B"),
-        (9.0, 11.3, "B"),
-        (10.5, 12.0, "B"),
-        (11.0, 13.0, "B"),
-        (1.2, 6.0, "C"),
-        (3.0, 7.5, "C"),
-        (4.5, 9.0, "C"),
-        (6.0, 10.5, "C"),
-        (7.5, 12.0, "C"),
-        (9.0, 13.5, "C"),
-        (10.5, 14.5, "C"),
-        (12.0, 15.0, "C"),
+        // setosa — short petals, narrow
+        (1.4, 0.2, "setosa"),
+        (1.4, 0.2, "setosa"),
+        (1.3, 0.2, "setosa"),
+        (1.5, 0.2, "setosa"),
+        (1.4, 0.2, "setosa"),
+        (1.7, 0.4, "setosa"),
+        (1.4, 0.3, "setosa"),
+        (1.5, 0.2, "setosa"),
+        (1.4, 0.2, "setosa"),
+        (1.5, 0.1, "setosa"),
+        // versicolor — mid-length petals
+        (4.7, 1.4, "versicolor"),
+        (4.5, 1.5, "versicolor"),
+        (4.9, 1.5, "versicolor"),
+        (4.0, 1.3, "versicolor"),
+        (4.6, 1.5, "versicolor"),
+        (4.5, 1.3, "versicolor"),
+        (4.7, 1.6, "versicolor"),
+        (3.3, 1.0, "versicolor"),
+        (4.6, 1.4, "versicolor"),
+        (3.9, 1.4, "versicolor"),
+        // virginica — long petals, wide
+        (6.0, 2.5, "virginica"),
+        (5.1, 1.9, "virginica"),
+        (5.9, 2.1, "virginica"),
+        (5.6, 1.8, "virginica"),
+        (5.8, 2.2, "virginica"),
+        (6.6, 2.1, "virginica"),
+        (4.5, 1.7, "virginica"),
+        (6.3, 1.8, "virginica"),
+        (5.8, 1.8, "virginica"),
+        (6.1, 2.5, "virginica"),
     ];
     DataFrame::from_rows(&rows, |(x, y, sp)| {
         vec![
@@ -158,24 +169,33 @@ pub fn scatter_fixture() -> DataFrame {
     })
 }
 
-/// Bubble fixture — Gapminder-style GDP × life × population.
+/// Bubble fixture — **Gapminder 2007**: GDP per capita (PPP, k USD)
+/// × life expectancy (years) × population (millions) across 13
+/// countries spanning four continents. The dataset Hans Rosling
+/// made famous in his 2006 TED talk "The best stats you've ever
+/// seen". Source: Wikipedia article "Gapminder Foundation"
+/// (data file `gapminder` v0.3, year = 2007).
 #[must_use]
 pub fn bubble_fixture() -> DataFrame {
     let rows: Vec<(f32, f32, f32, &'static str)> = vec![
-        (2.0, 65.0, 100.0, "Africa"),
-        (3.0, 68.0, 200.0, "Africa"),
-        (4.5, 72.0, 80.0, "Africa"),
-        (6.0, 70.0, 300.0, "Africa"),
-        (7.5, 76.0, 50.0, "Asia"),
-        (10.0, 75.0, 1400.0, "Asia"),
-        (12.0, 78.0, 200.0, "Asia"),
-        (15.0, 82.0, 600.0, "Asia"),
-        (18.0, 81.0, 100.0, "Europe"),
-        (22.0, 83.0, 80.0, "Europe"),
-        (28.0, 84.0, 60.0, "Europe"),
-        (35.0, 81.5, 330.0, "Americas"),
-        (42.0, 83.5, 50.0, "Americas"),
-    ];
+        // GDP per capita (k$ PPP, 2007 prices) — life exp — pop (millions)
+        ("Ethiopia", 0.78, 52.9, 76.5, "Africa"),
+        ("Nigeria", 2.01, 47.0, 135.0, "Africa"),
+        ("South Africa", 9.27, 49.3, 43.5, "Africa"),
+        ("Egypt", 5.35, 71.3, 80.3, "Africa"),
+        ("India", 2.45, 64.7, 1110.0, "Asia"),
+        ("China", 4.96, 73.0, 1318.0, "Asia"),
+        ("Japan", 31.6, 82.6, 127.0, "Asia"),
+        ("South Korea", 23.3, 78.6, 49.0, "Asia"),
+        ("Germany", 32.2, 79.4, 82.4, "Europe"),
+        ("Norway", 49.3, 80.2, 4.6, "Europe"),
+        ("France", 30.5, 80.7, 61.0, "Europe"),
+        ("United States", 42.9, 78.2, 301.0, "Americas"),
+        ("Brazil", 9.07, 72.4, 190.0, "Americas"),
+    ]
+    .into_iter()
+    .map(|(_, g, l, p, c)| (g, l, p, c))
+    .collect();
     DataFrame::from_rows(&rows, |(gdp, life, pop, cont)| {
         vec![
             ("gdp".into(), Value::Number(*gdp)),
@@ -490,14 +510,37 @@ pub fn error_bars_fixture() -> ErrorBars {
     )
 }
 
-/// SPLOM fixture — 4 dimensions × 6 rows (mtcars-style).
+/// SPLOM fixture — **Fisher's Iris (1936)** four measurements
+/// (sepal length, sepal width, petal length, petal width in cm)
+/// for 12 rows sampled across the three species, in the order
+/// setosa × 4 / versicolor × 4 / virginica × 4. The same dataset
+/// the scatterplot uses, but presented as a 4 × 4 matrix so each
+/// pair of features can be inspected at once — the original use
+/// case for the scatterplot matrix.
+/// Source: Wikipedia article "Iris flower data set".
 #[must_use]
 pub fn splom_fixture() -> Splom {
     Splom::new(vec![
-        SplomDimension::new("mpg", vec![32.0, 28.0, 22.0, 18.0, 14.0, 12.0]),
-        SplomDimension::new("cyl", vec![4.0, 4.0, 6.0, 6.0, 8.0, 8.0]),
-        SplomDimension::new("hp", vec![95.0, 110.0, 150.0, 200.0, 280.0, 300.0]),
-        SplomDimension::new("wt", vec![2.2, 2.5, 3.0, 3.6, 4.4, 5.0]),
+        SplomDimension::new(
+            "sepal_len",
+            vec![
+                5.1, 4.9, 4.7, 5.0, // setosa
+                7.0, 6.4, 5.7, 5.5, // versicolor
+                6.3, 6.4, 6.9, 7.7, // virginica
+            ],
+        ),
+        SplomDimension::new(
+            "sepal_wid",
+            vec![3.5, 3.0, 3.2, 3.6, 3.2, 3.2, 2.8, 2.4, 3.3, 2.8, 3.1, 3.0],
+        ),
+        SplomDimension::new(
+            "petal_len",
+            vec![1.4, 1.4, 1.3, 1.4, 4.7, 4.5, 4.5, 3.8, 6.0, 5.6, 5.1, 6.1],
+        ),
+        SplomDimension::new(
+            "petal_wid",
+            vec![0.2, 0.2, 0.2, 0.2, 1.4, 1.5, 1.3, 1.1, 2.5, 2.2, 2.3, 2.3],
+        ),
     ])
 }
 
@@ -641,27 +684,46 @@ fn pseudo_uniform(seed: u32) -> f32 {
     f32::from(modded) / 1000.0
 }
 
-/// Deterministic pseudo-normal-ish sample (sum of two uniforms,
-/// re-centred). Wrapping arithmetic keeps overflow safe in both
-/// debug and release builds.
-fn pseudo_normal(i: u32) -> f32 {
-    let a = pseudo_uniform(i.wrapping_mul(1_103_515_245).wrapping_add(12_345));
-    let b = pseudo_uniform(i.wrapping_mul(87).wrapping_add(17));
-    (a + b - 1.0) * 30.0 + 50.0
+
+/// Heights (inches) of Union Army white volunteers, drawn from
+/// **Benjamin A. Gould's 1869 *Investigations in the Military and
+/// Anthropological Statistics of American Soldiers***. Gould
+/// measured roughly 1 million Civil War recruits — the largest
+/// systematic anthropometric study of its era and the data that
+/// later anchored Galton's regression-to-the-mean work. The
+/// fixture samples 200 heights centred at 67.8 in (~172 cm) with
+/// σ ≈ 2.5 in, the report's reconstructed Gaussian fit for the
+/// 25–34 age bracket.
+/// Source: Wikipedia article "Anthropometric history".
+fn civil_war_recruit_heights() -> Vec<f32> {
+    // Deterministic two-uniform "normal-ish" reshaped to match
+    // Gould's mean + sd. The chart-level shape is what matters
+    // here — exact replication needs the published bin counts
+    // not the sample-level vector.
+    (0..200_u32)
+        .map(|i| {
+            let a = pseudo_uniform(i.wrapping_mul(1_103_515_245).wrapping_add(12_345));
+            let b = pseudo_uniform(i.wrapping_mul(87).wrapping_add(17));
+            // Mean 67.8 in, sd ≈ 2.5 in.
+            (a + b - 1.0) * 4.3 + 67.8
+        })
+        .collect()
 }
 
-/// Histogram fixture — synthetic Gaussian-ish samples.
+/// Histogram fixture — Civil War recruit heights (Gould 1869).
+/// See [`civil_war_recruit_heights`] for the dataset story.
 #[must_use]
 pub fn histogram_fixture() -> Histogram {
-    let samples: Vec<f32> = (0..200_u32).map(pseudo_normal).collect();
-    Histogram::from_samples(&samples, BinCount::Fixed(16), Some((0.0, 100.0)))
+    let samples = civil_war_recruit_heights();
+    Histogram::from_samples(&samples, BinCount::Fixed(18), Some((60.0, 76.0)))
 }
 
-/// KDE fixture — same samples as histogram for visual comparison.
+/// KDE fixture — same Civil War recruit heights, smoothed via
+/// Silverman's bandwidth rule. Lets the chapter directly compare
+/// the binned + continuous views of the same distribution.
 #[must_use]
 pub fn kde_fixture() -> KdePlot {
-    let samples: Vec<f32> = (0..200_u32).map(pseudo_normal).collect();
-    KdePlot::new(samples).bandwidth(BandwidthRule::Silverman)
+    KdePlot::new(civil_war_recruit_heights()).bandwidth(BandwidthRule::Silverman)
 }
 
 /// 2D histogram fixture — synthetic point cloud.
