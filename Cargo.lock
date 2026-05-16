@@ -6083,6 +6083,7 @@ name = "screen-app"
 version = "0.1.0"
 dependencies = [
  "decode",
+ "media",
  "playback",
  "pollster",
  "screen-wisp",
@@ -6090,6 +6091,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "thiserror 2.0.18",
  "tracing",
 ]
 

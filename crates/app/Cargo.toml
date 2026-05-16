@@ -16,8 +16,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 playback = { path = "../playback" }
 decode = { path = "../decode" }
+media = { path = "../media" }
 wisp = { workspace = true }
 serde = { version = "1", features = ["derive"] }
+thiserror = "2"
 pollster = { workspace = true }
 tracing = { workspace = true }
 

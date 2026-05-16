@@ -6,6 +6,32 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CAM.2 — Tauri seam: camera commands + preview state machine (AUT-256)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — IPC command surface + `PreviewLifecycle` state machine landed; the actual gst → wisp → readback pipeline is deferred to M-CAM.3 (AUT-257). The state-machine-only stub lets Leptos call `start_preview`/`stop_preview` and observe lifecycle transitions, unblocking M-CAM.4's hot-swap logic + M-REC.1's dropdown UX work to begin without waiting for the full wisp pipeline.
+- **Linear:** [AUT-256](https://linear.app/harwood/issue/AUT-256) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/app/src/preview.rs` — `PreviewLifecycle { Idle, Starting, Running, Stopping }` state machine with `try_start` / `mark_running` / `try_stop` / `finish_stop` transitions. `PreviewState(Mutex<PreviewLifecycle>)` Tauri-managed wrapper. `CameraError` enum (`PermissionPending`, `PermissionDenied`, `DeviceBusy`, `GstFailed(String)`). 9 unit tests covering each transition + serde round-trip on `CameraError`.
+- **Files changed:**
+  - `crates/app/src/commands.rs` — 5 new Tauri commands: `list_cameras()`, `camera_permission_status()` (stubs to `Granted` cross-OS for now; real macOS impl deferred to M-RECP.0), `start_preview(camera_id)`, `stop_preview()`, `preview_status()`. New `CameraView` IPC type with `From<media::CameraDevice>` conversion.
+  - `crates/app/src/lib.rs` — `pub mod preview;`.
+  - `crates/app/src/main.rs` — `.manage(PreviewState::default())` + 5 new commands registered in `generate_handler!`.
+  - `crates/app/Cargo.toml` — `media` path-dep (new), `thiserror` for `CameraError`.
+- **Tests:** 9 new unit tests in `preview::tests` (all transitions + serde round-trip). 13/13 `cargo nextest run -p screen-app --lib` pass.
+- **Gates run, all green:**
+  - `cargo check -p screen-app` — green.
+  - `cargo nextest run -p screen-app --lib` — 13/13.
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green.
+  - `cargo fmt --all --check` — green.
+- **Deferred to M-CAM.3 (AUT-257):**
+  - Actual gst → wisp → readback pipeline (the `start_preview` command body is a state-only stub today).
+  - Tauri `Channel<FrameMessage>` for emitting frames to Leptos.
+  - Triple-buffered readback for sustained 30 fps.
+  - Thread-affinity audit on `wisp::Stage`.
+- **What this closes:** the IPC contract — Leptos can `tauri::invoke('list_cameras')` and `tauri::invoke('start_preview', { camera_id })` against the real schema today. M-CAM.4 and M-REC.1 can build against this without waiting for M-CAM.3 to finish.
+
+---
+
 ## M-CAM.0 + M-CAM.1 — `autovideosrc` frames + camera enumeration (AUT-254, AUT-255)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — combined commit since both tickets are pure data-layer additions to `crates/media` with no UI / Tauri seam involvement.
