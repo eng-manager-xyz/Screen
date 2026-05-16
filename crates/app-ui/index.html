@@ -64,6 +64,18 @@
       window.__screenPause = () =>
         window.__TAURI__?.core?.invoke("player_pause");
 
+      // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
+      // around the Tauri invoke; consumed by Rust via the
+      // `crate::camera_ipc` extern declarations.
+      window.__screenListCameras = () =>
+        window.__TAURI__?.core?.invoke("list_cameras") ?? Promise.resolve([]);
+      window.__screenStartPreview = (cameraId) =>
+        window.__TAURI__?.core?.invoke("start_preview", { cameraId }) ?? Promise.resolve();
+      window.__screenStopPreview = () =>
+        window.__TAURI__?.core?.invoke("stop_preview") ?? Promise.resolve();
+      window.__screenCameraPermissionStatus = () =>
+        window.__TAURI__?.core?.invoke("camera_permission_status") ?? Promise.resolve("Granted");
+
       // Synchronous helper: turn a local file path into an asset:// URL
       // the webview's <video> element can load. Tauri 2 exposes this via
       // `__TAURI__.core.convertFileSrc`. Returns undefined when running
