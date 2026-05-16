@@ -70,13 +70,6 @@ pub fn pipeline_with_inter(
 /// closest installed family).
 pub const INTER_FONT_FAMILY: &str = "Inter";
 
-/// Reference-pixel constant of [`crate::wisp::text::flexible`] — the
-/// engine maps `style.size_ndc → font_size_px` as `size_ndc *
-/// REFERENCE_PX`. Hardcoded here so callers can size text by display
-/// pixels without depending on `wisp::text::flexible::REFERENCE_PX`
-/// directly.
-const REFERENCE_PX: f32 = 1000.0;
-
 /// Where the sprite's reference point lives on its quad. Maps to the
 /// `anchor: Vec2` field on [`Sprite`] (`0.0` = top/left, `1.0` =
 /// bottom/right within the texture's local rect).
@@ -162,8 +155,32 @@ pub fn build_text_sprite(
     viewport_px: Vec2,
     spec: &ChartTextSpec,
 ) -> Sprite {
+    // RT allocation. The flexible renderer scales glyph output by
+    // `rt_height_px / REFERENCE_PX` (= 1000), so the `size_ndc` we
+    // pass into `WispTextStyle::with_size` must be expressed as the
+    // *fraction of the RT height* the glyph cap should occupy. We
+    // derive that below, after picking the RT dims.
+    let char_count = spec.content.chars().count();
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "char_count bounded by `content` length (< 64 in practice)"
+    )]
+    let char_count_f = char_count as f32;
+    // Allocate generously — Inter glyph widths run 0.45–0.85 ems
+    // depending on character. ~0.7 em per char + a 1 em pad keeps
+    // every short label fitting in its RT with margin to spare.
+    let rt_w_px = ((char_count_f * 0.7 + 1.0) * spec.size_px).ceil().max(16.0);
+    let rt_h_px = (spec.size_px * 1.6).ceil().max(16.0);
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "RT dims clamped to [16, viewport_px]; safe for u32"
+    )]
+    let (rt_w_u, rt_h_u) = (rt_w_px as u32, rt_h_px as u32);
+
+    let size_ndc = spec.size_px / rt_h_px;
     let style = WispTextStyle::default()
-        .with_size(spec.size_px / REFERENCE_PX)
+        .with_size(size_ndc)
         .with_color(wisp::Color::rgba(
             spec.color.r,
             spec.color.g,
@@ -174,27 +191,6 @@ pub fn build_text_sprite(
     let text = WispText::new(spec.content.clone())
         .with_style(style)
         .with_font_family(INTER_FONT_FAMILY);
-
-    // RT allocation: a generous box around the laid-out glyphs. Over-
-    // allocating wastes a few pixels but keeps cache keys consistent
-    // across calls (every label of the same `size_px` allocates the
-    // same RT dims).
-    let char_count = spec.content.chars().count();
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "char_count bounded by `content` length (< 64 in practice)"
-    )]
-    let char_count_f = char_count as f32;
-    let rt_w_px = (char_count_f * spec.size_px * 0.65 + spec.size_px * 0.6)
-        .ceil()
-        .max(8.0);
-    let rt_h_px = (spec.size_px * 1.5).ceil().max(8.0);
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "RT dims clamped to [8, viewport_px]; safe for u32"
-    )]
-    let (rt_w_u, rt_h_u) = (rt_w_px as u32, rt_h_px as u32);
 
     let rt = pipeline.render(app, &text, rt_w_u, rt_h_u);
     let texture = rt.as_texture();
@@ -253,6 +249,31 @@ mod tests {
             sprite.container.transform.position.y
         );
         assert_eq!(sprite.anchor, Vec2::new(0.5, 0.0));
+    }
+
+    #[test]
+    fn pipeline_with_inter_actually_rasterises_glyphs() {
+        // Smoke test: render one short Inter label and verify the
+        // resulting `RenderTexture` contains *some* opaque pixels.
+        // Catches the size-ndc / REFERENCE_PX trap (text rendered at
+        // 0.3 px) before it propagates to every chart's hero snapshot.
+        use wisp::text::WispText;
+        let app = block_on(Application::new(AppConfig::default())).expect("Application::new");
+        let pipeline = pipeline_with_inter(&app, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let text = WispText::new("12.34")
+            .with_style(
+                WispTextStyle::default()
+                    .with_size(0.7)
+                    .with_color(wisp::Color::WHITE),
+            )
+            .with_font_family(INTER_FONT_FAMILY);
+        let rt = pipeline.render(&app, &text, 96, 32);
+        let bytes = rt.read_pixels(&app);
+        let alpha_count = bytes.iter().skip(3).step_by(4).filter(|&&a| a > 0).count();
+        assert!(
+            alpha_count > 10,
+            "Inter rasteriser produced an empty RT — text won't appear in charts. Alpha hits: {alpha_count}"
+        );
     }
 
     #[test]

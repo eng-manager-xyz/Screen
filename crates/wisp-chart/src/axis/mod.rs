@@ -25,10 +25,13 @@
 //! occluded.
 
 use glam::Vec2;
+use wisp::application::Application;
 use wisp::math::Rect;
 use wisp::scene::{Container, Transform};
-use wisp::{Color, Fill, Font, Graphics, Text};
+use wisp::text::TextTexturePipeline;
+use wisp::{Color, Fill, Font, Graphics, Sprite, Text, WispFontWeight};
 
+use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_sprite};
 use crate::color::Color as ChartColor;
 use crate::theme::{AxisTheme, PlotTheme};
 
@@ -327,6 +330,154 @@ pub fn emit_y_axis_text(
         // being needed in this scope.
         let _ = Container::default();
         out.push(title_text);
+    }
+    out
+}
+
+/// Emit X-axis tick labels + optional title as Inter-text [`Sprite`]
+/// nodes. The new path that replaces the bitmap-font
+/// [`emit_x_axis_text`] — every chart that emits text should call
+/// this and `emit_y_axis_text_sprites` instead.
+#[must_use]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "axis text emission unavoidably needs: app, pipeline, tick data, plot bounds, viewport, side, theme, color, optional title. Grouping into a struct would just rename the same 9 fields."
+)]
+pub fn emit_x_axis_text_sprites(
+    app: &Application,
+    pipeline: &TextTexturePipeline,
+    ticks: &[TickLabel],
+    plot_rect: Rect,
+    viewport_px: Vec2,
+    position: AxisPosition,
+    axis_theme: &AxisTheme,
+    text_color: ChartColor,
+    title: Option<&str>,
+) -> Vec<Sprite> {
+    let mut out = Vec::new();
+    if !matches!(position, AxisPosition::Bottom | AxisPosition::Top) {
+        return out;
+    }
+    let axis_y = if matches!(position, AxisPosition::Bottom) {
+        plot_rect.max().y
+    } else {
+        plot_rect.min.y
+    };
+    let label_offset_y = axis_theme.tick_length_px + axis_theme.tick_label_font_size * 0.6;
+    let label_y_dir: f32 = if matches!(position, AxisPosition::Bottom) {
+        1.0
+    } else {
+        -1.0
+    };
+
+    for tick in ticks {
+        let anchor_px = Vec2::new(tick.position, axis_y + label_offset_y * label_y_dir);
+        let spec = ChartTextSpec {
+            content: tick.label.clone(),
+            anchor_px,
+            size_px: axis_theme.tick_label_font_size,
+            color: text_color,
+            anchor: if matches!(position, AxisPosition::Bottom) {
+                TextAnchor::TopCentre
+            } else {
+                // Top axis: anchor by the *bottom-centre* of the
+                // label; we don't have that anchor today, so flip
+                // the offset sign and keep TopCentre.
+                TextAnchor::TopCentre
+            },
+            weight: WispFontWeight::Regular,
+        };
+        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+    }
+
+    if let Some(t) = title {
+        let title_offset_y = label_offset_y + axis_theme.tick_label_font_size * 2.2;
+        let centre_x = (plot_rect.min.x + plot_rect.max().x) * 0.5;
+        let anchor_px = Vec2::new(centre_x, axis_y + title_offset_y * label_y_dir);
+        let spec = ChartTextSpec {
+            content: t.to_owned(),
+            anchor_px,
+            size_px: axis_theme.tick_label_font_size * 1.05,
+            color: text_color,
+            anchor: TextAnchor::TopCentre,
+            weight: WispFontWeight::Regular,
+        };
+        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+    }
+    out
+}
+
+/// Emit Y-axis tick labels + optional rotated title as Inter-text
+/// [`Sprite`] nodes. Replaces the bitmap-font [`emit_y_axis_text`].
+///
+/// The y-axis title is rendered horizontally for now (rotated text
+/// flow needs container-level rotation which the sprite path
+/// honours via its `transform.rotation` — left as a follow-up).
+#[must_use]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "axis text emission unavoidably needs: app, pipeline, tick data, plot bounds, viewport, side, theme, color, optional title."
+)]
+pub fn emit_y_axis_text_sprites(
+    app: &Application,
+    pipeline: &TextTexturePipeline,
+    ticks: &[TickLabel],
+    plot_rect: Rect,
+    viewport_px: Vec2,
+    position: AxisPosition,
+    axis_theme: &AxisTheme,
+    text_color: ChartColor,
+    title: Option<&str>,
+) -> Vec<Sprite> {
+    let mut out = Vec::new();
+    if !matches!(position, AxisPosition::Left | AxisPosition::Right) {
+        return out;
+    }
+    let axis_x = if matches!(position, AxisPosition::Left) {
+        plot_rect.min.x
+    } else {
+        plot_rect.max().x
+    };
+    let label_offset_x = axis_theme.tick_length_px + axis_theme.tick_label_font_size * 0.45;
+    let label_x_dir: f32 = if matches!(position, AxisPosition::Left) {
+        -1.0
+    } else {
+        1.0
+    };
+
+    for tick in ticks {
+        let anchor_px = Vec2::new(axis_x + label_offset_x * label_x_dir, tick.position);
+        let spec = ChartTextSpec {
+            content: tick.label.clone(),
+            anchor_px,
+            size_px: axis_theme.tick_label_font_size,
+            color: text_color,
+            anchor: if matches!(position, AxisPosition::Left) {
+                TextAnchor::MiddleRight
+            } else {
+                TextAnchor::MiddleLeft
+            },
+            weight: WispFontWeight::Regular,
+        };
+        out.push(build_text_sprite(app, pipeline, viewport_px, &spec));
+    }
+
+    if let Some(t) = title {
+        let title_offset_x = label_offset_x + axis_theme.tick_label_font_size * 3.5;
+        let centre_y = (plot_rect.min.y + plot_rect.max().y) * 0.5;
+        let anchor_px = Vec2::new(axis_x + title_offset_x * label_x_dir, centre_y);
+        let spec = ChartTextSpec {
+            content: t.to_owned(),
+            anchor_px,
+            size_px: axis_theme.tick_label_font_size * 1.05,
+            color: text_color,
+            anchor: TextAnchor::MiddleCentre,
+            weight: WispFontWeight::Regular,
+        };
+        let mut sprite = build_text_sprite(app, pipeline, viewport_px, &spec);
+        // Rotate -90° so the y-axis title reads bottom-to-top.
+        sprite.container.transform.rotation = -std::f32::consts::FRAC_PI_2;
+        out.push(sprite);
     }
     out
 }
