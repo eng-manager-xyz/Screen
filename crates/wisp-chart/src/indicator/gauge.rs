@@ -8,8 +8,11 @@
 //! value's angle on the arc.
 
 use glam::Vec2;
-use wisp::{Color, Fill, Font, Graphics, Text};
+use wisp::application::Application;
+use wisp::text::TextTexturePipeline;
+use wisp::{Color, Fill, FlexText, Graphics, WispFontWeight};
 
+use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_node};
 use crate::color::Color as ChartColor;
 use crate::theme::Theme;
 
@@ -121,31 +124,28 @@ impl Gauge {
         g
     }
 
-    /// Emit the centred numeric value as a `wisp::Text`.
-    /// Formatted by [`crate::indicator::format_value`] for
-    /// magnitude compaction.
+    /// Emit the centred numeric value as a [`FlexText`] node.
+    /// Formatted by [`crate::indicator::format_value`] for magnitude
+    /// compaction. Renders in wisp's late pass, on top of the gauge
+    /// arc.
     #[must_use]
-    pub fn emit_text_labels(&self, theme: &Theme, viewport_px: Vec2, font: &Font) -> Vec<Text> {
-        let cell_pixels = f32_from_u32(font.cell_pixels());
-        let val_cell = theme.indicator.numeric_font_size / cell_pixels / viewport_px.y * 2.0;
-
+    pub fn emit_text_nodes(
+        &self,
+        app: &Application,
+        pipeline: &TextTexturePipeline,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> Vec<FlexText> {
         let value_str = crate::indicator::format_value(f64::from(self.value));
-        let mut text = Text::new(font.clone(), value_str.clone()).with_cell_size(val_cell);
-        text.color = chart_to_wisp(theme.text_primary);
-        // Centre roughly under the gauge — caller can adjust.
-        let glyph_w_ndc = val_cell * cell_pixels / viewport_px.x * viewport_px.y;
-        let total_w = glyph_w_ndc * usize_to_f32(value_str.chars().count());
-        let centre_x_ndc = 0.0;
-        let pos = Vec2::new(
-            centre_x_ndc - total_w * 0.5,
-            pixel_to_ndc(
-                Vec2::new(viewport_px.x * 0.5, viewport_px.y * 0.65),
-                viewport_px,
-            )
-            .y,
-        );
-        text.container.transform.position = pos;
-        vec![text]
+        let spec = ChartTextSpec {
+            content: value_str,
+            anchor_px: Vec2::new(viewport_px.x * 0.5, viewport_px.y * 0.65),
+            size_px: theme.indicator.numeric_font_size,
+            color: theme.text_primary,
+            anchor: TextAnchor::MiddleCentre,
+            weight: WispFontWeight::Bold,
+        };
+        vec![build_text_node(app, pipeline, viewport_px, &spec)]
     }
 }
 
@@ -162,26 +162,6 @@ fn chart_to_wisp(c: ChartColor) -> Color {
         g: c.g,
         b: c.b,
         a: c.a,
-    }
-}
-
-fn f32_from_u32(v: u32) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "atlas cell pixels fit in f32 mantissa (8 today)"
-    )]
-    {
-        v as f32
-    }
-}
-
-fn usize_to_f32(v: usize) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "label char counts fit in f32 mantissa"
-    )]
-    {
-        v as f32
     }
 }
 

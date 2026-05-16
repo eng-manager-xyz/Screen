@@ -25,8 +25,12 @@
 //! `wisp::Text`.
 
 use glam::Vec2;
+use wisp::application::Application;
 use wisp::math::Rect;
-use wisp::{Color, Fill, Font, Graphics, Text};
+use wisp::text::TextTexturePipeline;
+use wisp::{Color, Fill, FlexText, Graphics, WispFontWeight};
+
+use crate::chart_text::{ChartTextSpec, TextAnchor, build_text_node};
 
 use crate::color::Color as ChartColor;
 use crate::theme::LegendTheme;
@@ -218,37 +222,38 @@ impl Legend {
         g
     }
 
-    /// Emit the legend's label text as `wisp::Text` nodes.
+    /// Emit the legend's label text as Inter-rendered [`FlexText`]
+    /// nodes (late-pass, paint on top of every chart Graphics
+    /// primitive).
     #[must_use]
-    pub fn emit_text_labels(
+    pub fn emit_text_nodes(
         &self,
+        app: &Application,
+        pipeline: &TextTexturePipeline,
         position: Vec2,
         viewport_px: Vec2,
         theme: &LegendTheme,
         text_color: ChartColor,
-        font: &Font,
-    ) -> Vec<Text> {
-        let cell_pixels = f32_from_u32(font.cell_pixels());
-        let positions = self.item_positions(position, viewport_px, theme, cell_pixels);
-        let cell_size_ndc = theme.item_font_size / cell_pixels / viewport_px.y * 2.0;
+    ) -> Vec<FlexText> {
+        // Use the item font size as the "cell pixel" proxy for the
+        // legend's item_positions math — it's an approximation
+        // already and inter glyph widths run ~0.5 em on average,
+        // close enough to keep the existing layout passable.
+        let positions = self.item_positions(position, viewport_px, theme, theme.item_font_size);
         let swatch = theme.swatch_size_px;
         let spacing = theme.item_spacing_px;
 
         let mut out = Vec::with_capacity(self.items.len());
         for (item, p) in self.items.iter().zip(positions.iter()) {
-            let mut text =
-                Text::new(font.clone(), item.label.clone()).with_cell_size(cell_size_ndc);
-            text.color = chart_to_wisp(text_color);
-            // Label sits to the right of the swatch with spacing.
-            let label_origin = pixel_to_ndc(
-                Vec2::new(
-                    p.x + swatch + spacing,
-                    p.y + swatch * 0.5 - theme.item_font_size * 0.5,
-                ),
-                viewport_px,
-            );
-            text.container.transform.position = label_origin;
-            out.push(text);
+            let spec = ChartTextSpec {
+                content: item.label.clone(),
+                anchor_px: Vec2::new(p.x + swatch + spacing, p.y + swatch * 0.5),
+                size_px: theme.item_font_size,
+                color: text_color,
+                anchor: TextAnchor::MiddleLeft,
+                weight: WispFontWeight::Regular,
+            };
+            out.push(build_text_node(app, pipeline, viewport_px, &spec));
         }
         out
     }
@@ -301,16 +306,6 @@ fn usize_to_f32(v: usize) -> f32 {
     #[allow(
         clippy::cast_precision_loss,
         reason = "legend item counts + label char counts fit in f32 mantissa (~8M chars). Practical max <100."
-    )]
-    {
-        v as f32
-    }
-}
-
-fn f32_from_u32(v: u32) -> f32 {
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "atlas cell pixels fit in f32 mantissa (8 today)"
     )]
     {
         v as f32

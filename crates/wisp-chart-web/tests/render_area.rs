@@ -19,7 +19,7 @@ use glam::Vec2;
 use pollster::block_on;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::{Font, RenderTexture};
+use wisp::RenderTexture;
 use wisp_chart::Theme;
 use wisp_chart::plot::{self, DataFrame, Interpolation, Mark, Plot, ScaleKind, Value};
 
@@ -71,9 +71,9 @@ fn area_renders_to_snapshot() {
     let root = app.stage().root();
     let _ = app.stage_mut().add_child(root, graphics);
 
-    let font = Font::bitmap_8x8(&app);
-    for text in plot.axis_text_labels(&theme, viewport, &font) {
-        let _ = app.stage_mut().add_child(root, text);
+    let pipeline = wisp_chart::chart_text::pipeline_with_inter(&app, wisp::wgpu::TextureFormat::Rgba8UnormSrgb);
+    for node in plot.axis_text_nodes(&app, &pipeline, &theme, viewport) {
+        let _ = app.stage_mut().add_child(root, node);
     }
 
     app.device().push_error_scope(wgpu::ErrorFilter::Validation);

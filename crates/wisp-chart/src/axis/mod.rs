@@ -311,21 +311,25 @@ pub fn emit_y_axis_text(
     }
 
     if let Some(t) = title {
-        let title_offset_x = label_offset_x + axis_theme.tick_label_font_size * 3.5;
-        let centre_y = (plot_rect.min.y + plot_rect.max().y) * 0.5;
-        let anchor_px = Vec2::new(axis_x + title_offset_x * label_x_dir, centre_y);
+        // Y-axis title sits *above* the plot at its left edge,
+        // horizontal. The classic spreadsheet "rotated 90°" mode
+        // collides badly with FlexText's negative-y-scale flip
+        // (the composition mirrors the glyphs), and a horizontal
+        // label above the gutter is the modern-dashboard
+        // convention anyway. Tight + readable beats clever +
+        // rotated.
+        let _ = label_x_dir;
+        let title_offset_y = axis_theme.tick_label_font_size * 1.4;
+        let anchor_px = Vec2::new(plot_rect.min.x, plot_rect.min.y - title_offset_y);
         let spec = ChartTextSpec {
             content: t.to_owned(),
             anchor_px,
-            size_px: axis_theme.tick_label_font_size * 1.05,
+            size_px: axis_theme.tick_label_font_size,
             color: text_color,
-            anchor: TextAnchor::MiddleCentre,
+            anchor: TextAnchor::TopLeft,
             weight: WispFontWeight::Regular,
         };
-        let mut node = build_text_node(app, pipeline, viewport_px, &spec);
-        // Rotate -90° so the y-axis title reads bottom-to-top.
-        node.container.transform.rotation = -std::f32::consts::FRAC_PI_2;
-        out.push(node);
+        out.push(build_text_node(app, pipeline, viewport_px, &spec));
     }
     out
 }
