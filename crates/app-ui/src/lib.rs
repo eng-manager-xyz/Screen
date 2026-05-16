@@ -27,31 +27,32 @@ pub mod app;
 pub mod dev_appshell;
 pub mod player_ipc;
 
-use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
 /// Trunk entry point — installs panic hooks and mounts the app to `<body>`.
 ///
-/// Trunk wires this via the `data-trunk` `<link rel="rust">` tag in
-/// `index.html`. When the WASM bundle loads, the browser calls this
-/// function automatically.
-///
-/// **URL-based view selection (M-TRAY.0 / AUT-249):** when the
-/// `tray-popover` Tauri window opens this bundle with `?tray=stub` in
-/// the URL, we render only an empty rectangle placeholder instead of
-/// the full app.
+/// **URL-based view selection (M-TRAY.3 / AUT-252):** when the URL
+/// query string carries `?surface=<recorder|library|editor|cursor|prefs>`
+/// the bundle mounts the full ui-storybook `AppShell` with the
+/// `NavigationRail` rooted at the requested surface. When no
+/// `?surface=` is present the existing M-INT.1 drop-zone shell
+/// (`<App />`) renders — preserving the `trunk serve` browser flow
+/// for one-off Leptos iteration.
 ///
 /// **`AppShell` CSR preview (M-TRAY.1 / AUT-250):** when built with
-/// the `tray-appshell-preview` Cargo feature, the else branch mounts
-/// [`dev_appshell::DevAppShellPreview`] instead of `<App />`. This is
-/// a developer affordance for the audit smoke; production builds are
-/// unaffected. M-TRAY.3 (AUT-252) supersedes the feature-gate with
-/// the real URL-routed mount.
+/// the `tray-appshell-preview` Cargo feature, `mount_default` (the
+/// no-query branch) mounts [`dev_appshell::DevAppShellPreview`]
+/// instead of `<App />`. This stays for now alongside the
+/// query-routed path so the M-TRAY.1 audit smoke recipe
+/// (`just dev-appshell`) keeps working — production builds without
+/// the feature are unaffected.
 #[wasm_bindgen(start)]
 pub fn run() {
     console_error_panic_hook::set_once();
-    if is_tray_stub() {
-        leptos::mount::mount_to_body(|| view! { <div class="tray-popover-stub" /> });
+    if let Some(section) = parse_surface_from_query() {
+        leptos::mount::mount_to_body(move || {
+            app_shell_mount::AppShellRoot(app_shell_mount::AppShellRootProps { initial: section })
+        });
         return;
     }
     mount_default();
@@ -67,10 +68,22 @@ fn mount_default() {
     leptos::mount::mount_to_body(dev_appshell::DevAppShellPreview);
 }
 
-/// `true` when the current page URL carries `?tray=stub`. Used to
-/// short-circuit `mount_to_body` to the M-TRAY.0 popover stub.
-fn is_tray_stub() -> bool {
-    web_sys::window()
-        .and_then(|w| w.location().search().ok())
-        .is_some_and(|s| s.contains("tray=stub"))
+/// Parse the live page URL's `?surface=` query — thin wrapper around
+/// [`routing::parse_surface`] that pulls the string from
+/// `window.location.search()`. Returns `None` outside a browser
+/// (so the calling site falls through to the default mount path).
+#[must_use]
+pub fn parse_surface_from_query() -> Option<ui_storybook::components::shell::AppSection> {
+    let search = web_sys::window()?.location().search().ok()?;
+    routing::parse_surface(&search)
 }
+
+/// Convert an [`AppSection`](ui_storybook::components::shell::AppSection)
+/// to its URL slug — thin wrapper around [`routing::surface_slug`].
+#[must_use]
+pub fn surface_to_query(section: ui_storybook::components::shell::AppSection) -> &'static str {
+    routing::surface_slug(section)
+}
+
+mod app_shell_mount;
+pub mod routing;

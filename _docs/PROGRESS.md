@@ -6,6 +6,36 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TRAY.3 + M-TRAY.4 — Tray click renders AppShell + NavRail switching (AUT-252, AUT-253)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — combined commit per the M-TRAY.1 audit doc's recommended sequencing (the two tickets are tightly coupled once the M-TRAY.2 `on_select` callback exists). Click tray → main app window opens with the full `AppShell` mounted; NavigationRail clicks swap the right-pane surface AND rewrite the URL via `history.replaceState`.
+- **Linear:** [AUT-252](https://linear.app/harwood/issue/AUT-252) + [AUT-253](https://linear.app/harwood/issue/AUT-253) (M-RECORDER-V0 milestone).
+- **Files added:**
+  - `crates/app-ui/src/app_shell_mount.rs` — `AppShellRoot` component owns `RwSignal<AppSection>` driven from the `initial` prop (which `run()` derives from `?surface=`). Composes the storybook `AppShell` with `NavigationRail` + a `SurfacePane` `Show`-based router over 5 placeholder surfaces. NavRail clicks flip the signal + push `history.replaceState(?surface=<slug>)`.
+  - `crates/app-ui/src/routing.rs` — pure-Rust `parse_surface` + `parse_slug` + `surface_slug` helpers. 7 round-trip + edge-case unit tests, all passing.
+  - `_docs/book/src/app-ui/chunks/tray-to-appshell.md` — single mdBook chapter spanning the whole M-TRAY.0..4 flow with a mermaid sequence diagram + the architectural-decision callouts from the M-TRAY.1 audit.
+- **Files changed:**
+  - `crates/app/tauri.conf.json` — `tray-popover` window reshape: `width: 1200, height: 720, decorations: true, transparent: false, alwaysOnTop: false, skipTaskbar: false`, `url: "index.html?surface=recorder"`. Window label kept as `tray-popover` to avoid a churn rename of the `commands::toggle_tray_popover` command path (the label is internal; not user-visible).
+  - `crates/app-ui/Cargo.toml` — `History` added to web-sys features for the `history.replaceState` call.
+  - `crates/app-ui/src/lib.rs` — `run()` now parses `?surface=` and mounts `AppShellRoot` when present, falling through to the existing `<App />` drop-zone path when absent. The `tray-appshell-preview` feature path (M-TRAY.1) still works for `just dev-appshell`. The old `?tray=stub` short-circuit is gone — superseded by `?surface=recorder` which renders real content.
+  - `_docs/book/src/SUMMARY.md` — entry pointing at the new chapter under app-ui.
+- **Tests:** 7 new routing tests (`parse_surface`, `parse_slug`, `surface_slug` round-trips + the leading-`?` case + multi-param case + unknown-slug case + missing-param case + the `record`/`recorder` alias). All passing via `cargo test -p app-ui --lib`.
+- **Gates run, all green:**
+  - `cargo check -p screen-app` — green (3.76s warm).
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — green after fixing `manual_let_else` + `doc_markdown`.
+  - `cargo test -p app-ui --lib` — 7/7 routing tests pass.
+- **Pivots from the original ticket specs (per M-TRAY.1 audit):**
+  - **No "main" window rename.** The M-TRAY.3 spec said rename `tray-popover` → `main`. The existing `tauri.conf.json` already has a `main` window (the M-INT.1 drop-zone shell) — renaming would have cascaded into a `get_webview_window("main")` call in `main.rs`'s setup that already exists. Kept both windows distinct; reshape happened in-place on `tray-popover`.
+  - **No `MainWindowVisibility` rename.** The state machine's logical contract is unchanged regardless of window name; renaming `TrayPopoverState` would have been pure churn. Stayed `TrayPopoverState`.
+- **Deferred** (for M-TRAY.5+ / M-RECORDER-V1):
+  - Cross-process surface persistence (`?surface=` is per-session via `history.replaceState`; restart loses the state).
+  - Multi-display window positioning (currently uses OS default). M-RECP.1 covers this.
+  - `wasm-bindgen-test` for NavRail click → signal change. Needs the headless-Chrome / wasm-bindgen-test infrastructure first, which is its own chunk.
+- **What this closes:** the full M-TRAY arc. `cargo run -p screen-app` → menubar circle → click → 1200×720 AppShell window → click "Library" in NavigationRail → right-pane swaps to "Library" placeholder + URL becomes `?surface=library` → click tray icon → window hides. Working on macOS; cross-OS compile path verified.
+
+---
+
 ## M-TRAY.2 — `NavigationRail` gains `on_select: Callback<AppSection>` (AUT-251)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — pivoted from the original "add `initial_surface` prop to AppShell" spec (M-TRAY.1 audit found AppShell has no internal state) to bringing forward M-TRAY.4's `on_select` callback. M-TRAY.4 now becomes a wiring-only ticket: the API extension is already in place.

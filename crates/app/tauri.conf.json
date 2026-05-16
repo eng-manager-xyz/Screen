@@ -21,14 +21,15 @@
       },
       {
         "label": "tray-popover",
-        "url": "index.html?tray=stub",
-        "width": 360,
-        "height": 480,
-        "decorations": false,
-        "resizable": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
+        "url": "index.html?surface=recorder",
+        "title": "Screen",
+        "width": 1200,
+        "height": 720,
+        "decorations": true,
+        "resizable": true,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
         "visible": false
       }
     ],
