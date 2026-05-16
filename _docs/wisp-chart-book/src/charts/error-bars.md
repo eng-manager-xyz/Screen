@@ -5,9 +5,22 @@ confidence intervals on a bar chart, standard errors on a
 scatter, fixed-value error bars on a measurement series. Lifts
 a chart from "looks confident" to "is honest about uncertainty".
 
+The demo plots **Robert Millikan's published electron-charge
+values from the oil-drop experiment**, 1909 → 1913, with the
+uncertainty bands he reported each year. Millikan's 1913 figure
+of 4.774 × 10⁻¹⁰ statcoulomb won him the 1923 Nobel and held as
+the canonical value until later re-analyses. The visible
+year-to-year drift — bars that don't overlap one another's
+intervals as you'd expect them to — is the cautionary tale
+Richard Feynman cited in *Cargo Cult Science*: error bars don't
+include systematic bias.
+
 <div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/error-bars.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=error-bars" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: bar chart with error bars overlay"></iframe>
+  <iframe id="demo-error-bars" src="../demo/?chart=error-bars" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Millikan oil drop values 1909-1913"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Oil_drop_experiment" target="_blank" rel="noopener">Source: Oil drop experiment — Wikipedia</a>
+</p>
 
 ## Public surface
 

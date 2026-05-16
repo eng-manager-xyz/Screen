@@ -4,9 +4,22 @@ Five-number summary of a distribution per category — min / Q1 /
 median / Q3 / max. Side-by-side boxes compare distributions
 across categories.
 
+The demo plots **Boston Marathon men's winning times by decade**
+(1900s through 1960s), in minutes. The marathon began in 1897
+as the second-oldest marathon worldwide; each box summarises
+the per-decade spread of the *winning* time. The progression
+from a 158-min median in the 1900s to 138 min in the 1960s
+tracks training science + course modernisation; the wide 1920s
+box is the pre-pace-strategy era where race tactics were still
+being invented. Source: Wikipedia "List of Boston Marathon
+winners".
+
 <div style="position: relative; aspect-ratio: 400 / 240; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/boxplot.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=boxplot" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: box plot"></iframe>
+  <iframe id="demo-boxplot" src="../demo/?chart=boxplot" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Boston Marathon winning times by decade"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/List_of_Boston_Marathon_winners" target="_blank" rel="noopener">Source: List of Boston Marathon winners — Wikipedia</a>
+</p>
 
 ## Public surface
 

@@ -5,9 +5,21 @@ left, sinks on the right, intermediate nodes in between. Ribbon
 thickness encodes flow magnitude. Useful for conversion funnels,
 budget allocation, energy flow, attribution.
 
+The demo plots the **NASA astronaut career flow, Groups 1–3
+(Mercury / Gemini / Apollo eras)**. ~30 astronauts; sources on
+the left are the service branches they came from (USAF, Navy /
+USMC); the middle column groups them by training cohort
+(Mercury or Gemini); the right shows the ultimate Apollo
+outcome (Walked on Moon vs Did not). Twelve astronauts
+ultimately walked on the Moon — the right-hand ribbon converging
+into that node is the visible bottom-line of the whole program.
+
 <div style="position: relative; aspect-ratio: 3 / 2; max-width: 540px; margin: 1rem 0; background: url('../assets/wisp-chart-web/sankey.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=sankey" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Sankey diagram"></iframe>
+  <iframe id="demo-sankey" src="../demo/?chart=sankey" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: NASA astronaut career flow"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/NASA_Astronaut_Group_1" target="_blank" rel="noopener">Source: NASA Astronaut Group 1 — Wikipedia</a>
+</p>
 
 ## Public surface
 

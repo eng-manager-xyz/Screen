@@ -20,11 +20,22 @@ single most ambitious year. By 1972 only Apollo 17 flew.
   <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_program" target="_blank" rel="noopener">Source: Apollo program — Wikipedia</a>
 </p>
 
-## Grouped variant — regional revenue (illustrative)
+## Grouped variant — Apollo annual budget by NASA centre
+
+The same Apollo dataset, sliced differently. Annual program
+outlays ($B, 1973 dollars) for five reference years (1962,
+1964, 1966, 1969, 1972), grouped by the three centres that
+owned the spend: Marshall (Saturn V), Manned Spacecraft Center
+(CSM + LM), and Kennedy (launch ops + tracking). The 1966 peak
+matches the late-stage Saturn V flight-hardware build right
+before Apollo 4's all-up test.
 
 <div style="position: relative; aspect-ratio: 480 / 320; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/grouped-bar.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=grouped-bar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: grouped bar chart"></iframe>
+  <iframe id="demo-grouped-bar" src="../demo/?chart=grouped-bar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo annual budget by NASA centre"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_program#Costs" target="_blank" rel="noopener">Source: Apollo program — Costs — Wikipedia</a>
+</p>
 
 ## Public surface
 

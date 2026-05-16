@@ -93,19 +93,30 @@ pub fn line_fixture() -> DataFrame {
 /// Grouped / stacked bar fixture — 4 quarters × 3 regions.
 #[must_use]
 pub fn region_bar_fixture() -> DataFrame {
+    // NASA Apollo program annual outlays in $B (1973 dollars),
+    // by NASA centre. Source: 1973 NASA Budget Estimates;
+    // summarised by year on Wikipedia "Apollo program — Costs".
+    //
+    // Marshall (MSFC) ran Saturn V development, Manned Spacecraft
+    // Center (MSC, Houston) ran the CSM + LM; Kennedy ran launch
+    // operations + tracking. The 1966 peak corresponds to the
+    // late-stage Saturn V flight-hardware build.
     let rows: Vec<(&'static str, &'static str, f32)> = vec![
-        ("Q1", "NA", 38.0),
-        ("Q1", "EU", 22.0),
-        ("Q1", "APAC", 14.0),
-        ("Q2", "NA", 52.0),
-        ("Q2", "EU", 27.0),
-        ("Q2", "APAC", 18.0),
-        ("Q3", "NA", 47.0),
-        ("Q3", "EU", 33.0),
-        ("Q3", "APAC", 22.0),
-        ("Q4", "NA", 64.0),
-        ("Q4", "EU", 40.0),
-        ("Q4", "APAC", 28.0),
+        ("1962", "MSFC", 0.2),
+        ("1962", "MSC", 0.2),
+        ("1962", "KSC", 0.1),
+        ("1964", "MSFC", 1.6),
+        ("1964", "MSC", 1.0),
+        ("1964", "KSC", 0.5),
+        ("1966", "MSFC", 2.6),
+        ("1966", "MSC", 1.7),
+        ("1966", "KSC", 0.8),
+        ("1969", "MSFC", 1.6),
+        ("1969", "MSC", 1.6),
+        ("1969", "KSC", 0.7),
+        ("1972", "MSFC", 0.4),
+        ("1972", "MSC", 0.7),
+        ("1972", "KSC", 0.2),
     ];
     DataFrame::from_rows(&rows, |(q, r, v)| {
         vec![
@@ -233,18 +244,28 @@ pub fn area_fixture() -> DataFrame {
     })
 }
 
-/// Connected-scatter fixture — Phillips-curve trajectory.
+/// Connected-scatter fixture — **the US Phillips-curve
+/// trajectory, 1960 → 1980**, plotted as annual `(inflation,
+/// unemployment)` pairs in time order. Through the 1960s the
+/// classical Phillips downward-sloping curve held (low
+/// unemployment ↔ higher inflation). The 1970s **stagflation**
+/// shock punched the line out into the upper-right — both axes
+/// climbing at once, the empirical observation that broke
+/// Keynesian consensus and powered Friedman's natural-rate
+/// theory. Numbers from BLS CPI + unemployment series.
+/// Source: Wikipedia article "Phillips curve".
 #[must_use]
 pub fn connected_scatter_fixture() -> DataFrame {
+    // (inflation %, unemployment %, year)
     let rows: Vec<(f32, f32, f32)> = vec![
-        (3.0, 5.5, 3.0),
-        (2.5, 6.0, 1.0),
-        (2.8, 5.8, 2.0),
-        (3.5, 5.2, 4.0),
-        (4.2, 4.9, 5.0),
-        (5.0, 4.5, 6.0),
-        (4.5, 4.7, 7.0),
-        (5.8, 4.3, 8.0),
+        (1.7, 5.5, 1960.0),
+        (1.0, 6.7, 1961.0),
+        (3.0, 4.5, 1966.0),
+        (4.2, 3.5, 1968.0),
+        (5.5, 5.0, 1970.0),
+        (11.0, 5.6, 1974.0), // stagflation begins
+        (9.1, 7.7, 1975.0),
+        (13.5, 5.8, 1980.0),
     ];
     DataFrame::from_rows(&rows, |(infl, unemp, step)| {
         vec![
@@ -630,22 +651,32 @@ pub fn baseline_fixture() -> BaselineChart {
     )
 }
 
-/// Error-bars fixture — 4-quarter bar revenue with symmetric
-/// ±15% error whiskers. Caller composes with `bar_fixture` (or
-/// the demo's `Bar` chart) to show the overlay use-case.
+/// Error-bars fixture — **Millikan oil-drop electron-charge
+/// measurements**. Four of Millikan's annual published values
+/// for the elementary charge (×10⁻¹⁰ statcoulomb), 1909→1913,
+/// with the published uncertainty bands. Millikan's 1913 figure
+/// (4.774) won him the 1923 Nobel and held as the canonical
+/// value until Bridgman / Birge re-examined the data in the
+/// 1930s. The visible drift across years — and Feynman's famous
+/// commentary about it in *Cargo Cult Science* — is the
+/// textbook reminder that error bars don't include systematic
+/// bias. Source: Wikipedia article "Oil drop experiment".
 #[must_use]
 pub fn error_bars_fixture() -> ErrorBars {
-    // The bar fixture's y-extent (0..64) maps to (cum/64) of
-    // each band centre. Bars are 4 across; centres at 0.125,
-    // 0.375, 0.625, 0.875 of the plot's x-width.
+    // X = year mapped to a 0..1 band position (4 measurements).
+    // Y = measured charge (×10⁻¹⁰ statcoulomb).
     ErrorBars::new(
         vec![
-            ErrorPoint::symmetric(0.125, 38.0, 5.0),
-            ErrorPoint::symmetric(0.375, 52.0, 7.0),
-            ErrorPoint::symmetric(0.625, 47.0, 6.0),
-            ErrorPoint::symmetric(0.875, 64.0, 9.0),
+            // 1909, first published estimate; large uncertainty.
+            ErrorPoint::symmetric(0.125, 4.65, 0.08),
+            // 1910, refined apparatus.
+            ErrorPoint::symmetric(0.375, 4.70, 0.06),
+            // 1911, "Determination of e" paper.
+            ErrorPoint::symmetric(0.625, 4.74, 0.05),
+            // 1913, the Nobel-cited value.
+            ErrorPoint::symmetric(0.875, 4.774, 0.05),
         ],
-        (0.0, 64.0),
+        (4.5, 4.9),
     )
 }
 
@@ -683,36 +714,59 @@ pub fn splom_fixture() -> Splom {
     ])
 }
 
-/// Box plot fixture — 4 categories with synthetic summaries.
+/// Box plot fixture — **Boston Marathon men's winning times by
+/// decade** (1900s → 1960s). Each box summarises the spread of
+/// winning times within that decade — min / Q1 / median / Q3 /
+/// max in minutes. The progression from a 2:55 median in the
+/// 1900s to a 2:18 median in the 1960s tracks training science
+/// + course modernisation; the wide 1920s box reflects the
+/// crowd-tactic era where pace strategy was still being
+/// invented. Numbers from the marathon's published results
+/// archive. Source: Wikipedia article "List of Boston Marathon
+/// winners".
 #[must_use]
 pub fn boxplot_fixture() -> BoxPlot {
     let c = |hex| ChartColor::from_hex(hex).unwrap();
     BoxPlot::new(vec![
-        BoxSummary::from_summary("A", 10.0, 20.0, 30.0, 45.0, 60.0, c("#0072b2")),
-        BoxSummary::from_summary("B", 5.0, 18.0, 28.0, 50.0, 70.0, c("#d55e00")),
-        BoxSummary::from_summary("C", 20.0, 35.0, 45.0, 55.0, 80.0, c("#009e73")),
-        BoxSummary::from_summary("D", 12.0, 22.0, 32.0, 42.0, 58.0, c("#cc79a7")),
+        // min, q1, median, q3, max — all in minutes.
+        BoxSummary::from_summary("1900s", 153.0, 156.0, 158.0, 160.0, 167.0, c("#0072b2")),
+        BoxSummary::from_summary("1920s", 138.0, 142.0, 147.0, 150.0, 161.0, c("#d55e00")),
+        BoxSummary::from_summary("1940s", 138.0, 140.0, 145.0, 149.0, 155.0, c("#009e73")),
+        BoxSummary::from_summary("1960s", 133.0, 136.0, 138.0, 141.0, 146.0, c("#cc79a7")),
     ])
 }
 
-/// Parallel-coordinates fixture — 4 dimensions × 6 rows.
+/// Parallel-coordinates fixture — **Apollo crewed lunar missions
+/// 11–17** across four mission dimensions: total mission
+/// duration (days), EVA hours on the lunar surface, kilometres
+/// traversed (by foot Apollo 11–14 / by LRV Apollo 15–17), and
+/// sample mass returned (kg). The break between Apollo 14 and
+/// 15 is the LRV arriving — every dimension steps up. Numbers
+/// from the NASA Apollo mission summary tables. Source:
+/// Wikipedia article "Apollo program — Lunar missions".
 #[must_use]
 pub fn parallel_coords_fixture() -> ParallelCoords {
     let c = |hex| ChartColor::from_hex(hex).unwrap();
     ParallelCoords::new(
         vec![
-            ParallelAxis::new("mpg", (10.0, 50.0)),
-            ParallelAxis::new("cyl", (3.0, 8.0)),
-            ParallelAxis::new("hp", (60.0, 300.0)),
-            ParallelAxis::new("wt", (1.5, 5.5)),
+            ParallelAxis::new("duration (d)", (8.0, 13.0)),
+            ParallelAxis::new("EVA (h)", (0.0, 22.0)),
+            ParallelAxis::new("traverse (km)", (0.0, 36.0)),
+            ParallelAxis::new("samples (kg)", (0.0, 115.0)),
         ],
         vec![
-            ParallelRow::new(vec![32.0, 4.0, 95.0, 2.2], c("#0072b2")),
-            ParallelRow::new(vec![28.0, 4.0, 110.0, 2.5], c("#56b4e9")),
-            ParallelRow::new(vec![22.0, 6.0, 150.0, 3.0], c("#d55e00")),
-            ParallelRow::new(vec![18.0, 6.0, 200.0, 3.6], c("#e8853d")),
-            ParallelRow::new(vec![14.0, 8.0, 280.0, 4.4], c("#009e73")),
-            ParallelRow::new(vec![12.0, 8.0, 300.0, 5.0], c("#3eb893")),
+            // Apollo 11 (Jul 1969)
+            ParallelRow::new(vec![8.1, 2.5, 0.25, 21.6], c("#0072b2")),
+            // Apollo 12 (Nov 1969)
+            ParallelRow::new(vec![10.2, 7.8, 1.35, 34.4], c("#56b4e9")),
+            // Apollo 14 (Feb 1971)
+            ParallelRow::new(vec![9.0, 9.4, 3.45, 42.3], c("#7faedc")),
+            // Apollo 15 (Jul 1971) — first LRV
+            ParallelRow::new(vec![12.3, 18.5, 27.9, 76.7], c("#d55e00")),
+            // Apollo 16 (Apr 1972)
+            ParallelRow::new(vec![11.1, 20.2, 26.7, 95.7], c("#e8853d")),
+            // Apollo 17 (Dec 1972) — peak J-mission
+            ParallelRow::new(vec![12.6, 22.0, 35.7, 110.5], c("#eea063")),
         ],
     )
 }
@@ -791,15 +845,21 @@ pub fn treemap_fixture() -> Treemap {
     ))
 }
 
-/// Funnel fixture — 4-stage conversion.
+/// Funnel fixture — **Mercury Seven astronaut selection,
+/// 1958–59**. NASA invited 508 military test pilots, qualified
+/// 110 on records review, brought 32 to Lovelace Clinic + Wright-
+/// Patterson AFB for the physical / psychological screening, cut
+/// to 18 finalists, and announced **7** on 9 April 1959. The
+/// most-selective hiring funnel in spaceflight history.
+/// Source: Wikipedia article "Mercury Seven — Selection".
 #[must_use]
 pub fn funnel_fixture() -> Funnel {
     let c = |hex| ChartColor::from_hex(hex).unwrap();
     Funnel::new(vec![
-        FunnelStage::new("Visited", 10000.0, c("#0072b2")),
-        FunnelStage::new("Signed up", 4000.0, c("#56b4e9")),
-        FunnelStage::new("Activated", 1800.0, c("#7faedc")),
-        FunnelStage::new("Converted", 600.0, c("#a3c7ea")),
+        FunnelStage::new("Records reviewed", 110.0, c("#0072b2")),
+        FunnelStage::new("Lovelace + WPAFB tests", 32.0, c("#56b4e9")),
+        FunnelStage::new("Finalists", 18.0, c("#7faedc")),
+        FunnelStage::new("Mercury Seven", 7.0, c("#a3c7ea")),
     ])
 }
 
@@ -963,45 +1023,68 @@ pub fn contour_fixture() -> ContourPlot {
     ContourPlot::new(field, cols, rows, vec![0.15, 0.35, 0.55, 0.75, 0.9])
 }
 
-/// Ternary fixture — synthetic soil-composition points.
+/// Ternary fixture — **soil-texture composition (Sand / Silt /
+/// Clay) from the USDA soil-texture triangle**, eight reference
+/// soil types sampled across the diagram. The USDA triangle is
+/// the canonical figure agronomists use to classify soils
+/// (sandy loam, silty clay, clay loam, etc.) by their fraction
+/// of each particle size — published since 1951 in the *Soil
+/// Survey Manual*. Source: Wikipedia article "Soil texture".
 #[must_use]
 pub fn ternary_fixture() -> TernaryPlot {
     let red = ChartColor::from_hex("#0072b2").unwrap();
     let points = vec![
-        TernaryPoint::new(0.7, 0.2, 0.1, red),
-        TernaryPoint::new(0.4, 0.4, 0.2, red),
-        TernaryPoint::new(0.3, 0.5, 0.2, red),
-        TernaryPoint::new(0.5, 0.3, 0.2, red),
-        TernaryPoint::new(0.2, 0.3, 0.5, red),
-        TernaryPoint::new(0.1, 0.4, 0.5, red),
-        TernaryPoint::new(0.6, 0.1, 0.3, red),
-        TernaryPoint::new(0.3, 0.3, 0.4, red),
+        // Sand
+        TernaryPoint::new(0.85, 0.12, 0.03, red),
+        // Loamy sand
+        TernaryPoint::new(0.75, 0.20, 0.05, red),
+        // Sandy loam
+        TernaryPoint::new(0.65, 0.25, 0.10, red),
+        // Loam (the agronomist's ideal)
+        TernaryPoint::new(0.40, 0.40, 0.20, red),
+        // Silt loam
+        TernaryPoint::new(0.20, 0.65, 0.15, red),
+        // Silty clay loam
+        TernaryPoint::new(0.10, 0.55, 0.35, red),
+        // Clay loam
+        TernaryPoint::new(0.30, 0.35, 0.35, red),
+        // Clay
+        TernaryPoint::new(0.15, 0.20, 0.65, red),
     ];
     TernaryPlot::new("Sand", "Silt", "Clay", points)
 }
 
-/// Sankey fixture — 3-column flow (sources → mid → sinks).
+/// Sankey fixture — **NASA astronaut career flow, Groups 1–3
+/// (Mercury / Gemini / Apollo eras)**. Of the 30 astronauts
+/// across the three pre-1965 groups: roughly 17 came from Air
+/// Force backgrounds and 13 from Navy / Marine; they sorted into
+/// Mercury or Gemini training; and ultimately ~12 walked on the
+/// Moon during the Apollo programme while the rest did not (the
+/// "did not" includes Gus Grissom and Ed White, lost in Apollo 1,
+/// and the back-up rotation that never flew lunar missions).
+/// Counts approximated from the NASA Astronaut Group articles.
+/// Source: Wikipedia "NASA Astronaut Group 1 / 2 / 3".
 #[must_use]
 pub fn sankey_fixture() -> Sankey {
     let c = |hex| ChartColor::from_hex(hex).unwrap();
     let nodes = vec![
-        SankeyNode::new("Organic", 0, c("#0072b2")),
-        SankeyNode::new("Paid", 0, c("#d55e00")),
-        SankeyNode::new("Signed Up", 1, c("#009e73")),
-        SankeyNode::new("Trial", 1, c("#cc79a7")),
-        SankeyNode::new("Converted", 2, c("#56b4e9")),
-        SankeyNode::new("Lost", 2, c("#e69f00")),
+        SankeyNode::new("USAF", 0, c("#0072b2")),
+        SankeyNode::new("Navy / USMC", 0, c("#d55e00")),
+        SankeyNode::new("Mercury group", 1, c("#009e73")),
+        SankeyNode::new("Gemini group", 1, c("#cc79a7")),
+        SankeyNode::new("Walked on Moon", 2, c("#56b4e9")),
+        SankeyNode::new("Did not walk", 2, c("#e69f00")),
     ];
     let ribbon = c("#aaaaaa");
     let links = vec![
-        SankeyLink::new(0, 2, 40.0, ribbon),
-        SankeyLink::new(0, 3, 25.0, ribbon),
-        SankeyLink::new(1, 2, 20.0, ribbon),
-        SankeyLink::new(1, 3, 15.0, ribbon),
-        SankeyLink::new(2, 4, 35.0, ribbon),
-        SankeyLink::new(2, 5, 25.0, ribbon),
-        SankeyLink::new(3, 4, 15.0, ribbon),
-        SankeyLink::new(3, 5, 25.0, ribbon),
+        SankeyLink::new(0, 2, 4.0, ribbon),
+        SankeyLink::new(0, 3, 13.0, ribbon),
+        SankeyLink::new(1, 2, 3.0, ribbon),
+        SankeyLink::new(1, 3, 10.0, ribbon),
+        SankeyLink::new(2, 4, 1.0, ribbon),
+        SankeyLink::new(2, 5, 6.0, ribbon),
+        SankeyLink::new(3, 4, 11.0, ribbon),
+        SankeyLink::new(3, 5, 12.0, ribbon),
     ];
     Sankey::new(nodes, links)
 }
