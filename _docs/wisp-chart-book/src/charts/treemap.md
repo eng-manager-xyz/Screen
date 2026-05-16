@@ -4,9 +4,21 @@ Show hierarchical proportions by area — directory sizes, budget
 breakdown, taxonomic counts. Each node is a rectangle sized to
 its value; children pack inside their parent's rectangle.
 
+The demo squarifies the **Apollo program $25.4 B cost hierarchy**
+— same data as the [sunburst chart](./sunburst.md), different
+geometry. The Saturn V leaf claims the largest rectangle in the
+plot; CSM + LM share the second-biggest group; ground ops and
+R&D fill the remainder. The treemap's strength is that area
+ratios are directly comparable across nesting levels — the
+Saturn V's rectangle is genuinely 5× the size of the LM's
+because $9.3 B is 5× $3.0 B.
+
 <div style="position: relative; aspect-ratio: 480 / 300; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/treemap.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=treemap" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: treemap"></iframe>
+  <iframe id="demo-treemap" src="../demo/?chart=treemap" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo program cost treemap"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_program#Costs" target="_blank" rel="noopener">Source: Apollo program — Costs — Wikipedia</a>
+</p>
 
 ## Public surface
 

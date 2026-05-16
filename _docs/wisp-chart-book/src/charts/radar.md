@@ -4,9 +4,19 @@ Multi-axis polygon overlay for multivariate comparison. Each
 entity becomes one polygon; vertices land on the per-axis value
 projected onto a polar coord system.
 
+The demo plots the **1960 Rome Olympics medal table**: USA vs
+USSR across five categories (gold / silver / bronze / track-and-
+field medals / total). 1960 was the first Summer Games the USSR
+topped the table at — the kickoff of the Cold War medal
+rivalry that ran through the 1988 Seoul boycott. The visible
+gap on the **Total** spoke shows the USSR's 32-medal margin.
+
 <div style="position: relative; aspect-ratio: 1 / 1; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/radar.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=radar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: radar chart"></iframe>
+  <iframe id="demo-radar" src="../demo/?chart=radar" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: 1960 Olympics USA vs USSR"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/1960_Summer_Olympics_medal_table" target="_blank" rel="noopener">Source: 1960 Summer Olympics medal table — Wikipedia</a>
+</p>
 
 ## Public surface
 

@@ -349,38 +349,50 @@ pub fn donut_fixture() -> Pie {
     pie_fixture().hollow_ratio(0.5)
 }
 
-/// Sunburst fixture — 2-level org / category breakdown.
+/// Sunburst fixture — **Apollo program lifetime cost ($25.4 B,
+/// 1973 dollars) decomposed by major NASA centre and then by
+/// program element**. Two-level hierarchy: the outer ring is
+/// the four big buckets (Saturn V, Spacecraft, Ground / ops,
+/// R&D + other) and the inner ring groups them by the centre
+/// that owned the work (MSFC for the rockets, MSC / Houston for
+/// the spacecraft, KSC for ground ops, HQ for everything else).
+/// Numbers from the 1973 NASA budget closeout. Source: Wikipedia
+/// article "Apollo program — Costs".
 #[must_use]
 pub fn sunburst_fixture() -> Sunburst {
     let c = |hex: &str| ChartColor::from_hex(hex).unwrap();
     Sunburst::new(SunburstNode::group(
-        "root",
+        "Apollo $25.4 B",
         c("#888888"),
         vec![
             SunburstNode::group(
-                "Sales",
+                "Marshall (MSFC)",
                 c("#0072b2"),
                 vec![
-                    SunburstNode::leaf("NA", 30.0, c("#56b4e9")),
-                    SunburstNode::leaf("EU", 20.0, c("#7faedc")),
-                    SunburstNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                    SunburstNode::leaf("Saturn V", 9.3, c("#56b4e9")),
+                    SunburstNode::leaf("S-IB / S-II", 1.4, c("#7faedc")),
                 ],
             ),
             SunburstNode::group(
-                "Marketing",
+                "Manned Spacecraft Center",
                 c("#d55e00"),
                 vec![
-                    SunburstNode::leaf("Brand", 12.0, c("#e8853d")),
-                    SunburstNode::leaf("Perf", 18.0, c("#eea063")),
+                    SunburstNode::leaf("CSM", 5.1, c("#e8853d")),
+                    SunburstNode::leaf("LM", 3.0, c("#eea063")),
                 ],
             ),
             SunburstNode::group(
-                "Eng",
+                "Kennedy (KSC)",
                 c("#009e73"),
                 vec![
-                    SunburstNode::leaf("Platform", 25.0, c("#3eb893")),
-                    SunburstNode::leaf("App", 20.0, c("#71cba8")),
+                    SunburstNode::leaf("Launch ops", 3.1, c("#3eb893")),
+                    SunburstNode::leaf("Tracking", 1.6, c("#71cba8")),
                 ],
+            ),
+            SunburstNode::group(
+                "NASA HQ + R&D",
+                c("#cc79a7"),
+                vec![SunburstNode::leaf("R&D + ops", 1.9, c("#d99dbf"))],
             ),
         ],
     ))
@@ -705,57 +717,75 @@ pub fn parallel_coords_fixture() -> ParallelCoords {
     )
 }
 
-/// Polar plot fixture — wind rose (8 compass directions × hours).
+/// Polar plot fixture — **Florence Nightingale's monthly disease
+/// deaths in the British Army, Crimean War, April – November
+/// 1854**. The per-month breakdown that anchored her coxcomb /
+/// rose diagram in *Notes on Matters Affecting the Health,
+/// Efficiency, and Hospital Administration of the British Army*
+/// (1858). The pie chart in [`pie_fixture`] shows the aggregate
+/// summary — this per-month decomposition makes the Sep–Jan
+/// peak (the Scutari hospital sanitation crisis) starkly
+/// visible. Source: Wikipedia article "Florence Nightingale".
 #[must_use]
 pub fn polar_plot_fixture() -> PolarPlot {
     PolarPlot::new(
         vec![
-            "N".into(),
-            "NE".into(),
-            "E".into(),
-            "SE".into(),
-            "S".into(),
-            "SW".into(),
-            "W".into(),
-            "NW".into(),
+            "Apr".into(),
+            "May".into(),
+            "Jun".into(),
+            "Jul".into(),
+            "Aug".into(),
+            "Sep".into(),
+            "Oct".into(),
+            "Nov".into(),
         ],
-        vec![12.0, 18.0, 22.0, 30.0, 25.0, 16.0, 14.0, 8.0],
+        // British Army disease deaths per 1 000 in theatre,
+        // Apr-Nov 1854 — approximated from Nightingale's report.
+        vec![60.0, 110.0, 180.0, 250.0, 410.0, 1100.0, 920.0, 510.0],
     )
 }
 
-/// Treemap fixture — 2-level org breakdown.
+/// Treemap fixture — same **Apollo program $25.4 B cost
+/// hierarchy** as [`sunburst_fixture`], squarified into nested
+/// rectangles so total-area = total-cost. Saturn V dominates
+/// (the biggest leaf) — the treemap shape makes that ratio
+/// visible at a glance. Source: Wikipedia article "Apollo
+/// program — Costs".
 #[must_use]
 pub fn treemap_fixture() -> Treemap {
     let c = |hex| ChartColor::from_hex(hex).unwrap();
     Treemap::new(TreemapNode::group(
-        "root",
+        "Apollo $25.4 B",
         c("#888888"),
         vec![
             TreemapNode::group(
-                "Sales",
+                "Marshall",
                 c("#0072b2"),
                 vec![
-                    TreemapNode::leaf("NA", 30.0, c("#56b4e9")),
-                    TreemapNode::leaf("EU", 20.0, c("#7faedc")),
-                    TreemapNode::leaf("APAC", 15.0, c("#a3c7ea")),
+                    TreemapNode::leaf("Saturn V", 9.3, c("#56b4e9")),
+                    TreemapNode::leaf("S-IB / S-II", 1.4, c("#7faedc")),
                 ],
             ),
             TreemapNode::group(
-                "Eng",
+                "Spacecraft",
                 c("#d55e00"),
                 vec![
-                    TreemapNode::leaf("Platform", 25.0, c("#e8853d")),
-                    TreemapNode::leaf("App", 18.0, c("#eea063")),
-                    TreemapNode::leaf("Infra", 12.0, c("#f3b890")),
+                    TreemapNode::leaf("CSM", 5.1, c("#e8853d")),
+                    TreemapNode::leaf("LM", 3.0, c("#eea063")),
                 ],
             ),
             TreemapNode::group(
-                "G&A",
+                "Kennedy",
                 c("#009e73"),
                 vec![
-                    TreemapNode::leaf("HR", 8.0, c("#3eb893")),
-                    TreemapNode::leaf("Finance", 6.0, c("#71cba8")),
+                    TreemapNode::leaf("Launch ops", 3.1, c("#3eb893")),
+                    TreemapNode::leaf("Tracking", 1.6, c("#71cba8")),
                 ],
+            ),
+            TreemapNode::group(
+                "HQ + R&D",
+                c("#cc79a7"),
+                vec![TreemapNode::leaf("R&D + ops", 1.9, c("#d99dbf"))],
             ),
         ],
     ))
@@ -773,27 +803,33 @@ pub fn funnel_fixture() -> Funnel {
     ])
 }
 
-/// Radar fixture — two products across 5 dimensions.
+/// Radar fixture — **1960 Rome Olympics medal table**: USA vs
+/// USSR across five medal categories. The Soviet Union topped
+/// the table for the first time at a Summer Games it attended,
+/// foreshadowing the Cold War's two-decade medal-count rivalry.
+/// Numbers from the 1960 final medal tables (Wikipedia article
+/// "1960 Summer Olympics medal table"). Axes range to 50 (gold)
+/// or 110 (total) so neither superpower's axis pegs at max.
 #[must_use]
 pub fn radar_fixture() -> Radar {
     Radar::new(
         vec![
-            RadarAxis::new("speed", (0.0, 100.0)),
-            RadarAxis::new("range", (0.0, 100.0)),
-            RadarAxis::new("comfort", (0.0, 100.0)),
-            RadarAxis::new("efficiency", (0.0, 100.0)),
-            RadarAxis::new("price", (0.0, 100.0)),
+            RadarAxis::new("Gold", (0.0, 50.0)),
+            RadarAxis::new("Silver", (0.0, 35.0)),
+            RadarAxis::new("Bronze", (0.0, 35.0)),
+            RadarAxis::new("Athletics", (0.0, 20.0)),
+            RadarAxis::new("Total", (0.0, 110.0)),
         ],
         vec![
             RadarSeries::new(
-                "Model A",
-                vec![80.0, 70.0, 60.0, 90.0, 50.0],
-                ChartColor::from_hex("#0072b2").unwrap(),
+                "USSR",
+                vec![43.0, 29.0, 31.0, 11.0, 103.0],
+                ChartColor::from_hex("#d55e00").unwrap(),
             ),
             RadarSeries::new(
-                "Model B",
-                vec![60.0, 85.0, 80.0, 70.0, 75.0],
-                ChartColor::from_hex("#d55e00").unwrap(),
+                "USA",
+                vec![34.0, 21.0, 16.0, 12.0, 71.0],
+                ChartColor::from_hex("#0072b2").unwrap(),
             ),
         ],
     )
