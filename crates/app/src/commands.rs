@@ -396,33 +396,33 @@ mod tests {
     }
 
     #[test]
-    fn anchor_centres_below_click_on_primary_monitor() {
+    fn anchor_aligns_popover_right_edge_with_click() {
         let monitors = vec![mon(0, 0, 1920, 1080)];
-        let (x, y) = compute_popover_anchor(960, 24, 800, 600, &monitors).expect("Some(_)");
-        // Centred horizontally on the click (960 - 800/2 = 560),
-        // 4px below the click on the y axis (24 + 4 = 28).
-        assert_eq!(x, 560);
-        assert_eq!(y, 28);
+        // Typical menubar click near the top-right of a 1920-wide screen.
+        let (x, y) = compute_popover_anchor(1820, 12, 800, 600, &monitors).expect("Some(_)");
+        // Right-anchored: window's right edge at click_x (1820), so
+        // top-left x = 1820 - 800 = 1020. Below the click by 4px: y = 16.
+        assert_eq!(x, 1020);
+        assert_eq!(y, 16);
     }
 
     #[test]
     fn anchor_picks_secondary_monitor_for_a_click_on_it() {
-        // Two side-by-side 1920×1080 monitors. A click at x=2050 lives
-        // in the second monitor; the popover should anchor on it.
+        // Two side-by-side 1920×1080 monitors. A click at x=3820 lives
+        // in the second monitor's top-right; the popover anchors there.
         let monitors = vec![mon(0, 0, 1920, 1080), mon(1920, 0, 1920, 1080)];
-        let (x, _) = compute_popover_anchor(2050, 12, 800, 600, &monitors).expect("Some(_)");
-        // Clamped left edge of monitor 2 is 1920; the centred-on-click
-        // raw value (2050 - 400 = 1650) would slip onto monitor 1, so
-        // the clamp pulls it to 1920.
-        assert_eq!(x, 1920);
+        let (x, _) = compute_popover_anchor(3820, 12, 800, 600, &monitors).expect("Some(_)");
+        // raw_x = 3820 - 800 = 3020; monitor 2 spans [1920..3840];
+        // max_x = 3840 - 800 = 3040; 3020 is within [1920, 3040].
+        assert_eq!(x, 3020);
     }
 
     #[test]
-    fn anchor_clamps_right_edge_so_popover_stays_on_screen() {
+    fn anchor_clamps_left_when_click_is_near_origin() {
         let monitors = vec![mon(0, 0, 1920, 1080)];
-        // Click near right edge — raw centre would push the popover
-        // off-screen; clamp pulls it back.
-        let (x, _) = compute_popover_anchor(1900, 12, 800, 600, &monitors).expect("Some(_)");
-        assert_eq!(x, 1920 - 800);
+        // Click near x=0 (e.g. dev menubar arrangement) — raw_x would
+        // be negative; clamp pulls left edge to monitor.x.
+        let (x, _) = compute_popover_anchor(50, 12, 800, 600, &monitors).expect("Some(_)");
+        assert_eq!(x, 0);
     }
 }

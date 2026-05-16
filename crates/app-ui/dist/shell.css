@@ -82,3 +82,125 @@
   font-size: 11px;
   pointer-events: none;
 }
+
+/* Tray-popover stub surface (M-TRAY.0 / AUT-249). Rendered when the
+ * Tauri `tray-popover` window opens the bundle with `?tray=stub` in
+ * the URL — a deliberately empty filled rectangle so the click→show
+ * round-trip is visible. The `transparent: true` window flag in
+ * tauri.conf.json means we MUST paint a background here, or the popover
+ * would be invisible (footgun documented in CLAUDE.md / AUT-249). */
+.tray-popover-stub {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-1, #1a1d21);
+  border-radius: 12px;
+}
+
+/* Camera preview surface (M-CAM.3 / AUT-257).
+ *
+ * IMPORTANT: no `border-radius` on `.camera-preview`. The circular
+ * mask is rendered into the wisp scene + baked into the BGRA
+ * readback bytes. CSS-rounding the same edge would visibly
+ * double-crop the circle. */
+.camera-preview-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+}
+.camera-preview {
+  width: 240px;
+  height: 240px;
+  display: block;
+  margin: 0 auto;
+  background: var(--surface-1, #1a1d21);
+}
+.camera-preview-surface[data-state="initialising"] .camera-preview,
+.camera-preview-surface[data-state="awaiting-permission"] .camera-preview,
+.camera-preview-surface[data-state="permission-denied"] .camera-preview {
+  opacity: 0.4;
+}
+.camera-preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  color: var(--fg, #fff);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* Camera picker dropdown (M-CAM.4 / AUT-258 + M-REC.1 / AUT-260). */
+.camera-picker {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto 12px;
+}
+.camera-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.camera-picker-trigger:hover {
+  background: var(--surface-2, #25282d);
+}
+.camera-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 240px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.camera-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.camera-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #fff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.camera-picker-row:hover {
+  background: var(--surface-2, #25282d);
+}
+.camera-picker-row-selected {
+  background: var(--surface-2, #25282d);
+}
+.camera-picker-row-check {
+  color: var(--accent, #4fc3f7);
+}
+.camera-picker-state {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.camera-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}
