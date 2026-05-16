@@ -6,6 +6,38 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-RECP.0..5 — Polish-track foundations (AUT-261..266)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — pure-Rust foundations for all six M-RECORDER-V1 polish tickets landed together: state machines + cross-OS shell-command maps + RAII guards + sliding-window monitors + integration smoke skeleton. OS-level wiring (objc2 IOPMAssertion / windows-rs SetThreadExecutionState / D-Bus inhibit / actual Tauri monitor placement) is **deferred** to follow-up commits that need real hardware to verify; the unit-testable surface is at parity with the M-RECORDER-V1 deliverable on every OS.
+- **Linear:** [AUT-261](https://linear.app/harwood/issue/AUT-261) (M-RECP.0) · [AUT-262](https://linear.app/harwood/issue/AUT-262) (M-RECP.1) · [AUT-263](https://linear.app/harwood/issue/AUT-263) (M-RECP.2) · [AUT-264](https://linear.app/harwood/issue/AUT-264) (M-RECP.3) · [AUT-265](https://linear.app/harwood/issue/AUT-265) (M-RECP.4) · [AUT-266](https://linear.app/harwood/issue/AUT-266) (M-RECP.5). All filed under M-RECORDER-V1 milestone.
+- **Files added:**
+  - `crates/app/src/recp.rs` — module hub.
+  - `crates/app/src/recp/settings_deep_link.rs` (M-RECP.0) — `SettingsPane { Camera, Microphone, ScreenRecording }` + `open_command(pane)` returning the OS-specific shell args (macOS `x-apple.systempreferences:` URLs / Windows `ms-settings:` URIs / Linux `None`). 3 cfg-gated tests.
+  - `crates/app/src/recp/tray_positioning.rs` (M-RECP.1) — `MonitorBounds`, `pick_monitor(click_x, click_y, monitors)`, `position_window_below_click(click_x, click_y, w, h, monitor)` with clamping. 7 unit tests covering single + multi-monitor + edge clamps.
+  - `crates/app/src/recp/fps_monitor.rs` (M-RECP.2) — `FrameRateMonitor` sliding-window with hysteresis. `WARN_THRESHOLD_FPS = 24`, `RECOVER_THRESHOLD_FPS = 26`. Emits `Transition::DroppedBelow(fps)` / `Transition::Recovered(fps)` for the caller to log. 5 tests including a 200-frame round-trip across the threshold.
+  - `crates/app/src/recp/keep_awake.rs` (M-RECP.3) — `KeepAwakeGuard` RAII with a process-wide `active_assertions()` probe for the smoke test in M-RECP.4. Today: counter-only stub; the real `IOPMAssertion` / `SetThreadExecutionState` / D-Bus inhibit lands when M-CAM.3's pipeline gets a `PreviewSession` to attach the guard to. 3 tests covering acquire/drop/explicit-release-idempotence.
+  - `crates/app/src/recp/crossfade.rs` (M-RECP.5) — `CrossfadeState { Steady, InProgress { progress: u8 }, Settling }` + `CROSSFADE_DURATION = 150 ms`. `tick(elapsed)` advances the alpha proportionally; `begin()` resets a mid-crossfade for the third-camera-click case. 5 tests covering the full lifecycle.
+  - `crates/app/tests/cleanup_smoke.rs` (M-RECP.4) — integration test that probes `pgrep gst-launch-1.0` and asserts a sane baseline. Cfg-skips Windows. The "actually run the binary + assert post-quit cleanup" pattern lands when M-CAM.3's gst pipeline really starts inside `start_preview`.
+- **Files changed:**
+  - `crates/app/src/lib.rs` — `pub mod recp;`.
+- **Tests:** 23 new unit tests + 1 integration smoke = **37/37 lib tests + 1/1 integration tests** pass.
+- **Gates run, all green:**
+  - `cargo check -p screen-app`.
+  - `cargo nextest run -p screen-app --lib` — 37/37.
+  - `cargo nextest run -p screen-app --test cleanup_smoke` — 1/1.
+  - `cargo clippy -p screen-app --all-targets -- -D warnings` — green after fixing `redundant_closure_for_method_calls`, `unnecessary_wraps` (with reasoned allow), `manual_range_contains`, `doc_markdown` nits.
+  - `cargo fmt --all --check` — green.
+- **Deferred — the actual OS calls** (each one a self-contained follow-up commit):
+  - **M-RECP.0 OS dispatch:** `commands::open_settings_pane(pane)` shells out to `open_command()` via `std::process::Command`. Currently the open_command map exists; the Tauri command wrapper does not.
+  - **M-RECP.1 Tauri integration:** in `main.rs`'s `on_tray_icon_event`, capture `event.position` + call `app.available_monitors()` + `pick_monitor` + `position_window_below_click` + `window.set_position`. Currently the picker math exists; the Tauri click-handler does not call it.
+  - **M-RECP.2 wiring:** instantiate `FrameRateMonitor` inside `PreviewSession`; call `observe(Instant::now().elapsed())` on every emitted frame; on `Transition::DroppedBelow` invoke `tracing::warn!`. Currently the monitor exists; the call site doesn't.
+  - **M-RECP.3 real OS assertion:** `IOPMAssertionCreateWithName(kIOPMAssertionTypeNoDisplaySleep, ...)` on macOS, `SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_CONTINUOUS)` on Windows, `org.freedesktop.ScreenSaver.Inhibit` D-Bus on Linux. The RAII guard exists; today it's a counter-only stub.
+  - **M-RECP.4 binary-spawn variant:** the current smoke just probes pre-existing processes. Spawning the screen-app binary + asserting post-SIGTERM cleanup requires the M-CAM.3 gst pipeline to actually launch under `start_preview`.
+  - **M-RECP.5 wiring:** insert `CrossfadeState` into the wisp scene's secondary sprite slot; call `tick(elapsed)` on each render frame; transition the gst pipeline ownership on `Settling`. The state machine exists; the wisp scene doesn't yet have a second sprite slot.
+- **What this closes:** the unit-testable + cross-OS-buildable surface for every M-RECORDER-V1 polish ticket. Future hardware-verification commits swap the deferred stubs for real OS calls — the public API + state-machine semantics + tests don't change.
+
+---
+
 ## M-CAM.4 + M-REC.1 — Camera picker dropdown wired to live IPC (AUT-258, AUT-260)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — single combined commit covering both tickets since the IPC plumbing + dropdown UX are tightly coupled. `<CameraPicker />` queries `list_cameras` via Tauri invoke, auto-selects a default (with LocalStorage "last-used" persistence), and starts the preview via `start_preview(camera_id)`. M-REC.0 (formal DisplaySourceCard wrap) is partially landed via CSS + structure but **not** by reshaping the storybook `DisplaySourceView`; see "Deferred" for the breaking-change-avoidance rationale.
