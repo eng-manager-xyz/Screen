@@ -138,6 +138,26 @@ impl FlexibleTextEngine {
         )))
     }
 
+    /// Build the engine with a `FontSystem` seeded from raw font
+    /// bytes. Useful for `wasm32` targets (no FS access) and for
+    /// crates that embed their bundled fonts via `include_bytes!`
+    /// — see `wisp_chart::chart_text` for the canonical caller.
+    /// No system fonts are loaded — only the supplied buffers are
+    /// available, and family-name lookups
+    /// ([`WispText::with_font_family`](super::WispText::with_font_family))
+    /// resolve against this set.
+    #[must_use]
+    pub fn from_font_bytes(bytes: impl IntoIterator<Item = Vec<u8>>) -> Self {
+        let mut db = cosmic_text::fontdb::Database::new();
+        for data in bytes {
+            db.load_font_data(data);
+        }
+        Self::with_font_system(FontSystem::new_with_locale_and_db(
+            "en-US".to_owned(),
+            db,
+        ))
+    }
+
     /// Borrow the shared `FontSystem` handle. The
     /// [`FlexibleTextRenderer`](super::FlexibleTextRenderer) constructor
     /// uses this to wire layout + rasterization to the same font

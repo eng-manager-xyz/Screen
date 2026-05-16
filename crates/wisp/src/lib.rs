@@ -39,6 +39,11 @@ pub mod path {
     pub use crate::scene::path::{Path, PathBuilder, PathCommand};
 }
 
+// Re-export wgpu so downstream crates (wisp-chart, etc.) can name
+// wgpu types like `TextureFormat` without depending on wgpu directly
+// — keeps wgpu's major version pinned in one place.
+pub use wgpu;
+
 pub use blend::BlendMode;
 pub use color::Color;
 pub use error::Error;

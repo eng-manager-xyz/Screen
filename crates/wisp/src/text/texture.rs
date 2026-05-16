@@ -232,6 +232,26 @@ impl TextTexturePipeline {
         })
     }
 
+    /// Build a pipeline with an engine seeded from raw font bytes.
+    /// See [`FlexibleTextEngine::from_font_bytes`] — designed for
+    /// crates that ship their fonts via `include_bytes!` and want the
+    /// same font set in native + wasm builds.
+    #[must_use]
+    pub fn from_font_bytes(
+        app: &Application,
+        format: wgpu::TextureFormat,
+        bytes: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Self {
+        let engine = FlexibleTextEngine::from_font_bytes(bytes);
+        let renderer = FlexibleTextRenderer::new(app, format, engine.font_system_handle());
+        Self {
+            engine,
+            renderer: RefCell::new(renderer),
+            cache: RefCell::new(TextTextureCache::new()),
+            format,
+        }
+    }
+
     /// Color format the pipeline writes into (matches what was passed
     /// to [`Self::new`] / [`Self::from_font_paths`]).
     #[must_use]

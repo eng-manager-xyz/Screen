@@ -36,6 +36,33 @@ use wisp::text::{TextTexturePipeline, WispFontWeight, WispText, WispTextStyle};
 
 use crate::color::Color as ChartColor;
 
+/// Bundled Inter font bytes — regular + bold weights. Embedded
+/// via `include_bytes!` so the pipeline works identically on native
+/// and `wasm32-unknown-unknown` targets. Both files originate from
+/// the [Inter project](https://github.com/rsms/inter) under the SIL
+/// Open Font License 1.1.
+const INTER_REGULAR_TTF: &[u8] =
+    include_bytes!("../assets/fonts/Inter-Regular.ttf");
+const INTER_BOLD_TTF: &[u8] =
+    include_bytes!("../assets/fonts/Inter-Bold.ttf");
+
+/// Build a [`TextTexturePipeline`] seeded with the bundled Inter
+/// font set (Regular + Bold). Every chart that emits text via
+/// [`build_text_sprite`] should route through a pipeline built this
+/// way — the family lookup in `WispText::with_font_family("Inter")`
+/// requires Inter to be in the font database.
+#[must_use]
+pub fn pipeline_with_inter(
+    app: &wisp::application::Application,
+    format: wisp::wgpu::TextureFormat,
+) -> TextTexturePipeline {
+    TextTexturePipeline::from_font_bytes(
+        app,
+        format,
+        [INTER_REGULAR_TTF.to_vec(), INTER_BOLD_TTF.to_vec()],
+    )
+}
+
 /// The single font family every chart renders text in. Mirrors the
 /// `crates/wisp-storybook/assets/fonts/Inter-*.ttf` files; if the
 /// flexible engine can't resolve "Inter" it falls back to whatever
