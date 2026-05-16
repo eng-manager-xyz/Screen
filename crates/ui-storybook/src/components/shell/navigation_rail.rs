@@ -71,6 +71,15 @@ pub fn NavigationRail(
     /// badge's `open` state.
     #[prop(optional)]
     workspace_open: bool,
+    /// Optional callback fired when the user clicks an enabled rail
+    /// item (M-TRAY.2 / AUT-251). The argument is the clicked item's
+    /// [`AppSection`]. M-TRAY.4 (AUT-253) wires this in
+    /// `crates/app-ui` to drive the active-surface signal; the
+    /// storybook stories leave it `None` so SSR snapshots stay
+    /// identical to the pre-callback baseline. Disabled items never
+    /// fire the callback.
+    #[prop(optional)]
+    on_select: Option<Callback<AppSection>>,
 ) -> impl IntoView {
     view! {
         <nav class="nav-rail" aria-label="Primary">
@@ -79,7 +88,7 @@ pub fn NavigationRail(
             </div>
             <ul class="nav-rail-items" role="tablist">
                 {items.into_iter()
-                    .map(|item| render_item(item, active))
+                    .map(|item| render_item(item, active, on_select))
                     .collect_view()}
             </ul>
             <div class="nav-rail-bottom">
@@ -89,7 +98,11 @@ pub fn NavigationRail(
     }
 }
 
-fn render_item(item: NavItemView, active: AppSection) -> impl IntoView {
+fn render_item(
+    item: NavItemView,
+    active: AppSection,
+    on_select: Option<Callback<AppSection>>,
+) -> impl IntoView {
     let is_active = item.section == active;
     let mut class = String::from("nav-rail-item");
     class.push_str(" nav-rail-item-");
@@ -104,6 +117,17 @@ fn render_item(item: NavItemView, active: AppSection) -> impl IntoView {
         .count
         .filter(|c| *c > 0)
         .map(|c| view! { <span class="nav-rail-count">{c.to_string()}</span> });
+    // Click handler: fires the callback with the item's section when
+    // present + the item isn't disabled. `Callback<T>` is `Copy` so
+    // both `on_select` and `item_section` can be moved into the
+    // closure freely.
+    let item_section = item.section;
+    let item_disabled = item.disabled;
+    let on_click = move |_| {
+        if !item_disabled && let Some(cb) = on_select {
+            cb.run(item_section);
+        }
+    };
     view! {
         <li>
             <button
@@ -113,6 +137,7 @@ fn render_item(item: NavItemView, active: AppSection) -> impl IntoView {
                 aria-disabled=item.disabled
                 disabled=item.disabled
                 data-section=item.section.slug()
+                on:click=on_click
             >
                 <span class="nav-rail-icon" aria-hidden="true">{item.icon}</span>
                 <span class="nav-rail-label">{item.label}</span>

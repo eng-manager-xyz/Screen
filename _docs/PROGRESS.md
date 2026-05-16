@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-TRAY.2 — `NavigationRail` gains `on_select: Callback<AppSection>` (AUT-251)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — pivoted from the original "add `initial_surface` prop to AppShell" spec (M-TRAY.1 audit found AppShell has no internal state) to bringing forward M-TRAY.4's `on_select` callback. M-TRAY.4 now becomes a wiring-only ticket: the API extension is already in place.
+- **Linear:** [AUT-251](https://linear.app/harwood/issue/AUT-251) (M-RECORDER-V0 milestone).
+- **Files changed:**
+  - `crates/ui-storybook/src/components/shell/navigation_rail.rs` — `NavigationRail` gains `#[prop(optional)] on_select: Option<Callback<AppSection>>`. `render_item` takes the same prop and wires `on:click=on_click` where `on_click` skips disabled items + fires the callback with the item's `AppSection`. Uses the Rust 2024 chained-if-let pattern (`if !item_disabled && let Some(cb) = on_select`) per the existing CLAUDE.md convention.
+- **Pivot rationale (per M-TRAY.1 audit doc):**
+  - Original ticket spec asked for `#[prop(default = AppSection::Recorder)] initial_surface: AppSection` on `AppShell`. But `AppShell` is pure slot composition with no internal state — there's no signal for the prop to drive. The active-surface state needs to live in `crates/app-ui`, not AppShell.
+  - Audit recommended pulling `Callback<AppSection>` into `NavigationRail` here (instead of M-TRAY.4) so the API extension is complete before M-TRAY.3 needs to wire callers. Net result: smaller, cleaner ticket.
+  - "5 stories per surface" deliverable was already done — existing stories cover `nav-rail-record-active`, `-library-active`, `-editor-active`, `-cursor-active`, `-prefs-active` (M-UI.2 / AUT-122). No new stories needed.
+- **Backwards compatibility:** `on_select` is optional and defaults to `None`. Every existing call site (storybook stories, M-TRAY.1's `dev_appshell.rs`) continues working unchanged. The `<button>` HTML output is byte-identical with/without the callback because Leptos `on:click` doesn't produce an HTML attribute — it's a runtime event listener attached during CSR mount.
+- **Tests:** existing storybook snapshot suite (`story_html_matches_snapshot`) still passes 90/90 — proving the SSR output is unchanged.
+- **Gates run, all green:**
+  - `cargo check -p ui-storybook` — green (1m 13s).
+  - `cargo nextest run -p ui-storybook` — 90/90 pass (20.85s).
+  - `cargo clippy -p ui-storybook --all-targets -- -D warnings` — green after the chained-if-let refactor.
+  - `cargo fmt --all --check` — green.
+- **Impact on subsequent tickets:**
+  - **M-TRAY.3** will pass the rail's `active=` from a `RwSignal<AppSection>` in `crates/app-ui`.
+  - **M-TRAY.4** drops to a one-liner: `on_select=Callback::new(move |section| set_active.set(section))`. No more API expansion needed.
+
+---
+
 ## M-TRAY.1 — AppShell CSR audit + `tray-appshell-preview` smoke (AUT-250)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — audit doc shipped with concrete structural findings; CSR-readiness proven via the new `tray-appshell-preview` Cargo feature + `just dev-appshell` recipe; wasm32 build of the preview is green on both with-feature and default paths. Deferred: the `wasm-bindgen-test` interaction smoke (intentionally skipped per audit doc reasoning — see "Deferred" below).
