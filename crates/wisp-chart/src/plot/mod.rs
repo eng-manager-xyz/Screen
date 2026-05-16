@@ -192,8 +192,9 @@ impl Plot {
 
     /// Internal cartesian layout — plot rect + scales + tick
     /// lists used by both `render_bars` and
-    /// `axis_text_labels`. Returns `None` when the encodings
-    /// don't define a renderable chart (missing X / Y, etc.).
+    /// [`axis_text_nodes`](Self::axis_text_nodes). Returns `None`
+    /// when the encodings don't define a renderable chart (missing
+    /// X / Y, etc.).
     fn cartesian_layout(&self, theme: &Theme, viewport_px: Vec2) -> Option<CartesianLayout> {
         let _ = theme;
         let x_enc = self.find_encoding(Channel::X)?;
@@ -1092,7 +1093,7 @@ type SeriesPoints = Vec<(String, Vec<(f32, f32)>)>;
 
 /// Internal cartesian-layout cache returned by
 /// `Plot::cartesian_layout` and consumed by `render_bars` +
-/// `axis_text_labels`.
+/// `axis_text_nodes`.
 struct CartesianLayout {
     plot_rect: Rect,
     x_scale: BandScale<String>,

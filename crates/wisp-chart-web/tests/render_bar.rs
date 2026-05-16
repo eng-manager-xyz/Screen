@@ -30,9 +30,9 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use pollster::block_on;
+use wisp::RenderTexture;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::RenderTexture;
 use wisp_chart::Theme;
 use wisp_chart::plot::{self, DataFrame, Mark, Plot, ScaleKind, Value};
 

@@ -180,7 +180,6 @@ pub fn emit_y_axis_lines(
     g
 }
 
-
 /// Emit X-axis tick labels + optional title as Inter-text [`wisp::FlexText`]
 /// nodes. The new path that replaces the bitmap-font
 /// [`emit_x_axis_text`] — every chart that emits text should call
@@ -435,10 +434,8 @@ mod tests {
             wisp::application::AppConfig::default(),
         ))
         .expect("app");
-        let pipeline = crate::chart_text::pipeline_with_inter(
-            &app,
-            wisp::wgpu::TextureFormat::Rgba8UnormSrgb,
-        );
+        let pipeline =
+            crate::chart_text::pipeline_with_inter(&app, wisp::wgpu::TextureFormat::Rgba8UnormSrgb);
         (app, pipeline)
     }
 
@@ -472,7 +469,11 @@ mod tests {
     }
 
     #[test]
-    fn y_axis_title_has_negative_pi_over_2_rotation() {
+    fn y_axis_title_is_horizontal_above_plot() {
+        // Y-axis titles used to render rotated `-π/2`; the FlexText
+        // path renders them horizontally above the plot's top-left
+        // (see `emit_y_axis_text`). Assert the title's anchor
+        // sits *above* the first tick, with zero rotation.
         let theme = theme();
         let (app, pipeline) = boot_pipeline();
         let texts = emit_y_axis_text(
@@ -489,13 +490,21 @@ mod tests {
             theme.text_primary,
             Some("Revenue"),
         );
-        // Last text is the title; verify its rotation.
         let title = texts.last().expect("title");
-        let expected = -std::f32::consts::FRAC_PI_2;
         assert!(
-            (title.container.transform.rotation - expected).abs() < 1e-5,
-            "expected Y-axis title rotation -π/2, got {}",
+            title.container.transform.rotation.abs() < 1e-5,
+            "Y-axis title now renders horizontal — expected rotation 0, got {}",
             title.container.transform.rotation
+        );
+        // Title's NDC y should be above the first tick (tick at
+        // pixel y=100 ⇒ NDC y ≈ 0.375; the title sits ~14 px
+        // higher ⇒ NDC y ≈ 0.75 above the plot top at y=40 → ~0.75).
+        let tick = texts.first().expect("first tick");
+        assert!(
+            title.container.transform.position.y > tick.container.transform.position.y,
+            "Y-axis title should sit above the first tick label in NDC. Tick y={}, title y={}",
+            tick.container.transform.position.y,
+            title.container.transform.position.y
         );
     }
 

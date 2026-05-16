@@ -17,9 +17,9 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use pollster::block_on;
+use wisp::RenderTexture;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::RenderTexture;
 use wisp_chart::Theme;
 use wisp_chart::color::Color as ChartColor;
 use wisp_chart::indicator::{Gauge, Zone};

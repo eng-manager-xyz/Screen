@@ -1101,8 +1101,7 @@ impl Renderer {
             // every Graphics primitive — the whole point of having a
             // separate node type from Sprite.
             let (flex_calls, flex_drawn) = self.flex_text.draw_stage(app, pass, stage);
-            stats.draw_calls =
-                sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
+            stats.draw_calls = sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
             stats.sprites_drawn = sprites_drawn;
             stats.graphics_drawn = graphics_drawn;
             stats.glyphs_drawn = glyphs_drawn;
@@ -1211,11 +1210,10 @@ impl Renderer {
                 self.graphics.draw_subtree(app, pass, stage, start, exclude);
             let (text_calls, glyphs) = self.text.draw_subtree(app, pass, stage, start, exclude);
             let (mesh_calls, meshes) = self.mesh.draw_subtree(app, pass, stage, start, exclude);
-            let (flex_calls, flex) =
-                self.flex_text
-                    .draw_subtree(app, pass, stage, start, exclude);
-            stats.draw_calls =
-                sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
+            let (flex_calls, flex) = self
+                .flex_text
+                .draw_subtree(app, pass, stage, start, exclude);
+            stats.draw_calls = sprite_calls + graphics_calls + text_calls + mesh_calls + flex_calls;
             stats.sprites_drawn = sprites;
             stats.graphics_drawn = graphics;
             stats.glyphs_drawn = glyphs;

@@ -17,9 +17,9 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use pollster::block_on;
+use wisp::RenderTexture;
 use wisp::application::{AppConfig, Application};
 use wisp::render::Renderer;
-use wisp::RenderTexture;
 use wisp_chart::Theme;
 use wisp_chart::plot::{self, DataFrame, Interpolation, Mark, Plot, ScaleKind, Value};
 
@@ -71,7 +71,10 @@ fn area_renders_to_snapshot() {
     let root = app.stage().root();
     let _ = app.stage_mut().add_child(root, graphics);
 
-    let pipeline = wisp_chart::chart_text::pipeline_with_inter(&app, wisp::wgpu::TextureFormat::Rgba8UnormSrgb);
+    let pipeline = wisp_chart::chart_text::pipeline_with_inter(
+        &app,
+        wisp::wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
     for node in plot.axis_text_nodes(&app, &pipeline, &theme, viewport) {
         let _ = app.stage_mut().add_child(root, node);
     }

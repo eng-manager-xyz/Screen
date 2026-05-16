@@ -7,7 +7,7 @@
 //!
 //! * `emit_graphics(position, viewport_px) -> wisp::Graphics` — the
 //!   optional rounded background rect + per-item swatch primitives.
-//! * `emit_text_labels(position, viewport_px, font) -> Vec<wisp::Text>`
+//! * `emit_text_nodes(app, pipeline, position, viewport_px, ..., text_color) -> Vec<wisp::FlexText>`
 //!   — the per-item label glyphs. Text requires a Font, which lives
 //!   on a wgpu device, so the caller supplies it.
 //!

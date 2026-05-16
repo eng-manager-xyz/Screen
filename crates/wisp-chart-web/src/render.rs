@@ -457,10 +457,8 @@ fn attach_plot(
     let _ = app.stage_mut().add_child(root, graphics);
     // Inter labels via the late-pass FlexText pipeline so axis ticks
     // / titles render on top of the bars + gridlines.
-    let pipeline = wisp_chart::chart_text::pipeline_with_inter(
-        app,
-        wisp::wgpu::TextureFormat::Rgba8UnormSrgb,
-    );
+    let pipeline =
+        wisp_chart::chart_text::pipeline_with_inter(app, wisp::wgpu::TextureFormat::Rgba8UnormSrgb);
     for node in plot.axis_text_nodes(app, &pipeline, theme, viewport_px) {
         let _ = app.stage_mut().add_child(root, node);
     }
