@@ -60,6 +60,29 @@ pub const PREVIEW_HEIGHT: u32 = 480;
 /// [`media::gstreamer_video::GstreamerVideoCapture::framerate`].
 pub const PREVIEW_FPS: u32 = 30;
 
+// Compile-time invariants for the camera preview constants. These
+// replace the runtime `#[test]` versions that clippy's
+// `assertions_on_constants` lint flagged — these fire at compile
+// time (zero runtime cost), and they actually fail the build if a
+// future edit drifts the values, instead of just failing a test.
+//
+// PREVIEW_WIDTH must equal PREVIEW_HEIGHT: the M-CAM.3 follow-up
+// applies a circular mask whose max radius is `min(w, h) / 2`. A
+// non-square input would crop or stretch silently, both of which
+// are wrong.
+const _: () = assert!(
+    PREVIEW_WIDTH == PREVIEW_HEIGHT,
+    "PREVIEW_WIDTH must equal PREVIEW_HEIGHT — circular mask requires square input"
+);
+
+// PREVIEW_FPS must be a round target most cameras support natively
+// (30 or 60). Off-target rates (24 / 25 / 29.97) need explicit gst
+// caps negotiation that we don't ship today.
+const _: () = assert!(
+    PREVIEW_FPS == 30 || PREVIEW_FPS == 60,
+    "PREVIEW_FPS must be 30 or 60 — off-target rates need gst caps negotiation"
+);
+
 /// Camera-pipeline worker handle. Owns the spawned thread and a
 /// cooperative cancel flag; `Drop` cancels + joins so a panicking
 /// caller can never leave a zombie gst child behind.
@@ -251,19 +274,10 @@ mod tests {
         assert!(!handle.is_active());
     }
 
-    #[test]
-    fn preview_dims_are_square() {
-        // The wisp pipeline applies a circular mask; a square input
-        // makes the mask's max radius == half the width. If the
-        // dims ever drift to non-square, the wisp side needs to
-        // crop or stretch — surface that breakage here.
-        assert_eq!(PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    }
-
-    #[test]
-    fn preview_fps_is_a_round_target() {
-        // Cameras typically support 30 fps and 60 fps; 24 / 25 fps
-        // require explicit negotiation. 30 is the safest default.
-        assert!(PREVIEW_FPS == 30 || PREVIEW_FPS == 60);
-    }
+    // PREVIEW_WIDTH/HEIGHT/FPS invariants are now enforced at compile
+    // time via the `const _: () = assert!(..)` blocks above the test
+    // module — they fail the build if a future edit drifts the
+    // values, which is a stronger guard than these `#[test]`s ever
+    // were (and silences clippy's `assertions_on_constants` lint
+    // that flagged the test-time versions in CI).
 }
