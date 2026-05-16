@@ -12,6 +12,19 @@ workspace = true
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Enables Tauri's `custom-protocol` feature, which flips `cfg(dev)` off
+# in `tauri`'s build.rs and makes the webview load the bundled
+# `frontendDist` (`crates/app-ui/dist/`) instead of trying to reach the
+# `devUrl` (`http://localhost:1420`). Without this feature, every
+# `cargo run -p screen-app` launches a webview pointed at a dev server
+# that isn't running — symptom is a blank window logging "Failed to
+# load resource: Could not connect to the server localhost:1420". The
+# `cargo tauri dev` CLI enables this automatically alongside spawning
+# `trunk serve`; for the plain `cargo run` path used by
+# `just test-recorder`, we have to forward it ourselves.
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 playback = { path = "../playback" }

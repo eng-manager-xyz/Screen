@@ -365,7 +365,11 @@ test-recorder:
     cd crates/app-ui && trunk build
     @echo "→ [3/3] Launching screen-app — click the menubar circle to open the AppShell."
     @echo ""
-    cargo run -p screen-app
+    # `--features custom-protocol` forwards to `tauri/custom-protocol`,
+    # which flips `cfg(dev)` off in tauri's build.rs so the webview
+    # loads the bundled `frontendDist` instead of `devUrl` (no
+    # `trunk serve` running in this flow → blank webview without it).
+    cargo run -p screen-app --features custom-protocol
 
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
