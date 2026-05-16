@@ -5,9 +5,19 @@ Stephen Few's compact performance-vs-target chart. A horizontal
 it, a target marker line, and the current value as a thinner
 foreground bar.
 
+The demo reports **the 2005 DARPA Grand Challenge** — Stanford's
+"Stanley" drove 132.2 mi across the Mojave (target: 132 mi) in
+6 h 53 m to take the $2 M prize. The 2004 Challenge's best
+result was 7.4 mi; one year later five robots finished. The
+visible band just inside the target marker is the moment self-
+driving cars stepped off the slide deck.
+
 <div style="position: relative; aspect-ratio: 400 / 80; max-width: 100%; margin: 1rem 0; background: url('../assets/wisp-chart-web/bullet.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=bullet" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: bullet chart"></iframe>
+  <iframe id="demo-bullet" src="../demo/?chart=bullet" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: 2005 DARPA Grand Challenge"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/DARPA_Grand_Challenge_(2005)" target="_blank" rel="noopener">Source: DARPA Grand Challenge (2005) — Wikipedia</a>
+</p>
 
 ## Public surface
 

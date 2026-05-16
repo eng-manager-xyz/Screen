@@ -255,43 +255,63 @@ pub fn connected_scatter_fixture() -> DataFrame {
     })
 }
 
-/// KPI fixture — Monthly Active Users with sparkline.
+/// KPI fixture — **Apollo 11 lunar surface samples returned**,
+/// 47.5 lb (21.6 kg), against the mission's 50 lb pre-flight
+/// goal. Sparkline traces the six Apollo lunar-landing missions
+/// (11 / 12 / 14 / 15 / 16 / 17) — the later J-missions tripled
+/// the early sample mass once the Lunar Roving Vehicle freed
+/// the astronauts to traverse further from the LM. Source:
+/// Wikipedia article "Moon rock".
 #[must_use]
 pub fn kpi_fixture() -> Kpi {
     Kpi {
-        value: 1_234_567.0,
-        label: "Monthly Active Users".into(),
+        value: 47.5,
+        label: "Apollo 11 lunar samples (lb)".into(),
         delta: Some(Delta {
-            kind: DeltaKind::Up,
-            formatted: "+12.4% vs last mo".into(),
+            kind: DeltaKind::Down,
+            formatted: "-2.5 lb vs goal".into(),
         }),
-        sparkline: Some(vec![
-            100.0, 105.0, 102.0, 110.0, 108.0, 115.0, 112.0, 118.0, 120.0, 125.0,
-        ]),
+        // Apollo lunar-sample masses (kg → ×2.205 to lb, rounded):
+        // A11 21.6, A12 34.4, A14 42.3, A15 76.7, A16 95.7, A17 110.5
+        sparkline: Some(vec![47.5, 75.9, 93.3, 169.1, 211.0, 243.6]),
     }
 }
 
-/// Gauge fixture — 73% with green/orange/red zones.
+/// Gauge fixture — **Apollo 11 Command Module cabin pressure**
+/// during the trans-lunar coast: ≈ 5.0 psi pure O₂ (the
+/// "spacecraft" 5-psi standard NASA adopted after the Apollo 1
+/// fire ruled out the original 14.7-psi atmosphere). Three
+/// qualitative zones around the operating point: green
+/// nominal, orange caution above 6 psi, red over 8 psi.
+/// Source: Wikipedia article "Environmental Control System
+/// (Apollo)".
 #[must_use]
 pub fn gauge_fixture() -> Gauge {
     Gauge {
-        value: 73.0,
-        domain: (0.0, 100.0),
+        value: 5.0,
+        domain: (0.0, 10.0),
         zones: vec![
-            Zone::new((0.0, 60.0), ChartColor::from_hex("#27ae60").unwrap()),
-            Zone::new((60.0, 85.0), ChartColor::from_hex("#f5a623").unwrap()),
-            Zone::new((85.0, 100.0), ChartColor::from_hex("#e74c3c").unwrap()),
+            Zone::new((0.0, 6.0), ChartColor::from_hex("#27ae60").unwrap()),
+            Zone::new((6.0, 8.0), ChartColor::from_hex("#f5a623").unwrap()),
+            Zone::new((8.0, 10.0), ChartColor::from_hex("#e74c3c").unwrap()),
         ],
     }
 }
 
-/// Bullet fixture — value 270 vs target 250.
+/// Bullet fixture — **2005 DARPA Grand Challenge**, Stanford's
+/// "Stanley" vs the 132-mile course target. Stanley drove
+/// 132.2 mi across the Mojave in 6 h 53 m to take the $2 M
+/// prize — the watershed result that kicked self-driving cars
+/// off the slide deck and into the real world. Qualitative
+/// ranges: poor < 50 mi (the 2004 Challenge's best result was
+/// 7.4 mi), satisfactory < 100 mi, good ≥ 100 mi. Source:
+/// Wikipedia article "DARPA Grand Challenge (2005)".
 #[must_use]
 pub fn bullet_fixture() -> Bullet {
     Bullet {
-        value: 270.0,
-        target: 250.0,
-        ranges: [150.0, 225.0, 300.0],
+        value: 132.2,
+        target: 132.0,
+        ranges: [50.0, 100.0, 150.0],
         orientation: Orientation::Horizontal,
     }
 }

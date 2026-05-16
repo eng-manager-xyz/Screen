@@ -3,9 +3,20 @@
 A dashboard summary tile: one big number, a one-line label, a
 colour-coded delta, optional sparkline.
 
+The demo reports **Apollo 11 lunar surface samples returned** —
+47.5 lb (21.6 kg), 2.5 lb under the mission's 50 lb pre-flight
+goal. The sparkline traces all six Apollo landings: 11 / 12 / 14
+/ 15 / 16 / 17. The visible "hockey stick" from sample 4
+onwards is the Lunar Roving Vehicle arriving with Apollo 15 in
+1971 — once astronauts could traverse kilometres instead of a
+hundred metres, sample mass quintupled.
+
 <div style="position: relative; aspect-ratio: 320 / 200; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/kpi.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=kpi" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: KPI card"></iframe>
+  <iframe id="demo-kpi" src="../demo/?chart=kpi" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo 11 lunar samples"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Moon_rock" target="_blank" rel="noopener">Source: Moon rock — Wikipedia</a>
+</p>
 
 ## Public surface
 

@@ -4,9 +4,19 @@ A semicircular gauge — value vs target with colour-coded
 threshold zones and a needle indicator. The default ops/SLA
 dashboard chart.
 
+The demo reports **Apollo 11's Command Module cabin pressure
+during the trans-lunar coast** — ≈ 5.0 psi of pure O₂. NASA
+adopted the 5-psi standard after the Apollo 1 fire (Jan 1967)
+ruled out the original 14.7-psi atmosphere; everything above
+this nominal sits in the orange "caution" band, with the red
+fault zone at 8 psi.
+
 <div style="position: relative; aspect-ratio: 320 / 200; max-width: 360px; margin: 1rem 0; background: url('../assets/wisp-chart-web/gauge.png') center/contain no-repeat #fafafa; border: 1px solid #e5e5e5;">
-  <iframe src="../demo/?chart=gauge" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: gauge chart"></iframe>
+  <iframe id="demo-gauge" src="../demo/?chart=gauge" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: Apollo cabin pressure"></iframe>
 </div>
+<p style="margin: 0.5rem 0 1.25rem;">
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Apollo_1" target="_blank" rel="noopener">Source: Apollo 1 — Wikipedia</a>
+</p>
 
 ## Public surface
 
