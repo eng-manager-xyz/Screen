@@ -55,6 +55,12 @@ pub struct PlotTheme {
     /// Radius of a `PointStyle::Circle` marker on a line chart in
     /// device pixels.
     pub line_marker_radius_px: f32,
+    /// Corner radius for `Mark::Bar` / `Mark::Column` rectangles in
+    /// device pixels. Default `0.0` (square corners — the modern
+    /// data-vis convention). Callers that want rounded bars set
+    /// this to a non-zero value before rendering; the Gantt family
+    /// reads its own [`GanttTheme::bar_corner_radius`] independently.
+    pub bar_corner_radius: f32,
 }
 
 /// Shared axis-renderer knobs. Read by the cartesian axis
@@ -201,6 +207,7 @@ impl Theme {
                 gridline_minor: grid_minor,
                 line_width_px: 2.0,
                 line_marker_radius_px: 3.0,
+                bar_corner_radius: 0.0,
             },
             axis: AxisTheme {
                 tick_length_px: 5.0,

@@ -1,0 +1,83 @@
+/* wisp-chart-book.css — shared chart-chapter styles. Loaded by
+   book.toml's `additional-css`. Keep this file *small* — global
+   utilities only, no per-chapter overrides. */
+
+/* ── Replay animation button ───────────────────────────────────
+   Each chart chapter has a `<button class="replay-btn">` that
+   refreshes the iframe to restart the animation. The button must
+   render legibly on every mdbook theme (light / rust / coal /
+   navy / ayu) and on whatever the host page colour-scheme is. We
+   ship one high-contrast dark style with explicit overrides for
+   mdbook's light themes. */
+.replay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.95rem;
+  border: 1px solid rgba(140, 150, 170, 0.45);
+  background: linear-gradient(180deg, #2f3542 0%, #1f242e 100%);
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border-radius: 6px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 1px 2px rgba(0, 0, 0, 0.25);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 80ms ease,
+    box-shadow 120ms ease;
+}
+
+.replay-btn:hover {
+  background: linear-gradient(180deg, #3a4150 0%, #292f3a 100%);
+  border-color: rgba(190, 200, 220, 0.7);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.replay-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2) inset;
+}
+
+.replay-btn:focus-visible {
+  outline: 2px solid #5e9cff;
+  outline-offset: 2px;
+}
+
+.replay-btn .replay-icon {
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+/* mdBook light themes — keep a high-contrast dark button instead
+   of inverting (the dark capsule reads as a deliberate "do this"
+   affordance against either background). */
+.light .replay-btn,
+.rust .replay-btn {
+  background: linear-gradient(180deg, #303644 0%, #1f242e 100%);
+  color: #ffffff;
+  border-color: rgba(100, 110, 130, 0.5);
+}
+
+.light .replay-btn:hover,
+.rust .replay-btn:hover {
+  background: linear-gradient(180deg, #3a4150 0%, #292f3a 100%);
+}
+
+/* Inline source-citation link beside the replay button. */
+.replay-source-link {
+  margin-left: 0.85rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.replay-source-link:hover {
+  opacity: 1;
+}

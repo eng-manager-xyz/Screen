@@ -451,7 +451,7 @@ impl Plot {
                 h: by1 - by0,
             };
             let ndc = pixel_rect_to_ndc(rect_px, viewport_px);
-            let corner_ndc = theme.gantt.bar_corner_radius / viewport_px.y * 2.0;
+            let corner_ndc = theme.plot.bar_corner_radius / viewport_px.y * 2.0;
             g.fill(Fill::Solid(chart_to_wisp(fill_color)));
             g.draw_rounded_rect(ndc, corner_ndc);
         }

@@ -14,7 +14,7 @@ mathjax-support = false
 text-direction = "ltr"
 site-url = "/Screen/wisp-chart/"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
-additional-css = ["mdbook-admonish.css"]
+additional-css = ["mdbook-admonish.css", "wisp-chart-book.css"]
 
 [output.html.fold]
 enable = true

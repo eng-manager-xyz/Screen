@@ -16,8 +16,8 @@ with `Ease::OutCubic`.
   <iframe id="demo-area" src="../demo/?chart=area&animate=reveal" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" loading="lazy" title="Live WebGPU demo: NASA budget share 1962–1972"></iframe>
 </div>
 <p style="margin: 0.5rem 0 1.25rem;">
-  <button type="button" onclick="(function(){var f=document.getElementById('demo-area');f.src=f.src.split('&_t=')[0]+'&_t='+Date.now();})()" style="padding: 0.35rem 0.8rem; border: 1px solid #888; background: #fff; cursor: pointer; font: inherit;">↻ Replay animation</button>
-  <a href="https://en.wikipedia.org/wiki/Budget_of_NASA" target="_blank" rel="noopener" style="margin-left: 0.75rem;">Source: Budget of NASA — Wikipedia</a>
+  <button type="button" class="replay-btn" onclick="(function(){var f=document.getElementById('demo-area');f.src=f.src.split('&_t=')[0]+'&_t='+Date.now();})()"><span class="replay-icon">↻</span> Replay animation</button>
+  <a class="replay-source-link" href="https://en.wikipedia.org/wiki/Budget_of_NASA" target="_blank" rel="noopener">Source: Budget of NASA — Wikipedia</a>
 </p>
 
 ## Public surface
