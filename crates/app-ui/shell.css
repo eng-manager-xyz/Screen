@@ -95,3 +95,41 @@
   background: var(--surface-1, #1a1d21);
   border-radius: 12px;
 }
+
+/* Camera preview surface (M-CAM.3 / AUT-257).
+ *
+ * IMPORTANT: no `border-radius` on `.camera-preview`. The circular
+ * mask is rendered into the wisp scene + baked into the BGRA
+ * readback bytes. CSS-rounding the same edge would visibly
+ * double-crop the circle. */
+.camera-preview-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+}
+.camera-preview {
+  width: 240px;
+  height: 240px;
+  display: block;
+  margin: 0 auto;
+  background: var(--surface-1, #1a1d21);
+}
+.camera-preview-surface[data-state="initialising"] .camera-preview,
+.camera-preview-surface[data-state="awaiting-permission"] .camera-preview,
+.camera-preview-surface[data-state="permission-denied"] .camera-preview {
+  opacity: 0.4;
+}
+.camera-preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  color: var(--fg, #fff);
+  font-size: 14px;
+  pointer-events: none;
+}

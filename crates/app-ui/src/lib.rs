@@ -86,4 +86,5 @@ pub fn surface_to_query(section: ui_storybook::components::shell::AppSection) ->
 }
 
 mod app_shell_mount;
+pub mod camera_preview;
 pub mod routing;

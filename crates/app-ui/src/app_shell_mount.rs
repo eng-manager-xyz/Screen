@@ -72,7 +72,7 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
         >
             <section class="app-surface app-surface--recorder">
                 <h1>"Recorder"</h1>
-                <p>"Pre-record options live here. M-CAM.3 (AUT-257) replaces this placeholder with the live wisp-rendered webcam preview."</p>
+                <crate::camera_preview::CameraPreview />
             </section>
         </Show>
     }

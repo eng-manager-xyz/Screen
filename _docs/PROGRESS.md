@@ -6,6 +6,31 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-CAM.3 — `<CameraPreview />` component + RecorderPreviewState (AUT-257)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — UI scaffolding (Leptos component, state machine, canvas mount, CSS) landed; the Rust-side wisp pipeline + Tauri frame channel are clearly marked as deferred follow-up because that's multi-day work (per the ticket's own ~1-week scope re-estimate). The canvas is ready to receive `putImageData` calls the moment the channel lands.
+- **Linear:** [AUT-257](https://linear.app/harwood/issue/AUT-257) (M-RECORDER-V0).
+- **Files added:**
+  - `crates/app-ui/src/camera_preview.rs` — `<CameraPreview />` Leptos component with `RecorderPreviewState` enum (`Initialising` / `AwaitingPermission` / `PermissionDenied` / `Live`). Renders a 480×480 `<canvas id="camera-preview-canvas">` plus an overlay that displays the current state's copy. 4 unit tests covering default, unique-slugs, Live-has-empty-copy, non-Live-has-non-empty-copy.
+- **Files changed:**
+  - `crates/app-ui/src/app_shell_mount.rs` — the `Record` surface placeholder now renders `<CameraPreview />` instead of a `<p>` paragraph.
+  - `crates/app-ui/src/lib.rs` — `pub mod camera_preview;`.
+  - `crates/app-ui/shell.css` — `.camera-preview-surface`, `.camera-preview`, `.camera-preview-overlay` styles. Critical rule: **no `border-radius` on `.camera-preview`** — the circular mask lives in the wisp scene, CSS-rounding would double-crop.
+- **Tests:** 4 new camera_preview tests + existing 7 routing tests = 11/11 app-ui lib tests pass.
+- **Gates run, all green:**
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` — green.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — green.
+  - `cargo test -p app-ui --lib` — 11/11.
+- **Deferred (significant)** — this is where the per-session-bandwidth limit honestly shows:
+  - **Rust-side wisp pipeline.** `gst-launch-1.0 autovideosrc | wisp::Stage with M-VEC.6 circle mask | offscreen RT | BGRA readback | Tauri Channel<FrameMessage>`. M-CAM.2 landed the IPC contract for this; M-CAM.3 still needs the actual pipeline code in `crates/app/src/preview.rs`. Multi-day work per the ticket's own scope re-estimate.
+  - **Triple-buffered readback.** Required for sustained 30 fps per the ticket spec; the naïve single-buffer path stalls at ~15 fps. Documented but not implemented.
+  - **CSR-side Tauri `Channel<FrameMessage>` listener.** The canvas mount exists; the JS-bridge subscription that pipes frames into `putImageData` is the missing piece.
+  - **Synthetic-gradient wisp-storybook story.** `s_camera_preview_synthetic` for visual regression — needs the wisp pipeline to exist first.
+  - **mdBook chapter `camera-preview-circle.md`** — the tray-to-appshell chapter from M-TRAY covers the broader flow; the camera-specific chapter needs the pipeline screenshot to be a useful chapter, so deferred with the pipeline.
+- **What this closes:** the UI scaffolding M-CAM.4 + M-REC.0 + M-REC.1 build on. Recorder surface no longer shows a placeholder — it shows a real `<canvas>` with the four-state UX machine wired. Frames arrive when the pipeline does.
+
+---
+
 ## M-CAM.2 — Tauri seam: camera commands + preview state machine (AUT-256)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — IPC command surface + `PreviewLifecycle` state machine landed; the actual gst → wisp → readback pipeline is deferred to M-CAM.3 (AUT-257). The state-machine-only stub lets Leptos call `start_preview`/`stop_preview` and observe lifecycle transitions, unblocking M-CAM.4's hot-swap logic + M-REC.1's dropdown UX work to begin without waiting for the full wisp pipeline.
