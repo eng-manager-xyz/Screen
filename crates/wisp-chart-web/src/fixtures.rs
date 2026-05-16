@@ -554,7 +554,8 @@ pub fn calendar_heatmap_fixture() -> CalendarHeatmap {
         #[allow(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
-            reason = "i bounded by 52"
+            clippy::cast_possible_wrap,
+            reason = "i bounded by 52 (≪ i32::MAX); the i32 cast cannot wrap"
         )]
         let week_index = i as i32;
         let day_of_year = week_index * 7 + 3;
@@ -719,8 +720,8 @@ pub fn splom_fixture() -> Splom {
 /// winning times within that decade — min / Q1 / median / Q3 /
 /// max in minutes. The progression from a 2:55 median in the
 /// 1900s to a 2:18 median in the 1960s tracks training science
-/// + course modernisation; the wide 1920s box reflects the
-/// crowd-tactic era where pace strategy was still being
+/// alongside course modernisation; the wide 1920s box reflects
+/// the crowd-tactic era where pace strategy was still being
 /// invented. Numbers from the marathon's published results
 /// archive. Source: Wikipedia article "List of Boston Marathon
 /// winners".
@@ -950,7 +951,7 @@ pub fn kde_fixture() -> KdePlot {
 
 /// 2D histogram fixture — **the Hertzsprung-Russell diagram**:
 /// stellar effective temperature (log Kelvin, X) vs absolute
-/// magnitude (M_V, Y). Each binned cell counts how many of the
+/// magnitude (`M_V`, Y). Each binned cell counts how many of the
 /// ~600 synthesised stars fall there. The dense diagonal
 /// running top-right → bottom-left is the **main sequence**;
 /// the secondary cluster top-left is the white-dwarf branch;
