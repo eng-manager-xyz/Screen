@@ -27,6 +27,7 @@
 
 pub mod axis;
 pub mod baseline;
+pub mod chart_text;
 pub mod color;
 pub mod contour;
 pub mod distributions;

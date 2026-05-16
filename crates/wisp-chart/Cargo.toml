@@ -34,3 +34,8 @@ insta = { version = "1", features = ["yaml", "redactions"] }
 # atlas; `pollster::block_on` drives the async `Application::new`
 # from inside a `#[test]` fn.
 pollster = "0.4"
+# `chart_text` unit tests need `wgpu::TextureFormat` to construct a
+# `TextTexturePipeline`. Kept dev-only so wisp-chart's runtime API
+# stays wgpu-free — every wgpu type the chart code touches comes
+# from `wisp::*` re-exports.
+wgpu = "24"
