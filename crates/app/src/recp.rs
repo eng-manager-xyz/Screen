@@ -17,6 +17,7 @@
 //! 3. M-RECORDER-V1 milestone close requires only swapping the
 //!    deferred stubs for real OS calls.
 
+pub mod bubble_position;
 pub mod crossfade;
 pub mod fps_monitor;
 pub mod keep_awake;

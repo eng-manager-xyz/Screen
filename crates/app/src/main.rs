@@ -84,6 +84,19 @@ fn main() {
             }
         })
         .on_window_event(|window, event| {
+            // M-BUBBLE.3 / AUT-276: keep the webcam-bubble's in-memory
+            // position cache in sync while the user drags. Disk
+            // persistence happens on Hide (see `toggle_webcam_bubble`),
+            // not here — `WindowEvent::Moved` fires per-frame during a
+            // macOS drag and writing to disk at that rate would burn
+            // I/O. The in-memory write is a single mutex acquire +
+            // i32 pair copy, cheap enough for the high-frequency path.
+            if let WindowEvent::Moved(physical) = event
+                && window.label() == "webcam-bubble"
+            {
+                let state = window.app_handle().state::<commands::BubbleState>();
+                commands::update_bubble_position_from_event(&state, physical.x, physical.y);
+            }
             // Three event flavors flow to the webview:
             //   - file-drag-enter: drop-zone shows the active visual.
             //   - file-drag-leave: drop-zone reverts. Also emitted after
