@@ -17,7 +17,8 @@ use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{
-    CameraError, CameraPipeline, CameraPipelineHandle, PreviewLifecycle, PreviewState,
+    CameraError, CameraPipeline, CameraPipelineHandle, DiagnosticsSnapshot, PreviewDiagnostics,
+    PreviewLifecycle, PreviewState,
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
@@ -673,6 +674,25 @@ pub fn preview_status(state: State<'_, PreviewState>) -> PreviewLifecycle {
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Snapshot the camera-pipeline diagnostics (M-CAM.3 / AUT-257
+/// diagnostic addition).
+///
+/// Returns total frames received, source dims, source fps × 100,
+/// and the absolute path of the first-frame PNG dump (if one was
+/// written this session). Leptos polls this every 500ms while the
+/// Recorder surface is open to render a small overlay showing the
+/// pipeline is alive — see the `<CameraDiagnostics />` component in
+/// `crates/app-ui/src/camera_diagnostics.rs`.
+///
+/// Wait-free on the hot path (atomic loads only, no mutex on the
+/// counters); the dump-path read takes a `Mutex<Option<PathBuf>>`
+/// briefly but only when the snapshot is requested.
+#[tauri::command]
+#[must_use]
+pub fn preview_diagnostics(state: State<'_, PreviewDiagnostics>) -> DiagnosticsSnapshot {
+    state.snapshot()
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

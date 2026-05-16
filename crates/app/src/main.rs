@@ -20,7 +20,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
-use screen_app::preview::{CameraPipelineHandle, PreviewState};
+use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
 
 /// Embedded tray-icon bytes (M-TRAY.0 / AUT-249). `include_bytes!`
 /// resolves at compile time so the bundled binary doesn't need
@@ -42,6 +42,7 @@ fn main() {
         .manage(TrayState::default())
         .manage(BubbleState::default())
         .manage(PreviewState::default())
+        .manage(PreviewDiagnostics::default())
         .manage(CameraPipelineHandle::default())
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
@@ -63,6 +64,7 @@ fn main() {
                     commands::start_preview,
                     commands::stop_preview,
                     commands::preview_status,
+                    commands::preview_diagnostics,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -83,6 +85,7 @@ fn main() {
                     commands::start_preview,
                     commands::stop_preview,
                     commands::preview_status,
+                    commands::preview_diagnostics,
                 ]
             }
         })

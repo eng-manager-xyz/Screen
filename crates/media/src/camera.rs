@@ -48,17 +48,67 @@ pub struct CameraDevice {
 /// returned slice is empty.
 #[must_use]
 pub fn list_cameras() -> Vec<CameraDevice> {
+    let path_env = std::env::var("PATH").unwrap_or_else(|_| "<unset>".to_owned());
     let output = Command::new("gst-device-monitor-1.0")
         .args(["Video/Source"])
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        // Capture stderr so a permission-denied / no-camera /
+        // missing-binary failure isn't silent. Logged via `tracing`
+        // below if non-empty — the M-CAM.0/1 lift uncovered that
+        // GUI-launched binaries on macOS sometimes have a sanitised
+        // PATH and we couldn't tell from a silent empty Vec.
+        .stderr(Stdio::piped())
         .output();
-    let stdout = match output {
-        Ok(out) if out.status.success() => out.stdout,
-        _ => return Vec::new(),
-    };
-    let text = String::from_utf8_lossy(&stdout);
-    parse_device_monitor_output(&text)
+    match output {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let devices = parse_device_monitor_output(&text);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if devices.is_empty() {
+                tracing::warn!(
+                    stdout_bytes = out.stdout.len(),
+                    stderr_bytes = out.stderr.len(),
+                    %path_env,
+                    "list_cameras: gst-device-monitor exited 0 but parser found 0 cameras"
+                );
+                if !text.is_empty() {
+                    tracing::warn!(stdout = %text, "raw gst-device-monitor stdout");
+                }
+                if !stderr.is_empty() {
+                    tracing::warn!(stderr = %stderr, "raw gst-device-monitor stderr");
+                }
+            } else {
+                tracing::info!(
+                    count = devices.len(),
+                    labels = ?devices.iter().map(|d| &d.label).collect::<Vec<_>>(),
+                    "list_cameras: gst-device-monitor returned cameras"
+                );
+            }
+            devices
+        }
+        Ok(out) => {
+            // Non-zero exit — surface what gst said and which PATH
+            // we used so the failure mode is debuggable.
+            tracing::warn!(
+                status = ?out.status,
+                stderr = %String::from_utf8_lossy(&out.stderr),
+                %path_env,
+                "list_cameras: gst-device-monitor exited non-zero"
+            );
+            Vec::new()
+        }
+        Err(err) => {
+            // Spawn itself failed — almost always "binary not on
+            // PATH". Log PATH so the user can see what was searched.
+            tracing::warn!(
+                ?err,
+                %path_env,
+                "list_cameras: failed to spawn gst-device-monitor-1.0 \
+                 (probably missing from PATH for the launched binary)"
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// Pure-Rust parser for `gst-device-monitor-1.0 Video/Source` text

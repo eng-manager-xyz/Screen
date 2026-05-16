@@ -76,6 +76,12 @@
       window.__screenCameraPermissionStatus = () =>
         window.__TAURI__?.core?.invoke("camera_permission_status") ?? Promise.resolve("Granted");
 
+      // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
+      // counters. Leptos calls this every 500ms while the Recorder
+      // surface is open to render the small "Camera pipeline" overlay.
+      window.__screenPreviewDiagnostics = () =>
+        window.__TAURI__?.core?.invoke("preview_diagnostics") ?? Promise.resolve(null);
+
       // Synchronous helper: turn a local file path into an asset:// URL
       // the webview's <video> element can load. Tauri 2 exposes this via
       // `__TAURI__.core.convertFileSrc`. Returns undefined when running

@@ -199,6 +199,7 @@ dependencies = [
  "leptos",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "ui-storybook",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -6084,6 +6085,7 @@ name = "screen-app"
 version = "0.1.0"
 dependencies = [
  "decode",
+ "image",
  "media",
  "playback",
  "pollster",

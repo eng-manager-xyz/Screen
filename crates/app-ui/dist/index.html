@@ -7,8 +7,8 @@
 
     
 <script type="module">
-import init, * as bindings from '/app-ui-63d6753da370c47a.js';
-const wasm = await init({ module_or_path: '/app-ui-63d6753da370c47a_bg.wasm' });
+import init, * as bindings from '/app-ui-f7325693b988e692.js';
+const wasm = await init({ module_or_path: '/app-ui-f7325693b988e692_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -87,6 +87,12 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenCameraPermissionStatus = () =>
         window.__TAURI__?.core?.invoke("camera_permission_status") ?? Promise.resolve("Granted");
 
+      // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
+      // counters. Leptos calls this every 500ms while the Recorder
+      // surface is open to render the small "Camera pipeline" overlay.
+      window.__screenPreviewDiagnostics = () =>
+        window.__TAURI__?.core?.invoke("preview_diagnostics") ?? Promise.resolve(null);
+
       // Synchronous helper: turn a local file path into an asset:// URL
       // the webview's <video> element can load. Tauri 2 exposes this via
       // `__TAURI__.core.convertFileSrc`. Returns undefined when running
@@ -110,7 +116,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenSetBubbleClickthrough = (enabled) =>
         window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
     </script>
-  <link rel="modulepreload" href="/app-ui-63d6753da370c47a.js" crossorigin="anonymous" integrity="sha384-uW9qA4ANRPdWUKa1Ze6VYPZwYV9/ZKxK/e6BB2xx6n961cDz+wQ3u1R2pvoNkTDi"><link rel="preload" href="/app-ui-63d6753da370c47a_bg.wasm" crossorigin="anonymous" integrity="sha384-Zees0nj8RXDQsC9gYDNtpw2NbDhFVvgRKeyBAl8ru8xmhwaR9pJ1+mcc0p0t/ITO" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/app-ui-f7325693b988e692.js" crossorigin="anonymous" integrity="sha384-zDD/cDFtuoNT02/MZPKIjhryfLz6viDL/f+UQkBpgvp8qKDFh/Rr7j8Ib/aukaPM"><link rel="preload" href="/app-ui-f7325693b988e692_bg.wasm" crossorigin="anonymous" integrity="sha384-kOR4Iz2MwWf1hNW7odGxXT4dS6Yg64btyfs8RibGpiubFccR9EKE72AhGcDEf0DO" as="fetch" type="application/wasm"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
       `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>

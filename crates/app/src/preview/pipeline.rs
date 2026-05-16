@@ -43,6 +43,7 @@ use std::thread::{self, JoinHandle};
 
 use media::gstreamer_video::GstreamerVideoCapture;
 
+use super::diagnostics::{PreviewDiagnostics, maybe_dump_first_frame};
 use super::{CameraError, PreviewState};
 
 /// Default capture width in pixels. Paired with [`PREVIEW_HEIGHT`]
@@ -135,6 +136,13 @@ impl Drop for CameraPipeline {
 /// reason it's `&` borrows is so the public-facing `spawn` can move
 /// the cloned values in without keeping `Self` alive on the thread.
 fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool) {
+    use tauri::Manager;
+
+    // Reset diagnostics on session start so the user sees a fresh
+    // frame counter / dump-slot per `start_preview` invocation.
+    let diagnostics_state = app.state::<PreviewDiagnostics>();
+    diagnostics_state.reset();
+
     let mut stream = match GstreamerVideoCapture::from_default_camera(
         PREVIEW_WIDTH,
         PREVIEW_HEIGHT,
@@ -147,10 +155,13 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool) {
             return;
         }
     };
+    let (src_w, src_h) = stream.dimensions();
+    let src_fps = stream.framerate();
+    diagnostics_state.record_source(src_w, src_h, src_fps);
     tracing::info!(
-        width = stream.dimensions().0,
-        height = stream.dimensions().1,
-        fps = stream.framerate(),
+        width = src_w,
+        height = src_h,
+        fps = src_fps,
         "camera-pipeline opened; awaiting first frame"
     );
 
@@ -158,10 +169,20 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool) {
         match stream.next_frame() {
             Ok(frame) => {
                 advance_to_running(app);
-                // No-op for now — frame body lives at `frame.bgra`,
-                // a `Vec<u8>` of length `width * height * 4`. The
-                // follow-up commit pipes it into the wisp render
-                // → readback → Tauri Channel chain.
+                diagnostics_state.record_frame();
+                // One-shot PNG dump of the first frame so the user
+                // can open the file and confirm real pixels reached
+                // Rust. No-op on every subsequent frame this session.
+                maybe_dump_first_frame(
+                    app,
+                    &diagnostics_state,
+                    &frame.bgra,
+                    frame.width,
+                    frame.height,
+                );
+                // Frame is otherwise unused here — the wisp render +
+                // Tauri Channel emit layers consume it in follow-up
+                // commits.
                 drop(frame);
             }
             Err(err) => {

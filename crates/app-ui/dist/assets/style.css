@@ -2930,3 +2930,62 @@ body:has(.bubble-root) {
 .bubble-toggle--clickthrough[data-active="true"]:hover {
   background: var(--action-record-hover);
 }
+
+/* ───── Camera-pipeline diagnostics overlay (M-CAM.3 / AUT-257) ──
+ *
+ * Sits inside the Recorder surface. Polls preview_diagnostics every
+ * 500ms; renders a small monospace table so the frame counter +
+ * source dims / fps are easy to eyeball. Not a finalised UI — this
+ * is a developer-facing proof-of-life that ships with the M-CAM.3
+ * gst layer until the wisp render layer fills in the actual visible
+ * canvas. */
+.camera-diagnostics {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 480px;
+  align-self: flex-start;
+}
+.camera-diagnostics-header {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.camera-diagnostics-empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.camera-diagnostics-rows dt {
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+.camera-diagnostics-frames {
+  /* Frame counter ticks up at ~30 Hz — emphasise so the user can
+   * eyeball it visibly changing. */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.camera-diagnostics-dump {
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
