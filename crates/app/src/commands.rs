@@ -13,10 +13,11 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{Manager, State};
+use tauri::{LogicalPosition, Manager, State};
 
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{CameraError, PreviewLifecycle, PreviewState};
+use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
 use crate::tray::toggle::{Action, TrayPopoverState};
 
 /// Tauri-managed wrapper around the tray-popover toggle state machine
@@ -42,9 +43,27 @@ pub fn tray_toggle_popover(app: tauri::AppHandle, state: State<'_, TrayState>) {
 }
 
 /// Pure function variant of [`tray_toggle_popover`] — not a Tauri
-/// command. The click handler in `main.rs` calls this directly so it
-/// doesn't have to round-trip through the IPC command bus.
+/// command. Calls [`toggle_tray_popover_at`] with no click position so
+/// the window opens at its previous position (or the OS-default
+/// position on first show). Used by the IPC bus and the no-position
+/// fallback for synthetic clicks in tests.
 pub fn toggle_tray_popover(app: &tauri::AppHandle, state: &TrayState) {
+    toggle_tray_popover_at(app, state, None);
+}
+
+/// Like [`toggle_tray_popover`] but anchors the popover under
+/// `click_position` (M-RECP.1 / AUT-262 wiring). When the state
+/// machine resolves to `Action::Show` AND `click_position` is set,
+/// we look up the monitor the click happened on, compute the
+/// below-click anchor, and `set_position` BEFORE showing the window.
+/// Without the explicit `set_position` Tauri restores the last-known
+/// position (or the OS default), which is the source of the "popover
+/// doesn't follow the tray icon" bug.
+pub fn toggle_tray_popover_at(
+    app: &tauri::AppHandle,
+    state: &TrayState,
+    click_position: Option<(i32, i32)>,
+) {
     let Some(window) = app.get_webview_window("tray-popover") else {
         tracing::warn!("tray-popover window not found; tauri.conf.json may be missing it");
         return;
@@ -58,6 +77,9 @@ pub fn toggle_tray_popover(app: &tauri::AppHandle, state: &TrayState) {
     };
     match action {
         Action::Show => {
+            if let Some((click_x, click_y)) = click_position {
+                anchor_window_to_click(app, &window, click_x, click_y);
+            }
             if let Err(err) = window.show() {
                 tracing::warn!(?err, "failed to show tray-popover window");
                 return;
@@ -65,6 +87,11 @@ pub fn toggle_tray_popover(app: &tauri::AppHandle, state: &TrayState) {
             if let Err(err) = window.set_focus() {
                 tracing::warn!(?err, "failed to focus tray-popover window");
             }
+            // Debug builds: surface the webview console so we can
+            // diagnose blank-page / wasm-panic regressions without a
+            // bundled-app context-menu DevTools toggle.
+            #[cfg(debug_assertions)]
+            window.open_devtools();
         }
         Action::Hide => {
             if let Err(err) = window.hide() {
@@ -72,6 +99,80 @@ pub fn toggle_tray_popover(app: &tauri::AppHandle, state: &TrayState) {
             }
         }
     }
+}
+
+/// Pick the right monitor for `(click_x, click_y)` and place the
+/// `tray-popover` window's top-left below the click. Logs and bails
+/// out without setting a position when monitors can't be queried —
+/// the window will still `show()` at its last-known position so the
+/// user doesn't lose access to the recorder.
+fn anchor_window_to_click(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+    click_x: i32,
+    click_y: i32,
+) {
+    let monitors = match app.available_monitors() {
+        Ok(list) => list,
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                "available_monitors failed; popover stays at last position"
+            );
+            return;
+        }
+    };
+    let bounds: Vec<MonitorBounds> = monitors
+        .iter()
+        .map(|m| MonitorBounds {
+            x: m.position().x,
+            y: m.position().y,
+            width: i32::try_from(m.size().width).unwrap_or(i32::MAX),
+            height: i32::try_from(m.size().height).unwrap_or(i32::MAX),
+        })
+        .collect();
+    // `inner_size()` gives the size of the webview content rect.
+    // Falling through on lookup failure uses the conf-declared size
+    // as a crude fallback so we still get a sensible anchor.
+    let (window_w, window_h) = window.inner_size().map_or((1200, 720), |size| {
+        (
+            i32::try_from(size.width).unwrap_or(1200),
+            i32::try_from(size.height).unwrap_or(720),
+        )
+    });
+    let Some((target_x, target_y)) =
+        compute_popover_anchor(click_x, click_y, window_w, window_h, &bounds)
+    else {
+        tracing::warn!("no monitors reported; popover stays at last position");
+        return;
+    };
+    if let Err(err) = window.set_position(LogicalPosition::new(
+        f64::from(target_x),
+        f64::from(target_y),
+    )) {
+        tracing::warn!(?err, "set_position on tray-popover failed");
+    }
+}
+
+/// Pure compute step shared by [`anchor_window_to_click`] (runtime)
+/// and the unit tests (no Tauri). Returns the popover's target
+/// top-left position in screen coordinates, or `None` if the
+/// monitor list is empty.
+///
+/// Splitting this out exists so the click → monitor-pick →
+/// below-click clamp pipeline is verifiable without spinning up a
+/// Tauri mock app — see the unit tests below.
+fn compute_popover_anchor(
+    click_x: i32,
+    click_y: i32,
+    window_w: i32,
+    window_h: i32,
+    monitors: &[MonitorBounds],
+) -> Option<(i32, i32)> {
+    let monitor = pick_monitor(click_x, click_y, monitors)?;
+    Some(position_window_below_click(
+        click_x, click_y, window_w, window_h, monitor,
+    ))
 }
 
 /// Open a video file and start it paused at frame 0.
@@ -274,4 +375,54 @@ pub fn __test_drag_enter(app: tauri::AppHandle) -> Result<(), String> {
 pub fn __test_drag_leave(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     app.emit("file-drag-leave", ()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mon(x: i32, y: i32, w: i32, h: i32) -> MonitorBounds {
+        MonitorBounds {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    #[test]
+    fn anchor_returns_none_when_no_monitors() {
+        assert_eq!(compute_popover_anchor(500, 12, 800, 600, &[]), None);
+    }
+
+    #[test]
+    fn anchor_centres_below_click_on_primary_monitor() {
+        let monitors = vec![mon(0, 0, 1920, 1080)];
+        let (x, y) = compute_popover_anchor(960, 24, 800, 600, &monitors).expect("Some(_)");
+        // Centred horizontally on the click (960 - 800/2 = 560),
+        // 4px below the click on the y axis (24 + 4 = 28).
+        assert_eq!(x, 560);
+        assert_eq!(y, 28);
+    }
+
+    #[test]
+    fn anchor_picks_secondary_monitor_for_a_click_on_it() {
+        // Two side-by-side 1920×1080 monitors. A click at x=2050 lives
+        // in the second monitor; the popover should anchor on it.
+        let monitors = vec![mon(0, 0, 1920, 1080), mon(1920, 0, 1920, 1080)];
+        let (x, _) = compute_popover_anchor(2050, 12, 800, 600, &monitors).expect("Some(_)");
+        // Clamped left edge of monitor 2 is 1920; the centred-on-click
+        // raw value (2050 - 400 = 1650) would slip onto monitor 1, so
+        // the clamp pulls it to 1920.
+        assert_eq!(x, 1920);
+    }
+
+    #[test]
+    fn anchor_clamps_right_edge_so_popover_stays_on_screen() {
+        let monitors = vec![mon(0, 0, 1920, 1080)];
+        // Click near right edge — raw centre would push the popover
+        // off-screen; clamp pulls it back.
+        let (x, _) = compute_popover_anchor(1900, 12, 800, 600, &monitors).expect("Some(_)");
+        assert_eq!(x, 1920 - 800);
+    }
 }

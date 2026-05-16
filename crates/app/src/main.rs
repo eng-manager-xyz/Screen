@@ -129,10 +129,11 @@ fn main() {
         .setup(|app| {
             spawn_tick_thread(app.handle().clone());
             register_tray_icon(app)?;
-
-            if let Some(main) = app.get_webview_window("main") {
-                let _ = main.show();
-            }
+            // The legacy `main` window stays declared in tauri.conf.json
+            // because the M1 player IPC commands target it by label, but
+            // it boots hidden (`"visible": false`) and stays hidden — the
+            // recorder UX is tray-only. Showing it explicitly here was
+            // the source of the "I see a blank window on launch" bug.
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -165,12 +166,22 @@ fn register_tray_icon(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Er
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                position,
                 ..
             } = event
             {
+                // `position` is the icon's physical screen coords
+                // (PhysicalPosition<f64>). We hand it to
+                // `toggle_tray_popover_at` which anchors the popover
+                // below the click before show().
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    reason = "monitor coordinates fit comfortably in i32 — we'd need a >2.1Bpx screen layout to overflow"
+                )]
+                let click = (position.x as i32, position.y as i32);
                 let app = tray.app_handle();
                 let state = app.state::<TrayState>();
-                commands::toggle_tray_popover(app, &state);
+                commands::toggle_tray_popover_at(app, &state, Some(click));
             }
         })
         .build(app)?;
