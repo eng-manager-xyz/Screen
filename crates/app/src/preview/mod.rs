@@ -1,15 +1,21 @@
-//! Camera preview lifecycle (M-CAM.2 / AUT-256).
+//! Camera preview lifecycle (M-CAM.2 / AUT-256) + worker (M-CAM.3 / AUT-257).
 //!
-//! Owns the [`PreviewSession`] state machine that Tauri-managed state
-//! holds. M-CAM.3 (AUT-257) fills in the actual wisp + `GStreamer`
-//! pipeline behind `start`/`stop`; this ticket lands the shell so the
-//! Leptos side can invoke the commands and the click-through state
-//! transitions are testable in isolation.
+//! Owns the [`PreviewLifecycle`] state machine that Tauri-managed
+//! state holds + the [`pipeline::CameraPipeline`] worker that runs
+//! the gst capture subprocess on a dedicated thread. M-CAM.2 landed
+//! the state machine; M-CAM.3 layers the gst worker on top, with
+//! the wisp render + Tauri `Channel<T>` frame emission shipping in
+//! follow-up commits (see `pipeline.rs`'s "What this commit ships"
+//! callout for the explicit boundary).
 //!
 //! The state machine is pure Rust (no `tauri::*` types, no async, no
 //! I/O) so the four-state transition contract works on every OS
 //! including Windows, where Tauri 2's `mock_builder` won't even link
 //! at test-time (per CLAUDE.md).
+
+pub mod pipeline;
+
+pub use pipeline::{CameraPipeline, CameraPipelineHandle};
 
 use std::sync::Mutex;
 
