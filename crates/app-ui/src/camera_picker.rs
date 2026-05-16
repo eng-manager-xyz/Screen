@@ -24,6 +24,11 @@ use leptos::task::spawn_local;
 
 use crate::camera_ipc::{self, CameraPermission, CameraView};
 
+/// `LocalStorage` key for the "last used" camera id. Only referenced
+/// from the wasm32 `read_last_used` / `write_last_used` helpers, so
+/// cfg-gated to match — otherwise the native-target build (which CI's
+/// `just lint` exercises) trips the `dead_code` lint.
+#[cfg(target_arch = "wasm32")]
 const LAST_USED_KEY: &str = "screen.camera.last_used_id";
 
 /// `<CameraPicker />` — live device picker rendered above the
