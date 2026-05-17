@@ -995,6 +995,8 @@ pub fn stop_system_audio_capture(state: State<'_, SystemAudioCaptureState>) {
     state.stop();
 }
 
+/// Non-macOS stub for `stop_system_audio_capture`. No-op since no
+/// session can have been started on this platform.
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn stop_system_audio_capture() {}
@@ -1018,6 +1020,13 @@ pub fn set_system_audio_filter(
     state.set_filter(&internal).map_err(|err| err.to_string())
 }
 
+/// Non-macOS stub for `set_system_audio_filter`. Returns the same
+/// "not supported" error as the start command so the Leptos picker
+/// can surface a consistent message on every platform.
+///
+/// # Errors
+///
+/// Always returns `"system audio capture requires macOS 13.0+"`.
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn set_system_audio_filter(_filter: AudioAppFilterView) -> Result<(), String> {
@@ -1034,6 +1043,8 @@ pub fn system_audio_status(state: State<'_, SystemAudioCaptureState>) -> bool {
     state.is_active()
 }
 
+/// Non-macOS stub for `system_audio_status`. Always returns `false`
+/// since no session can have been started on this platform.
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 #[must_use]
