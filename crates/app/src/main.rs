@@ -84,6 +84,7 @@ fn main() {
                     commands::start_mic_capture,
                     commands::stop_mic_capture,
                     commands::mic_status,
+                    commands::microphone_permission_status,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -109,6 +110,7 @@ fn main() {
                     commands::start_mic_capture,
                     commands::stop_mic_capture,
                     commands::mic_status,
+                    commands::microphone_permission_status,
                 ]
             }
         })

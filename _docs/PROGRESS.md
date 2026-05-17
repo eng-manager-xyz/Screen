@@ -6,6 +6,42 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MIC.2 — Wire mic picker UI (AUT-279)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `<MicPicker />` Leptos component renders alongside `<CameraPicker />` in the Recorder surface, calls `list_microphones` / `start_mic_capture` / `microphone_permission_status` over the M-MIC.1 IPC contract, persists the last-used mic to `LocalStorage`. Three picker states (Populated / Empty / PermissionNeeded) mirror the camera picker.
+- **Linear:** [AUT-279](https://linear.app/harwood/issue/AUT-279) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app-ui/src/mic_ipc.rs` — wasm-bindgen extern bindings for the 5 mic Tauri commands (`__screenListMicrophones`, `__screenStartMicCapture`, `__screenStopMicCapture`, `__screenMicStatus`, `__screenMicrophonePermissionStatus`). Typed `MicrophoneView` + `MicLifecycle` mirror the Rust-side IPC shape via `serde_wasm_bindgen`. Async wrappers return safe defaults (empty Vec, `Idle`, `Granted`) outside Tauri so `trunk serve` dev still works.
+  - `crates/app-ui/src/mic_picker.rs` — `<MicPicker />` component: on mount probes permission + enumerates mics + resolves a default (LocalStorage → `is_default` → first). Renders a trigger button with mic icon, label, chevron; opens a dropdown showing one of three states (`mic-picker-state--permission` / `--empty` / populated list). Each row shows label + "48 kHz · stereo · default" subline + selected checkmark. Click → `start_mic_capture` + `LocalStorage` write + close menu. 9 pure-Rust unit tests covering `resolve_default`, `selected_label`, `format_subline` (incl. zero-sentinel omission), `format_sample_rate` round-down rules.
+  - `crates/app/capabilities/` — (no new file; carried over from the fix(app) commit).
+- **Files changed:**
+  - `crates/app-ui/index.html` — 5 new JS-bridge helpers (`__screenListMicrophones`, `__screenStartMicCapture`, `__screenStopMicCapture`, `__screenMicStatus`, `__screenMicrophonePermissionStatus`) wrapping `window.__TAURI__.core.invoke`.
+  - `crates/app-ui/src/lib.rs` — `pub mod mic_ipc; pub mod mic_picker;`.
+  - `crates/app-ui/src/app_shell_mount.rs` — Recorder surface now renders `<CameraPicker /> + <MicPicker /> + <CameraPreview />` (was `<CameraPicker /> + <CameraPreview />`).
+  - `crates/app-ui/shell.css` — `.mic-picker*` styles. Two-row grid layout for the picker row gives the device label + the per-row subline; menu min-width 280 px (vs camera's 240 px) accommodates the subline copy. Re-uses the same color tokens as the camera picker for visual consistency.
+  - `crates/app/src/commands.rs` — new `microphone_permission_status() -> CameraPermission` command (returns `Granted` everywhere; real macOS `AVCaptureDevice.authorizationStatus(for: .audio)` lands alongside M-RECP.0's camera version). Reuses `CameraPermission` enum since the three-state contract is structurally identical to the mic case.
+  - `crates/app/src/main.rs` — `microphone_permission_status` added to both `generate_handler!` arms.
+- **Tests:** 9 new mic_picker unit tests + 14 mic-ipc-shape coverage already shipped in M-MIC.1's `tests/mic_commands.rs`. **135/135 tests pass** across `app-ui` + `screen-app` (35 app-ui lib + 100 screen-app).
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown`.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` (after `doc_markdown` + `to_string()` casts).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings`.
+  - `cargo nextest run -p app-ui -p screen-app` — 135/135.
+- **Notable deviations from the M-CAM.4 / M-REC.1 pattern (intentional):**
+  - **No auto-start on mount.** `<CameraPicker />` auto-fires `start_preview` on first mount so the camera canvas is live the moment the wisp pipeline lands. The mic picker does NOT auto-start `start_mic_capture` — recording audio without the user clicking would be surprising even for a default mic. Documented in the module-level admonish note.
+  - **Per-row subline.** Camera rows show only the label; mic rows show "48 kHz · stereo · default" because the device-shape distinction between USB / Bluetooth / built-in is informative for the audio path (e.g., a 16 kHz Bluetooth headset has audibly worse fidelity than a 48 kHz USB mic). Zero-sentinel values for `channels` / `sample_rate_hz` are omitted rather than rendered.
+  - **`CameraPermission` reused for mic permission state.** The three variants (`Granted` / `NotDetermined` / `Denied`) are structurally identical; introducing a parallel `MicrophonePermission` enum would have duplicated three lines of code + bloated the IPC type surface for zero benefit. The Rust side's `microphone_permission_status` command and the Leptos `mic_ipc` re-export of the camera type both lean on this.
+- **Deferred (next follow-up commits):**
+  - **Per-device gst selection** — `start_mic_capture(mic_id)` IPC is plumbed but M-MIC.1's worker uses `autoaudiosrc` (OS default only). Click a non-default mic and the worker still listens to the OS default. Pure-backend change; the picker UX doesn't need any further wiring.
+  - **Live input-level meter** — picker rows currently show no live meter. M-MIC.1's worker would need to compute RMS per chunk + emit an `audio-levels` Tauri event at ~20 Hz; the Leptos side would listen + push values into a per-mic `RwSignal<f32>` that drives a `Meter` primitive next to each row.
+  - **`microphone_permission_status` real macOS probe** — currently stubs `Granted`. The real `AVCaptureDevice.authorizationStatus(for: .audio)` call lands with the camera version of the same logic in M-RECP.0.
+  - **Permission deny deep-link** — DevicePickerMenu's `PermissionNeeded` state copy says "Grant access in System Settings → Privacy & Security". The clickable deep-link (`x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`) is the same shape as M-RECP.0's camera deep-link and ships in a sibling follow-up.
+  - **Storybook stories for the live-wired mic picker.** AUT-129 already shipped the presentational `sample_microphone_options` fixtures; the live-data wiring this commit adds is exercised through the screen-app integration tests. New stories `s_recorder_mic_picker_*` for the three permission states would be presentational-only repeats of work already shipped, deferred until M-AUDIO-SYS.2 lands the system-audio side and we want one mdBook chapter covering both.
+- **What this closes:** the mic chain to user click. The Recorder surface now shows a microphone dropdown below the camera picker. Click the trigger → real attached mics enumerate (the user's actual hardware via `gst-device-monitor`). Pick a mic → `start_mic_capture` fires the gst worker (which prompts `NSMicrophoneUsageDescription` on first run), the lifecycle transitions Idle → Starting → Running, and the selection is remembered across launches.
+
+---
+
 ## M-MIC.1 — Microphone capture worker (AUT-278)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — real `gst-launch-1.0 autoaudiosrc` worker thread spawning, F32LE PCM into Rust, `MicLifecycle` state machine advances `Starting → Running` on first chunk, Drop-safe teardown. Structural mirror of M-CAM.3 (AUT-257).

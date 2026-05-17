@@ -747,6 +747,26 @@ pub fn list_microphones() -> Vec<MicrophoneView> {
         .collect()
 }
 
+/// Probe the OS for microphone permission (M-MIC.2 / AUT-279).
+///
+/// Today: returns `Granted` everywhere. The real macOS implementation
+/// would call `AVCaptureDevice.authorizationStatus(for: .audio)` via
+/// `objc2` — that lands as a sibling to M-RECP.0's camera version
+/// once we wire the `AVFoundation` probe. The picker UX (M-MIC.2) is
+/// already coded against the three-state contract
+/// (`Granted` / `NotDetermined` / `Denied`) so swapping in the real
+/// probe is a one-line change.
+///
+/// Reuses [`CameraPermission`] rather than introducing a separate
+/// `MicrophonePermission` enum — the three states are
+/// structurally identical and the picker components key off the
+/// variant tags, not the type name.
+#[tauri::command]
+#[must_use]
+pub fn microphone_permission_status() -> CameraPermission {
+    CameraPermission::Granted
+}
+
 /// Start the microphone capture worker (M-MIC.1 / AUT-278).
 ///
 /// Advances [`MicLifecycle`] Idle → Starting and spawns a
