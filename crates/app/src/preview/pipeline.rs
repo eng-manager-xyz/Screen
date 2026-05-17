@@ -93,10 +93,13 @@ pub struct CameraPipeline {
 }
 
 impl CameraPipeline {
-    /// Spawn the worker thread. Returns immediately; the worker
+    /// Spawn the worker thread for the camera identified by
+    /// `camera_id` (M-CAM.4 — was hard-coded to the OS default
+    /// device in M-CAM.3). Returns immediately; the worker
     /// transitions the preview lifecycle to `Running` once
     /// `next_frame()` succeeds (after any macOS permission prompt
-    /// resolves).
+    /// resolves). An empty `camera_id` keeps the legacy "OS default"
+    /// behaviour so the picker can start without a selection.
     ///
     /// # Errors
     ///
@@ -105,13 +108,13 @@ impl CameraPipeline {
     /// the worker — the worker logs via `tracing::error!` and
     /// advances the lifecycle back to `Idle` so the UI shows a
     /// recovery state.
-    pub fn spawn(app: tauri::AppHandle) -> Result<Self, CameraError> {
+    pub fn spawn(app: tauri::AppHandle, camera_id: String) -> Result<Self, CameraError> {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
         let handle = thread::Builder::new()
             .name("camera-pipeline".to_owned())
             .spawn(move || {
-                run_pipeline(&app, &cancel_for_thread);
+                run_pipeline(&app, &cancel_for_thread, &camera_id);
             })
             .map_err(|err| CameraError::GstFailed(format!("thread spawn failed: {err}")))?;
         Ok(Self {
@@ -135,7 +138,7 @@ impl Drop for CameraPipeline {
 /// The actual worker loop. Lives on the spawned thread; the only
 /// reason it's `&` borrows is so the public-facing `spawn` can move
 /// the cloned values in without keeping `Self` alive on the thread.
-fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool) {
+fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool, camera_id: &str) {
     use tauri::Manager;
 
     // Reset diagnostics on session start so the user sees a fresh
@@ -143,16 +146,36 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool) {
     let diagnostics_state = app.state::<PreviewDiagnostics>();
     diagnostics_state.reset();
 
-    let mut stream = match GstreamerVideoCapture::from_default_camera(
-        PREVIEW_WIDTH,
-        PREVIEW_HEIGHT,
-        PREVIEW_FPS,
-    ) {
-        Ok(stream) => stream,
-        Err(err) => {
-            tracing::error!(?err, "VideoStream::from_default_camera failed");
-            reset_lifecycle(app);
-            return;
+    // M-CAM.4 — pin capture to the user's picked camera. Empty
+    // `camera_id` preserves the M-CAM.3 "OS default" behaviour for
+    // pre-picker callers (no Leptos UI yet → no id to route on).
+    let mut stream = if camera_id.is_empty() {
+        tracing::info!("camera-pipeline: no camera_id supplied; using OS default");
+        match GstreamerVideoCapture::from_default_camera(
+            PREVIEW_WIDTH,
+            PREVIEW_HEIGHT,
+            PREVIEW_FPS,
+        ) {
+            Ok(stream) => stream,
+            Err(err) => {
+                tracing::error!(?err, "VideoStream::from_default_camera failed");
+                reset_lifecycle(app);
+                return;
+            }
+        }
+    } else {
+        match GstreamerVideoCapture::from_camera(
+            camera_id,
+            PREVIEW_WIDTH,
+            PREVIEW_HEIGHT,
+            PREVIEW_FPS,
+        ) {
+            Ok(stream) => stream,
+            Err(err) => {
+                tracing::error!(?err, %camera_id, "VideoStream::from_camera failed");
+                reset_lifecycle(app);
+                return;
+            }
         }
     };
     let (src_w, src_h) = stream.dimensions();

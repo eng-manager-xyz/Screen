@@ -706,12 +706,15 @@ pub fn start_preview(
     }
     tracing::info!(
         camera_id = %camera_id,
-        "preview Starting — spawning gst worker (M-CAM.3 partial; wisp render in follow-up)"
+        "preview Starting — spawning gst worker pinned to picked camera (M-CAM.4)"
     );
-    // Spawn the M-CAM.3 worker. The worker advances Starting →
-    // Running on first frame; on gst spawn failure it logs + resets
-    // the lifecycle to Idle so the UI shows a recovery state.
-    let pipeline = CameraPipeline::spawn(app)?;
+    // Spawn the M-CAM.3 worker, now M-CAM.4-routed: the camera_id
+    // string is resolved to its OS-native gst source element inside
+    // the worker via `media::camera::find_by_id`. The worker advances
+    // Starting → Running on first frame; on gst spawn failure (or
+    // CameraNotFound) it logs + resets the lifecycle to Idle so the
+    // UI shows a recovery state.
+    let pipeline = CameraPipeline::spawn(app, camera_id)?;
     pipeline_state.install(pipeline);
     Ok(())
 }
