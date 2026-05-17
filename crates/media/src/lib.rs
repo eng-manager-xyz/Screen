@@ -99,6 +99,8 @@ pub mod microphone;
 pub mod mock_audio;
 #[cfg(target_os = "macos")]
 pub mod sck_audio;
+#[cfg(target_os = "macos")]
+pub mod screen;
 pub mod sync;
 pub mod video;
 pub mod waveform;

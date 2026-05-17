@@ -47,6 +47,11 @@ objc2-screen-capture-kit = { version = "0.3", default-features = false, features
     "dispatch2",
     "libc",
     "objc2-core-media",
+    # M-SCK.1 / AUT-268 — SCDisplay::displayID / SCWindow::windowID
+    # are gated on `objc2-core-graphics`; SCDisplay::frame /
+    # SCWindow::frame on `objc2-core-foundation`.
+    "objc2-core-graphics",
+    "objc2-core-foundation",
 ] }
 objc2-core-media = { version = "0.3", features = [
     "CMSampleBuffer",
@@ -122,3 +127,10 @@ path = "examples/system_audio_smoke.rs"
 [[example]]
 name = "list_audio_apps"
 path = "examples/list_audio_apps.rs"
+
+# M-SCK.1 / AUT-268 — list every display + visible window SCK can
+# see. Drives the screen-source picker (M-SCK.4). macOS-only; same
+# Screen Recording TCC entry as the rest of SCK.
+[[example]]
+name = "list_screen_sources"
+path = "examples/list_screen_sources.rs"

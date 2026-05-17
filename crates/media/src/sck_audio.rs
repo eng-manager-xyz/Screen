@@ -983,7 +983,12 @@ impl Drop for SystemAudioStream {
 
 /// Block on `SCShareableContent.current`. SCK's API is async; we
 /// bridge to sync via a oneshot channel + completion block.
-fn shareable_content_blocking() -> Result<Retained<SCShareableContent>, SystemAudioError> {
+///
+/// Visible to `crate::screen` (M-SCK.1 / AUT-268) so the display +
+/// window enumeration path reuses the same async-bridge instead of
+/// duplicating the 30-line completion-handler boilerplate.
+pub(crate) fn shareable_content_blocking() -> Result<Retained<SCShareableContent>, SystemAudioError>
+{
     // Apple's CFRetain / CFRelease ARE thread-safe (see Apple's
     // "Memory Management Programming Guide for Core Foundation"),
     // so transferring a `Retained<SCShareableContent>` from the
