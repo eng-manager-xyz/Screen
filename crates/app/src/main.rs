@@ -12,6 +12,17 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// macOS-only: embed our Info.plist into the binary's
+// `__TEXT,__info_plist` Mach-O section at link time. The macro reads
+// the file at build time + emits a `static [u8; N]` with the right
+// `#[link_section]` so TCC sees `NSCameraUsageDescription` /
+// `NSMicrophoneUsageDescription` / `NSScreenCaptureUsageDescription`
+// when our dev binary requests those permissions. Bundled `.app`
+// builds pick up the same `Info.plist` via `bundle.macOS.infoPlist`
+// in `tauri.conf.json` — same file, two ingestion mechanisms.
+#[cfg(target_os = "macos")]
+embed_plist::embed_info_plist!("../Info.plist");
+
 use std::thread;
 use std::time::Duration;
 
