@@ -116,6 +116,17 @@ fn MicPickerBody(
                 <p class="mic-picker-state-help">
                     {"Grant access in System Settings → Privacy & Security, then re-open this picker."}
                 </p>
+                <button
+                    type="button"
+                    class="mic-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            mic_ipc::open_settings_microphone().await;
+                        });
+                    }
+                >
+                    {"Open System Settings → Microphone"}
+                </button>
             </div>
         }
         .into_any(),

@@ -111,6 +111,17 @@ fn CameraPickerBody(
                 <p class="camera-picker-state-help">
                     {"Grant access in System Settings → Privacy & Security, then re-open this picker."}
                 </p>
+                <button
+                    type="button"
+                    class="camera-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            camera_ipc::open_settings_camera().await;
+                        });
+                    }
+                >
+                    {"Open System Settings → Camera"}
+                </button>
             </div>
         }
         .into_any(),

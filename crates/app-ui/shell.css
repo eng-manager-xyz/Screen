@@ -435,3 +435,31 @@
   font-size: 12px;
   margin-top: 4px;
 }
+
+/* Settings deep-link buttons in picker `PermissionNeeded` /
+   error states (M-RECP.0 / .6 / .8 — AUT-261 / 272 / 286). One
+   visual treatment shared across all three pickers since the
+   action shape is identical ("click to open Settings → <pane>").
+   The per-picker state container already constrains width + sets
+   the muted-text color; the button overrides with an accent border
+   so it reads as actionable. */
+.camera-picker-state-button,
+.mic-picker-state-button,
+.system-audio-picker-state-button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: var(--accent-soft, #1a2a3a);
+  border: 1px solid var(--accent, #4fc3f7);
+  border-radius: 6px;
+  color: var(--accent, #4fc3f7);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.camera-picker-state-button:hover,
+.mic-picker-state-button:hover,
+.system-audio-picker-state-button:hover {
+  background: var(--accent, #4fc3f7);
+  color: var(--bg, #0f1115);
+}

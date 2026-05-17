@@ -172,6 +172,17 @@ fn SystemAudioBody(
                 <p class="system-audio-picker-state-help">
                     {"Grant Screen Recording in System Settings → Privacy & Security, then quit and reopen the app."}
                 </p>
+                <button
+                    type="button"
+                    class="system-audio-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            system_audio_ipc::open_settings_screen_recording().await;
+                        });
+                    }
+                >
+                    {"Open System Settings → Screen Recording"}
+                </button>
             </div>
         }
         .into_any(),

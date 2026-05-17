@@ -53,6 +53,11 @@ extern "C" {
     /// `Promise<CameraPermission>`.
     #[wasm_bindgen(js_name = __screenCameraPermissionStatus, catch)]
     pub async fn camera_permission_status_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenOpenSettingsCamera()` (M-RECP.0 / AUT-261) — shells
+    /// out to open System Settings → Privacy & Security → Camera.
+    #[wasm_bindgen(js_name = __screenOpenSettingsCamera, catch)]
+    pub async fn open_settings_camera_js() -> Result<JsValue, JsValue>;
 }
 
 /// Async helper: list every camera the OS exposes.
@@ -91,4 +96,13 @@ pub async fn camera_permission_status() -> CameraPermission {
         Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(CameraPermission::Granted),
         Err(_) => CameraPermission::Granted,
     }
+}
+
+/// Async helper: shell out to open System Settings → Camera
+/// (M-RECP.0 / AUT-261). Silently no-ops outside Tauri (so
+/// `trunk serve` dev doesn't error on click) and silently swallows
+/// spawn errors — the user-facing "tell me if I can't open this"
+/// case is rare enough that surfacing it adds more noise than value.
+pub async fn open_settings_camera() {
+    let _ = open_settings_camera_js().await;
 }

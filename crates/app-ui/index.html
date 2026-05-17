@@ -90,6 +90,19 @@
       window.__screenMicrophonePermissionStatus = () =>
         window.__TAURI__?.core?.invoke("microphone_permission_status") ?? Promise.resolve("Granted");
 
+      // M-RECP.0 / AUT-261 (camera), M-RECP.6 / AUT-272 (screen),
+      // M-RECP.8 / AUT-286 (microphone) — Settings deep-links.
+      // Each returns a Promise that resolves on successful spawn or
+      // rejects with the spawn-error string. Linux is a no-op (no
+      // universal Settings deep-link); macOS + Windows shell out via
+      // `open` / `cmd /c start` respectively.
+      window.__screenOpenSettingsCamera = () =>
+        window.__TAURI__?.core?.invoke("open_settings_camera") ?? Promise.resolve();
+      window.__screenOpenSettingsMicrophone = () =>
+        window.__TAURI__?.core?.invoke("open_settings_microphone") ?? Promise.resolve();
+      window.__screenOpenSettingsScreenRecording = () =>
+        window.__TAURI__?.core?.invoke("open_settings_screen_recording") ?? Promise.resolve();
+
       // M-AUDIO-SYS.2 / AUT-282 — system audio (speakers + per-app)
       // IPC. Same shape as the camera / mic bridge; the per-app
       // filter accepts a tagged enum: `{ AllAudio: null }` /

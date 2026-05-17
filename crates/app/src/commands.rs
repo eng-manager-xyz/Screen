@@ -22,6 +22,7 @@ use crate::preview::{
     PreviewLifecycle, PreviewState,
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
+use crate::recp::settings_deep_link::{SettingsPane, open_command};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
 #[cfg(target_os = "macos")]
 use crate::system_audio::SystemAudioCaptureState;
@@ -579,12 +580,83 @@ pub fn list_cameras() -> Vec<CameraView> {
 /// Probe the OS for camera permission (M-CAM.2 / AUT-256).
 ///
 /// Today: returns `Granted` everywhere. The real macOS
-/// implementation lands in M-RECP.0 (AUT-261) via `objc2` calls
+/// implementation lands in M-RECP.7 (AUT-285) via `objc2` calls
 /// into `AVCaptureDevice.authorizationStatus(for: .video)`.
 #[tauri::command]
 #[must_use]
 pub fn camera_permission_status() -> CameraPermission {
     CameraPermission::Granted
+}
+
+// ---------------------------------------------------------------
+// Settings deep-link commands (M-RECP.0 / AUT-261 — camera,
+// M-RECP.6 / AUT-272 — screen recording, M-RECP.8 / AUT-286 — mic)
+//
+// Each wraps `settings_deep_link::open_command(pane)` and shells
+// out via `std::process::Command`. Returns the underlying spawn
+// error as a string so the Leptos picker can render it inline.
+// macOS + Windows return real URLs; Linux is a no-op (the desktop
+// environment determines the right command — no universal handle).
+// ---------------------------------------------------------------
+
+/// Shell out to open System Settings → Privacy & Security → Camera.
+/// Falls back to a no-op on Linux (no universal Settings deep-link).
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string if `Command::spawn` fails
+/// (e.g. `open` not on PATH on macOS — should never happen).
+#[tauri::command]
+pub fn open_settings_camera() -> Result<(), String> {
+    open_settings_pane(SettingsPane::Camera)
+}
+
+/// Shell out to open System Settings → Privacy & Security →
+/// Microphone. Linux no-op.
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string.
+#[tauri::command]
+pub fn open_settings_microphone() -> Result<(), String> {
+    open_settings_pane(SettingsPane::Microphone)
+}
+
+/// Shell out to open System Settings → Privacy & Security →
+/// Screen Recording. macOS only — Windows + Linux return a no-op
+/// `Ok(())` because neither has a system-level Screen Recording
+/// pane the recorder can deep-link to.
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string.
+#[tauri::command]
+pub fn open_settings_screen_recording() -> Result<(), String> {
+    open_settings_pane(SettingsPane::ScreenRecording)
+}
+
+/// Shared shell-out helper. Resolves the OS-specific argv from
+/// [`open_command`] and spawns it. Returns `Ok(())` even when no
+/// deep-link is known for the pane on this OS (Linux, or Screen
+/// Recording on Windows) — the caller treats "no error" as
+/// "instruction displayed."
+fn open_settings_pane(pane: SettingsPane) -> Result<(), String> {
+    let Some(command_parts) = open_command(pane) else {
+        tracing::info!(
+            ?pane,
+            "open_settings_pane: no deep-link known for this OS — no-op"
+        );
+        return Ok(());
+    };
+    let Some((program, rest)) = command_parts.split_first() else {
+        return Err("open_command returned empty command".into());
+    };
+    std::process::Command::new(program)
+        .args(rest)
+        .spawn()
+        .map_err(|err| format!("failed to open settings pane {pane:?}: {err}"))?;
+    tracing::info!(?pane, ?command_parts, "open_settings_pane: spawned");
+    Ok(())
 }
 
 /// Start the camera preview pipeline (M-CAM.2 / AUT-256).

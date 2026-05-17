@@ -62,6 +62,12 @@ extern "C" {
     /// `__screenSystemAudioStatus()` — returns `Promise<boolean>`.
     #[wasm_bindgen(js_name = __screenSystemAudioStatus, catch)]
     pub async fn system_audio_status_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenOpenSettingsScreenRecording()` (M-RECP.6 / AUT-272)
+    /// — shells out to open System Settings → Privacy & Security →
+    /// Screen Recording. macOS only; Linux/Windows no-op.
+    #[wasm_bindgen(js_name = __screenOpenSettingsScreenRecording, catch)]
+    pub async fn open_settings_screen_recording_js() -> Result<JsValue, JsValue>;
 }
 
 /// Result shape carrying either the typed list or a string error so
@@ -115,6 +121,14 @@ pub async fn system_audio_status() -> bool {
         Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(false),
         Err(_) => false,
     }
+}
+
+/// Async helper: shell out to open System Settings → Screen
+/// Recording (M-RECP.6 / AUT-272). Silently no-ops outside Tauri
+/// and silently swallows spawn errors — same shape as the other
+/// deep-link helpers.
+pub async fn open_settings_screen_recording() {
+    let _ = open_settings_screen_recording_js().await;
 }
 
 /// Best-effort: turn a `JsValue` error into a human-readable string

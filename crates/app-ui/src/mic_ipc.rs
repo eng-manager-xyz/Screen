@@ -68,6 +68,12 @@ extern "C" {
     /// `Promise<CameraPermission>` (same three-variant shape).
     #[wasm_bindgen(js_name = __screenMicrophonePermissionStatus, catch)]
     pub async fn microphone_permission_status_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenOpenSettingsMicrophone()` (M-RECP.8 / AUT-286) —
+    /// shells out to open System Settings → Privacy & Security →
+    /// Microphone.
+    #[wasm_bindgen(js_name = __screenOpenSettingsMicrophone, catch)]
+    pub async fn open_settings_microphone_js() -> Result<JsValue, JsValue>;
 }
 
 /// Async helper: list every microphone the OS exposes.
@@ -117,4 +123,11 @@ pub async fn microphone_permission_status() -> CameraPermission {
         Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(CameraPermission::Granted),
         Err(_) => CameraPermission::Granted,
     }
+}
+
+/// Async helper: shell out to open System Settings → Microphone
+/// (M-RECP.8 / AUT-286). Same shape + silent-failure semantics as
+/// [`crate::camera_ipc::open_settings_camera`].
+pub async fn open_settings_microphone() {
+    let _ = open_settings_microphone_js().await;
 }
