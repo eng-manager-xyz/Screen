@@ -16,6 +16,10 @@ use std::sync::Mutex;
 use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
 use crate::audio::{MicCaptureHandle, MicCapturePipeline, MicCaptureState, MicError, MicLifecycle};
+use crate::recording::{
+    RecordingConfig, RecordingSession, RecordingState, RecordingStatusView, RecordingSummary,
+    SessionState, SessionStreams, StreamHealth, StreamKind,
+};
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{
     CameraError, CameraPipeline, CameraPipelineHandle, DiagnosticsSnapshot, PreviewDiagnostics,
@@ -1458,6 +1462,572 @@ pub fn screen_capture_frame_count(state: State<'_, ScreenCaptureState>) -> u64 {
 #[must_use]
 pub fn screen_capture_frame_count() -> u64 {
     0
+}
+
+// ---- M-RECORD.1 — coordinated recording IPC --------------------------
+
+/// Start a coordinated recording session (M-RECORD.1 of M-RECORD-EXPORT).
+///
+/// Spawns each enabled per-channel pipeline (camera / screen /
+/// microphone / system audio) inside one [`RecordingSession`]
+/// orchestrator. Picker selections (`camera_id`, `microphone_id`,
+/// `screen_source_id`) are threaded through to the existing per-
+/// channel start paths so M-CAM.4 / M-MIC.3 / M-SCK.0.1 routing
+/// applies inside a session too.
+///
+/// **Rollback discipline:** if any one stream fails to start, the
+/// session aborts — the streams that already started are stopped
+/// best-effort and the function returns `Err`.
+///
+/// **Lifecycle:** session enters `Starting`. The per-channel
+/// pipelines transition `Starting → Running` independently as each
+/// produces its first frame; the `recording-status` event push
+/// (M-RECORD.1 follow-up commit) will roll those up into the master
+/// `Running` transition.
+///
+/// # Errors
+///
+/// - `"a recording session is already active"` — re-entrant call
+///   without a prior `stop_recording`. Idempotent-by-design rather
+///   than implicit-replace because mid-session changes invalidate
+///   the M-EXPORT encoder state.
+/// - `"no streams enabled — pick at least one input"` — caller
+///   passed `SessionStreams { camera: false, ... }`.
+/// - `"screen + system audio capture require macOS 13.0+"` —
+///   non-macOS caller enabled either of those channels.
+/// - Underlying per-channel start error, prefixed with the channel
+///   name (e.g. `"camera start failed: ..."`).
+#[tauri::command]
+pub fn start_recording(
+    app: tauri::AppHandle,
+    recording_state: State<'_, RecordingState>,
+    preview_state: State<'_, PreviewState>,
+    camera_handle: State<'_, CameraPipelineHandle>,
+    mic_state: State<'_, MicCaptureState>,
+    mic_handle: State<'_, MicCaptureHandle>,
+    config: RecordingConfig,
+) -> Result<u64, String> {
+    if recording_state.is_active() {
+        return Err("a recording session is already active".into());
+    }
+    if !config.streams.any_enabled() {
+        return Err("no streams enabled — pick at least one input".into());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if config.streams.screen || config.streams.system_audio {
+            return Err("screen + system audio capture require macOS 13.0+".into());
+        }
+    }
+
+    let session = RecordingSession::starting(config.streams);
+    let session_id = session.id;
+    tracing::info!(
+        session_id,
+        camera = config.streams.camera,
+        screen = config.streams.screen,
+        microphone = config.streams.microphone,
+        system_audio = config.streams.system_audio,
+        "start_recording: spawning per-channel pipelines"
+    );
+
+    let mut started: Vec<StreamKind> = Vec::new();
+
+    // Camera — re-uses the M-CAM.4 routing from start_preview.
+    if config.streams.camera {
+        if let Err(err) = start_camera_for_session(
+            &app,
+            &preview_state,
+            &camera_handle,
+            config.camera_id.clone(),
+        ) {
+            rollback_started(&app, &started);
+            return Err(format!("camera start failed: {err}"));
+        }
+        started.push(StreamKind::Camera);
+    }
+
+    // Microphone — re-uses the M-MIC.3 native_id resolution.
+    if config.streams.microphone {
+        if let Err(err) =
+            start_mic_for_session(&app, &mic_state, &mic_handle, config.microphone_id.clone())
+        {
+            rollback_started(&app, &started);
+            return Err(format!("microphone start failed: {err}"));
+        }
+        started.push(StreamKind::Microphone);
+    }
+
+    // Screen (macOS-only) — re-uses M-SCK.0.1 source routing.
+    #[cfg(target_os = "macos")]
+    if config.streams.screen {
+        if let Err(err) = start_screen_for_session(&app, config.screen_source_id.as_deref()) {
+            rollback_started(&app, &started);
+            return Err(format!("screen start failed: {err}"));
+        }
+        started.push(StreamKind::Screen);
+    }
+
+    // System audio (macOS-only).
+    #[cfg(target_os = "macos")]
+    if config.streams.system_audio {
+        if let Err(err) = start_sys_audio_for_session(&app) {
+            rollback_started(&app, &started);
+            return Err(format!("system audio start failed: {err}"));
+        }
+        started.push(StreamKind::SystemAudio);
+    }
+
+    {
+        let mut guard = recording_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(session);
+    }
+    spawn_status_emitter(app.clone(), session_id);
+    Ok(session_id)
+}
+
+/// Stop the active recording session (M-RECORD.1).
+///
+/// Tears down each enabled per-channel pipeline in reverse start
+/// order. The returned [`RecordingSummary`] carries the final
+/// per-stream tally + the encoded file path (M-EXPORT.4 populates
+/// the path; today it's `None`).
+///
+/// # Errors
+///
+/// - `"no recording session is active"` — caller invoked stop
+///   without a matching start.
+#[tauri::command]
+pub fn stop_recording(
+    app: tauri::AppHandle,
+    recording_state: State<'_, RecordingState>,
+    preview_state: State<'_, PreviewState>,
+    camera_handle: State<'_, CameraPipelineHandle>,
+    mic_state: State<'_, MicCaptureState>,
+    mic_handle: State<'_, MicCaptureHandle>,
+) -> Result<RecordingSummary, String> {
+    let Some(mut session) = recording_state.snapshot() else {
+        return Err("no recording session is active".into());
+    };
+    session.begin_stop();
+    {
+        let mut guard = recording_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(session.clone());
+    }
+
+    let final_health = build_stream_health_snapshot(&app, session.streams, session.started_at);
+
+    // Reverse start order so teardown mirrors construction.
+    #[cfg(target_os = "macos")]
+    if session.streams.system_audio {
+        let _ = stop_sys_audio_for_session(&app);
+    }
+    #[cfg(target_os = "macos")]
+    if session.streams.screen {
+        let _ = stop_screen_for_session(&app);
+    }
+    if session.streams.microphone {
+        stop_mic_for_session(&mic_state, &mic_handle);
+    }
+    if session.streams.camera {
+        stop_camera_for_session(&preview_state, &camera_handle);
+    }
+
+    session.finish_stop();
+    let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let summary = RecordingSummary {
+        session_id: session.id,
+        elapsed_ms,
+        streams: final_health,
+        output_path: None,
+    };
+
+    {
+        let mut guard = recording_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = None;
+    }
+    tracing::info!(session_id = summary.session_id, elapsed_ms, "stop_recording: session torn down");
+    Ok(summary)
+}
+
+/// Live snapshot of the recording session for the picker LED ramp
+/// + elapsed counter. Returns `RecordingStatusView::idle()` when no
+/// session is active. Also published via the `recording-status`
+/// event every 500 ms while a session is running.
+#[tauri::command]
+#[must_use]
+pub fn recording_status(
+    app: tauri::AppHandle,
+    recording_state: State<'_, RecordingState>,
+) -> RecordingStatusView {
+    let Some(session) = recording_state.snapshot() else {
+        return RecordingStatusView::idle();
+    };
+    let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let streams = build_stream_health_snapshot(&app, session.streams, session.started_at);
+    RecordingStatusView {
+        session_id: Some(session.id),
+        state: session.state,
+        elapsed_ms,
+        streams,
+    }
+}
+
+// ---- M-RECORD.1 internal helpers ---------------------------------
+
+/// Direct-call equivalent of `start_preview` — bypasses the
+/// `#[tauri::command]` layer so the session orchestrator can
+/// coordinate with the existing `PreviewState` lifecycle.
+fn start_camera_for_session(
+    app: &tauri::AppHandle,
+    preview_state: &PreviewState,
+    camera_handle: &CameraPipelineHandle,
+    camera_id: String,
+) -> Result<(), CameraError> {
+    {
+        let mut guard = preview_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let new_state = guard.try_start();
+        // Re-entrant attempt (already Starting/Running): treat as
+        // success — the session is reusing the existing pipeline.
+        if new_state == *guard {
+            return Ok(());
+        }
+        *guard = new_state;
+    }
+    let pipeline = CameraPipeline::spawn(app.clone(), camera_id)?;
+    camera_handle.install(pipeline);
+    Ok(())
+}
+
+fn stop_camera_for_session(
+    preview_state: &PreviewState,
+    camera_handle: &CameraPipelineHandle,
+) {
+    {
+        let mut guard = preview_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop();
+    }
+    camera_handle.shutdown();
+    {
+        let mut guard = preview_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.finish_stop();
+    }
+}
+
+fn start_mic_for_session(
+    app: &tauri::AppHandle,
+    mic_state: &MicCaptureState,
+    mic_handle: &MicCaptureHandle,
+    mic_id: String,
+) -> Result<(), MicError> {
+    let native_id = if mic_id.is_empty() {
+        String::new()
+    } else if let Some(device) = media::microphone::find_by_id(&mic_id) {
+        device.native_id
+    } else {
+        return Err(MicError::NotFound(mic_id));
+    };
+
+    // Tear down any prior session held by an out-of-band caller.
+    if mic_handle.is_active() {
+        mic_handle.shutdown();
+        let mut guard = mic_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop().finish_stop();
+    }
+    {
+        let mut guard = mic_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let new_state = guard.try_start();
+        if new_state == *guard {
+            return Ok(());
+        }
+        *guard = new_state;
+    }
+    let pipeline = MicCapturePipeline::spawn(app.clone(), mic_id, native_id)?;
+    mic_handle.install(pipeline);
+    Ok(())
+}
+
+fn stop_mic_for_session(mic_state: &MicCaptureState, mic_handle: &MicCaptureHandle) {
+    {
+        let mut guard = mic_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop();
+    }
+    mic_handle.shutdown();
+    {
+        let mut guard = mic_state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.finish_stop();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn start_screen_for_session(
+    app: &tauri::AppHandle,
+    source_id: Option<&str>,
+) -> Result<(), String> {
+    use media::sck_video::{ScreenCaptureConfig, ScreenCaptureSource};
+    let Some(state) = app.try_state::<ScreenCaptureState>() else {
+        return Err("ScreenCaptureState not managed".into());
+    };
+    let source = match source_id {
+        None | Some("") => ScreenCaptureSource::PrimaryDisplay,
+        Some(id) if id.starts_with("display-") => ScreenCaptureSource::Display(id.to_string()),
+        Some(id) if id.starts_with("window-") => ScreenCaptureSource::Window(id.to_string()),
+        Some(other) => return Err(format!("unknown source_id prefix `{other}`")),
+    };
+    state
+        .start(ScreenCaptureConfig::for_source(source))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn stop_screen_for_session(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<ScreenCaptureState>() else {
+        return Err("ScreenCaptureState not managed".into());
+    };
+    state.stop();
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn start_sys_audio_for_session(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<SystemAudioCaptureState>() else {
+        return Err("SystemAudioCaptureState not managed".into());
+    };
+    state
+        .start(app, media::sck_audio::SystemAudioConfig::default())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn stop_sys_audio_for_session(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<SystemAudioCaptureState>() else {
+        return Err("SystemAudioCaptureState not managed".into());
+    };
+    state.stop();
+    Ok(())
+}
+
+/// Roll back partially-started channels after a per-channel start
+/// failure mid-session. Best-effort — each stop swallows its own
+/// errors since we're already on the error path.
+fn rollback_started(app: &tauri::AppHandle, started: &[StreamKind]) {
+    tracing::warn!(?started, "start_recording: rolling back partial start");
+    for kind in started.iter().rev() {
+        match kind {
+            StreamKind::Camera => {
+                if let (Some(preview), Some(handle)) = (
+                    app.try_state::<PreviewState>(),
+                    app.try_state::<CameraPipelineHandle>(),
+                ) {
+                    stop_camera_for_session(&preview, &handle);
+                }
+            }
+            StreamKind::Microphone => {
+                if let (Some(state), Some(handle)) = (
+                    app.try_state::<MicCaptureState>(),
+                    app.try_state::<MicCaptureHandle>(),
+                ) {
+                    stop_mic_for_session(&state, &handle);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            StreamKind::Screen => {
+                let _ = stop_screen_for_session(app);
+            }
+            #[cfg(target_os = "macos")]
+            StreamKind::SystemAudio => {
+                let _ = stop_sys_audio_for_session(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            StreamKind::Screen | StreamKind::SystemAudio => {
+                // Can never have been started — guarded out at top of
+                // start_recording.
+            }
+        }
+    }
+}
+
+/// Build the per-stream `StreamHealth` snapshot by querying each
+/// enabled channel's existing State<> handle. Called by both
+/// `recording_status` (live polling) and `stop_recording` (final
+/// summary). `last_frame_ms_ago` is left `None` for now — the
+/// per-channel handles don't yet expose a `last_frame_at` timestamp
+/// (TODO M-RECORD-EXPORT follow-up; M-RECORD.2's LED ramp already
+/// handles `None` as "no recent frame, render yellow/red based on
+/// session age").
+fn build_stream_health_snapshot(
+    app: &tauri::AppHandle,
+    streams: SessionStreams,
+    _started_at: std::time::Instant,
+) -> Vec<StreamHealth> {
+    let mut out: Vec<StreamHealth> = Vec::new();
+    for kind in streams.enabled_kinds() {
+        let (lifecycle, frame_count) = match kind {
+            StreamKind::Camera => {
+                let life = app.try_state::<PreviewState>().map_or_else(
+                    || "Idle".into(),
+                    |s| {
+                        format!(
+                            "{:?}",
+                            *s.0.lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        )
+                    },
+                );
+                let count = app
+                    .try_state::<PreviewDiagnostics>()
+                    .map_or(0, |s| s.snapshot().frames_received);
+                (life, count)
+            }
+            StreamKind::Microphone => {
+                let life = app.try_state::<MicCaptureState>().map_or_else(
+                    || "Idle".into(),
+                    |s| {
+                        format!(
+                            "{:?}",
+                            *s.0.lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        )
+                    },
+                );
+                // No frame-counter exposed today; left 0.
+                (life, 0)
+            }
+            #[cfg(target_os = "macos")]
+            StreamKind::Screen => {
+                let count = app
+                    .try_state::<ScreenCaptureState>()
+                    .map_or(0, |s| s.frames_received());
+                let life = if app
+                    .try_state::<ScreenCaptureState>()
+                    .is_some_and(|s| s.is_active())
+                {
+                    "Running".into()
+                } else {
+                    "Idle".into()
+                };
+                (life, count)
+            }
+            #[cfg(not(target_os = "macos"))]
+            StreamKind::Screen => ("Idle".into(), 0),
+            #[cfg(target_os = "macos")]
+            StreamKind::SystemAudio => {
+                let active = app
+                    .try_state::<SystemAudioCaptureState>()
+                    .is_some_and(|s| {
+                        s.0.lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .is_some()
+                    });
+                (
+                    if active { "Running".into() } else { "Idle".into() },
+                    0,
+                )
+            }
+            #[cfg(not(target_os = "macos"))]
+            StreamKind::SystemAudio => ("Idle".into(), 0),
+        };
+        out.push(StreamHealth {
+            kind,
+            lifecycle,
+            frame_count,
+            last_frame_ms_ago: None,
+        });
+    }
+    out
+}
+
+/// Spawn the 500 ms event-push thread. Loops emitting
+/// `recording-status` until the session is gone from
+/// `RecordingState`. Self-terminates on session end so callers don't
+/// need to track the `JoinHandle`. Plain `std::thread` rather than a
+/// tokio task — Tauri's `Emitter` is sync-friendly and avoids
+/// adding a direct tokio dep (Tauri uses tokio internally but
+/// doesn't re-export `tokio::time::interval`).
+fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
+    use tauri::Emitter;
+    std::thread::Builder::new()
+        .name(format!("recording-status-emitter-{session_id}"))
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let Some(state) = app.try_state::<RecordingState>() else {
+                    break;
+                };
+                let Some(session) = state.snapshot() else {
+                    break;
+                };
+                if session.id != session_id {
+                    // A new session started before this thread
+                    // observed its predecessor's end. Newer thread
+                    // takes over.
+                    break;
+                }
+                let elapsed_ms =
+                    u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let view = RecordingStatusView {
+                    session_id: Some(session.id),
+                    state: session.state,
+                    elapsed_ms,
+                    streams: build_stream_health_snapshot(
+                        &app,
+                        session.streams,
+                        session.started_at,
+                    ),
+                };
+                // M-RECORD.1: fold per-stream Running observation up
+                // to the master session — every enabled stream
+                // non-Idle → advance Starting → Running.
+                if session.state == SessionState::Starting
+                    && !view.streams.is_empty()
+                    && view.streams.iter().all(|h| h.lifecycle != "Idle")
+                    && let Some(s) = app.try_state::<RecordingState>()
+                {
+                    let mut guard = s
+                        .0
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if let Some(ref mut sess) = *guard {
+                        sess.mark_running();
+                    }
+                }
+                if let Err(err) = app.emit("recording-status", &view) {
+                    tracing::trace!(?err, "emit recording-status failed");
+                }
+            }
+            tracing::debug!(session_id, "status-emitter thread exiting");
+        })
+        .expect("recording-status-emitter thread spawn must succeed");
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

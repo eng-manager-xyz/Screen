@@ -28,6 +28,7 @@
 //! unit-testable without Tauri's `AppHandle`.
 //! ```
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -265,6 +266,113 @@ impl RecordingSession {
     }
 }
 
+/// Tauri-managed wrapper around the optional active session. Held
+/// in `tauri::State` so the `start_recording` / `stop_recording` /
+/// `recording_status` IPC commands + the 500 ms event-push task
+/// share one source of truth. Mirror of `MicCaptureState` /
+/// `ScreenCaptureState`.
+#[derive(Default)]
+pub struct RecordingState(pub Mutex<Option<RecordingSession>>);
+
+impl RecordingState {
+    /// `true` if a session is currently held.
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
+    }
+
+    /// Snapshot of the active session, if any. Cloned so callers
+    /// don't hold the mutex across the rest of their work.
+    #[must_use]
+    pub fn snapshot(&self) -> Option<RecordingSession> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+// ---- IPC view types (M-RECORD.1) ---------------------------------
+
+/// `start_recording` argument. Carries which streams to enable +
+/// the per-channel picker selections + the output target. M-EXPORT.4
+/// extends `output_path` / `format` semantics; here they're carried
+/// through unchanged so the IPC seam doesn't need to break later.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordingConfig {
+    /// Which physical channels to coordinate.
+    pub streams: SessionStreams,
+    /// Camera picker selection — empty = OS default (M-CAM.4).
+    #[serde(default)]
+    pub camera_id: String,
+    /// Microphone picker selection — empty = OS default (M-MIC.3).
+    #[serde(default)]
+    pub microphone_id: String,
+    /// Screen-source picker selection — `None` / empty = primary
+    /// display (M-SCK.0.1).
+    #[serde(default)]
+    pub screen_source_id: Option<String>,
+    /// Output file path. `None` means "use the M-EXPORT.4 default
+    /// location"; M-RECORD.1 just carries the string through.
+    #[serde(default)]
+    pub output_path: Option<String>,
+    /// Output container/codec format slug (e.g. `"mp4-h264"`,
+    /// `"webm-vp9"`). `None` means "use the default" — M-EXPORT.1
+    /// owns the slug → `OutputFormat` mapping.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+/// Snapshot of the active session for the `recording_status` IPC
+/// + the 500 ms `recording-status` event push.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordingStatusView {
+    /// `None` when no session is active.
+    pub session_id: Option<u64>,
+    /// Master lifecycle. `Idle` when no session is active.
+    pub state: SessionState,
+    /// Elapsed time in milliseconds since `started_at`. `0` when
+    /// no session is active.
+    pub elapsed_ms: u64,
+    /// One entry per enabled stream.
+    pub streams: Vec<StreamHealth>,
+}
+
+impl RecordingStatusView {
+    /// Empty / no-session snapshot. Returned by `recording_status`
+    /// when nothing is recording.
+    #[must_use]
+    pub fn idle() -> Self {
+        Self {
+            session_id: None,
+            state: SessionState::Idle,
+            elapsed_ms: 0,
+            streams: Vec::new(),
+        }
+    }
+}
+
+/// Result of a successful `stop_recording`. Distinct from
+/// `RecordingStatusView` because it's a final summary (no live
+/// state) — fields the UI uses to show the post-record toast +
+/// "Reveal in Finder" button (M-EXPORT.4).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordingSummary {
+    /// The session id that just stopped.
+    pub session_id: u64,
+    /// Total session duration in milliseconds (`started_at` →
+    /// `stop_recording`).
+    pub elapsed_ms: u64,
+    /// Final per-stream tally.
+    pub streams: Vec<StreamHealth>,
+    /// Path the encoded file landed at. M-EXPORT.4 populates this;
+    /// M-RECORD.1 (no encoder yet) leaves it `None`.
+    pub output_path: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,6 +582,110 @@ mod tests {
         let json = serde_json::to_string(&h).unwrap();
         let back: StreamHealth = serde_json::from_str(&json).unwrap();
         assert_eq!(back, h);
+    }
+
+    // ---- RecordingState wrapper ----
+
+    #[test]
+    fn recording_state_starts_inactive() {
+        let s = RecordingState::default();
+        assert!(!s.is_active());
+        assert!(s.snapshot().is_none());
+    }
+
+    #[test]
+    fn recording_state_holds_then_releases_session() {
+        let s = RecordingState::default();
+        {
+            let mut guard = s.0.lock().unwrap();
+            *guard = Some(RecordingSession::starting(SessionStreams {
+                camera: true,
+                ..Default::default()
+            }));
+        }
+        assert!(s.is_active());
+        let snap = s.snapshot().unwrap();
+        assert_eq!(snap.state, SessionState::Starting);
+        assert!(snap.streams.camera);
+
+        // Clear it
+        s.0.lock().unwrap().take();
+        assert!(!s.is_active());
+    }
+
+    // ---- RecordingStatusView / RecordingSummary / RecordingConfig ----
+
+    #[test]
+    fn status_view_idle_is_empty() {
+        let view = RecordingStatusView::idle();
+        assert!(view.session_id.is_none());
+        assert_eq!(view.state, SessionState::Idle);
+        assert_eq!(view.elapsed_ms, 0);
+        assert!(view.streams.is_empty());
+    }
+
+    #[test]
+    fn status_view_serde_round_trip() {
+        let view = RecordingStatusView {
+            session_id: Some(7),
+            state: SessionState::Running,
+            elapsed_ms: 12_345,
+            streams: vec![StreamHealth {
+                kind: StreamKind::Camera,
+                lifecycle: "Running".into(),
+                frame_count: 90,
+                last_frame_ms_ago: Some(33),
+            }],
+        };
+        let json = serde_json::to_string(&view).unwrap();
+        let back: RecordingStatusView = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn summary_serde_round_trip() {
+        let summary = RecordingSummary {
+            session_id: 42,
+            elapsed_ms: 10_000,
+            streams: vec![],
+            output_path: Some("/tmp/screen.mp4".into()),
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        let back: RecordingSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, summary);
+    }
+
+    #[test]
+    fn config_serde_round_trip_with_all_optionals() {
+        let cfg = RecordingConfig {
+            streams: SessionStreams {
+                camera: true,
+                microphone: true,
+                ..Default::default()
+            },
+            camera_id: "cam-feedface".into(),
+            microphone_id: "mic-cafebabe".into(),
+            screen_source_id: Some("display-1".into()),
+            output_path: Some("/tmp/test.mp4".into()),
+            format: Some("mp4-h264".into()),
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: RecordingConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn config_serde_back_compat_when_optionals_absent() {
+        // Frontend may omit any/all of the optional fields; the
+        // #[serde(default)] on each must keep deserialization clean.
+        let legacy = r#"{"streams":{"camera":true,"screen":false,"microphone":false,"system_audio":false}}"#;
+        let parsed: RecordingConfig = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.streams.camera);
+        assert_eq!(parsed.camera_id, "");
+        assert_eq!(parsed.microphone_id, "");
+        assert!(parsed.screen_source_id.is_none());
+        assert!(parsed.output_path.is_none());
+        assert!(parsed.format.is_none());
     }
 
     #[test]
