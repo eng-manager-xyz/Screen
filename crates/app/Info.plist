@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS Info.plist for the Screen recorder.
+
+  Single source of truth for the macOS TCC permission strings — read
+  by BOTH the dev binary (embedded into the Mach-O via
+  `embed_plist::embed_info_plist!` in `src/main.rs`) AND the bundled
+  `.app` build (`bundle.macOS.infoPlist` in `tauri.conf.json` points
+  here). Keeping one file prevents drift between "works in dev" and
+  "works for downloaded app" — the same prompt text appears in both.
+
+  The three usage descriptions cover the recorder's full capture
+  surface. Strings are user-facing and appear verbatim in macOS's
+  permission prompt dialog.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Bundle identifier. Must match `identifier` in
+         crates/app/tauri.conf.json so TCC keys the permission grant
+         under the same id whether the user is running the dev
+         binary OR the bundled .app — granting in dev carries over
+         to the prod app on the same machine, and vice versa.
+
+         If you change this string, every existing user is
+         re-prompted because macOS treats the new id as a fresh app.
+         One-way decision; don't change post-launch. -->
+    <key>CFBundleIdentifier</key>
+    <string>com.screen.app</string>
+
+    <!-- Bundle name. Shows up as the app's name in the macOS
+         permission prompt ("screen-app would like to access…"). -->
+    <key>CFBundleName</key>
+    <string>screen-app</string>
+
+    <!-- Bundle version strings. TCC pairs the permission grant with
+         (CFBundleIdentifier, CFBundleVersion) on some macOS versions —
+         declaring these prevents rebuild-drift from spuriously
+         invalidating the user's grant. Keep in sync with the
+         `version` field in tauri.conf.json. -->
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+
+    <!-- Minimum macOS version. ScreenCaptureKit (the API M-SCK uses
+         for display + window + system-audio capture) was introduced
+         in macOS 12.3 and is the canonical post-deprecation API. We
+         declare 12.3 so macOS gatekeeps launch on older systems
+         instead of letting the user run + silently fail at first
+         screen capture. -->
+    <key>LSMinimumSystemVersion</key>
+    <string>12.3</string>
+
+    <!-- Camera permission. Triggered the first time gst-autovideosrc
+         (M-CAM.0 / AUT-254) tries to open the webcam. Without this
+         string macOS silently returns an empty AVCaptureDevice list
+         instead of prompting — symptom is the "No cameras detected"
+         empty state in the Recorder surface. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Screen needs camera access to record your webcam alongside your screen.</string>
+
+    <!-- Microphone permission. Triggered when M-MIC lands and the
+         recorder opens an audio capture pipeline. Included here so
+         the user sees one permission prompt per capture type rather
+         than batch-prompting later. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Screen needs microphone access to record audio with your recordings.</string>
+
+    <!-- Screen recording permission. Triggered when M-SCK lands and
+         the recorder opens ScreenCaptureKit. NOTE: granting this
+         permission requires an app relaunch to take effect (a known
+         macOS platform quirk, documented in AUT-270 / M-SCK.3). -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Screen needs screen recording access to capture your display.</string>
+</dict>
+</plist>
