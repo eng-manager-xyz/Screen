@@ -804,6 +804,13 @@ pub struct MicrophoneView {
     /// Native sample rate (typically 48000 / 44100). `0` means
     /// unknown — Leptos should default to 48000.
     pub sample_rate_hz: u32,
+    /// Platform-native device identifier (M-MIC.3 / AUT-284).
+    /// Round-tripped back through `start_mic_capture` so the worker
+    /// can route it into the per-OS gst element (`osxaudiosrc
+    /// device-uid=…` etc.). Empty when the underlying gst plugin
+    /// didn't expose `unique-id` for this device — the worker
+    /// falls back to `autoaudiosrc` in that case.
+    pub native_id: String,
 }
 
 impl From<media::MicrophoneDevice> for MicrophoneView {
@@ -814,6 +821,7 @@ impl From<media::MicrophoneDevice> for MicrophoneView {
             is_default: value.is_default,
             channels: value.channels,
             sample_rate_hz: value.sample_rate_hz,
+            native_id: value.native_id,
         }
     }
 }
@@ -938,6 +946,23 @@ pub fn start_mic_capture(
     pipeline_state: State<'_, MicCaptureHandle>,
     mic_id: String,
 ) -> Result<(), MicError> {
+    // M-MIC.3 / AUT-284 — resolve the FNV-1a mic_id to the
+    // platform-native device identifier (osxaudiosrc device-uid /
+    // pulsesrc device / wasapisrc device) by re-enumerating. Empty
+    // native_id (id not found, OR the device didn't expose
+    // unique-id) routes the worker to autoaudiosrc fallback.
+    let native_id = media::list_microphones()
+        .into_iter()
+        .find(|m| m.id == mic_id)
+        .map(|m| m.native_id)
+        .unwrap_or_default();
+    if native_id.is_empty() && !mic_id.is_empty() {
+        tracing::warn!(
+            mic_id = %mic_id,
+            "start_mic_capture: no native_id for mic_id; falling back to autoaudiosrc (OS default)"
+        );
+    }
+
     // Re-entrant calls: if a session is already up, tear it down
     // first so the new mic-id wins. Mirrors the M-CAM.2/.3
     // start_preview re-entrance contract — except the camera path
@@ -974,9 +999,10 @@ pub fn start_mic_capture(
     }
     tracing::info!(
         mic_id = %mic_id,
+        native_id = %native_id,
         "mic-capture Starting — spawning gst worker"
     );
-    let pipeline = MicCapturePipeline::spawn(app, mic_id)?;
+    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id)?;
     pipeline_state.install(pipeline);
     Ok(())
 }

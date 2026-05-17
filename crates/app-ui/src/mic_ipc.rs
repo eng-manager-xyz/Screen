@@ -28,6 +28,12 @@ pub struct MicrophoneView {
     pub channels: u8,
     /// Native sample rate from the gst caps line. `0` = unknown.
     pub sample_rate_hz: u32,
+    /// Platform-native device identifier (M-MIC.3 / AUT-284).
+    /// Round-tripped — the Rust side uses it to route to the
+    /// per-OS gst element. Empty when gst didn't expose
+    /// `unique-id` for this device.
+    #[serde(default)]
+    pub native_id: String,
 }
 
 /// Mirror of `crates/app/src/audio/mod.rs::MicLifecycle`. Tagged

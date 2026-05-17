@@ -110,13 +110,17 @@ impl MicCapturePipeline {
     /// inside the worker — the worker logs via `tracing::error!`
     /// and resets the lifecycle to `Idle` so the UI shows a recovery
     /// state.
-    pub fn spawn(app: tauri::AppHandle, mic_id: String) -> Result<Self, MicError> {
+    pub fn spawn(
+        app: tauri::AppHandle,
+        mic_id: String,
+        native_id: String,
+    ) -> Result<Self, MicError> {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
         let handle = thread::Builder::new()
             .name("mic-capture".to_owned())
             .spawn(move || {
-                run_pipeline(&app, &mic_id, &cancel_for_thread);
+                run_pipeline(&app, &mic_id, &native_id, &cancel_for_thread);
             })
             .map_err(|err| MicError::GstFailed(format!("thread spawn failed: {err}")))?;
         Ok(Self {
@@ -140,18 +144,19 @@ impl Drop for MicCapturePipeline {
 /// The actual worker loop. `&` borrows let the public-facing
 /// `spawn` move cloned values onto the thread without keeping
 /// `Self` alive on the thread.
-fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, cancel: &AtomicBool) {
+fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &AtomicBool) {
     let format = AudioFormat::stereo_f32(MIC_SAMPLE_RATE);
-    let mut capture = match GstreamerAudioCapture::from_microphone(mic_id, format) {
+    let mut capture = match GstreamerAudioCapture::from_microphone(mic_id, native_id, format) {
         Ok(cap) => cap,
         Err(err) => {
-            tracing::error!(?err, mic_id, "from_microphone failed");
+            tracing::error!(?err, mic_id, native_id, "from_microphone failed");
             reset_lifecycle(app);
             return;
         }
     };
     tracing::info!(
         mic_id,
+        native_id,
         sample_rate = MIC_SAMPLE_RATE,
         channels = MIC_CHANNELS,
         "mic-capture opened; awaiting first chunk"
