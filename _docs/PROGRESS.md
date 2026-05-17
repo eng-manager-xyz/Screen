@@ -6,6 +6,46 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-AUDIO-SYS.0 — SCK system audio capture (AUT-280)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — real macOS ScreenCaptureKit code that compiles + links + correctly engages the TCC permission system. The example runs against the host and is gated only by Screen Recording grant: granting Screen Recording in System Settings + relaunching the binary will produce live audio capture. **Hardware verification (running a YouTube tab + observing non-zero RMS) is deferred to the user's interactive session** — no automated harness can prompt the macOS permission dialog or play audio.
+- **Linear:** [AUT-280](https://linear.app/harwood/issue/AUT-280) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/src/sck_audio.rs` — `SystemAudioStream` capture session using `SCStreamConfiguration { capturesAudio=true, excludesCurrentProcessAudio=true }` against a full-display `SCContentFilter`. Includes:
+    - `SystemAudioConfig` defaults (48 kHz / stereo / excludes self) with the rationale documented for each flag.
+    - `SystemAudioError` enum (NotMacOs / NoDisplays / StreamCreationFailed / StartFailed / EnumerationFailed / Timeout / InvalidChunk) — serde-derived for the IPC seam.
+    - `AudioOutputHandler` via `objc2::define_class!` implementing `SCStreamOutput` — receives `CMSampleBuffer` audio on SCK's dispatch queue and extracts Float32 PCM.
+    - PCM extractor handles both interleaved single-buffer and planar multi-buffer `AudioBufferList` layouts; planar layouts collapse to interleaved before reaching the consumer.
+    - `next_chunk(frames)` blocks until enough PCM has buffered (default 2s timeout); returns a normalised `AudioChunk` with monotonic PTS.
+    - `Drop` removes the stream output + calls `stopCaptureWithCompletionHandler` synchronously (500 ms cap) so late callbacks never touch a freed delegate.
+    - 7 unit tests covering: default-config self-exclusion, serde round-trip of every error variant, ExtractError diagnostic messages, interleaved + null + unaligned PCM extraction, back-pressure constant sanity.
+  - `crates/media/examples/system_audio_smoke.rs` — acceptance-criterion example. Captures 1 s of speakers via SCK, prints per-100ms peak + RMS, exits with a clear permission-denied message + grant instructions when the TCC prompt is refused.
+- **Files changed:**
+  - `crates/media/Cargo.toml` — macOS-only deps: `objc2 0.6`, `objc2-foundation 0.3` (NSArray/NSError/NSString/etc), `objc2-screen-capture-kit 0.3` (SCShareableContent + SCStream + SCError + block2 + dispatch2 + objc2-core-media features), `objc2-core-media 0.3` (CMSampleBuffer + CMBlockBuffer + CMFormatDescription), `objc2-core-audio-types 0.3` (AudioBufferList), `block2 0.6`, `dispatch2 0.3`. All under `[target.'cfg(target_os = "macos")'.dependencies]` so Linux/Windows pay zero build cost.
+  - `crates/media/src/lib.rs` — `#[cfg(target_os = "macos")] pub mod sck_audio;`.
+  - `crates/app/Info.plist` — **`LSMinimumSystemVersion` bumped 12.3 → 13.0**. `SCStreamConfiguration.capturesAudio` is a 13.0+ API; this version is the hard floor for system-audio capture. Trade-off: users on macOS 12.3–12.7 can no longer launch. Documented in PERMISSIONS.md update (M-AUDIO.PERMS / AUT-283 follow-up).
+- **Tests:** 7 new sck_audio unit tests. **106/106 media tests pass** (the existing 99 + 7 new). Real macOS execution of `cargo run -p media --example system_audio_smoke` reaches `SCShareableContent.getShareableContentWithCompletionHandler` and the OS correctly returned `"The user declined TCCs for application, window, display capture"` — proves the SCK plumbing engages the TCC system end-to-end.
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p media --all-targets`.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after fixing implicit-borrow-as-raw-pointer (`&raw mut`), `cast_*` lints (`isize::try_from` / `usize::try_from`), `Arc<Mutex<Option<Sender<Retained<Apple>>>>>` (reasoned suppression — CFRetain/CFRelease ARE thread-safe per Apple), and a redundant `continue`.
+  - `cargo nextest run -p media` — 106/106.
+  - `cargo build -p media --example system_audio_smoke` — green.
+  - `cargo run -p media --example system_audio_smoke` — engages SCK, hits TCC, prints actionable error when permission is missing.
+- **Implementation notes:**
+  - **CFRetain thread-safety affirmed.** The completion-block bridge sends a `Retained<SCShareableContent>` from the dispatch-queue thread to the calling thread via mpsc. objc2's conservative `Send` auto-impl doesn't see this; suppression has a reasoned justification (Apple guarantees CF reference counting is thread-safe, and we only invoke methods on the receiving thread).
+  - **Single-buffer interleaved is the common SCK path.** With `channelCount=2`, SCK emits one `AudioBuffer` containing interleaved L/R Float32. The planar (multi-buffer) branch is exercised by code review only — kept for layout-shape safety since `AudioBufferList`'s definition allows it.
+  - **`MAX_AUDIO_BUFFERS = 16`** for the stack-allocated `AudioBufferListN` storage. Stereo (the common case) uses 1 buffer; 5.1/7.1 (8 buffers) fit; cinema-grade 24-channel is out of scope.
+  - **Back-pressure guard:** the consumer-side `pending` buffer is capped at `CHANNEL_DEPTH_BOUND * (sample_rate / 10)` samples (~6.4 s at 48 kHz). When the consumer stalls (e.g., encoder thread blocked on disk I/O), the oldest queued samples are dropped rather than letting memory grow unbounded. Test asserts this is at least 1 s of buffer.
+  - **`Drop` removes the stream output first, then calls stopCapture.** Removing first prevents late delegate firings against the about-to-be-dropped Receiver; the synchronous-stop completion handler is capped at 500 ms so a hung SCK never blocks the drop forever.
+- **Deferred (hardware-verified follow-up commits):**
+  - **End-to-end PCM verification.** Today: the SCK path engages, permission TCC fires, error propagation works. What's verified by hardware test only: that the `AudioOutputHandler` callback actually fires when granted, that PCM extraction yields non-zero RMS for real audio, that the SCStream survives a long-running session without leaks. The smoke example is the verification vehicle.
+  - **macOS 12 fallback path.** Bumping `LSMinimumSystemVersion` to 13.0 makes the recorder refuse to launch on 12.3–12.7. We could conditionally disable system audio on 12.x rather than blocking the whole app; that requires a runtime version probe + UI to disable the system-audio row. Deferred until we see real 12.x users.
+  - **Per-app audio filter (M-AUDIO-SYS.1).** This commit ships the full-display content filter; the per-app `initWithDisplay_includingApplications_exceptingWindows:` filter is the next ticket's domain.
+- **What this closes:** the SCK system-audio infrastructure. Every M-AUDIO-SYS.1 + M-AUDIO-SYS.2 design decision (filter variants, Tauri command shapes, delegate lifecycle) can now build on `SystemAudioStream` + `AudioOutputHandler` without further framework wrangling. The hardest piece (objc2 protocol impl + CMSampleBuffer extraction + completion-block bridging) is solved.
+
+---
+
 ## M-MIC.2 — Wire mic picker UI (AUT-279)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — `<MicPicker />` Leptos component renders alongside `<CameraPicker />` in the Recorder surface, calls `list_microphones` / `start_mic_capture` / `microphone_permission_status` over the M-MIC.1 IPC contract, persists the last-used mic to `LocalStorage`. Three picker states (Populated / Empty / PermissionNeeded) mirror the camera picker.
