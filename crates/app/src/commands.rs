@@ -25,6 +25,8 @@ use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_m
 use crate::recp::settings_deep_link::{SettingsPane, open_command};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
 #[cfg(target_os = "macos")]
+use crate::screen_capture::ScreenCaptureState;
+#[cfg(target_os = "macos")]
 use crate::system_audio::SystemAudioCaptureState;
 use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
 use crate::tray::toggle::{Action, TrayPopoverState};
@@ -1226,6 +1228,189 @@ pub fn system_audio_status(state: State<'_, SystemAudioCaptureState>) -> bool {
 #[must_use]
 pub fn system_audio_status() -> bool {
     false
+}
+
+// ---------------------------------------------------------------
+// Screen-capture IPC surface (M-SCK.1 / AUT-268 + M-SCK.2 / AUT-269,
+// lifecycle-only — frame channel deferred per the PR scope).
+// ---------------------------------------------------------------
+
+/// View-model for a display source (M-SCK.1 / AUT-268). Mirrors
+/// `media::screen::DisplaySource` but lives in the shell crate so
+/// the IPC schema is owned here.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DisplaySourceView {
+    /// Stable id (`display-<displayID>`).
+    pub id: String,
+    /// Human-readable label.
+    pub label: String,
+    /// Width in points.
+    pub width: u32,
+    /// Height in points.
+    pub height: u32,
+    /// `true` for the first display in the enumeration.
+    pub is_primary: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::screen::DisplaySource> for DisplaySourceView {
+    fn from(value: media::screen::DisplaySource) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            width: value.width,
+            height: value.height,
+            is_primary: value.is_primary,
+        }
+    }
+}
+
+/// View-model for a window source (M-SCK.1 / AUT-268).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WindowSourceView {
+    /// Stable id for the current session (`window-<windowID>`).
+    pub id: String,
+    /// Window title (or empty).
+    pub label: String,
+    /// Width in points.
+    pub width: u32,
+    /// Height in points.
+    pub height: u32,
+    /// Owning app bundle id.
+    pub bundle_id: String,
+    /// Owning app display name.
+    pub display_name: String,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::screen::WindowSource> for WindowSourceView {
+    fn from(value: media::screen::WindowSource) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            width: value.width,
+            height: value.height,
+            bundle_id: value.bundle_id,
+            display_name: value.display_name,
+        }
+    }
+}
+
+/// Enumerate every display SCK can see (M-SCK.1 / AUT-268).
+/// Returns empty Vec on non-macOS targets.
+///
+/// # Errors
+///
+/// Returns the SCK error as a string when SCK refuses (TCC denied,
+/// enumeration failed).
+#[tauri::command]
+pub fn list_screen_displays() -> Result<Vec<DisplaySourceView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::screen::list_displays()
+            .map(|v| v.into_iter().map(DisplaySourceView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Enumerate every visible window SCK can see (M-SCK.1 / AUT-268).
+///
+/// # Errors
+///
+/// Returns the SCK error as a string.
+#[tauri::command]
+pub fn list_screen_windows() -> Result<Vec<WindowSourceView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::screen::list_windows()
+            .map(|v| v.into_iter().map(WindowSourceView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Start the screen-capture session on the primary display
+/// (M-SCK.2 / AUT-269, partial). Defaults to 1920×1080 @ 30fps with
+/// cursor shown. Triggers the macOS Screen Recording TCC prompt on
+/// first run.
+///
+/// # Errors
+///
+/// Returns the SCK error as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn start_screen_capture(state: State<'_, ScreenCaptureState>) -> Result<(), String> {
+    state
+        .start(media::sck_video::ScreenCaptureConfig::default())
+        .map_err(|err| err.to_string())
+}
+
+/// Non-macOS stub for `start_screen_capture`. Returns the
+/// requires-macOS-13.0 error so the Leptos picker surfaces a
+/// consistent message across platforms.
+///
+/// # Errors
+///
+/// Always returns `"screen capture requires macOS 13.0+"`.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn start_screen_capture() -> Result<(), String> {
+    Err("screen capture requires macOS 13.0+".into())
+}
+
+/// Stop the active screen-capture session, if any.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn stop_screen_capture(state: State<'_, ScreenCaptureState>) {
+    state.stop();
+}
+
+/// Non-macOS stub for `stop_screen_capture`. No-op.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn stop_screen_capture() {}
+
+/// `true` when a screen-capture session is currently running
+/// (M-SCK.2 / AUT-269). The Leptos picker reads this on mount + on
+/// every chevron-toggle to seed UI state.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_status(state: State<'_, ScreenCaptureState>) -> bool {
+    state.is_active()
+}
+
+/// Non-macOS stub for `screen_capture_status`. Always `false`.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_status() -> bool {
+    false
+}
+
+/// Cumulative frame counter for the active session
+/// (M-SCK.2 / AUT-269). Returns `0` when no session is active. Used
+/// by the Leptos diagnostic overlay + future frame-rate monitor.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_frame_count(state: State<'_, ScreenCaptureState>) -> u64 {
+    state.frames_received()
+}
+
+/// Non-macOS stub. Always 0.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_frame_count() -> u64 {
+    0
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a
