@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability set for every window. Preserves Tauri 2's built-in core defaults and grants the debug-only DevTools toggle so opening the inspector from the webview keyboard shortcut / context menu doesn't trip 'webview.internal_toggle_devtools not allowed' in debug builds.",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-internal-toggle-devtools"
+  ]
+}

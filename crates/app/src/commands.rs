@@ -15,6 +15,7 @@ use std::sync::Mutex;
 
 use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
+use crate::audio::{MicCaptureHandle, MicCapturePipeline, MicCaptureState, MicError, MicLifecycle};
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{
     CameraError, CameraPipeline, CameraPipelineHandle, DiagnosticsSnapshot, PreviewDiagnostics,
@@ -22,6 +23,8 @@ use crate::preview::{
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+#[cfg(target_os = "macos")]
+use crate::system_audio::SystemAudioCaptureState;
 use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
 use crate::tray::toggle::{Action, TrayPopoverState};
 
@@ -693,6 +696,360 @@ pub fn preview_status(state: State<'_, PreviewState>) -> PreviewLifecycle {
 #[must_use]
 pub fn preview_diagnostics(state: State<'_, PreviewDiagnostics>) -> DiagnosticsSnapshot {
     state.snapshot()
+}
+
+// ---------------------------------------------------------------
+// Microphone IPC surface (M-MIC.1 / AUT-278)
+// ---------------------------------------------------------------
+
+/// View-model shape for the microphone-list IPC command (M-MIC.1 /
+/// AUT-278). Mirrors [`media::MicrophoneDevice`] but lives in
+/// `crates/app/` so the IPC schema is owned by the shell crate.
+/// Same shape contract as [`CameraView`] keeps the Leptos-side
+/// picker code symmetrical between camera + mic.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MicrophoneView {
+    /// Stable device id (`mic-…`).
+    pub id: String,
+    /// Human-readable label (`"MacBook Pro Microphone"` etc.).
+    pub label: String,
+    /// `true` for the OS-default mic.
+    pub is_default: bool,
+    /// Native channel count from the gst caps line (1 = mono, 2 =
+    /// stereo). `0` means unknown — Leptos should default to 2.
+    pub channels: u8,
+    /// Native sample rate (typically 48000 / 44100). `0` means
+    /// unknown — Leptos should default to 48000.
+    pub sample_rate_hz: u32,
+}
+
+impl From<media::MicrophoneDevice> for MicrophoneView {
+    fn from(value: media::MicrophoneDevice) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            is_default: value.is_default,
+            channels: value.channels,
+            sample_rate_hz: value.sample_rate_hz,
+        }
+    }
+}
+
+/// Enumerate attached microphones (M-MIC.1 / AUT-278).
+///
+/// Wraps [`media::list_microphones`]. Empty `Vec` (not an error)
+/// when `gst-device-monitor-1.0` isn't on `PATH` or no mics are
+/// attached — Leptos consumers should runtime-skip in that case.
+#[tauri::command]
+#[must_use]
+pub fn list_microphones() -> Vec<MicrophoneView> {
+    media::list_microphones()
+        .into_iter()
+        .map(MicrophoneView::from)
+        .collect()
+}
+
+/// Probe the OS for microphone permission (M-MIC.2 / AUT-279).
+///
+/// Today: returns `Granted` everywhere. The real macOS implementation
+/// would call `AVCaptureDevice.authorizationStatus(for: .audio)` via
+/// `objc2` — that lands as a sibling to M-RECP.0's camera version
+/// once we wire the `AVFoundation` probe. The picker UX (M-MIC.2) is
+/// already coded against the three-state contract
+/// (`Granted` / `NotDetermined` / `Denied`) so swapping in the real
+/// probe is a one-line change.
+///
+/// Reuses [`CameraPermission`] rather than introducing a separate
+/// `MicrophonePermission` enum — the three states are
+/// structurally identical and the picker components key off the
+/// variant tags, not the type name.
+#[tauri::command]
+#[must_use]
+pub fn microphone_permission_status() -> CameraPermission {
+    CameraPermission::Granted
+}
+
+/// Start the microphone capture worker (M-MIC.1 / AUT-278).
+///
+/// Advances [`MicLifecycle`] Idle → Starting and spawns a
+/// [`MicCapturePipeline`]. Re-entrant calls while a session is
+/// running cleanly tear down the previous worker (the handle's
+/// `install` swap drops the old `Pipeline`, which drops the gst
+/// child) before starting the new one.
+///
+/// # Errors
+///
+/// Returns [`MicError::GstFailed`] when the worker thread can't
+/// spawn (effectively never happens). gst-side failures (no mic
+/// attached, permission denied, etc.) are reported via the
+/// `mic_status` snapshot returning to `Idle` after the worker
+/// thread's error path runs.
+#[tauri::command]
+pub fn start_mic_capture(
+    app: tauri::AppHandle,
+    state: State<'_, MicCaptureState>,
+    pipeline_state: State<'_, MicCaptureHandle>,
+    mic_id: String,
+) -> Result<(), MicError> {
+    // Re-entrant calls: if a session is already up, tear it down
+    // first so the new mic-id wins. Mirrors the M-CAM.2/.3
+    // start_preview re-entrance contract — except the camera path
+    // doesn't yet handle re-entrance (its docs say "the caller is
+    // expected to first stop the existing session"). Here we do the
+    // teardown ourselves so the picker UX (M-MIC.2) doesn't need to
+    // sequence stop_mic_capture + start_mic_capture for every swap.
+    let was_active = pipeline_state.is_active();
+    if was_active {
+        tracing::info!(
+            mic_id = %mic_id,
+            "start_mic_capture: tearing down previous session for re-entrant start"
+        );
+        pipeline_state.shutdown();
+        // Force the lifecycle through Stopping → Idle so the
+        // try_start below sees Idle.
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop().finish_stop();
+    }
+
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let new_state = guard.try_start();
+        if new_state == *guard {
+            return Ok(());
+        }
+        *guard = new_state;
+    }
+    tracing::info!(
+        mic_id = %mic_id,
+        "mic-capture Starting — spawning gst worker"
+    );
+    let pipeline = MicCapturePipeline::spawn(app, mic_id)?;
+    pipeline_state.install(pipeline);
+    Ok(())
+}
+
+/// Stop the microphone capture worker (M-MIC.1 / AUT-278).
+///
+/// Drops the [`MicCapturePipeline`] (which cancels the loop, joins
+/// the thread, and — via `GstreamerAudioCapture`'s own `Drop` —
+/// kills + reaps the gst-launch child). The worker thread resets
+/// the lifecycle to `Idle` on its way out; we also do it here as a
+/// belt-and-braces guard in case the worker had already exited via
+/// a gst failure path.
+#[tauri::command]
+pub fn stop_mic_capture(
+    state: State<'_, MicCaptureState>,
+    pipeline_state: State<'_, MicCaptureHandle>,
+) {
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop();
+    }
+    // Drop the pipeline — Drop cancels + joins. Blocks briefly
+    // (one chunk interval, ~100 ms at our 4800-frame chunks);
+    // acceptable for a user-initiated stop.
+    pipeline_state.shutdown();
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.finish_stop();
+    }
+    tracing::info!("mic-capture Stopped");
+}
+
+/// Snapshot the current mic-capture lifecycle (M-MIC.1 / AUT-278).
+///
+/// Useful for Leptos to seed UI state on first mount before the
+/// (future) push-event mic-level stream drives it.
+#[tauri::command]
+#[must_use]
+pub fn mic_status(state: State<'_, MicCaptureState>) -> MicLifecycle {
+    *state
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+// ---------------------------------------------------------------
+// System-audio IPC surface (M-AUDIO-SYS.2 / AUT-282)
+// ---------------------------------------------------------------
+
+/// View-model for the per-app picker (M-AUDIO-SYS.2 / AUT-282).
+/// Mirrors [`media::sck_audio::AudioApp`] but lives on the shell
+/// crate so the IPC schema is owned here, not in `media`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AudioAppView {
+    /// Process identifier observed at enumeration time. The Leptos
+    /// side persists `bundle_id` for cross-restart durability, not
+    /// `pid`.
+    pub pid: u32,
+    /// Bundle identifier (e.g. `"com.spotify.client"`).
+    pub bundle_id: String,
+    /// Human-readable display name (`"Spotify"`).
+    pub display_name: String,
+    /// 32×32 PNG icon bytes. Empty in v0; populated in M-AUDIO-SYS.1.1.
+    pub icon_png_bytes: Vec<u8>,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::sck_audio::AudioApp> for AudioAppView {
+    fn from(value: media::sck_audio::AudioApp) -> Self {
+        Self {
+            pid: value.pid,
+            bundle_id: value.bundle_id,
+            display_name: value.display_name,
+            icon_png_bytes: value.icon_png_bytes,
+        }
+    }
+}
+
+/// IPC-facing view of `media::sck_audio::AudioAppFilter`. Matches
+/// the underlying enum 1-to-1 but lives in the shell crate so the
+/// serde shape is owned here.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AudioAppFilterView {
+    /// Capture every app's audio.
+    AllAudio,
+    /// Capture audio from only these apps (by bundle id).
+    OnlyApps(Vec<String>),
+    /// Capture audio from every app except these.
+    ExcludeApps(Vec<String>),
+}
+
+#[cfg(target_os = "macos")]
+impl From<AudioAppFilterView> for media::sck_audio::AudioAppFilter {
+    fn from(value: AudioAppFilterView) -> Self {
+        match value {
+            AudioAppFilterView::AllAudio => Self::AllAudio,
+            AudioAppFilterView::OnlyApps(ids) => Self::OnlyApps(ids),
+            AudioAppFilterView::ExcludeApps(ids) => Self::ExcludeApps(ids),
+        }
+    }
+}
+
+/// Enumerate every running app SCK can see (M-AUDIO-SYS.2 / AUT-282).
+///
+/// Returns an empty Vec on non-macOS targets (system audio is
+/// macOS-only); the Leptos picker treats empty as "no apps available"
+/// and renders the empty state.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error (TCC permission denied,
+/// enumeration failed, etc.) as a string so the Leptos picker
+/// can show it inline.
+#[tauri::command]
+pub fn list_audio_apps() -> Result<Vec<AudioAppView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::sck_audio::list_audio_apps()
+            .map(|apps| apps.into_iter().map(AudioAppView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Start the system-audio capture session (M-AUDIO-SYS.2 / AUT-282).
+///
+/// Triggers the macOS Screen Recording permission prompt on first
+/// run. On subsequent runs the session starts cleanly.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error message as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn start_system_audio_capture(state: State<'_, SystemAudioCaptureState>) -> Result<(), String> {
+    state
+        .start(media::sck_audio::SystemAudioConfig::default())
+        .map_err(|err| err.to_string())
+}
+
+/// Non-macOS stub for `start_system_audio_capture`. Returns a
+/// "not supported" error so the Leptos picker can show the user
+/// they're on the wrong platform.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn start_system_audio_capture() -> Result<(), String> {
+    Err("system audio capture requires macOS 13.0+".into())
+}
+
+/// Stop the active system-audio session, if any (M-AUDIO-SYS.2).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn stop_system_audio_capture(state: State<'_, SystemAudioCaptureState>) {
+    state.stop();
+}
+
+/// Non-macOS stub for `stop_system_audio_capture`. No-op since no
+/// session can have been started on this platform.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn stop_system_audio_capture() {}
+
+/// Apply a per-app filter to the active system-audio session
+/// (M-AUDIO-SYS.2 / AUT-282).
+///
+/// The picker should call `start_system_audio_capture` first; if no
+/// session is active this command returns an error.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error message as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn set_system_audio_filter(
+    state: State<'_, SystemAudioCaptureState>,
+    filter: AudioAppFilterView,
+) -> Result<(), String> {
+    let internal: media::sck_audio::AudioAppFilter = filter.into();
+    state.set_filter(&internal).map_err(|err| err.to_string())
+}
+
+/// Non-macOS stub for `set_system_audio_filter`. Returns the same
+/// "not supported" error as the start command so the Leptos picker
+/// can surface a consistent message on every platform.
+///
+/// # Errors
+///
+/// Always returns `"system audio capture requires macOS 13.0+"`.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn set_system_audio_filter(_filter: AudioAppFilterView) -> Result<(), String> {
+    Err("system audio capture requires macOS 13.0+".into())
+}
+
+/// Whether a system-audio session is currently active
+/// (M-AUDIO-SYS.2 / AUT-282). Drives the picker's master toggle
+/// display.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn system_audio_status(state: State<'_, SystemAudioCaptureState>) -> bool {
+    state.is_active()
+}
+
+/// Non-macOS stub for `system_audio_status`. Always returns `false`
+/// since no session can have been started on this platform.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn system_audio_status() -> bool {
+    false
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

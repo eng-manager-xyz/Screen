@@ -76,6 +76,38 @@
       window.__screenCameraPermissionStatus = () =>
         window.__TAURI__?.core?.invoke("camera_permission_status") ?? Promise.resolve("Granted");
 
+      // M-MIC.1 / AUT-278 + M-MIC.2 / AUT-279 — microphone IPC. Same
+      // shape as the camera bridge so the picker UX (M-MIC.2) reads
+      // identically across camera + mic.
+      window.__screenListMicrophones = () =>
+        window.__TAURI__?.core?.invoke("list_microphones") ?? Promise.resolve([]);
+      window.__screenStartMicCapture = (micId) =>
+        window.__TAURI__?.core?.invoke("start_mic_capture", { micId }) ?? Promise.resolve();
+      window.__screenStopMicCapture = () =>
+        window.__TAURI__?.core?.invoke("stop_mic_capture") ?? Promise.resolve();
+      window.__screenMicStatus = () =>
+        window.__TAURI__?.core?.invoke("mic_status") ?? Promise.resolve("Idle");
+      window.__screenMicrophonePermissionStatus = () =>
+        window.__TAURI__?.core?.invoke("microphone_permission_status") ?? Promise.resolve("Granted");
+
+      // M-AUDIO-SYS.2 / AUT-282 — system audio (speakers + per-app)
+      // IPC. Same shape as the camera / mic bridge; the per-app
+      // filter accepts a tagged enum: `{ AllAudio: null }` /
+      // `{ OnlyApps: ["com.spotify.client", ...] }` /
+      // `{ ExcludeApps: ["us.zoom.xos"] }`. Tauri's serde decoder
+      // accepts both tagged-string and tagged-object forms; the
+      // picker emits whichever is more convenient.
+      window.__screenListAudioApps = () =>
+        window.__TAURI__?.core?.invoke("list_audio_apps") ?? Promise.resolve([]);
+      window.__screenStartSystemAudio = () =>
+        window.__TAURI__?.core?.invoke("start_system_audio_capture") ?? Promise.resolve();
+      window.__screenStopSystemAudio = () =>
+        window.__TAURI__?.core?.invoke("stop_system_audio_capture") ?? Promise.resolve();
+      window.__screenSetSystemAudioFilter = (filter) =>
+        window.__TAURI__?.core?.invoke("set_system_audio_filter", { filter }) ?? Promise.resolve();
+      window.__screenSystemAudioStatus = () =>
+        window.__TAURI__?.core?.invoke("system_audio_status") ?? Promise.resolve(false);
+
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder
       // surface is open to render the small "Camera pipeline" overlay.

@@ -17,22 +17,19 @@ flowchart LR
     Plist[crates/app/Info.plist]
     DevBin[target/debug/screen-app<br/>Mach-O __TEXT,__info_plist section]
     ProdApp[screen-app.app/Contents/Info.plist]
-    Plist -->|"embed_plist::embed_info_plist! in src/main.rs"| DevBin
+    Plist -->|"tauri::generate_context! auto-embed<br/>(tauri-codegen, dev+macOS)"| DevBin
     Plist -->|"cargo tauri build auto-detects file<br/>next to tauri.conf.json"| ProdApp
 ```
 
-## Dev binary — Mach-O section embed
+## Dev binary — Mach-O section embed (auto-embedded by Tauri)
 
 `cargo run -p screen-app` produces a raw Mach-O at `target/debug/screen-app`. There's no `screen-app.app/Contents/Info.plist` filesystem path for TCC to read. Apple's fallback for command-line tools: a `__TEXT,__info_plist` section embedded in the binary itself (the same mechanism `/usr/bin/screencapture`, `/usr/bin/pmset`, etc. use).
 
-`crates/app/src/main.rs` invokes:
+**`tauri::generate_context!()` auto-embeds this section** for every debug macOS build. The code path lives in `tauri-codegen-2.6.1/src/context.rs::context_codegen`, branch `target == Target::MacOS && dev && !running_tests` — it reads `Info.plist` next to `tauri.conf.json`, merges bundle name / version, and emits the same `embed_plist::embed_info_plist!` call we used to make manually.
 
-```rust
-#[cfg(target_os = "macos")]
-embed_plist::embed_info_plist!("../Info.plist");
+```admonish note title="History: manual `embed_plist!` was removed in M-MIC.1"
+PR #47 originally added an explicit `embed_plist::embed_info_plist!("../Info.plist")` in `crates/app/src/main.rs`. Once Tauri 2.6.1+'s auto-embed was confirmed working, the manual macro call was redundant — and worse, it emitted the **same** `_EMBED_INFO_PLIST` symbol as the auto-embed, which broke every integration test in `screen-app` at link time with `symbol _EMBED_INFO_PLIST is already defined`. M-MIC.1 (AUT-278) removed the manual call + the `embed_plist` dep; the auto-embed is now the only path.
 ```
-
-The `embed_plist` macro reads the file at build time, encodes the bytes into a `static [u8; N]` placed via `#[link_section = "__TEXT,__info_plist"]`. TCC reads the section the same way it would read a bundle's `Contents/Info.plist`.
 
 Verify the embed worked:
 
@@ -85,10 +82,14 @@ Twelve keys, four concerns:
 ### Minimum OS version (one key)
 
 ```xml
-<key>LSMinimumSystemVersion</key>  <string>12.3</string>
+<key>LSMinimumSystemVersion</key>  <string>13.0</string>
 ```
 
-ScreenCaptureKit (the API M-SCK uses for display + window + system-audio capture) was introduced in macOS 12.3. Declaring the floor here means macOS gatekeeps launch on older systems instead of letting the user run + silently fail at first screen capture. Camera + Mic capture works on older macOS, but **the recorder isn't useful without screen capture**, so 12.3 is the global floor.
+ScreenCaptureKit's video API was introduced in macOS 12.3, but the **audio API** (`SCStreamConfiguration.capturesAudio` — M-AUDIO-SYS.0 / AUT-280) is macOS 13.0+. The recorder's full capture surface (display + window + mic + system audio + per-app audio) requires 13.0; we declare the floor here so macOS gatekeeps launch on older systems instead of letting the user run + silently fail at first system-audio capture.
+
+```admonish warning title="13.0 bump trade-off"
+Bumped from 12.3 → 13.0 in M-AUDIO-SYS.0. macOS 12.3–12.7 users (a small but non-zero share at launch) can no longer launch the recorder. The alternative — runtime feature-detect + disable the system-audio row on 12.x — adds branching everywhere; the trade-off was made in favour of a single floor everyone targets. Mic + Camera + Screen-video would technically work on 12.x but the UX would be confusing without the audio path.
+```
 
 ### File-system access strings (four keys)
 
@@ -137,6 +138,22 @@ These are **user-facing** — they appear verbatim in the macOS prompt. Edit the
 This one string is the TCC gate for **all** of: full-display capture, specific-window capture, system audio output capture, and per-process audio capture. ScreenCaptureKit's audio capture path uses the screen-recording TCC entry rather than the microphone one — counterintuitive but baked into the framework.
 
 The recorder thus needs only the three strings above to cover every flavour of capture we plan to support.
+```
+
+## Audio capture paths — verified TCC mapping (AUT-283)
+
+M-AUDIO.PERMS (AUT-283) verified the per-path TCC mapping for the three audio capture flavours by attempting each path against a fresh `tccutil reset All com.screen.app` state and observing which prompt macOS surfaced.
+
+| Capture path | Triggered by | TCC category | Info.plist key |
+| --- | --- | --- | --- |
+| Microphone (M-MIC.1 / AUT-278) | `gst-launch-1.0 ! autoaudiosrc !` opens AVAudioSession | **Microphone** | `NSMicrophoneUsageDescription` |
+| System audio (M-AUDIO-SYS.0 / AUT-280) | `SCStreamConfiguration.setCapturesAudio(true)` | **Screen Recording** | `NSScreenCaptureUsageDescription` |
+| Per-process audio (M-AUDIO-SYS.1 / AUT-281) | `SCContentFilter.initWithDisplay_includingApplications_…` | **Screen Recording** (same entry) | `NSScreenCaptureUsageDescription` |
+
+```admonish important title="One Screen Recording grant covers both SCK audio paths"
+The system-audio + per-process-audio paths share the same TCC entry. Once the user grants Screen Recording (either for video capture or for the first system-audio attempt), every subsequent SCK audio call is silent. **The user sees the prompt once, not twice.**
+
+Verified by attempting `cargo run -p media --example system_audio_smoke` on a freshly-reset TCC state: the error message returned by SCK was *"The user declined TCCs for application, window, display capture"* — confirming the SCK audio path engages the Screen Recording TCC entry, not Microphone.
 ```
 
 ## Platform-quirk reminders

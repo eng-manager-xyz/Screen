@@ -87,15 +87,20 @@ If you're on PR #46 (the diagnostics PR), the "Camera pipeline" overlay near the
 
 ### Step 7 — Repeat for microphone and screen recording (when you use those)
 
-You won't see the mic prompt until **microphone capture lands** in a future PR (M-MIC).
+**Update (M-AUDIO ships):** the M-MIC chain (AUT-277/-278/-279) and the M-AUDIO-SYS chain (AUT-280/-281/-282) have all landed. You'll see the mic + screen-recording prompts the **first time you use those features in the recorder** — both follow the identical Allow → System Settings → working flow as the camera.
 
-You won't see the screen-recording prompt until **screen capture lands** in a future PR (M-SCK).
+| Capture path | Triggers prompt when | TCC category | Permission string |
+| --- | --- | --- | --- |
+| Microphone (M-MIC) | First time you flip on a mic from the recorder | **Microphone** | `NSMicrophoneUsageDescription` |
+| System audio (M-AUDIO-SYS) | First time you flip on "System audio" in the recorder | **Screen Recording** | `NSScreenCaptureUsageDescription` |
+| Per-app audio (M-AUDIO-SYS) | First time you expand the system-audio picker | **Screen Recording** (same TCC entry as above — one grant covers both) | `NSScreenCaptureUsageDescription` |
+| Screen video (M-SCK — future) | Future ticket | **Screen Recording** (same entry) | `NSScreenCaptureUsageDescription` |
 
-When those do show up, the flow is identical:
+> **Note about screen recording specifically:** after you grant screen-recording permission, macOS will ask you to **relaunch the app** before it takes effect. This is a well-known macOS quirk, not a bug. The recorder will show a "Quit and reopen" button. This applies to **both** the system-audio and the screen-video paths — they share the TCC entry.
 
-- First use → macOS prompts → click Allow → app appears in System Settings under the relevant category.
-
-> **Note about screen recording specifically:** after you grant screen-recording permission, macOS will ask you to **relaunch the app** before it takes effect. This is a well-known macOS quirk, not a bug. The recorder will show a "Quit and reopen" button.
+```admonish tip title="One grant unlocks both SCK paths"
+ScreenCaptureKit uses the **Screen Recording** TCC entry for both video and audio capture. If you grant Screen Recording the first time you flip on System Audio, you won't see a separate prompt later when the screen-capture video path lands — same grant covers both. Verified end-to-end in M-AUDIO.PERMS (AUT-283).
+```
 
 ---
 
@@ -151,7 +156,17 @@ If `screen-app` isn't there, run `tccutil reset Camera com.screen.app` first, re
 
 ### "It works for camera, but I'm worried about mic and screen recording"
 
-Same Info.plist already declares those too. When the recorder eventually tries to use the microphone (M-MIC ticket) or screen capture (M-SCK ticket), macOS will prompt for those separately, with the same Allow → System Settings → working flow. **You don't have to do anything to prepare for those.**
+**Verified working as of M-AUDIO.PERMS (AUT-283).** The same Info.plist already declares mic + screen-recording strings. When the recorder uses the microphone (M-MIC) or system audio (M-AUDIO-SYS), macOS prompts for those separately, with the same Allow → System Settings → working flow. **You don't have to do anything to prepare for those.**
+
+### "I granted Screen Recording but per-process audio still returns silence"
+
+**Quit and relaunch the app.** This is the well-known macOS quirk: after granting Screen Recording for the first time, the running app's process still operates under the old (denied) TCC state until restart. The Recorder UI will show a "Quit and reopen" button when it detects this case (future M-AUDIO-SYS polish ticket).
+
+Verification: `cargo run -p media --example system_audio_smoke` against a freshly-reset TCC + freshly-granted Screen Recording should print non-zero RMS when audio plays in another window. If RMS is still zero post-grant, you almost certainly haven't relaunched yet.
+
+### "I'm on macOS 12.x and the recorder won't launch"
+
+Intentional. `LSMinimumSystemVersion` was bumped from 12.3 → 13.0 in M-AUDIO-SYS.0 (AUT-280) because `SCStreamConfiguration.capturesAudio` (the API we use for system audio) is macOS 13.0+. macOS 12.3–12.7 users see *"This app requires macOS 13.0 or later"* at launch. Upgrade to 13.0+ or wait for a future runtime-feature-detect ticket that would disable system audio on 12.x rather than blocking the whole app.
 
 ### "Will I have to do all this again every time the app is rebuilt?"
 
@@ -224,15 +239,19 @@ Mach-O files are split into **sections**. Most sections hold the actual program 
 
 The Mach-O section name where the embedded Info.plist lives in our dev binary. `__TEXT` is the segment (a group of sections); `__info_plist` is the specific section. The `otool -s __TEXT __info_plist <binary>` command prints its contents.
 
-### `embed_plist`
+### `embed_plist` (historical)
 
-The **Rust crate** (i.e., library) we use to do the embedding. It provides a macro:
+The **Rust crate** that PR #47 originally used to manually embed `Info.plist` into the Mach-O via a macro. The macro emitted a static byte array tagged with `#[link_section = "__TEXT,__info_plist"]`.
 
-```rust
-embed_plist::embed_info_plist!("../Info.plist");
+**Removed in M-MIC.1 (AUT-278).** Tauri 2.6.1+'s `tauri::generate_context!()` macro auto-embeds `Info.plist` for every debug macOS build (see `tauri-codegen-2.6.1/src/context.rs::context_codegen`). The manual `embed_plist!` call was redundant *and* it emitted the **same** `_EMBED_INFO_PLIST` symbol as the auto-embed, breaking every integration test in `screen-app` at link time. The auto-embed is now the only path; the `embed_plist` dep is removed from `crates/app/Cargo.toml`.
+
+If you need to verify the section is still being embedded post-removal, the same `otool` command works:
+
+```bash
+otool -s __TEXT __info_plist target/debug/screen-app | head -5
 ```
 
-At build time, this macro reads the Info.plist file and emits a static byte array tagged with `#[link_section = "__TEXT,__info_plist"]`. The Rust compiler + linker put those bytes in the right section of the final Mach-O. Single line of code, complete solution.
+You'll still see hex bytes — Tauri's auto-embed is producing them now, not the manual macro.
 
 ### CFBundleIdentifier
 
@@ -250,7 +269,11 @@ The **version string** of the app. Both values should match — we use `0.1.0`. 
 
 ### LSMinimumSystemVersion
 
-The **minimum macOS version** the app needs. We declare `12.3` because **ScreenCaptureKit** (Apple's modern API for screen capture) was added in macOS 12.3. macOS refuses to launch the app on older systems instead of letting it run + fail later.
+The **minimum macOS version** the app needs. Currently `13.0`. Bumped from 12.3 in M-AUDIO-SYS.0 (AUT-280) because ScreenCaptureKit's *audio* API (`SCStreamConfiguration.capturesAudio`) is macOS 13.0+. macOS refuses to launch the app on older systems instead of letting it run + fail later.
+
+```admonish note title="History"
+The original PR #47 declared `12.3` — ScreenCaptureKit's *video* API was introduced then. M-AUDIO-SYS.0 needed the 13.0-only audio API and bumped accordingly.
+```
 
 ### NSCameraUsageDescription / NSMicrophoneUsageDescription / NSScreenCaptureUsageDescription
 

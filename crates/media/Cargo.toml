@@ -21,6 +21,43 @@ tracing = { workspace = true }
 # in M-CAM.2 (AUT-256), so serde stays in the main deps.
 serde = { version = "1", features = ["derive"] }
 
+# M-AUDIO-SYS.0 / AUT-280 — macOS ScreenCaptureKit bindings for system
+# audio capture (and, in M-AUDIO-SYS.1, per-app filtering). Pulled in
+# only on macOS: every dep here is cfg-gated to that target so Linux /
+# Windows builds don't pay the build cost. The runtime floor is macOS
+# 13.0 because SCStreamConfiguration.capturesAudio is a 13+ API;
+# Info.plist's LSMinimumSystemVersion is bumped to 13.0 alongside this.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSArray",
+    "NSError",
+    "NSString",
+    "NSValue",
+    "NSObject",
+    "NSThread",
+    "NSEnumerator",
+] }
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "SCShareableContent",
+    "SCStream",
+    "SCError",
+    "block2",
+    "dispatch2",
+    "libc",
+    "objc2-core-media",
+] }
+objc2-core-media = { version = "0.3", features = [
+    "CMSampleBuffer",
+    "CMBlockBuffer",
+    "CMFormatDescription",
+    "CMBase",
+] }
+objc2-core-audio-types = { version = "0.3", features = ["CoreAudioBaseTypes"] }
+block2 = "0.6"
+dispatch2 = "0.3"
+
 [dev-dependencies]
 image = "0.25"
 tracing-subscriber = { workspace = true }
@@ -62,3 +99,26 @@ path = "examples/gst_video_to_wisp.rs"
 [[example]]
 name = "synced_scene"
 path = "examples/synced_scene.rs"
+
+# M-MIC.0 / AUT-277 — print every attached microphone via
+# gst-device-monitor-1.0 Audio/Source. Exits cleanly with a hint
+# when gstreamer isn't on PATH or no inputs are attached.
+[[example]]
+name = "list_microphones"
+path = "examples/list_microphones.rs"
+
+# M-AUDIO-SYS.0 / AUT-280 — capture 1 second of macOS speaker
+# output via ScreenCaptureKit, print peak + RMS. Triggers the
+# Screen Recording permission prompt on first run. macOS-only;
+# Linux/Windows builds print a skip message.
+[[example]]
+name = "system_audio_smoke"
+path = "examples/system_audio_smoke.rs"
+
+# M-AUDIO-SYS.1 / AUT-281 — list every running app SCK can see,
+# with bundle id + display name + PID. Drives the per-app audio
+# filter (Spotify-only capture etc.). macOS-only; same TCC entry
+# as system_audio_smoke.
+[[example]]
+name = "list_audio_apps"
+path = "examples/list_audio_apps.rs"

@@ -12,16 +12,17 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// macOS-only: embed our Info.plist into the binary's
-// `__TEXT,__info_plist` Mach-O section at link time. The macro reads
-// the file at build time + emits a `static [u8; N]` with the right
-// `#[link_section]` so TCC sees `NSCameraUsageDescription` /
-// `NSMicrophoneUsageDescription` / `NSScreenCaptureUsageDescription`
-// when our dev binary requests those permissions. Bundled `.app`
-// builds pick up the same `Info.plist` via `bundle.macOS.infoPlist`
-// in `tauri.conf.json` — same file, two ingestion mechanisms.
-#[cfg(target_os = "macos")]
-embed_plist::embed_info_plist!("../Info.plist");
+// macOS Info.plist embedding is handled by `tauri::generate_context!()`
+// — tauri-codegen 2.6.1 auto-embeds `crates/app/Info.plist` into the
+// binary's `__TEXT,__info_plist` section for every debug build on
+// macOS (see `tauri-codegen::context::context_codegen`, branch
+// `target == Target::MacOS && dev && !running_tests`). The manual
+// `embed_plist::embed_info_plist!` call we previously had emitted
+// the SAME `_EMBED_INFO_PLIST` symbol, which made every integration
+// test fail at link time with `symbol _EMBED_INFO_PLIST is already
+// defined`. Bundled `.app` builds (when `bundle.active = true`) pick
+// up the same `Info.plist` via `bundle.macOS.infoPlist` in
+// `tauri.conf.json`.
 
 use std::thread;
 use std::time::Duration;
@@ -29,9 +30,12 @@ use std::time::Duration;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
+use screen_app::audio::{MicCaptureHandle, MicCaptureState};
 use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
+#[cfg(target_os = "macos")]
+use screen_app::system_audio::SystemAudioCaptureState;
 
 /// Embedded tray-icon bytes (M-TRAY.0 / AUT-249). `include_bytes!`
 /// resolves at compile time so the bundled binary doesn't need
@@ -48,13 +52,20 @@ const TICK_INTERVAL: Duration = Duration::from_millis(33);
 const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(PlayerSession::new())
         .manage(TrayState::default())
         .manage(BubbleState::default())
         .manage(PreviewState::default())
         .manage(PreviewDiagnostics::default())
         .manage(CameraPipelineHandle::default())
+        .manage(MicCaptureState::default())
+        .manage(MicCaptureHandle::default());
+    // System-audio state is macOS-only — the underlying
+    // SystemAudioStream depends on ScreenCaptureKit.
+    #[cfg(target_os = "macos")]
+    let builder = builder.manage(SystemAudioCaptureState::default());
+    builder
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
             // tests (M-TEST.2). Release builds omit it entirely — the
@@ -76,6 +87,16 @@ fn main() {
                     commands::stop_preview,
                     commands::preview_status,
                     commands::preview_diagnostics,
+                    commands::list_microphones,
+                    commands::start_mic_capture,
+                    commands::stop_mic_capture,
+                    commands::mic_status,
+                    commands::microphone_permission_status,
+                    commands::list_audio_apps,
+                    commands::start_system_audio_capture,
+                    commands::stop_system_audio_capture,
+                    commands::set_system_audio_filter,
+                    commands::system_audio_status,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -97,68 +118,20 @@ fn main() {
                     commands::stop_preview,
                     commands::preview_status,
                     commands::preview_diagnostics,
+                    commands::list_microphones,
+                    commands::start_mic_capture,
+                    commands::stop_mic_capture,
+                    commands::mic_status,
+                    commands::microphone_permission_status,
+                    commands::list_audio_apps,
+                    commands::start_system_audio_capture,
+                    commands::stop_system_audio_capture,
+                    commands::set_system_audio_filter,
+                    commands::system_audio_status,
                 ]
             }
         })
-        .on_window_event(|window, event| {
-            // M-BUBBLE.3 / AUT-276: keep the webcam-bubble's in-memory
-            // position cache in sync while the user drags. Disk
-            // persistence happens on Hide (see `toggle_webcam_bubble`),
-            // not here — `WindowEvent::Moved` fires per-frame during a
-            // macOS drag and writing to disk at that rate would burn
-            // I/O. The in-memory write is a single mutex acquire +
-            // i32 pair copy, cheap enough for the high-frequency path.
-            if let WindowEvent::Moved(physical) = event
-                && window.label() == "webcam-bubble"
-            {
-                let state = window.app_handle().state::<commands::BubbleState>();
-                commands::update_bubble_position_from_event(&state, physical.x, physical.y);
-            }
-            // Three event flavors flow to the webview:
-            //   - file-drag-enter: drop-zone shows the active visual.
-            //   - file-drag-leave: drop-zone reverts. Also emitted after
-            //     a successful drop so the active visual doesn't stick.
-            //   - file-dropped:    payload is the dropped path.
-            //
-            // Diagnostic eprintln on every drag-related event so a
-            // misbehaving dev environment shows up in stderr — once
-            // the chain is verified end-to-end the prints can drop to
-            // `tracing::trace!` (or come out entirely).
-            if let WindowEvent::DragDrop(drag) = event {
-                match drag {
-                    DragDropEvent::Enter { paths, .. } => {
-                        eprintln!(
-                            "tauri: DragDropEvent::Enter ({} path(s)) — emitting file-drag-enter",
-                            paths.len()
-                        );
-                        if let Err(err) = window.emit("file-drag-enter", ()) {
-                            eprintln!("failed to emit file-drag-enter event: {err}");
-                        }
-                    }
-                    DragDropEvent::Leave => {
-                        eprintln!("tauri: DragDropEvent::Leave — emitting file-drag-leave");
-                        if let Err(err) = window.emit("file-drag-leave", ()) {
-                            eprintln!("failed to emit file-drag-leave event: {err}");
-                        }
-                    }
-                    DragDropEvent::Drop { paths, .. } => {
-                        eprintln!("tauri: DragDropEvent::Drop ({} path(s))", paths.len());
-                        if let Some(path) = paths.first() {
-                            let payload = path.to_string_lossy().into_owned();
-                            eprintln!("tauri: emitting file-dropped → {payload}");
-                            if let Err(err) = window.emit("file-dropped", payload) {
-                                eprintln!("failed to emit file-dropped event: {err}");
-                            }
-                        }
-                        // Reset the drag visual after a successful drop.
-                        if let Err(err) = window.emit("file-drag-leave", ()) {
-                            eprintln!("failed to emit file-drag-leave event: {err}");
-                        }
-                    }
-                    _ => {} // DragDropEvent is non_exhaustive (Over, future variants).
-                }
-            }
-        })
+        .on_window_event(handle_window_event)
         .setup(|app| {
             spawn_tick_thread(app.handle().clone());
             register_tray_icon(app)?;
@@ -171,6 +144,71 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Per-window event dispatcher. Extracted from `main()`'s closure so
+/// the file's top-level builder stays inside clippy's
+/// `too_many_lines` threshold once the mic + audio command surface
+/// lands (M-MIC.1 / AUT-278). Behaviour is unchanged: bubble drag
+/// position cache (M-BUBBLE.3) + drag-drop event forwarding.
+fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
+    // M-BUBBLE.3 / AUT-276: keep the webcam-bubble's in-memory
+    // position cache in sync while the user drags. Disk persistence
+    // happens on Hide (see `toggle_webcam_bubble`), not here —
+    // `WindowEvent::Moved` fires per-frame during a macOS drag and
+    // writing to disk at that rate would burn I/O. The in-memory
+    // write is a single mutex acquire + i32 pair copy, cheap enough
+    // for the high-frequency path.
+    if let WindowEvent::Moved(physical) = event
+        && window.label() == "webcam-bubble"
+    {
+        let state = window.app_handle().state::<commands::BubbleState>();
+        commands::update_bubble_position_from_event(&state, physical.x, physical.y);
+    }
+    // Three event flavors flow to the webview:
+    //   - file-drag-enter: drop-zone shows the active visual.
+    //   - file-drag-leave: drop-zone reverts. Also emitted after a
+    //     successful drop so the active visual doesn't stick.
+    //   - file-dropped:    payload is the dropped path.
+    //
+    // Diagnostic eprintln on every drag-related event so a
+    // misbehaving dev environment shows up in stderr — once the
+    // chain is verified end-to-end the prints can drop to
+    // `tracing::trace!` (or come out entirely).
+    if let WindowEvent::DragDrop(drag) = event {
+        match drag {
+            DragDropEvent::Enter { paths, .. } => {
+                eprintln!(
+                    "tauri: DragDropEvent::Enter ({} path(s)) — emitting file-drag-enter",
+                    paths.len()
+                );
+                if let Err(err) = window.emit("file-drag-enter", ()) {
+                    eprintln!("failed to emit file-drag-enter event: {err}");
+                }
+            }
+            DragDropEvent::Leave => {
+                eprintln!("tauri: DragDropEvent::Leave — emitting file-drag-leave");
+                if let Err(err) = window.emit("file-drag-leave", ()) {
+                    eprintln!("failed to emit file-drag-leave event: {err}");
+                }
+            }
+            DragDropEvent::Drop { paths, .. } => {
+                eprintln!("tauri: DragDropEvent::Drop ({} path(s))", paths.len());
+                if let Some(path) = paths.first() {
+                    let payload = path.to_string_lossy().into_owned();
+                    eprintln!("tauri: emitting file-dropped → {payload}");
+                    if let Err(err) = window.emit("file-dropped", payload) {
+                        eprintln!("failed to emit file-dropped event: {err}");
+                    }
+                }
+                // Reset the drag visual after a successful drop.
+                if let Err(err) = window.emit("file-drag-leave", ()) {
+                    eprintln!("failed to emit file-drag-leave event: {err}");
+                }
+            }
+            _ => {} // DragDropEvent is non_exhaustive (Over, future variants).
+        }
+    }
 }
 
 /// Register the menubar / tray icon (M-TRAY.0 / AUT-249).

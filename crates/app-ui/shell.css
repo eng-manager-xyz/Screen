@@ -204,3 +204,234 @@
   font-size: 12px;
   margin-top: 4px;
 }
+
+/* Mic picker dropdown (M-MIC.2 / AUT-279). Same shape as the camera
+   picker — keeping the visual contract identical until M-REC.0
+   formalises a shared CaptureSourceRow wrap. The mic-specific
+   tweaks are the leading microphone icon and the per-row "48 kHz ·
+   stereo · default" subline. */
+.mic-picker {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto 12px;
+}
+.mic-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.mic-picker-trigger:hover {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-icon {
+  opacity: 0.85;
+}
+.mic-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 280px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.mic-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mic-picker-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #fff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  row-gap: 2px;
+  column-gap: 8px;
+}
+.mic-picker-row:hover {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-row-selected {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-row-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+.mic-picker-row-sub {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+.mic-picker-row-check {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--accent, #4fc3f7);
+}
+.mic-picker-state {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.mic-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* System-audio picker (M-AUDIO-SYS.2 / AUT-282). Master toggle +
+   expandable per-app multi-select. Same visual idiom as the mic
+   picker; the inline "1 app" / "5 apps" summary lets the user
+   know they've scoped the capture without expanding. */
+.system-audio-picker {
+  position: relative;
+  display: block;
+  margin: 0 auto 12px;
+  max-width: 320px;
+}
+.system-audio-picker-header {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.system-audio-picker-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px 0 0 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+  flex: 1;
+}
+.system-audio-picker-toggle[data-enabled="true"] {
+  background: var(--accent-soft, #1a2a3a);
+  border-color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-toggle:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-label {
+  flex: 1;
+}
+.system-audio-picker-state {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+.system-audio-picker-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 0 6px 6px 0;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.system-audio-picker-expand:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-summary {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.system-audio-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.system-audio-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.system-audio-picker-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #fff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  row-gap: 2px;
+  column-gap: 8px;
+}
+.system-audio-picker-row:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-row-selected {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-row-icon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  opacity: 0.6;
+}
+.system-audio-picker-row-label {
+  grid-column: 2;
+  grid-row: 1;
+}
+.system-audio-picker-row-bundle {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+.system-audio-picker-row-check {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-state-msg {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.system-audio-picker-state-msg--error p:first-child {
+  color: var(--danger, #ff7676);
+}
+.system-audio-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}

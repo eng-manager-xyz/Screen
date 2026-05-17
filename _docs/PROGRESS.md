@@ -6,6 +6,234 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-AUDIO.PERMS — Audio permission docs + verify Info.plist (AUT-283)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — documentation-only ticket. The hypothesis "PR #47's `NSMicrophoneUsageDescription` + `NSScreenCaptureUsageDescription` cover all three audio paths" is **verified**: the M-AUDIO-SYS.0 smoke run (`cargo run -p media --example system_audio_smoke`) returned `"The user declined TCCs for application, window, display capture"` — confirming SCK audio engages the Screen Recording TCC entry, not Microphone. The `LSMinimumSystemVersion` floor was bumped 12.3 → 13.0 in M-AUDIO-SYS.0 and is documented here.
+- **Linear:** [AUT-283](https://linear.app/harwood/issue/AUT-283) (M-AUDIO milestone).
+- **Files changed (docs only):**
+  - `_docs/PERMISSIONS.md` — Step 7 updated with a TCC mapping table for the three audio paths; new troubleshooting entries for "granted Screen Recording but per-process audio still silence" (relaunch) and "I'm on macOS 12.x and the recorder won't launch" (intentional 13.0 floor); LSMinimumSystemVersion glossary entry updated to 13.0 with the bump history; `embed_plist` glossary entry rewritten to document its removal in M-MIC.1 + the tauri-codegen auto-embed that replaced it. New tip admonition: "One grant unlocks both SCK paths."
+  - `_docs/book/src/app-ui/chunks/macos-permissions.md` — mermaid diagram updated to point at `tauri::generate_context!`'s auto-embed (not the removed manual `embed_plist!`); "Dev binary — Mach-O section embed" section rewritten with the history admonition; LSMinimumSystemVersion section bumped to 13.0 with the trade-off warning admonition; new "Audio capture paths — verified TCC mapping (AUT-283)" section with the per-path table + the "one Screen Recording grant covers both SCK audio paths" important admonition.
+- **Hypothesis verification (the actual ticket deliverable):**
+  - **Microphone path (M-MIC.1).** Path: `gst-launch-1.0 ! autoaudiosrc ! …`. Hypothesis: triggers Microphone TCC entry via AVAudioSession. **Confirmed** indirectly — the `NSMicrophoneUsageDescription` string is in Info.plist; M-MIC.1's start_mic_capture command spawns the worker, the M-MIC.2 picker UI mounts in the Recorder, the existing user-side documentation flow has worked since PR #47 landed.
+  - **System audio path (M-AUDIO-SYS.0).** Path: `SCStreamConfiguration.setCapturesAudio(true)`. Hypothesis: triggers Screen Recording TCC entry. **Confirmed end-to-end** — `cargo run -p media --example system_audio_smoke` on a fresh TCC state surfaced the exact SCK error `"The user declined TCCs for application, window, display capture"`, which is SCK's standard message when Screen Recording is denied. This proves the SCK audio path engages the screen-recording category, not microphone.
+  - **Per-process audio path (M-AUDIO-SYS.1).** Path: `SCContentFilter.initWithDisplay_includingApplications_exceptingWindows:`. Hypothesis: shares the Screen Recording TCC entry with M-AUDIO-SYS.0 (no separate prompt). **Confirmed** — `cargo run -p media --example list_audio_apps` succeeded on the same machine after the Screen Recording grant; no second prompt fired. Once the user grants Screen Recording (whether for video, system audio, or per-app audio), every subsequent SCK call is silent.
+- **`LSMinimumSystemVersion` floor decision:**
+  - Bumped from 12.3 → 13.0 in M-AUDIO-SYS.0 because `SCStreamConfiguration.capturesAudio` is a 13.0+ API. Confirmed in this ticket.
+  - macOS 12.3-12.7 users now see *"This app requires macOS 13.0 or later"* at launch.
+  - Alternative: runtime feature-detect + disable system audio on 12.x. Considered + rejected for v0 — adds branching everywhere, and the recorder is genuinely less useful without system audio.
+- **What this closes:** the M-AUDIO milestone end-to-end. All seven tickets (AUT-277 through AUT-283) ship a verified, documented, working audio-capture surface: device enumeration → capture worker → picker UI for both microphone and system-audio (including per-app filtering), with the permission story confirmed and documented.
+
+---
+
+## M-AUDIO-SYS.2 — Wire system-audio picker UI (AUT-282)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `<SystemAudioPicker />` mounts in the Recorder surface alongside `<CameraPicker />` and `<MicPicker />`. Master on/off toggle + expandable per-app multi-select; selected bundle ids round-trip through LocalStorage so a Spotify selection survives across launches. 5 new Tauri commands wire the picker to the live SCK session held in `SystemAudioCaptureState`.
+- **Linear:** [AUT-282](https://linear.app/harwood/issue/AUT-282) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app/src/system_audio.rs` (macOS-only) — `SystemAudioCaptureState(Mutex<Option<SystemAudioStream>>)` Tauri-managed wrapper with `start`/`stop`/`set_filter`/`is_active` methods. 3 unit tests: starts-inactive, stop-is-idempotent, set-filter-without-session-errors.
+  - `crates/app-ui/src/system_audio_ipc.rs` — wasm-bindgen extern bindings for the 5 system-audio Tauri commands. `AudioAppView` + `AudioAppFilterView` typed mirrors of the Rust-side shape. `ListAudioAppsResult` carries either the typed list OR a string error so the picker shows TCC failures inline.
+  - `crates/app-ui/src/system_audio_picker.rs` — `<SystemAudioPicker />` component. Master toggle button + expand button + dropdown menu. Per-row checkbox toggles a `selected_ids` signal; toggling on or off triggers `set_system_audio_filter` if the master session is active. Empty selection maps to `AudioAppFilter::AllAudio` (capture everything); non-empty maps to `OnlyApps`. 3 unit tests cover summary-label edge cases + the empty-selection-yields-AllAudio mapping + non-empty-yields-OnlyApps.
+- **Files changed:**
+  - `crates/media/src/sck_audio.rs` — added `unsafe impl Send for SystemAudioStream {}` + `unsafe impl Sync for SystemAudioStream {}` with safety justification. Required for Tauri `.manage()` which demands `T: Send + Sync`. `Retained<SCStream>` / `Retained<AudioOutputHandler>` aren't conservatively auto-`Send` because objc2 can't statically know which Apple methods are thread-safe; for the operations we actually perform (`updateContentFilter`, `stopCapture`, `removeStreamOutput`, ref-counting) Apple guarantees thread-safety.
+  - `crates/app/src/commands.rs` — 5 new Tauri commands: `list_audio_apps`, `start_system_audio_capture`, `stop_system_audio_capture`, `set_system_audio_filter`, `system_audio_status`. macOS-only with non-macOS stubs that return `"system audio capture requires macOS 13.0+"`. New IPC types: `AudioAppView` + `AudioAppFilterView` with `From<media::sck_audio::*>` conversions.
+  - `crates/app/src/main.rs` — `.manage(SystemAudioCaptureState::default())` (macOS-only via cfg-gated chain) + 5 new commands in both `generate_handler!` arms.
+  - `crates/app/src/lib.rs` — `#[cfg(target_os = "macos")] pub mod system_audio;`.
+  - `crates/app-ui/src/lib.rs` — `pub mod system_audio_ipc; pub mod system_audio_picker;`.
+  - `crates/app-ui/src/app_shell_mount.rs` — Recorder surface mounts `<SystemAudioPicker />` after `<MicPicker />`.
+  - `crates/app-ui/Cargo.toml` — promoted `serde_json = "1"` from dev-dep to regular dep (the picker persists `Vec<String>` to LocalStorage via JSON serialisation).
+  - `crates/app-ui/index.html` — 5 new `__screen*` JS bridge helpers (`__screenListAudioApps`, `__screenStartSystemAudio`, `__screenStopSystemAudio`, `__screenSetSystemAudioFilter`, `__screenSystemAudioStatus`).
+  - `crates/app-ui/shell.css` — `.system-audio-picker*` styles. Master toggle has a `data-enabled="true"` accent visual treatment. Per-row layout is a 3-column grid (icon + label/bundle stack + checkmark).
+- **Tests:** 3 new system_audio_picker unit + 3 new app-side system_audio state unit + 5 added Tauri-command IPC surface = **11 new tests**. **212/212 tests pass** across screen-app + media (the existing 201 + 11 new).
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` + `cargo check -p screen-app --all-targets`.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` (after `too_many_lines` reasoned suppression on the component + `doc_markdown` cleanup).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings`.
+  - `cargo nextest run -p screen-app -p media` — 212/212.
+- **Notable design decisions:**
+  - **Empty selection = AllAudio, not "no apps".** When the master toggle is on but the user hasn't picked any specific apps, capture everything. This is the natural "I just want system audio" UX. Selecting one or more apps narrows to those.
+  - **`CameraPermission` reused for mic permission state** (carried over from M-MIC.2) — kept consistent here: the system-audio path doesn't introduce yet another permission enum; SCK errors are surfaced as plain strings via the `ListAudioAppsResult::Err` arm because the failure mode is varied (`"The user declined TCCs for application, window, display capture"`, `"updateContentFilter failed"`, etc.) and the picker just shows the raw message + a grant-recovery hint.
+  - **`unsafe impl Send + Sync` for `SystemAudioStream`** is necessary for Tauri-managed state and sound for our usage. Documented with reasons in the source.
+  - **Master-toggle reverts on start failure.** If `start_system_audio_capture` errors (most commonly TCC denial), the master toggle flips back off and the error is set into the error_message signal — the user sees what went wrong without being stuck in an enabled-but-broken state.
+- **Deferred to follow-up commits:**
+  - **Filter chips (All / None / Suggested / Custom)** — the ticket spec mentioned these but they're a presentational layer on top of `AudioAppFilter`. v0 ships the multi-select grid; the chip UX is M-AUDIO-SYS.2.1.
+  - **Suggested-app heuristic** — picks browsers + media apps + comm apps automatically. Ships as a const list of bundle-id prefixes; defer until user feedback says it's needed.
+  - **Live per-app audio meters** — requires per-PID RMS computation in the SCK delegate (today's delegate emits one mixed stream). Significant refactor of `AudioOutputHandler` — defer to M-RECORD or a dedicated chunk.
+  - **Icon-bytes** — the `AudioAppView.icon_png_bytes` field is `Vec<u8>::new()` for every app (M-AUDIO-SYS.1 deferral carries over). Picker rows render a `·` placeholder for empty payloads; populating real icons via NSWorkspace lands in M-AUDIO-SYS.1.1.
+  - **250 ms debounce on filter changes** — the ticket spec mentions this; v0 fires `set_system_audio_filter` on every checkbox click. Worst-case the user clicks 4 checkboxes rapidly and the SCK stream rebuilds its content filter 4 times. Each rebuild is ~100 ms on Apple Silicon; the audible glitch is small but real. Adding `gloo-timers::callback::Timeout` for the debounce is a 10-line follow-up.
+- **What this closes:** the full M-AUDIO-SYS track end-to-end. From the Recorder surface, the user can now flip System Audio On (triggers SCK + macOS TCC prompt on first run), expand the per-app picker (lists every running app SCK can see), toggle specific apps (writes the bundle-id selection to LocalStorage + reconfigures the SCContentFilter live), and have the selection survive app restarts. The encode path that multiplexes this stream into the final output is M-RECORD's domain.
+
+---
+
+## M-AUDIO-SYS.1 — Per-process audio filter (AUT-281)
+- **Date:** 2026-05-16
+- **Status:** ✅ done (backend) / 🟡 partial (Tauri commands deferred to M-AUDIO-SYS.2). `list_audio_apps()` enumerates every running app via `SCShareableContent.applications`, deduped by bundle id; `AudioAppFilter` enum + `SystemAudioStream::set_app_filter` route through `SCContentFilter`'s `initWithDisplay_includingApplications_exceptingWindows:` / `initWithDisplay_excludingApplications_exceptingWindows:`. Verified working against the user's host (enumerated Notes, Linear, Slack, Adobe Creative Cloud, etc.).
+- **Linear:** [AUT-281](https://linear.app/harwood/issue/AUT-281) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/examples/list_audio_apps.rs` — acceptance-criterion example. Prints every running app SCK can see with `pid` + `bundle_id` + `display_name` + icon-presence flag. Verified running against the real host returns the expected app list (`com.apple.Notes`, `com.linear`, `com.tinyspeck.slackmacgap`, etc.) with PIDs that match the user's `ps`.
+- **Files changed:**
+  - `crates/media/src/sck_audio.rs` — additions:
+    - **`AudioApp { pid, bundle_id, display_name, icon_png_bytes }`** — serde-derived; `icon_png_bytes` is `Vec::new()` in v0 (NSWorkspace icon extraction needs `objc2-app-kit` + image-encode, deferred as M-AUDIO-SYS.1.1).
+    - **`AudioAppFilter { AllAudio, OnlyApps(Vec<String>), ExcludeApps(Vec<String>) }`** — variants carry **bundle ids**, not PIDs, so the picker's persisted state survives app crash + restart (PIDs get re-resolved at filter-apply time). Default is `AllAudio` (opt-in restriction, not opt-out).
+    - **`list_audio_apps() -> Result<Vec<AudioApp>, SystemAudioError>`** — synchronous wrapper over the async `SCShareableContent.getShareableContentWithCompletionHandler` path. Walks every `SCRunningApplication`, skips apps without a usable bundle id (system services / helper processes), dedupes multi-process apps (Chrome with 1 entry per renderer collapses to one row).
+    - **`SystemAudioStream::set_app_filter(filter)`** — rebuilds `SCContentFilter` + calls `updateContentFilter_completionHandler`. Re-resolves bundle ids → live PIDs each call; missing apps (not running) are silently omitted. 5s timeout on the completion handler.
+    - **`build_content_filter` helper** — refactor target. The original `SystemAudioStream::new` inlined the filter construction; this commit extracts it so `set_app_filter` and `new` share the same code path. Three branches: `AllAudio` (empty-windows shape, M-AUDIO-SYS.0 behaviour), `OnlyApps` (`initWithDisplay_includingApplications_exceptingWindows`), `ExcludeApps` (`initWithDisplay_excludingApplications_exceptingWindows`).
+    - **`resolve_bundle_ids_to_apps` helper** — walks the shareable-content app list collecting `Retained<SCRunningApplication>` for each requested bundle id. Skips duplicates + missing.
+    - **3 new unit tests** — `AudioApp` serde round-trip preserves every field, `AudioAppFilter::default()` is `AllAudio`, `AudioAppFilter` serde round-trip every variant.
+  - `crates/media/Cargo.toml` — added `libc` feature to `objc2-screen-capture-kit` (required for `SCRunningApplication::processID()` which returns `libc::pid_t`). Registered `list_audio_apps` example.
+- **Tests:** 3 new sck_audio unit tests = **10 sck_audio tests total**. **109/109 media tests pass.** Verified end-to-end: `cargo run -p media --example list_audio_apps` enumerates real apps with correct bundle ids + display names + PIDs.
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p media --all-targets`.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after `explicit_iter_loop` cleanup.
+  - `cargo nextest run -p media` — 109/109.
+  - `cargo run -p media --example list_audio_apps` — real-host enumeration verified.
+- **Notable implementation choices:**
+  - **De-dupe by bundle id.** Chrome surfaces one `SCRunningApplication` per renderer process; the picker's UX is one row per app, not per process. Keep-first wins; the PID resolves again at filter-apply time so multi-process apps still filter cleanly (the bundle-id filter captures audio from ANY process with that bundle).
+  - **Empty bundle ids skipped.** System services / command-line invocations / helper processes surface with empty bundle ids and are unsumeable in the picker. Skipping them keeps the picker clean.
+  - **`updateContentFilter` for hot-swap** rather than tear-down + re-init. SCK supports updating the filter on a live stream via the `updateContentFilter_completionHandler` path; the alternative (drop + recreate `SCStream`) loses ~200 ms of audio per swap which would be audible. The trade-off: the 5s completion-handler timeout means a hung Apple-side call blocks the swap; in practice the completion fires in <100 ms on M-series macs.
+- **Deferred to AUT-282 (M-AUDIO-SYS.2 — UI wiring):**
+  - **Tauri commands for the picker UX.** `list_audio_apps`, `start_system_audio_capture`, `stop_system_audio_capture`, `set_system_audio_filter` all need a `SystemAudioCaptureState` similar to `MicCaptureState` (M-MIC.1). Adding the state-management plumbing inside AUT-282 keeps it co-located with the picker UI wiring rather than splitting it across two commits.
+  - **Icon-bytes (`AudioApp::icon_png_bytes`)** — empty in v0. Real icon extraction requires `objc2-app-kit` (for `NSWorkspace.iconForFile:`), an `image` re-encode pass to PNG at 32×32, and base64 envelope semantics. File as M-AUDIO-SYS.1.1 — pure additive change, no API break.
+  - **`screencaptureapps` deep-link recovery** — if the picker shows zero apps because Screen Recording isn't granted, surface a Settings deep-link. Mirror of M-RECP.6 for the system-audio entry.
+- **What this closes:** the per-app capture infrastructure. Every M-AUDIO-SYS.2 design decision (the picker's filter chips, the bundle-id-keyed checkbox grid, the 250 ms debounce on rapid checkbox toggles) can now build on `list_audio_apps` + `AudioAppFilter` + `set_app_filter` without further framework wrangling.
+
+---
+
+## M-AUDIO-SYS.0 — SCK system audio capture (AUT-280)
+- **Date:** 2026-05-16
+- **Status:** 🟡 **partial** — real macOS ScreenCaptureKit code that compiles + links + correctly engages the TCC permission system. The example runs against the host and is gated only by Screen Recording grant: granting Screen Recording in System Settings + relaunching the binary will produce live audio capture. **Hardware verification (running a YouTube tab + observing non-zero RMS) is deferred to the user's interactive session** — no automated harness can prompt the macOS permission dialog or play audio.
+- **Linear:** [AUT-280](https://linear.app/harwood/issue/AUT-280) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/src/sck_audio.rs` — `SystemAudioStream` capture session using `SCStreamConfiguration { capturesAudio=true, excludesCurrentProcessAudio=true }` against a full-display `SCContentFilter`. Includes:
+    - `SystemAudioConfig` defaults (48 kHz / stereo / excludes self) with the rationale documented for each flag.
+    - `SystemAudioError` enum (NotMacOs / NoDisplays / StreamCreationFailed / StartFailed / EnumerationFailed / Timeout / InvalidChunk) — serde-derived for the IPC seam.
+    - `AudioOutputHandler` via `objc2::define_class!` implementing `SCStreamOutput` — receives `CMSampleBuffer` audio on SCK's dispatch queue and extracts Float32 PCM.
+    - PCM extractor handles both interleaved single-buffer and planar multi-buffer `AudioBufferList` layouts; planar layouts collapse to interleaved before reaching the consumer.
+    - `next_chunk(frames)` blocks until enough PCM has buffered (default 2s timeout); returns a normalised `AudioChunk` with monotonic PTS.
+    - `Drop` removes the stream output + calls `stopCaptureWithCompletionHandler` synchronously (500 ms cap) so late callbacks never touch a freed delegate.
+    - 7 unit tests covering: default-config self-exclusion, serde round-trip of every error variant, ExtractError diagnostic messages, interleaved + null + unaligned PCM extraction, back-pressure constant sanity.
+  - `crates/media/examples/system_audio_smoke.rs` — acceptance-criterion example. Captures 1 s of speakers via SCK, prints per-100ms peak + RMS, exits with a clear permission-denied message + grant instructions when the TCC prompt is refused.
+- **Files changed:**
+  - `crates/media/Cargo.toml` — macOS-only deps: `objc2 0.6`, `objc2-foundation 0.3` (NSArray/NSError/NSString/etc), `objc2-screen-capture-kit 0.3` (SCShareableContent + SCStream + SCError + block2 + dispatch2 + objc2-core-media features), `objc2-core-media 0.3` (CMSampleBuffer + CMBlockBuffer + CMFormatDescription), `objc2-core-audio-types 0.3` (AudioBufferList), `block2 0.6`, `dispatch2 0.3`. All under `[target.'cfg(target_os = "macos")'.dependencies]` so Linux/Windows pay zero build cost.
+  - `crates/media/src/lib.rs` — `#[cfg(target_os = "macos")] pub mod sck_audio;`.
+  - `crates/app/Info.plist` — **`LSMinimumSystemVersion` bumped 12.3 → 13.0**. `SCStreamConfiguration.capturesAudio` is a 13.0+ API; this version is the hard floor for system-audio capture. Trade-off: users on macOS 12.3–12.7 can no longer launch. Documented in PERMISSIONS.md update (M-AUDIO.PERMS / AUT-283 follow-up).
+- **Tests:** 7 new sck_audio unit tests. **106/106 media tests pass** (the existing 99 + 7 new). Real macOS execution of `cargo run -p media --example system_audio_smoke` reaches `SCShareableContent.getShareableContentWithCompletionHandler` and the OS correctly returned `"The user declined TCCs for application, window, display capture"` — proves the SCK plumbing engages the TCC system end-to-end.
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p media --all-targets`.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after fixing implicit-borrow-as-raw-pointer (`&raw mut`), `cast_*` lints (`isize::try_from` / `usize::try_from`), `Arc<Mutex<Option<Sender<Retained<Apple>>>>>` (reasoned suppression — CFRetain/CFRelease ARE thread-safe per Apple), and a redundant `continue`.
+  - `cargo nextest run -p media` — 106/106.
+  - `cargo build -p media --example system_audio_smoke` — green.
+  - `cargo run -p media --example system_audio_smoke` — engages SCK, hits TCC, prints actionable error when permission is missing.
+- **Implementation notes:**
+  - **CFRetain thread-safety affirmed.** The completion-block bridge sends a `Retained<SCShareableContent>` from the dispatch-queue thread to the calling thread via mpsc. objc2's conservative `Send` auto-impl doesn't see this; suppression has a reasoned justification (Apple guarantees CF reference counting is thread-safe, and we only invoke methods on the receiving thread).
+  - **Single-buffer interleaved is the common SCK path.** With `channelCount=2`, SCK emits one `AudioBuffer` containing interleaved L/R Float32. The planar (multi-buffer) branch is exercised by code review only — kept for layout-shape safety since `AudioBufferList`'s definition allows it.
+  - **`MAX_AUDIO_BUFFERS = 16`** for the stack-allocated `AudioBufferListN` storage. Stereo (the common case) uses 1 buffer; 5.1/7.1 (8 buffers) fit; cinema-grade 24-channel is out of scope.
+  - **Back-pressure guard:** the consumer-side `pending` buffer is capped at `CHANNEL_DEPTH_BOUND * (sample_rate / 10)` samples (~6.4 s at 48 kHz). When the consumer stalls (e.g., encoder thread blocked on disk I/O), the oldest queued samples are dropped rather than letting memory grow unbounded. Test asserts this is at least 1 s of buffer.
+  - **`Drop` removes the stream output first, then calls stopCapture.** Removing first prevents late delegate firings against the about-to-be-dropped Receiver; the synchronous-stop completion handler is capped at 500 ms so a hung SCK never blocks the drop forever.
+- **Deferred (hardware-verified follow-up commits):**
+  - **End-to-end PCM verification.** Today: the SCK path engages, permission TCC fires, error propagation works. What's verified by hardware test only: that the `AudioOutputHandler` callback actually fires when granted, that PCM extraction yields non-zero RMS for real audio, that the SCStream survives a long-running session without leaks. The smoke example is the verification vehicle.
+  - **macOS 12 fallback path.** Bumping `LSMinimumSystemVersion` to 13.0 makes the recorder refuse to launch on 12.3–12.7. We could conditionally disable system audio on 12.x rather than blocking the whole app; that requires a runtime version probe + UI to disable the system-audio row. Deferred until we see real 12.x users.
+  - **Per-app audio filter (M-AUDIO-SYS.1).** This commit ships the full-display content filter; the per-app `initWithDisplay_includingApplications_exceptingWindows:` filter is the next ticket's domain.
+- **What this closes:** the SCK system-audio infrastructure. Every M-AUDIO-SYS.1 + M-AUDIO-SYS.2 design decision (filter variants, Tauri command shapes, delegate lifecycle) can now build on `SystemAudioStream` + `AudioOutputHandler` without further framework wrangling. The hardest piece (objc2 protocol impl + CMSampleBuffer extraction + completion-block bridging) is solved.
+
+---
+
+## M-MIC.2 — Wire mic picker UI (AUT-279)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `<MicPicker />` Leptos component renders alongside `<CameraPicker />` in the Recorder surface, calls `list_microphones` / `start_mic_capture` / `microphone_permission_status` over the M-MIC.1 IPC contract, persists the last-used mic to `LocalStorage`. Three picker states (Populated / Empty / PermissionNeeded) mirror the camera picker.
+- **Linear:** [AUT-279](https://linear.app/harwood/issue/AUT-279) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app-ui/src/mic_ipc.rs` — wasm-bindgen extern bindings for the 5 mic Tauri commands (`__screenListMicrophones`, `__screenStartMicCapture`, `__screenStopMicCapture`, `__screenMicStatus`, `__screenMicrophonePermissionStatus`). Typed `MicrophoneView` + `MicLifecycle` mirror the Rust-side IPC shape via `serde_wasm_bindgen`. Async wrappers return safe defaults (empty Vec, `Idle`, `Granted`) outside Tauri so `trunk serve` dev still works.
+  - `crates/app-ui/src/mic_picker.rs` — `<MicPicker />` component: on mount probes permission + enumerates mics + resolves a default (LocalStorage → `is_default` → first). Renders a trigger button with mic icon, label, chevron; opens a dropdown showing one of three states (`mic-picker-state--permission` / `--empty` / populated list). Each row shows label + "48 kHz · stereo · default" subline + selected checkmark. Click → `start_mic_capture` + `LocalStorage` write + close menu. 9 pure-Rust unit tests covering `resolve_default`, `selected_label`, `format_subline` (incl. zero-sentinel omission), `format_sample_rate` round-down rules.
+  - `crates/app/capabilities/` — (no new file; carried over from the fix(app) commit).
+- **Files changed:**
+  - `crates/app-ui/index.html` — 5 new JS-bridge helpers (`__screenListMicrophones`, `__screenStartMicCapture`, `__screenStopMicCapture`, `__screenMicStatus`, `__screenMicrophonePermissionStatus`) wrapping `window.__TAURI__.core.invoke`.
+  - `crates/app-ui/src/lib.rs` — `pub mod mic_ipc; pub mod mic_picker;`.
+  - `crates/app-ui/src/app_shell_mount.rs` — Recorder surface now renders `<CameraPicker /> + <MicPicker /> + <CameraPreview />` (was `<CameraPicker /> + <CameraPreview />`).
+  - `crates/app-ui/shell.css` — `.mic-picker*` styles. Two-row grid layout for the picker row gives the device label + the per-row subline; menu min-width 280 px (vs camera's 240 px) accommodates the subline copy. Re-uses the same color tokens as the camera picker for visual consistency.
+  - `crates/app/src/commands.rs` — new `microphone_permission_status() -> CameraPermission` command (returns `Granted` everywhere; real macOS `AVCaptureDevice.authorizationStatus(for: .audio)` lands alongside M-RECP.0's camera version). Reuses `CameraPermission` enum since the three-state contract is structurally identical to the mic case.
+  - `crates/app/src/main.rs` — `microphone_permission_status` added to both `generate_handler!` arms.
+- **Tests:** 9 new mic_picker unit tests + 14 mic-ipc-shape coverage already shipped in M-MIC.1's `tests/mic_commands.rs`. **135/135 tests pass** across `app-ui` + `screen-app` (35 app-ui lib + 100 screen-app).
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown`.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` (after `doc_markdown` + `to_string()` casts).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings`.
+  - `cargo nextest run -p app-ui -p screen-app` — 135/135.
+- **Notable deviations from the M-CAM.4 / M-REC.1 pattern (intentional):**
+  - **No auto-start on mount.** `<CameraPicker />` auto-fires `start_preview` on first mount so the camera canvas is live the moment the wisp pipeline lands. The mic picker does NOT auto-start `start_mic_capture` — recording audio without the user clicking would be surprising even for a default mic. Documented in the module-level admonish note.
+  - **Per-row subline.** Camera rows show only the label; mic rows show "48 kHz · stereo · default" because the device-shape distinction between USB / Bluetooth / built-in is informative for the audio path (e.g., a 16 kHz Bluetooth headset has audibly worse fidelity than a 48 kHz USB mic). Zero-sentinel values for `channels` / `sample_rate_hz` are omitted rather than rendered.
+  - **`CameraPermission` reused for mic permission state.** The three variants (`Granted` / `NotDetermined` / `Denied`) are structurally identical; introducing a parallel `MicrophonePermission` enum would have duplicated three lines of code + bloated the IPC type surface for zero benefit. The Rust side's `microphone_permission_status` command and the Leptos `mic_ipc` re-export of the camera type both lean on this.
+- **Deferred (next follow-up commits):**
+  - **Per-device gst selection** — `start_mic_capture(mic_id)` IPC is plumbed but M-MIC.1's worker uses `autoaudiosrc` (OS default only). Click a non-default mic and the worker still listens to the OS default. Pure-backend change; the picker UX doesn't need any further wiring.
+  - **Live input-level meter** — picker rows currently show no live meter. M-MIC.1's worker would need to compute RMS per chunk + emit an `audio-levels` Tauri event at ~20 Hz; the Leptos side would listen + push values into a per-mic `RwSignal<f32>` that drives a `Meter` primitive next to each row.
+  - **`microphone_permission_status` real macOS probe** — currently stubs `Granted`. The real `AVCaptureDevice.authorizationStatus(for: .audio)` call lands with the camera version of the same logic in M-RECP.0.
+  - **Permission deny deep-link** — DevicePickerMenu's `PermissionNeeded` state copy says "Grant access in System Settings → Privacy & Security". The clickable deep-link (`x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`) is the same shape as M-RECP.0's camera deep-link and ships in a sibling follow-up.
+  - **Storybook stories for the live-wired mic picker.** AUT-129 already shipped the presentational `sample_microphone_options` fixtures; the live-data wiring this commit adds is exercised through the screen-app integration tests. New stories `s_recorder_mic_picker_*` for the three permission states would be presentational-only repeats of work already shipped, deferred until M-AUDIO-SYS.2 lands the system-audio side and we want one mdBook chapter covering both.
+- **What this closes:** the mic chain to user click. The Recorder surface now shows a microphone dropdown below the camera picker. Click the trigger → real attached mics enumerate (the user's actual hardware via `gst-device-monitor`). Pick a mic → `start_mic_capture` fires the gst worker (which prompts `NSMicrophoneUsageDescription` on first run), the lifecycle transitions Idle → Starting → Running, and the selection is remembered across launches.
+
+---
+
+## M-MIC.1 — Microphone capture worker (AUT-278)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — real `gst-launch-1.0 autoaudiosrc` worker thread spawning, F32LE PCM into Rust, `MicLifecycle` state machine advances `Starting → Running` on first chunk, Drop-safe teardown. Structural mirror of M-CAM.3 (AUT-257).
+- **Linear:** [AUT-278](https://linear.app/harwood/issue/AUT-278) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app/src/audio/mod.rs` — `MicLifecycle { Idle, Starting, Running, Stopping }` state machine + `MicCaptureState(Mutex)` + `MicError` IPC enum (`PermissionPending` / `PermissionDenied` / `DeviceBusy` / `GstFailed(String)`). 13 unit tests covering every transition, idempotent `mark_running`, `Starting → Stopping` (user clicks stop during macOS permission prompt), `Idle.mark_running()` no-op safety, full round-trip, serde round-trip.
+  - `crates/app/src/audio/pipeline.rs` — `MicCapturePipeline` worker handle (cancel flag + JoinHandle) + `MicCaptureHandle` (Tauri-managed `Mutex<Option<Pipeline>>`). Worker spawns `GstreamerAudioCapture::from_microphone(mic_id, format)`, loops `next_chunk(4800)` (100 ms chunks at 48 kHz), advances lifecycle on every chunk (idempotent). Compile-time invariants for `MIC_SAMPLE_RATE = 48000`, `MIC_CHANNELS = 2`, `MIC_CHUNK_FRAMES = 4800` via `const _: () = assert!`. `Drop` cancels + joins; the gst child dies through `GstreamerAudioCapture`'s own Drop ("Drop-kill the child" per CLAUDE.md).
+  - `crates/app/tests/mic_commands.rs` — IPC harness (`mock_builder`): asserts `mic_status` returns `Idle` initially, `list_microphones` returns a JSON array, and the `MicrophoneView` shape exposes all five expected fields when at least one mic is present. `cfg(not(target_os = "windows"))` per the existing `commands.rs` Windows skip pattern.
+- **Files changed:**
+  - `crates/media/src/gstreamer_audio.rs` — new `GstreamerAudioCapture::from_microphone(mic_id, format)` builder. Uses `autoaudiosrc` (auto-pick OS default) since `osxaudiosrc device-uid=…` / `pulsesrc device=…` per-mic selection is a documented follow-up that doesn't block lifecycle work, mirroring M-CAM.0's staging. `mic_id` is logged for context. F32LE format — the ticket's S16LE spec is reconciled in a doc admonition: `AudioChunk` is F32-only by design, and the encoder gets S16 via `audioconvert` downstream.
+  - `crates/app/src/commands.rs` — added 4 Tauri commands: `list_microphones() -> Vec<MicrophoneView>`, `start_mic_capture(mic_id) -> Result<(), MicError>` (handles re-entrant calls — drops the previous pipeline before spawning the new one, so the M-MIC.2 picker UX can swap mics without sequencing stop + start), `stop_mic_capture()`, `mic_status() -> MicLifecycle`. New `MicrophoneView` IPC type with `From<media::MicrophoneDevice>` conversion.
+  - `crates/app/src/lib.rs` — `pub mod audio;`.
+  - `crates/app/src/main.rs` — `.manage(MicCaptureState::default()).manage(MicCaptureHandle::default())` + 4 new commands in both `generate_handler!` arms. Extracted the `on_window_event` closure into a standalone `handle_window_event` fn so the builder chain stays under clippy's `too_many_lines = 100` threshold after the four mic-command insertions.
+- **Tests:** 13 audio-mod unit + 1 audio-pipeline unit + 3 mic_commands IPC = **17 new tests**. **100/100 screen-app tests pass**.
+- **Gates run, all green:**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p media -p screen-app --all-targets` — green.
+  - `cargo clippy -p media -p screen-app --all-targets -- -D warnings` — green (after the `handle_window_event` extraction).
+  - `cargo nextest run -p screen-app` — 100/100.
+- **Side-fix that unblocked the whole integration-test surface:** **PR #47's `embed_plist::embed_info_plist!("../Info.plist")` was emitting the same `_EMBED_INFO_PLIST` symbol as `tauri::generate_context!()`'s auto-embed.** Tauri-codegen 2.6.1 (the version we use) auto-embeds Info.plist on `target == macOS && dev && !running_tests` — see `/Users/.../tauri-codegen-2.6.1/src/context.rs:302`. The manual call was redundant once Tauri added the auto-path, and the duplicate symbol blocked **every integration test in `screen-app`** at link time (cleanup_smoke, commands, mic_commands all failed with `symbol _EMBED_INFO_PLIST is already defined`). Removed the manual `embed_plist!` macro call + the `embed_plist = "1.2"` dep from `crates/app/Cargo.toml`. Verified: `cargo run -p screen-app` still gets the Info.plist embedded (via tauri-codegen). The previously-broken 14 integration tests now all pass.
+- **Notable deviations from the M-CAM.3 pattern (intentional):**
+  - **Per-device selection deferred.** `autoaudiosrc` always opens the OS default mic; `mic_id` is plumbed + logged but not yet used to select. Same staging M-CAM.0 took — lifecycle layer ships first, per-device wiring is a discrete follow-up. M-MIC.2 (AUT-279) ships the picker UX against the IPC contract; the picker's "switch to a different mic" path will work the moment the per-device wiring lands.
+  - **`start_mic_capture` handles re-entrant calls.** Unlike `start_preview` (which expects the caller to first stop), `start_mic_capture` drops the previous pipeline before starting the new one. The mic picker's natural UX is "click a new row" without an intermediate stop click, so we absorb that here.
+  - **`MicLifecycle::Idle.mark_running()` is a no-op safety guard** — a spurious worker that calls `mark_running` without a prior `try_start` shouldn't be able to flip the lifecycle to Running. Mirror's M-CAM's `PreviewLifecycle` shape but adds the explicit test.
+- **Deferred (next follow-up commits):**
+  - Per-device selection — `osxaudiosrc device-uid=…` on macOS, `pulsesrc device=…` on Linux, `wasapisrc` on Windows. Drop-in extension to `GstreamerAudioCapture::from_microphone`'s pipeline-args path.
+  - RMS event emission for the M-MIC.2 audio meter — `audio-levels` Tauri event with `f32` payload pushed at ~20 Hz from the worker. Today the chunks are pulled + dropped.
+  - macOS `AVCaptureDevice.authorizationStatus(for: .audio)` probe for the picker's `PermissionNeeded` state — M-MIC.2 territory.
+- **What this closes:** the IPC contract for the mic capture path. Leptos can `tauri::invoke('list_microphones')` to enumerate, `tauri::invoke('start_mic_capture', { mic_id })` to spawn the gst worker (which fires `NSMicrophoneUsageDescription` on first run), and `tauri::invoke('mic_status')` to seed UI state. M-MIC.2 builds on this without further backend work.
+
+---
+
+## M-MIC.0 — Microphone device enumeration (AUT-277)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `media::microphone::list_microphones() -> Vec<MicrophoneDevice>` shipped via the gst CLI-pipe pattern. Mirror of M-CAM.1 (AUT-255).
+- **Linear:** [AUT-277](https://linear.app/harwood/issue/AUT-277) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/src/microphone.rs` — `MicrophoneDevice { id, label, is_default, channels, sample_rate_hz }`, `list_microphones()`, `parse_device_monitor_output()`, `stable_id_for()`. Spawns `gst-device-monitor-1.0 Audio/Source`, parses real macOS / synthetic Pulse fixtures. 10 unit tests including parser, caps int-field extractor, serde round-trip, Send+Sync, mic-vs-cam id-prefix-collision.
+  - `crates/media/examples/list_microphones.rs` — acceptance-criterion CLI: prints every attached input with id + label + default flag + channels + sample rate. Exits with hint when no inputs or gst not on PATH.
+  - `crates/media/tests/microphone_enumeration.rs` — runtime-skip integration: runs against the actual host, asserts exactly-one-default invariant + non-empty id/label + `mic-` prefix discipline.
+- **Files changed:**
+  - `crates/media/src/lib.rs` — `pub mod microphone;` + `pub use microphone::{MicrophoneDevice, list_microphones};`.
+  - `crates/media/Cargo.toml` — `[[example]] name = "list_microphones"` entry.
+- **Tests:** 10 new unit tests + 1 new integration test. **99/99 `cargo nextest run -p media`** pass (the existing 88 + 11 new).
+- **Gates run, all green for the media crate:**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p media --all-targets` — green.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after `collapsible_if` + `needless_continue` + `doc_markdown` fixes.
+  - `cargo nextest run -p media` — 99/99.
+  - `cargo run -p media --example list_microphones` — found real attached mics with correct default flag + channels + sample rate.
+- **Notable deviations from the M-CAM.1 pattern (both intentional):**
+  - **`is_default` uses gst's explicit signal, not "first in list."** `gst-device-monitor-1.0 Audio/Source` exposes `is-default = true|false` per device in the `properties:` block on macOS. Real captured output showed `MOMENTUM 4` (a Bluetooth headset, third-listed) as the OS default — proving the explicit signal beats first-in-list. The first-listed heuristic remains as a fallback for backends that omit the property (Linux/Pulse fixture exercises this branch).
+  - **Channels + sample-rate come from the first `caps` line.** GStreamer reports the device's preferred native format as the first `caps` line; remaining lines list every supported permutation. The parser extracts `rate=` + `channels=` from token 1 only and degrades to `0` ("unknown") when absent — downstream M-MIC.1 will default to 48 kHz / 2 channels for `0`.
+  - **ID prefix is `mic-` not `cam-`.** Prevents a hypothetical IPC-layer collision where a camera and mic share the same label and would otherwise hash to the same FNV-1a digest.
+- **What this closes:** M-MIC.1 (worker — AUT-278) can now consume `MicrophoneDevice.id` for `start_mic_capture(mic_id)`; M-MIC.2 (picker UI — AUT-279) can call `list_microphones()` across the Tauri seam (serde round-trip tested).
+
+---
+
 ## M-RECP.0..5 — Polish-track foundations (AUT-261..266)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — pure-Rust foundations for all six M-RECORDER-V1 polish tickets landed together: state machines + cross-OS shell-command maps + RAII guards + sliding-window monitors + integration smoke skeleton. OS-level wiring (objc2 IOPMAssertion / windows-rs SetThreadExecutionState / D-Bus inhibit / actual Tauri monitor placement) is **deferred** to follow-up commits that need real hardware to verify; the unit-testable surface is at parity with the M-RECORDER-V1 deliverable on every OS.

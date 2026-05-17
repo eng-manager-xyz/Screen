@@ -40,17 +40,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 pollster = { workspace = true }
 tracing = { workspace = true }
 
-# macOS-only: embed Info.plist into the dev binary's Mach-O via the
-# `__TEXT,__info_plist` section so unbundled `cargo run` binaries
-# carry the TCC permission strings (NSCameraUsageDescription etc).
-# Without this, the first camera/mic/screen-recording access silently
-# returns empty / fails on macOS instead of prompting the user —
-# the bundled `.app` build (`cargo tauri build`) reads the same
-# `Info.plist` via `bundle.macOS.infoPlist` so dev + prod stay
-# perfectly in sync. No-op on Linux / Windows (cfg-gated).
-[target.'cfg(target_os = "macos")'.dependencies]
-embed_plist = "1.2"
-
 [dev-dependencies]
 # `test` feature enables `tauri::test::mock_builder` etc. for the IPC
 # harness in `tests/commands.rs`. Note: cargo unifies dep + dev-dep

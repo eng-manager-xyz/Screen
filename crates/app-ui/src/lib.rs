@@ -117,4 +117,8 @@ mod app_shell_mount;
 pub mod camera_ipc;
 pub mod camera_picker;
 pub mod camera_preview;
+pub mod mic_ipc;
+pub mod mic_picker;
 pub mod routing;
+pub mod system_audio_ipc;
+pub mod system_audio_picker;

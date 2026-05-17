@@ -43,14 +43,15 @@
     <key>CFBundleVersion</key>
     <string>0.1.0</string>
 
-    <!-- Minimum macOS version. ScreenCaptureKit (the API M-SCK uses
-         for display + window + system-audio capture) was introduced
-         in macOS 12.3 and is the canonical post-deprecation API. We
-         declare 12.3 so macOS gatekeeps launch on older systems
-         instead of letting the user run + silently fail at first
-         screen capture. -->
+    <!-- Minimum macOS version. ScreenCaptureKit's *audio* API
+         (`SCStreamConfiguration.capturesAudio`, M-AUDIO-SYS.0 /
+         AUT-280) was introduced in macOS 13.0 — bumped from the
+         previous 12.3 floor (which covered SCK video) to 13.0 so
+         system-audio capture works on every machine the recorder
+         launches on. Trade-off: users on 12.3-12.7 can't run the
+         app. Documented in PERMISSIONS.md. -->
     <key>LSMinimumSystemVersion</key>
-    <string>12.3</string>
+    <string>13.0</string>
 
     <!-- Camera permission. Triggered the first time gst-autovideosrc
          (M-CAM.0 / AUT-254) tries to open the webcam. Without this
