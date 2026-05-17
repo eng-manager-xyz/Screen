@@ -137,7 +137,11 @@ pub fn parse_device_monitor_output(text: &str) -> Vec<CameraDevice> {
         if line.starts_with("Device found:") {
             // New device block — emit the previous one if pending.
             if let Some(label) = current_name.take() {
-                devices.push(make_device(label, current_source.take(), devices.is_empty()));
+                devices.push(make_device(
+                    label,
+                    current_source.take(),
+                    devices.is_empty(),
+                ));
             }
             continue;
         }
@@ -165,7 +169,11 @@ pub fn parse_device_monitor_output(text: &str) -> Vec<CameraDevice> {
         }
     }
     if let Some(label) = current_name.take() {
-        devices.push(make_device(label, current_source.take(), devices.is_empty()));
+        devices.push(make_device(
+            label,
+            current_source.take(),
+            devices.is_empty(),
+        ));
     }
     devices
 }

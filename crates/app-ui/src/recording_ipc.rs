@@ -218,9 +218,7 @@ pub fn install_recording_lock_listener(lock: leptos::prelude::RwSignal<bool>) {
         let Ok(payload) = Reflect::get(&evt, &JsValue::from_str("payload")) else {
             return;
         };
-        if let Ok(parsed) =
-            serde_wasm_bindgen::from_value::<RecordingStatusViewIpc>(payload)
-        {
+        if let Ok(parsed) = serde_wasm_bindgen::from_value::<RecordingStatusViewIpc>(payload) {
             lock.set(parsed.is_recording());
         }
     }) as Box<dyn FnMut(JsValue)>);

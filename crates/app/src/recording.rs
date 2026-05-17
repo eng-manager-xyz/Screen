@@ -399,7 +399,11 @@ mod tests {
 
     #[test]
     fn state_re_entrant_start_is_noop() {
-        for s in [SessionState::Starting, SessionState::Running, SessionState::Stopping] {
+        for s in [
+            SessionState::Starting,
+            SessionState::Running,
+            SessionState::Stopping,
+        ] {
             assert_eq!(s.try_start(), s);
         }
     }
@@ -411,7 +415,10 @@ mod tests {
         // Idempotent on Running — subsequent per-stream first-frame
         // events don't re-trigger.
         assert_eq!(SessionState::Running.mark_running(), SessionState::Running);
-        assert_eq!(SessionState::Stopping.mark_running(), SessionState::Stopping);
+        assert_eq!(
+            SessionState::Stopping.mark_running(),
+            SessionState::Stopping
+        );
     }
 
     #[test]
@@ -456,10 +463,22 @@ mod tests {
     #[test]
     fn streams_any_enabled_true_when_any_field_on() {
         for s in [
-            SessionStreams { camera: true, ..Default::default() },
-            SessionStreams { screen: true, ..Default::default() },
-            SessionStreams { microphone: true, ..Default::default() },
-            SessionStreams { system_audio: true, ..Default::default() },
+            SessionStreams {
+                camera: true,
+                ..Default::default()
+            },
+            SessionStreams {
+                screen: true,
+                ..Default::default()
+            },
+            SessionStreams {
+                microphone: true,
+                ..Default::default()
+            },
+            SessionStreams {
+                system_audio: true,
+                ..Default::default()
+            },
         ] {
             assert!(s.any_enabled());
         }
@@ -678,7 +697,8 @@ mod tests {
     fn config_serde_back_compat_when_optionals_absent() {
         // Frontend may omit any/all of the optional fields; the
         // #[serde(default)] on each must keep deserialization clean.
-        let legacy = r#"{"streams":{"camera":true,"screen":false,"microphone":false,"system_audio":false}}"#;
+        let legacy =
+            r#"{"streams":{"camera":true,"screen":false,"microphone":false,"system_audio":false}}"#;
         let parsed: RecordingConfig = serde_json::from_str(legacy).unwrap();
         assert!(parsed.streams.camera);
         assert_eq!(parsed.camera_id, "");

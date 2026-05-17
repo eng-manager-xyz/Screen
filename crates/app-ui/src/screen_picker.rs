@@ -59,8 +59,7 @@ pub fn ScreenPicker() -> impl IntoView {
         enabled.set(active);
     });
 
-    let on_toggle_enabled =
-        make_on_toggle_enabled(enabled, active_source_id, error_message);
+    let on_toggle_enabled = make_on_toggle_enabled(enabled, active_source_id, error_message);
     let on_toggle_expand =
         make_on_toggle_expand(expanded, displays, windows, error_message, active_source_id);
     let on_pick_source = make_on_pick(enabled, active_source_id, error_message);

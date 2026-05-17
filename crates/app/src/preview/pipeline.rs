@@ -151,11 +151,8 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool, camera_id: &str) {
     // pre-picker callers (no Leptos UI yet → no id to route on).
     let mut stream = if camera_id.is_empty() {
         tracing::info!("camera-pipeline: no camera_id supplied; using OS default");
-        match GstreamerVideoCapture::from_default_camera(
-            PREVIEW_WIDTH,
-            PREVIEW_HEIGHT,
-            PREVIEW_FPS,
-        ) {
+        match GstreamerVideoCapture::from_default_camera(PREVIEW_WIDTH, PREVIEW_HEIGHT, PREVIEW_FPS)
+        {
             Ok(stream) => stream,
             Err(err) => {
                 tracing::error!(?err, "VideoStream::from_default_camera failed");

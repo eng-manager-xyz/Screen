@@ -16,14 +16,14 @@ use std::sync::Mutex;
 use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
 use crate::audio::{MicCaptureHandle, MicCapturePipeline, MicCaptureState, MicError, MicLifecycle};
-use crate::recording::{
-    RecordingConfig, RecordingSession, RecordingState, RecordingStatusView, RecordingSummary,
-    SessionState, SessionStreams, StreamHealth, StreamKind,
-};
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{
     CameraError, CameraPipeline, CameraPipelineHandle, DiagnosticsSnapshot, PreviewDiagnostics,
     PreviewLifecycle, PreviewState,
+};
+use crate::recording::{
+    RecordingConfig, RecordingSession, RecordingState, RecordingStatusView, RecordingSummary,
+    SessionState, SessionStreams, StreamHealth, StreamKind,
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::settings_deep_link::{SettingsPane, open_command};
@@ -1655,7 +1655,11 @@ pub fn stop_recording(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = None;
     }
-    tracing::info!(session_id = summary.session_id, elapsed_ms, "stop_recording: session torn down");
+    tracing::info!(
+        session_id = summary.session_id,
+        elapsed_ms,
+        "stop_recording: session torn down"
+    );
     Ok(summary)
 }
 
@@ -1711,10 +1715,7 @@ fn start_camera_for_session(
     Ok(())
 }
 
-fn stop_camera_for_session(
-    preview_state: &PreviewState,
-    camera_handle: &CameraPipelineHandle,
-) {
+fn stop_camera_for_session(preview_state: &PreviewState, camera_handle: &CameraPipelineHandle) {
     {
         let mut guard = preview_state
             .0
@@ -1790,10 +1791,7 @@ fn stop_mic_for_session(mic_state: &MicCaptureState, mic_handle: &MicCaptureHand
 }
 
 #[cfg(target_os = "macos")]
-fn start_screen_for_session(
-    app: &tauri::AppHandle,
-    source_id: Option<&str>,
-) -> Result<(), String> {
+fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> Result<(), String> {
     use media::sck_video::{ScreenCaptureConfig, ScreenCaptureSource};
     let Some(state) = app.try_state::<ScreenCaptureState>() else {
         return Err("ScreenCaptureState not managed".into());
@@ -1942,15 +1940,17 @@ fn build_stream_health_snapshot(
             StreamKind::Screen => ("Idle".into(), 0),
             #[cfg(target_os = "macos")]
             StreamKind::SystemAudio => {
-                let active = app
-                    .try_state::<SystemAudioCaptureState>()
-                    .is_some_and(|s| {
-                        s.0.lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .is_some()
-                    });
+                let active = app.try_state::<SystemAudioCaptureState>().is_some_and(|s| {
+                    s.0.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .is_some()
+                });
                 (
-                    if active { "Running".into() } else { "Idle".into() },
+                    if active {
+                        "Running".into()
+                    } else {
+                        "Idle".into()
+                    },
                     0,
                 )
             }
@@ -1993,8 +1993,7 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
                     // takes over.
                     break;
                 }
-                let elapsed_ms =
-                    u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let view = RecordingStatusView {
                     session_id: Some(session.id),
                     state: session.state,
@@ -2013,10 +2012,9 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
                     && view.streams.iter().all(|h| h.lifecycle != "Idle")
                     && let Some(s) = app.try_state::<RecordingState>()
                 {
-                    let mut guard = s
-                        .0
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut guard =
+                        s.0.lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if let Some(ref mut sess) = *guard {
                         sess.mark_running();
                     }

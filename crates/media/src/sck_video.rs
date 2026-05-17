@@ -602,12 +602,14 @@ mod tests {
 
     #[test]
     fn for_source_overrides_only_source() {
-        let cfg = ScreenCaptureConfig::for_source(ScreenCaptureSource::Display(
-            "display-12345".into(),
-        ));
+        let cfg =
+            ScreenCaptureConfig::for_source(ScreenCaptureSource::Display("display-12345".into()));
         assert_eq!(cfg.width, DEFAULT_WIDTH);
         assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
-        assert_eq!(cfg.source, ScreenCaptureSource::Display("display-12345".into()));
+        assert_eq!(
+            cfg.source,
+            ScreenCaptureSource::Display("display-12345".into())
+        );
     }
 
     #[test]

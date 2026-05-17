@@ -19,11 +19,11 @@ use leptos::ev::MouseEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 #[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
 
 use crate::recording_ipc::{
     RecordingConfigView, RecordingStatusViewIpc, SessionStreamsView, StreamHealthView,
