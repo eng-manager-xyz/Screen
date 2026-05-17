@@ -237,8 +237,25 @@ pages-url-check: doc-gates-build
 site-check: site shared-check
     #!/usr/bin/env bash
     set -euo pipefail
-    if grep -rE 'mdbook-preprocessor-cross[^>]*error' target/book --exclude-dir=api 2>/dev/null; then
+    # The preprocessor's runtime error sentinel is an HTML comment
+    # like `<!-- mdbook-preprocessor-cross ... error ... -->` inside
+    # rendered .html files. Only check .html — `searchindex.js` is a
+    # single-line JSON aggregate of every chapter's body text, so
+    # the `[^>]*` portion of the pattern greedily matches across
+    # unrelated chapters and trips on any book that legitimately
+    # documents the preprocessor (e.g. the remote-dev chapter)
+    # alongside any other chapter mentioning the word "error" later
+    # in the index. Restricting to .html removes that false-positive
+    # surface; api/ is excluded because rustdoc renders the
+    # preprocessor's own source which contains the literal sentinel
+    # string (CLAUDE.md: "Rustdoc renders the preprocessor's own
+    # source as HTML under target/book/api/").
+    if find target/book -name '*.html' -not -path 'target/book/api/*' -print0 2>/dev/null \
+        | xargs -0 grep -lE 'mdbook-preprocessor-cross[^>]*error' 2>/dev/null \
+        | grep -q .; then
         echo "RUNTIME ERROR COMMENT IN RENDERED HTML — see above." >&2
+        find target/book -name '*.html' -not -path 'target/book/api/*' -print0 2>/dev/null \
+            | xargs -0 grep -lE 'mdbook-preprocessor-cross[^>]*error' 2>/dev/null >&2
         exit 1
     fi
     echo "site-check: both books rendered cleanly, no preprocessor error sentinels."

@@ -65,7 +65,7 @@ No explicit `bundle.macOS.infoPlist` config field needed — Tauri 2 detects the
 
 ## What's in the Info.plist
 
-Six keys, three concerns:
+Twelve keys, four concerns:
 
 ### Bundle identity (three keys)
 
@@ -89,6 +89,34 @@ Six keys, three concerns:
 ```
 
 ScreenCaptureKit (the API M-SCK uses for display + window + system-audio capture) was introduced in macOS 12.3. Declaring the floor here means macOS gatekeeps launch on older systems instead of letting the user run + silently fail at first screen capture. Camera + Mic capture works on older macOS, but **the recorder isn't useful without screen capture**, so 12.3 is the global floor.
+
+### File-system access strings (four keys)
+
+```xml
+<key>NSDocumentsFolderUsageDescription</key>
+<string>Screen needs Documents folder access to save and read your screen recordings.</string>
+
+<key>NSDownloadsFolderUsageDescription</key>
+<string>Screen needs Downloads folder access to save and read your screen recordings.</string>
+
+<key>NSDesktopFolderUsageDescription</key>
+<string>Screen needs Desktop folder access to save and read your screen recordings.</string>
+
+<key>NSRemovableVolumesUsageDescription</key>
+<string>Screen needs removable-volume access to save recordings to external drives.</string>
+```
+
+Cover the recorder's *programmatic* read/write paths into user-owned folders. **Not needed for explicit file-picker flows** — when the user explicitly chooses a file via an `NSOpenPanel` / `NSSavePanel` (Tauri's file-dialog plugin uses these, and so does drag/drop), macOS treats the selection as an implicit grant and no Info.plist string is required.
+
+```admonish note title="Pickers vs. programmatic — when each kicks in"
+| Action | Permission needed |
+|---|---|
+| User picks "Save…" → chooses `~/Documents/Recording.mp4` | None — picker grants implicit |
+| User drags a video file into the recorder | None — drag/drop = implicit pick |
+| App auto-writes to `~/Documents/Screen Recordings/` at boot, no picker | `NSDocumentsFolderUsageDescription` triggers prompt |
+| App restores a list of previously-recorded files at launch | Same — programmatic enumeration of the user folder |
+| App writes to a connected USB drive | `NSRemovableVolumesUsageDescription` |
+```
 
 ### Permission usage strings (three keys — the load-bearing ones)
 

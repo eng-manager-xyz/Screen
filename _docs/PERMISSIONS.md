@@ -180,17 +180,19 @@ The one extra thing for public distribution (separate concern, not this PR): you
 
 ## What's *not* in this PR (and why that's fine)
 
-| Concern | Status | Why deferred |
+| Concern | Status | Why / when |
 |---|---|---|
 | Camera, microphone, screen recording permissions | ✅ In this PR | Load-bearing for the recorder to function |
+| Documents / Downloads / Desktop / Removable-volume access | ✅ In this PR | Lets the recorder save+read recordings to/from those folders without a picker |
+| File pickers (Open / Save dialogs) | ✅ No permission needed | macOS treats the user's explicit pick as implicit grant — Tauri's file-dialog plugin uses these. Drag/drop also routes through pickers. |
 | Hardened Runtime entitlements | ❌ Deferred | Only matter for code-signed builds. We don't ship signed yet. |
 | Code signing | ❌ Deferred | Needs an Apple Developer account ($99/year). Defer until public release. |
 | Notarization | ❌ Deferred | Requires code signing first. Same defer. |
 | Accessibility permission | ❌ Not needed yet | Only needed if we add global hotkeys (e.g. "press F12 to start recording from anywhere"). |
 | AppleScript / automation permission | ❌ Not needed | We don't automate other apps. |
-| File-access permissions (Documents, Downloads, etc.) | ❌ Not needed | We save recordings to the app's own cache directory, not user folders. |
+| Full Disk Access | ❌ Not needed (intentionally) | Way more invasive — reads any file on the system. The four user-folder permissions above are the right granularity. |
 
-You're not forgetting anything for getting **camera + mic + screen capture** to work.
+You're not forgetting anything for getting **camera + mic + screen capture + file save/load** to work.
 
 ---
 

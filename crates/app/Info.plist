@@ -73,5 +73,46 @@
          macOS platform quirk, documented in AUT-270 / M-SCK.3). -->
     <key>NSScreenCaptureUsageDescription</key>
     <string>Screen needs screen recording access to capture your display.</string>
+
+    <!-- ===== File-system access ===== -->
+    <!-- The recorder needs to read source files (drag/drop a video
+         to import) and write recordings to disk. Two distinct
+         macOS permission flavours apply:
+
+         1. FILE PICKERS (NSOpenPanel / NSSavePanel): when the user
+            explicitly chooses a file via a system "Open…" or
+            "Save…" dialog, macOS treats the selection itself as
+            implicit grant. NO Info.plist string is required for
+            this path. Tauri 2's `tauri-plugin-dialog` uses these
+            pickers — drag/drop also routes through them.
+
+         2. PROGRAMMATIC ACCESS to specific user folders without a
+            picker (e.g. auto-saving recordings to ~/Documents/Screen
+            Recordings/ in the background, or restoring a list of
+            previously-recorded files at launch): macOS gates these
+            three folders behind separate TCC permissions. The
+            strings below declare intent for each one.
+
+         The recorder uses the user-folder paths for the "auto-save
+         to Documents" default (configurable to Downloads / Desktop
+         later via settings). Declaring all three so the prompt
+         fires cleanly regardless of the user's saved-location
+         choice. -->
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Screen needs Documents folder access to save and read your screen recordings.</string>
+
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Screen needs Downloads folder access to save and read your screen recordings.</string>
+
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Screen needs Desktop folder access to save and read your screen recordings.</string>
+
+    <!-- External / removable volumes (USB drives, external SSDs).
+         Some users save recordings directly to a connected drive
+         rather than to internal storage. Declaring intent here
+         lets macOS prompt cleanly when the recorder first writes
+         to such a volume. -->
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>Screen needs removable-volume access to save recordings to external drives.</string>
 </dict>
 </plist>
