@@ -6,6 +6,58 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-RECORD-EXPORT — Phase 1 + 2 shipped (7/14 chunks); encode work deferred to follow-up
+- **Date:** 2026-05-17
+- **Status:** 🟡 partial — orchestration done end-to-end (Phase 1 routing + Phase 2 master Record button + per-channel lock). Encode + save + AVIF deferred to a follow-up milestone `M-RECORD-EXPORT-ENCODE` (7 remaining chunks documented below).
+- **PR:** [#50](https://github.com/eng-manager-xyz/Screen/pull/50) — draft on branch `m-record-export`.
+- **Linear:** Milestone `M-RECORD-EXPORT` (`9db1ec94-69bc-4a17-8c33-40fc87a474b1`) holds AUT-291; rest of the chunks blocked by Linear free-tier issue cap (tracked in TaskList + milestone-2 doc instead).
+
+### What landed
+
+**Phase 1 — Routing pre-flight (3/3 chunks):**
+- **M-CAM.4** (`8c37e84`) — `gst-device-monitor` parser extracts per-device gst-launch hint into `CameraDevice.gst_source`; `GstreamerVideoCapture::from_camera(camera_id, ...)` resolves via `media::camera::find_by_id` and routes via `avfvideosrc device-index=N` on macOS. New `Error::CameraNotFound`. 10 tests, all pass.
+- **M-MIC.3** (`4613685`) — `start_mic_capture` now distinguishes "id in enumeration with no native_id" (legit autoaudiosrc fallback + warn log) from "id NOT in enumeration" (typed `MicError::NotFound`). New `media::microphone::find_by_id`. Stale picker IDs no longer silently record the wrong mic.
+- **M-SCK.0.1 / AUT-291** (`9450092`) — `ScreenCaptureConfig.source: ScreenCaptureSource { PrimaryDisplay | Display(id) | Window(id) }`. `start_screen_capture(source_id: Option<String>)` IPC routes to the right `SCContentFilter` constructor. ScreenPicker rewritten with per-row click + checkmark + LocalStorage persistence + stale-id fall-back.
+
+**Phase 2 — Recording orchestrator (4/4 chunks):**
+- **M-RECORD.0** (`b0f3e6d`) — `crates/app/src/recording.rs`: `SessionState` enum, `StreamKind`, `StreamHealth`, `SessionStreams`, `RecordingSession` with monotonic-id allocation + shared `Instant` clock. 19 unit tests cover every transition + idempotent no-ops + canonical-order iteration.
+- **M-RECORD.1** (`9e4adb1`) — `start_recording` / `stop_recording` / `recording_status` Tauri commands. Per-channel orchestration with rollback on partial-start failure. `recording-status` event push via `std::thread` (every 500 ms; self-terminates on session end). Master state advances `Starting → Running` once every enabled stream reports a non-Idle lifecycle.
+- **M-RECORD.2** (`002931b`) — `<RecorderControls />` Leptos component: big red record toggle, elapsed `mm:ss` display, channel-enable checkboxes, per-stream LED ramp (green/yellow/red based on `last_frame_ms_ago`). Reads picker selections from LocalStorage.
+- **M-RECORD.3** (`6d08ecc`) — Camera/Mic/SysAudio/Screen picker master toggles all `prop:disabled` while a session is `Starting | Running | Stopping`, with tooltip. Shared `install_recording_lock_listener` helper subscribes each picker to `recording-status`.
+
+### What does NOT yet work
+
+- No `.mp4` written to disk — encoder pipeline isn't built.
+- Capture pipelines still discard frames (camera/mic/screen/sys-audio counters increment but bytes are dropped).
+- No wisp composition of the 4 streams into one frame.
+- No save dialog / default output path / Reveal-in-Finder.
+- No AVIF poster.
+
+### Deferred to `M-RECORD-EXPORT-ENCODE` follow-up milestone (7 chunks)
+
+The encoder work is genuinely 4-6 hours of focused work — `appsrc` via gstreamer-rs Rust bindings (CLI-pipe pattern works for capture but not for push), per-channel frame-delivery extensions (currently every pipeline discards), per-OS HW encoder probing, A/V sync, and tests. Splitting it into a follow-up PR keeps this one cleanly mergeable.
+
+- M-EXPORT.0 — wisp `RecordingScene` composition (Screen + circular cam → `wgpu::TextureView`)
+- M-EXPORT.1 — `VideoEncoder` trait + `OutputFormat` enum (MP4-H.264/H.265, WebM-VP9/AV1) + per-OS GStreamer pipeline builder
+- M-EXPORT.2 — Audio mix (mic + sys-audio) → AAC/Opus into shared mux
+- M-EXPORT.3 — Wire encoder into `RecordingSession` lifecycle (per-channel frame-forwarding extensions)
+- M-EXPORT.4 — `tauri-plugin-dialog` save dialog + default path (`~/Movies/Screen/Screen-YYYY-MM-DD-HHMMSS.<ext>`) + Reveal in Finder
+- M-EXPORT.5 — AVIF poster-frame thumbnail
+- M-RECORD-EXPORT.GATE — storybook + chapters + full regression
+
+### Test totals
+
+- `cargo nextest run -p screen-app --lib` — **117/117 pass** (26 new recording tests)
+- `cargo nextest run -p media --lib` — **209/209 pass** (8 new sck_video tests)
+- `cargo nextest run -p app-ui --lib` — **51/51 pass** (new recorder_controls tests)
+- Clippy native + wasm32 — green on every touched crate
+
+### Honest reflection
+
+Original plan called for 1 big PR with 14 chunks. Phase 1+2 (7 chunks) shipped clean with full test coverage and visible product value (working coordinated capture + Record button UI). Phase 3+4+5 (encode + save + thumbnail + gate) is the larger half by complexity; splitting it into a follow-up avoids landing a half-built encoder that could fail in subtle ways the user can't debug remotely. The 7 chunks here are deliverable as-is: tray → Recorder surface → click Record → all 4 channels coordinate → click Stop → clean teardown. The follow-up PR adds "produces a .mp4 on disk".
+
+---
+
 ## M-RECORD-EXPORT — milestone kickoff (planning artifacts)
 - **Date:** 2026-05-17
 - **Status:** 🚧 milestone opened. One big PR on `m-record-export` branch off `main` (currently at PR #49's merge commit `a58724b`). 14 chunks across 5 phases: routing pre-flight (M-CAM.4, M-MIC.3, M-SCK.0.1/AUT-291) → orchestrator (M-RECORD.0..3) → composition+encode (M-EXPORT.0..3) → save+thumbnail (M-EXPORT.4, .5) → gate. macOS-first end-to-end; Win/Linux compile + tests pass with encoder scaffolds returning `Unsupported`.
