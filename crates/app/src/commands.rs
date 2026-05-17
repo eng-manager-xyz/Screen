@@ -15,6 +15,7 @@ use std::sync::Mutex;
 
 use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
 
+use crate::audio::{MicCaptureHandle, MicCapturePipeline, MicCaptureState, MicError, MicLifecycle};
 use crate::player_session::{PlayerSession, PlayerStatus};
 use crate::preview::{
     CameraError, CameraPipeline, CameraPipelineHandle, DiagnosticsSnapshot, PreviewDiagnostics,
@@ -693,6 +694,169 @@ pub fn preview_status(state: State<'_, PreviewState>) -> PreviewLifecycle {
 #[must_use]
 pub fn preview_diagnostics(state: State<'_, PreviewDiagnostics>) -> DiagnosticsSnapshot {
     state.snapshot()
+}
+
+// ---------------------------------------------------------------
+// Microphone IPC surface (M-MIC.1 / AUT-278)
+// ---------------------------------------------------------------
+
+/// View-model shape for the microphone-list IPC command (M-MIC.1 /
+/// AUT-278). Mirrors [`media::MicrophoneDevice`] but lives in
+/// `crates/app/` so the IPC schema is owned by the shell crate.
+/// Same shape contract as [`CameraView`] keeps the Leptos-side
+/// picker code symmetrical between camera + mic.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MicrophoneView {
+    /// Stable device id (`mic-…`).
+    pub id: String,
+    /// Human-readable label (`"MacBook Pro Microphone"` etc.).
+    pub label: String,
+    /// `true` for the OS-default mic.
+    pub is_default: bool,
+    /// Native channel count from the gst caps line (1 = mono, 2 =
+    /// stereo). `0` means unknown — Leptos should default to 2.
+    pub channels: u8,
+    /// Native sample rate (typically 48000 / 44100). `0` means
+    /// unknown — Leptos should default to 48000.
+    pub sample_rate_hz: u32,
+}
+
+impl From<media::MicrophoneDevice> for MicrophoneView {
+    fn from(value: media::MicrophoneDevice) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            is_default: value.is_default,
+            channels: value.channels,
+            sample_rate_hz: value.sample_rate_hz,
+        }
+    }
+}
+
+/// Enumerate attached microphones (M-MIC.1 / AUT-278).
+///
+/// Wraps [`media::list_microphones`]. Empty `Vec` (not an error)
+/// when `gst-device-monitor-1.0` isn't on `PATH` or no mics are
+/// attached — Leptos consumers should runtime-skip in that case.
+#[tauri::command]
+#[must_use]
+pub fn list_microphones() -> Vec<MicrophoneView> {
+    media::list_microphones()
+        .into_iter()
+        .map(MicrophoneView::from)
+        .collect()
+}
+
+/// Start the microphone capture worker (M-MIC.1 / AUT-278).
+///
+/// Advances [`MicLifecycle`] Idle → Starting and spawns a
+/// [`MicCapturePipeline`]. Re-entrant calls while a session is
+/// running cleanly tear down the previous worker (the handle's
+/// `install` swap drops the old `Pipeline`, which drops the gst
+/// child) before starting the new one.
+///
+/// # Errors
+///
+/// Returns [`MicError::GstFailed`] when the worker thread can't
+/// spawn (effectively never happens). gst-side failures (no mic
+/// attached, permission denied, etc.) are reported via the
+/// `mic_status` snapshot returning to `Idle` after the worker
+/// thread's error path runs.
+#[tauri::command]
+pub fn start_mic_capture(
+    app: tauri::AppHandle,
+    state: State<'_, MicCaptureState>,
+    pipeline_state: State<'_, MicCaptureHandle>,
+    mic_id: String,
+) -> Result<(), MicError> {
+    // Re-entrant calls: if a session is already up, tear it down
+    // first so the new mic-id wins. Mirrors the M-CAM.2/.3
+    // start_preview re-entrance contract — except the camera path
+    // doesn't yet handle re-entrance (its docs say "the caller is
+    // expected to first stop the existing session"). Here we do the
+    // teardown ourselves so the picker UX (M-MIC.2) doesn't need to
+    // sequence stop_mic_capture + start_mic_capture for every swap.
+    let was_active = pipeline_state.is_active();
+    if was_active {
+        tracing::info!(
+            mic_id = %mic_id,
+            "start_mic_capture: tearing down previous session for re-entrant start"
+        );
+        pipeline_state.shutdown();
+        // Force the lifecycle through Stopping → Idle so the
+        // try_start below sees Idle.
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop().finish_stop();
+    }
+
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let new_state = guard.try_start();
+        if new_state == *guard {
+            return Ok(());
+        }
+        *guard = new_state;
+    }
+    tracing::info!(
+        mic_id = %mic_id,
+        "mic-capture Starting — spawning gst worker"
+    );
+    let pipeline = MicCapturePipeline::spawn(app, mic_id)?;
+    pipeline_state.install(pipeline);
+    Ok(())
+}
+
+/// Stop the microphone capture worker (M-MIC.1 / AUT-278).
+///
+/// Drops the [`MicCapturePipeline`] (which cancels the loop, joins
+/// the thread, and — via `GstreamerAudioCapture`'s own `Drop` —
+/// kills + reaps the gst-launch child). The worker thread resets
+/// the lifecycle to `Idle` on its way out; we also do it here as a
+/// belt-and-braces guard in case the worker had already exited via
+/// a gst failure path.
+#[tauri::command]
+pub fn stop_mic_capture(
+    state: State<'_, MicCaptureState>,
+    pipeline_state: State<'_, MicCaptureHandle>,
+) {
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.try_stop();
+    }
+    // Drop the pipeline — Drop cancels + joins. Blocks briefly
+    // (one chunk interval, ~100 ms at our 4800-frame chunks);
+    // acceptable for a user-initiated stop.
+    pipeline_state.shutdown();
+    {
+        let mut guard = state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = guard.finish_stop();
+    }
+    tracing::info!("mic-capture Stopped");
+}
+
+/// Snapshot the current mic-capture lifecycle (M-MIC.1 / AUT-278).
+///
+/// Useful for Leptos to seed UI state on first mount before the
+/// (future) push-event mic-level stream drives it.
+#[tauri::command]
+#[must_use]
+pub fn mic_status(state: State<'_, MicCaptureState>) -> MicLifecycle {
+    *state
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

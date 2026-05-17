@@ -161,6 +161,55 @@ impl GstreamerAudioCapture {
         )
     }
 
+    /// Build a capture from the OS default microphone via
+    /// `autoaudiosrc` (M-MIC.1 / AUT-278).
+    ///
+    /// `mic_id` is the stable id from
+    /// [`crate::list_microphones`]; v0 stores it only for log
+    /// context — `autoaudiosrc` always opens the OS default. Per-mic
+    /// selection (`osxaudiosrc device-uid=…` / `pulsesrc device=…`)
+    /// is a deliberate follow-up so the lifecycle layer ships
+    /// first, matching the staging that M-CAM.0/.3 took.
+    ///
+    /// `format` must use [`SampleFormat::F32`] — the pipeline caps
+    /// to `F32LE` explicitly. Non-`F32` rejects at construction (same
+    /// shape as [`Self::test_source`]).
+    ///
+    /// ```admonish note title="Format choice differs from the ticket prose"
+    /// AUT-278 originally described the pipeline as
+    /// `…audio/x-raw,format=S16LE,…`. The capture infra around this
+    /// type is F32-only (see [`Self::reject_non_f32`] and
+    /// [`AudioChunk`] normalisation); reusing it required F32LE.
+    /// `audioresample` + `audioconvert` in the pipeline handle the
+    /// downstream conversion when a future encoder wants S16.
+    /// ```
+    pub fn from_microphone(mic_id: &str, format: AudioFormat) -> Result<Self, Error> {
+        Self::reject_non_f32(format)?;
+        let caps = caps_string(format);
+        tracing::info!(
+            mic_id,
+            sample_rate = format.sample_rate,
+            channels = format.channels,
+            "from_microphone: spawning gst-launch (autoaudiosrc opens OS default)"
+        );
+        Self::spawn(
+            &[
+                "-q",
+                "autoaudiosrc",
+                "!",
+                "audioconvert",
+                "!",
+                "audioresample",
+                "!",
+                &caps,
+                "!",
+                "fdsink",
+                "fd=1",
+            ],
+            format,
+        )
+    }
+
     /// Format of the produced chunks (same as the format passed at
     /// construction).
     #[must_use]

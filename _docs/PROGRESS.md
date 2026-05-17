@@ -6,6 +6,38 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MIC.1 — Microphone capture worker (AUT-278)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — real `gst-launch-1.0 autoaudiosrc` worker thread spawning, F32LE PCM into Rust, `MicLifecycle` state machine advances `Starting → Running` on first chunk, Drop-safe teardown. Structural mirror of M-CAM.3 (AUT-257).
+- **Linear:** [AUT-278](https://linear.app/harwood/issue/AUT-278) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app/src/audio/mod.rs` — `MicLifecycle { Idle, Starting, Running, Stopping }` state machine + `MicCaptureState(Mutex)` + `MicError` IPC enum (`PermissionPending` / `PermissionDenied` / `DeviceBusy` / `GstFailed(String)`). 13 unit tests covering every transition, idempotent `mark_running`, `Starting → Stopping` (user clicks stop during macOS permission prompt), `Idle.mark_running()` no-op safety, full round-trip, serde round-trip.
+  - `crates/app/src/audio/pipeline.rs` — `MicCapturePipeline` worker handle (cancel flag + JoinHandle) + `MicCaptureHandle` (Tauri-managed `Mutex<Option<Pipeline>>`). Worker spawns `GstreamerAudioCapture::from_microphone(mic_id, format)`, loops `next_chunk(4800)` (100 ms chunks at 48 kHz), advances lifecycle on every chunk (idempotent). Compile-time invariants for `MIC_SAMPLE_RATE = 48000`, `MIC_CHANNELS = 2`, `MIC_CHUNK_FRAMES = 4800` via `const _: () = assert!`. `Drop` cancels + joins; the gst child dies through `GstreamerAudioCapture`'s own Drop ("Drop-kill the child" per CLAUDE.md).
+  - `crates/app/tests/mic_commands.rs` — IPC harness (`mock_builder`): asserts `mic_status` returns `Idle` initially, `list_microphones` returns a JSON array, and the `MicrophoneView` shape exposes all five expected fields when at least one mic is present. `cfg(not(target_os = "windows"))` per the existing `commands.rs` Windows skip pattern.
+- **Files changed:**
+  - `crates/media/src/gstreamer_audio.rs` — new `GstreamerAudioCapture::from_microphone(mic_id, format)` builder. Uses `autoaudiosrc` (auto-pick OS default) since `osxaudiosrc device-uid=…` / `pulsesrc device=…` per-mic selection is a documented follow-up that doesn't block lifecycle work, mirroring M-CAM.0's staging. `mic_id` is logged for context. F32LE format — the ticket's S16LE spec is reconciled in a doc admonition: `AudioChunk` is F32-only by design, and the encoder gets S16 via `audioconvert` downstream.
+  - `crates/app/src/commands.rs` — added 4 Tauri commands: `list_microphones() -> Vec<MicrophoneView>`, `start_mic_capture(mic_id) -> Result<(), MicError>` (handles re-entrant calls — drops the previous pipeline before spawning the new one, so the M-MIC.2 picker UX can swap mics without sequencing stop + start), `stop_mic_capture()`, `mic_status() -> MicLifecycle`. New `MicrophoneView` IPC type with `From<media::MicrophoneDevice>` conversion.
+  - `crates/app/src/lib.rs` — `pub mod audio;`.
+  - `crates/app/src/main.rs` — `.manage(MicCaptureState::default()).manage(MicCaptureHandle::default())` + 4 new commands in both `generate_handler!` arms. Extracted the `on_window_event` closure into a standalone `handle_window_event` fn so the builder chain stays under clippy's `too_many_lines = 100` threshold after the four mic-command insertions.
+- **Tests:** 13 audio-mod unit + 1 audio-pipeline unit + 3 mic_commands IPC = **17 new tests**. **100/100 screen-app tests pass**.
+- **Gates run, all green:**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p media -p screen-app --all-targets` — green.
+  - `cargo clippy -p media -p screen-app --all-targets -- -D warnings` — green (after the `handle_window_event` extraction).
+  - `cargo nextest run -p screen-app` — 100/100.
+- **Side-fix that unblocked the whole integration-test surface:** **PR #47's `embed_plist::embed_info_plist!("../Info.plist")` was emitting the same `_EMBED_INFO_PLIST` symbol as `tauri::generate_context!()`'s auto-embed.** Tauri-codegen 2.6.1 (the version we use) auto-embeds Info.plist on `target == macOS && dev && !running_tests` — see `/Users/.../tauri-codegen-2.6.1/src/context.rs:302`. The manual call was redundant once Tauri added the auto-path, and the duplicate symbol blocked **every integration test in `screen-app`** at link time (cleanup_smoke, commands, mic_commands all failed with `symbol _EMBED_INFO_PLIST is already defined`). Removed the manual `embed_plist!` macro call + the `embed_plist = "1.2"` dep from `crates/app/Cargo.toml`. Verified: `cargo run -p screen-app` still gets the Info.plist embedded (via tauri-codegen). The previously-broken 14 integration tests now all pass.
+- **Notable deviations from the M-CAM.3 pattern (intentional):**
+  - **Per-device selection deferred.** `autoaudiosrc` always opens the OS default mic; `mic_id` is plumbed + logged but not yet used to select. Same staging M-CAM.0 took — lifecycle layer ships first, per-device wiring is a discrete follow-up. M-MIC.2 (AUT-279) ships the picker UX against the IPC contract; the picker's "switch to a different mic" path will work the moment the per-device wiring lands.
+  - **`start_mic_capture` handles re-entrant calls.** Unlike `start_preview` (which expects the caller to first stop), `start_mic_capture` drops the previous pipeline before starting the new one. The mic picker's natural UX is "click a new row" without an intermediate stop click, so we absorb that here.
+  - **`MicLifecycle::Idle.mark_running()` is a no-op safety guard** — a spurious worker that calls `mark_running` without a prior `try_start` shouldn't be able to flip the lifecycle to Running. Mirror's M-CAM's `PreviewLifecycle` shape but adds the explicit test.
+- **Deferred (next follow-up commits):**
+  - Per-device selection — `osxaudiosrc device-uid=…` on macOS, `pulsesrc device=…` on Linux, `wasapisrc` on Windows. Drop-in extension to `GstreamerAudioCapture::from_microphone`'s pipeline-args path.
+  - RMS event emission for the M-MIC.2 audio meter — `audio-levels` Tauri event with `f32` payload pushed at ~20 Hz from the worker. Today the chunks are pulled + dropped.
+  - macOS `AVCaptureDevice.authorizationStatus(for: .audio)` probe for the picker's `PermissionNeeded` state — M-MIC.2 territory.
+- **What this closes:** the IPC contract for the mic capture path. Leptos can `tauri::invoke('list_microphones')` to enumerate, `tauri::invoke('start_mic_capture', { mic_id })` to spawn the gst worker (which fires `NSMicrophoneUsageDescription` on first run), and `tauri::invoke('mic_status')` to seed UI state. M-MIC.2 builds on this without further backend work.
+
+---
+
 ## M-MIC.0 — Microphone device enumeration (AUT-277)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — `media::microphone::list_microphones() -> Vec<MicrophoneDevice>` shipped via the gst CLI-pipe pattern. Mirror of M-CAM.1 (AUT-255).

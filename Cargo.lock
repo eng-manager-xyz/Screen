@@ -6085,7 +6085,6 @@ name = "screen-app"
 version = "0.1.0"
 dependencies = [
  "decode",
- "embed_plist",
  "image",
  "media",
  "playback",
