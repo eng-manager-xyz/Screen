@@ -953,20 +953,38 @@ pub fn start_mic_capture(
 ) -> Result<(), MicError> {
     // M-MIC.3 / AUT-284 — resolve the FNV-1a mic_id to the
     // platform-native device identifier (osxaudiosrc device-uid /
-    // pulsesrc device / wasapisrc device) by re-enumerating. Empty
-    // native_id (id not found, OR the device didn't expose
-    // unique-id) routes the worker to autoaudiosrc fallback.
-    let native_id = media::list_microphones()
-        .into_iter()
-        .find(|m| m.id == mic_id)
-        .map(|m| m.native_id)
-        .unwrap_or_default();
-    if native_id.is_empty() && !mic_id.is_empty() {
+    // pulsesrc device / wasapisrc device) by re-enumerating.
+    //
+    // Three cases:
+    // 1. Empty mic_id → caller wants OS default. Pass empty native_id
+    //    through; `from_microphone` routes to `autoaudiosrc`.
+    // 2. Non-empty mic_id present in the live enumeration → use its
+    //    native_id (which may itself be empty if the device didn't
+    //    expose `unique-id`; that's a legit fall to autoaudiosrc and
+    //    we log it).
+    // 3. Non-empty mic_id NOT present in the live enumeration →
+    //    stale picker state. Return Err(NotFound) so the UI
+    //    re-enumerates instead of silently recording the wrong mic.
+    //    M-RECORD-EXPORT tightening — was silently falling through.
+    let native_id = if mic_id.is_empty() {
+        String::new()
+    } else if let Some(device) = media::microphone::find_by_id(&mic_id) {
+        if device.native_id.is_empty() {
+            tracing::warn!(
+                mic_id = %mic_id,
+                label = %device.label,
+                "start_mic_capture: device enumerated but exposed no `unique-id`; \
+                 falling back to autoaudiosrc (OS default) — picker selection will NOT pin"
+            );
+        }
+        device.native_id
+    } else {
         tracing::warn!(
             mic_id = %mic_id,
-            "start_mic_capture: no native_id for mic_id; falling back to autoaudiosrc (OS default)"
+            "start_mic_capture: mic_id not present in live enumeration (stale picker?)"
         );
-    }
+        return Err(MicError::NotFound(mic_id));
+    };
 
     // Re-entrant calls: if a session is already up, tear it down
     // first so the new mic-id wins. Mirrors the M-CAM.2/.3
