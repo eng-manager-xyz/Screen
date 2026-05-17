@@ -1357,32 +1357,58 @@ pub fn list_screen_windows() -> Result<Vec<WindowSourceView>, String> {
     }
 }
 
-/// Start the screen-capture session on the primary display
-/// (M-SCK.2 / AUT-269, partial). Defaults to 1920×1080 @ 30fps with
-/// cursor shown. Triggers the macOS Screen Recording TCC prompt on
-/// first run.
+/// Start the screen-capture session targeting the picker-selected
+/// source (M-SCK.2 / AUT-269 + M-SCK.0.1 / AUT-291). `source_id` is
+/// `Some("display-<id>")` / `Some("window-<id>")` / `None` (primary
+/// display). Defaults to 1920×1080 @ 30 fps with cursor shown.
+/// Triggers the macOS Screen Recording TCC prompt on first run.
+///
+/// Re-entrant: passing a fresh `source_id` to a live session tears
+/// down the existing `SCStream` and starts a new one (the picker UX
+/// for swapping mid-record is a single click; M-SCK.0.1's
+/// `updateContentFilter` swap-in-place is a future optimization).
 ///
 /// # Errors
 ///
-/// Returns the SCK error as a string.
+/// Returns the SCK error as a string. Malformed `source_id` (wrong
+/// prefix / non-numeric tail) surfaces as
+/// `"malformed display source id ..."` / `"malformed window source
+/// id ..."`. Unknown source id (display unplugged / window closed
+/// between enumeration and start) surfaces as `"<kind> id ... not
+/// present"`.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn start_screen_capture(state: State<'_, ScreenCaptureState>) -> Result<(), String> {
+pub fn start_screen_capture(
+    state: State<'_, ScreenCaptureState>,
+    source_id: Option<String>,
+) -> Result<(), String> {
+    use media::sck_video::{ScreenCaptureConfig, ScreenCaptureSource};
+    let source = match source_id.as_deref() {
+        None | Some("") => ScreenCaptureSource::PrimaryDisplay,
+        Some(id) if id.starts_with("display-") => ScreenCaptureSource::Display(id.to_string()),
+        Some(id) if id.starts_with("window-") => ScreenCaptureSource::Window(id.to_string()),
+        Some(other) => {
+            return Err(format!(
+                "unknown source_id prefix `{other}` (expected `display-…` or `window-…`)"
+            ));
+        }
+    };
     state
-        .start(media::sck_video::ScreenCaptureConfig::default())
+        .start(ScreenCaptureConfig::for_source(source))
         .map_err(|err| err.to_string())
 }
 
 /// Non-macOS stub for `start_screen_capture`. Returns the
 /// requires-macOS-13.0 error so the Leptos picker surfaces a
-/// consistent message across platforms.
+/// consistent message across platforms. Signature matches the macOS
+/// variant so the IPC schema stays uniform.
 ///
 /// # Errors
 ///
 /// Always returns `"screen capture requires macOS 13.0+"`.
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
-pub fn start_screen_capture() -> Result<(), String> {
+pub fn start_screen_capture(_source_id: Option<String>) -> Result<(), String> {
     Err("screen capture requires macOS 13.0+".into())
 }
 

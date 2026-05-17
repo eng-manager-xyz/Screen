@@ -59,7 +59,8 @@ use objc2::{AllocAnyThread, DefinedClass, define_class, msg_send};
 use objc2_core_media::{CMSampleBuffer, CMTime};
 use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSString};
 use objc2_screen_capture_kit::{
-    SCContentFilter, SCStream, SCStreamConfiguration, SCStreamOutput, SCStreamOutputType, SCWindow,
+    SCContentFilter, SCShareableContent, SCStream, SCStreamConfiguration, SCStreamOutput,
+    SCStreamOutputType, SCWindow,
 };
 use serde::{Deserialize, Serialize};
 
@@ -83,12 +84,34 @@ pub const DEFAULT_HEIGHT: u32 = 1080;
 /// can bump this later if user feedback wants 60.
 pub const DEFAULT_TARGET_FPS: u32 = 30;
 
+/// Which screen / window the capture session targets
+/// (M-SCK.0.1 / AUT-291). `Default = PrimaryDisplay` so an existing
+/// `ScreenCaptureConfig::default()` keeps the M-SCK.0 behaviour.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ScreenCaptureSource {
+    /// First display in `SCShareableContent.displays` — M-SCK.0's
+    /// historical behaviour.
+    #[default]
+    PrimaryDisplay,
+    /// Specific display by id. Format matches what
+    /// [`crate::screen::list_displays`] emits: `"display-<displayID>"`
+    /// where `displayID` is the SCDisplay's macOS `CGDirectDisplayID`.
+    Display(String),
+    /// Specific window by id. Format matches what
+    /// [`crate::screen::list_windows`] emits: `"window-<windowID>"`
+    /// where `windowID` is the SCWindow's `CGWindowID`. Window IDs are
+    /// **not stable across app launches** — the picker persists +
+    /// recovers on no-match, see `<ScreenPicker />`.
+    Window(String),
+}
+
 /// Screen-capture configuration. Each field has a sensible default;
 /// pass `Default::default()` for "primary display, 1920×1080, 30
 /// fps." Override `width` / `height` to a specific source-rect
 /// sub-region or to the display's actual size; override
-/// `target_fps` to match a 60Hz display.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// `target_fps` to match a 60Hz display; override `source` to capture
+/// a non-primary display or a specific window (M-SCK.0.1 / AUT-291).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScreenCaptureConfig {
     /// Capture width in pixels. `0` falls back to [`DEFAULT_WIDTH`].
     pub width: u32,
@@ -100,6 +123,10 @@ pub struct ScreenCaptureConfig {
     /// Defaults `true` because that's what the user expects for
     /// every screencast they've ever seen.
     pub shows_cursor: bool,
+    /// Which display / window to capture (M-SCK.0.1 / AUT-291). The
+    /// `Default::default()` value is [`ScreenCaptureSource::PrimaryDisplay`]
+    /// so legacy callers keep the M-SCK.0 behaviour.
+    pub source: ScreenCaptureSource,
 }
 
 impl Default for ScreenCaptureConfig {
@@ -109,6 +136,21 @@ impl Default for ScreenCaptureConfig {
             height: DEFAULT_HEIGHT,
             target_fps: DEFAULT_TARGET_FPS,
             shows_cursor: true,
+            source: ScreenCaptureSource::PrimaryDisplay,
+        }
+    }
+}
+
+impl ScreenCaptureConfig {
+    /// Construct a config that captures `source` with the M-SCK.0
+    /// defaults for everything else (1920×1080 @ 30 fps, cursor on).
+    /// Most call sites use this rather than literal struct init since
+    /// the source is the field that actually varies per-session.
+    #[must_use]
+    pub fn for_source(source: ScreenCaptureSource) -> Self {
+        Self {
+            source,
+            ..Self::default()
         }
     }
 }
@@ -206,6 +248,77 @@ pub struct ScreenCaptureStream {
     counters: Arc<ScreenCaptureCounters>,
 }
 
+/// Resolve [`ScreenCaptureSource`] to an `SCContentFilter`
+/// (M-SCK.0.1 / AUT-291). Extracted from `ScreenCaptureStream::new`
+/// so that function stays under the `clippy::too_many_lines` cap.
+fn build_content_filter(
+    content: &SCShareableContent,
+    source: &ScreenCaptureSource,
+) -> Result<Retained<SCContentFilter>, ScreenError> {
+    match source {
+        ScreenCaptureSource::PrimaryDisplay => {
+            let displays = unsafe { content.displays() };
+            let Some(display) = displays.iter().next() else {
+                return Err(ScreenError::NoDisplays);
+            };
+            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            Ok(unsafe {
+                SCContentFilter::initWithDisplay_excludingWindows(
+                    SCContentFilter::alloc(),
+                    &display,
+                    &empty_windows,
+                )
+            })
+        }
+        ScreenCaptureSource::Display(id) => {
+            let target_id = parse_display_id(id).ok_or_else(|| {
+                ScreenError::StreamCreationFailed(format!(
+                    "malformed display source id `{id}` (expected `display-<displayID>`)"
+                ))
+            })?;
+            let displays = unsafe { content.displays() };
+            let matched = displays
+                .iter()
+                .find(|d| unsafe { d.displayID() } == target_id)
+                .ok_or_else(|| {
+                    ScreenError::StreamCreationFailed(format!(
+                        "display id `{id}` not present (was the display unplugged?)"
+                    ))
+                })?;
+            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            Ok(unsafe {
+                SCContentFilter::initWithDisplay_excludingWindows(
+                    SCContentFilter::alloc(),
+                    &matched,
+                    &empty_windows,
+                )
+            })
+        }
+        ScreenCaptureSource::Window(id) => {
+            let target_id = parse_window_id(id).ok_or_else(|| {
+                ScreenError::StreamCreationFailed(format!(
+                    "malformed window source id `{id}` (expected `window-<windowID>`)"
+                ))
+            })?;
+            let windows = unsafe { content.windows() };
+            let matched = windows
+                .iter()
+                .find(|w| unsafe { w.windowID() } == target_id)
+                .ok_or_else(|| {
+                    ScreenError::StreamCreationFailed(format!(
+                        "window id `{id}` not present (was it closed?)"
+                    ))
+                })?;
+            Ok(unsafe {
+                SCContentFilter::initWithDesktopIndependentWindow(
+                    SCContentFilter::alloc(),
+                    &matched,
+                )
+            })
+        }
+    }
+}
+
 impl ScreenCaptureStream {
     /// Build + start a capture session on the **first available
     /// display**. Triggers the macOS Screen Recording TCC prompt
@@ -220,24 +333,11 @@ impl ScreenCaptureStream {
         let counters = Arc::new(ScreenCaptureCounters::default());
         let delegate = ScreenOutputHandler::new(Arc::clone(&counters));
 
-        // 1. Get shareable content + pick the first display.
+        // 1+2. Get shareable content + resolve `config.source` to the
+        //      right SCContentFilter (M-SCK.0.1 / AUT-291). Three
+        //      filter constructors → one helper to keep `new` short.
         let content = shareable_content_blocking()?;
-        let displays = unsafe { content.displays() };
-        let Some(display) = displays.iter().next() else {
-            return Err(ScreenError::NoDisplays);
-        };
-
-        // 2. Build the SCContentFilter (full-display capture; no
-        //    excluded windows). Window-specific capture is a
-        //    separate ticket (M-SCK.0.1).
-        let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
-        let filter = unsafe {
-            SCContentFilter::initWithDisplay_excludingWindows(
-                SCContentFilter::alloc(),
-                &display,
-                &empty_windows,
-            )
-        };
+        let filter = build_content_filter(&content, &config.source)?;
 
         // 3. Build the SCStreamConfiguration. Width/height/fps
         //    fall back to defaults when caller passed 0 (so a
@@ -320,10 +420,13 @@ impl ScreenCaptureStream {
         })
     }
 
-    /// Configuration the stream was built with.
+    /// Configuration the stream was built with. Returns a clone so
+    /// callers can hold it without taking a borrow on the live
+    /// session (was `Copy` until M-SCK.0.1 added the `String`-bearing
+    /// `source` field).
     #[must_use]
     pub fn config(&self) -> ScreenCaptureConfig {
-        self.config
+        self.config.clone()
     }
 
     /// Atomic counters readable from any thread — see
@@ -415,6 +518,20 @@ fn ns_error_description(error: &objc2_foundation::NSError) -> String {
     description.to_string()
 }
 
+/// Parse `"display-<u32>"` → `Some(u32)`. Returns `None` on any
+/// non-matching prefix or non-numeric tail (M-SCK.0.1 / AUT-291).
+#[must_use]
+pub fn parse_display_id(id: &str) -> Option<u32> {
+    id.strip_prefix("display-").and_then(|s| s.parse().ok())
+}
+
+/// Parse `"window-<u32>"` → `Some(u32)`. Returns `None` on any
+/// non-matching prefix or non-numeric tail (M-SCK.0.1 / AUT-291).
+#[must_use]
+pub fn parse_window_id(id: &str) -> Option<u32> {
+    id.strip_prefix("window-").and_then(|s| s.parse().ok())
+}
+
 /// View-model for an active screen-capture session (M-SCK.2 / AUT-269).
 /// Mirrors `MicLifecycle`'s shape — kept here so the Tauri command
 /// surface can return + render it without importing internal types.
@@ -480,6 +597,72 @@ mod tests {
         assert_eq!(cfg.height, DEFAULT_HEIGHT);
         assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
         assert!(cfg.shows_cursor);
+        assert_eq!(cfg.source, ScreenCaptureSource::PrimaryDisplay);
+    }
+
+    #[test]
+    fn for_source_overrides_only_source() {
+        let cfg = ScreenCaptureConfig::for_source(ScreenCaptureSource::Display(
+            "display-12345".into(),
+        ));
+        assert_eq!(cfg.width, DEFAULT_WIDTH);
+        assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
+        assert_eq!(cfg.source, ScreenCaptureSource::Display("display-12345".into()));
+    }
+
+    #[test]
+    fn screen_capture_source_default_is_primary_display() {
+        assert_eq!(
+            ScreenCaptureSource::default(),
+            ScreenCaptureSource::PrimaryDisplay
+        );
+    }
+
+    #[test]
+    fn screen_capture_source_serde_round_trips_all_variants() {
+        // M-SCK.0.1 — source crosses the IPC seam, so all 3 variants
+        // must round-trip.
+        for v in [
+            ScreenCaptureSource::PrimaryDisplay,
+            ScreenCaptureSource::Display("display-987654321".into()),
+            ScreenCaptureSource::Window("window-42".into()),
+        ] {
+            let json = serde_json::to_string(&v).unwrap();
+            let back: ScreenCaptureSource = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, v);
+        }
+    }
+
+    #[test]
+    fn parse_display_id_extracts_numeric_suffix() {
+        assert_eq!(parse_display_id("display-1"), Some(1));
+        assert_eq!(parse_display_id("display-1234567890"), Some(1_234_567_890));
+        assert_eq!(parse_display_id("display-0"), Some(0));
+    }
+
+    #[test]
+    fn parse_display_id_rejects_malformed_ids() {
+        assert_eq!(parse_display_id(""), None);
+        assert_eq!(parse_display_id("display-"), None);
+        assert_eq!(parse_display_id("display-abc"), None);
+        assert_eq!(parse_display_id("window-42"), None);
+        assert_eq!(parse_display_id("not-a-display"), None);
+        // Don't accept negatives — CGDirectDisplayID is u32.
+        assert_eq!(parse_display_id("display--1"), None);
+    }
+
+    #[test]
+    fn parse_window_id_extracts_numeric_suffix() {
+        assert_eq!(parse_window_id("window-1"), Some(1));
+        assert_eq!(parse_window_id("window-99999"), Some(99_999));
+    }
+
+    #[test]
+    fn parse_window_id_rejects_malformed_ids() {
+        assert_eq!(parse_window_id(""), None);
+        assert_eq!(parse_window_id("window-"), None);
+        assert_eq!(parse_window_id("window-abc"), None);
+        assert_eq!(parse_window_id("display-42"), None);
     }
 
     #[test]

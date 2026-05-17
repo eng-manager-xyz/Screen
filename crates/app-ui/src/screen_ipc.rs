@@ -62,9 +62,12 @@ extern "C" {
     #[wasm_bindgen(js_name = __screenListScreenWindows, catch)]
     pub async fn list_screen_windows_js() -> Result<JsValue, JsValue>;
 
-    /// `__screenStartScreenCapture()` — `Promise<void>` (or string error).
+    /// `__screenStartScreenCapture(sourceId?: string)` —
+    /// `Promise<void>` (or string error). `sourceId` is
+    /// `"display-<id>"` / `"window-<id>"` / `null` for primary
+    /// display (M-SCK.0.1 / AUT-291).
     #[wasm_bindgen(js_name = __screenStartScreenCapture, catch)]
-    pub async fn start_screen_capture_js() -> Result<JsValue, JsValue>;
+    pub async fn start_screen_capture_js(source_id: JsValue) -> Result<JsValue, JsValue>;
 
     /// `__screenStopScreenCapture()` — `Promise<void>`.
     #[wasm_bindgen(js_name = __screenStopScreenCapture, catch)]
@@ -101,9 +104,16 @@ pub async fn list_screen_windows() -> ScreenSourcesResult<WindowSourceView> {
     }
 }
 
-/// Start screen capture. Returns `Ok(())` or `Err(message)`.
-pub async fn start_screen_capture() -> Result<(), String> {
-    start_screen_capture_js()
+/// Start screen capture. `source_id` of `None` captures the primary
+/// display (M-SCK.0 default); `Some("display-<id>")` / `Some("window-<id>")`
+/// pin to a specific source (M-SCK.0.1 / AUT-291). Returns
+/// `Ok(())` or `Err(message)`.
+pub async fn start_screen_capture(source_id: Option<String>) -> Result<(), String> {
+    let arg = match source_id {
+        Some(id) => JsValue::from_str(&id),
+        None => JsValue::NULL,
+    };
+    start_screen_capture_js(arg)
         .await
         .map(|_| ())
         .map_err(|err| js_error_string(&err))

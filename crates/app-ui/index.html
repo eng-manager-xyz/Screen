@@ -126,8 +126,11 @@
         window.__TAURI__?.core?.invoke("list_screen_displays") ?? Promise.resolve([]);
       window.__screenListScreenWindows = () =>
         window.__TAURI__?.core?.invoke("list_screen_windows") ?? Promise.resolve([]);
-      window.__screenStartScreenCapture = () =>
-        window.__TAURI__?.core?.invoke("start_screen_capture") ?? Promise.resolve();
+      // M-SCK.0.1 / AUT-291 — start_screen_capture now takes an
+      // optional source_id (`"display-<id>"` / `"window-<id>"`).
+      // `null` keeps the M-SCK.0 default (primary display).
+      window.__screenStartScreenCapture = (sourceId) =>
+        window.__TAURI__?.core?.invoke("start_screen_capture", { sourceId: sourceId ?? null }) ?? Promise.resolve();
       window.__screenStopScreenCapture = () =>
         window.__TAURI__?.core?.invoke("stop_screen_capture") ?? Promise.resolve();
       window.__screenScreenCaptureStatus = () =>
