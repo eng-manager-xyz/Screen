@@ -6,6 +6,32 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-MIC.0 — Microphone device enumeration (AUT-277)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `media::microphone::list_microphones() -> Vec<MicrophoneDevice>` shipped via the gst CLI-pipe pattern. Mirror of M-CAM.1 (AUT-255).
+- **Linear:** [AUT-277](https://linear.app/harwood/issue/AUT-277) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/src/microphone.rs` — `MicrophoneDevice { id, label, is_default, channels, sample_rate_hz }`, `list_microphones()`, `parse_device_monitor_output()`, `stable_id_for()`. Spawns `gst-device-monitor-1.0 Audio/Source`, parses real macOS / synthetic Pulse fixtures. 10 unit tests including parser, caps int-field extractor, serde round-trip, Send+Sync, mic-vs-cam id-prefix-collision.
+  - `crates/media/examples/list_microphones.rs` — acceptance-criterion CLI: prints every attached input with id + label + default flag + channels + sample rate. Exits with hint when no inputs or gst not on PATH.
+  - `crates/media/tests/microphone_enumeration.rs` — runtime-skip integration: runs against the actual host, asserts exactly-one-default invariant + non-empty id/label + `mic-` prefix discipline.
+- **Files changed:**
+  - `crates/media/src/lib.rs` — `pub mod microphone;` + `pub use microphone::{MicrophoneDevice, list_microphones};`.
+  - `crates/media/Cargo.toml` — `[[example]] name = "list_microphones"` entry.
+- **Tests:** 10 new unit tests + 1 new integration test. **99/99 `cargo nextest run -p media`** pass (the existing 88 + 11 new).
+- **Gates run, all green for the media crate:**
+  - `cargo fmt --all --check` — green.
+  - `cargo check -p media --all-targets` — green.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after `collapsible_if` + `needless_continue` + `doc_markdown` fixes.
+  - `cargo nextest run -p media` — 99/99.
+  - `cargo run -p media --example list_microphones` — found real attached mics with correct default flag + channels + sample rate.
+- **Notable deviations from the M-CAM.1 pattern (both intentional):**
+  - **`is_default` uses gst's explicit signal, not "first in list."** `gst-device-monitor-1.0 Audio/Source` exposes `is-default = true|false` per device in the `properties:` block on macOS. Real captured output showed `MOMENTUM 4` (a Bluetooth headset, third-listed) as the OS default — proving the explicit signal beats first-in-list. The first-listed heuristic remains as a fallback for backends that omit the property (Linux/Pulse fixture exercises this branch).
+  - **Channels + sample-rate come from the first `caps` line.** GStreamer reports the device's preferred native format as the first `caps` line; remaining lines list every supported permutation. The parser extracts `rate=` + `channels=` from token 1 only and degrades to `0` ("unknown") when absent — downstream M-MIC.1 will default to 48 kHz / 2 channels for `0`.
+  - **ID prefix is `mic-` not `cam-`.** Prevents a hypothetical IPC-layer collision where a camera and mic share the same label and would otherwise hash to the same FNV-1a digest.
+- **What this closes:** M-MIC.1 (worker — AUT-278) can now consume `MicrophoneDevice.id` for `start_mic_capture(mic_id)`; M-MIC.2 (picker UI — AUT-279) can call `list_microphones()` across the Tauri seam (serde round-trip tested).
+
+---
+
 ## M-RECP.0..5 — Polish-track foundations (AUT-261..266)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — pure-Rust foundations for all six M-RECORDER-V1 polish tickets landed together: state machines + cross-OS shell-command maps + RAII guards + sliding-window monitors + integration smoke skeleton. OS-level wiring (objc2 IOPMAssertion / windows-rs SetThreadExecutionState / D-Bus inhibit / actual Tauri monitor placement) is **deferred** to follow-up commits that need real hardware to verify; the unit-testable surface is at parity with the M-RECORDER-V1 deliverable on every OS.

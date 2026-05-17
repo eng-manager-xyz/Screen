@@ -62,3 +62,10 @@ path = "examples/gst_video_to_wisp.rs"
 [[example]]
 name = "synced_scene"
 path = "examples/synced_scene.rs"
+
+# M-MIC.0 / AUT-277 — print every attached microphone via
+# gst-device-monitor-1.0 Audio/Source. Exits cleanly with a hint
+# when gstreamer isn't on PATH or no inputs are attached.
+[[example]]
+name = "list_microphones"
+path = "examples/list_microphones.rs"

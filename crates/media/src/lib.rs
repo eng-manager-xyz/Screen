@@ -95,6 +95,7 @@ pub mod gstreamer_audio;
 pub mod gstreamer_video;
 pub mod histogram;
 pub mod manifest;
+pub mod microphone;
 pub mod mock_audio;
 pub mod sync;
 pub mod video;
@@ -104,6 +105,7 @@ pub use audio::{AudioChunk, AudioChunkError, AudioFormat, SampleFormat};
 pub use camera::{CameraDevice, list_cameras};
 pub use clock::{MediaClock, MediaDuration, MediaTime, Timestamped};
 pub use histogram::{AudioBar, AudioHistogram};
+pub use microphone::{MicrophoneDevice, list_microphones};
 pub use mock_audio::{SilenceSource, SineWaveSource, StepPulseSource};
 pub use video::{VideoFrame, VideoStream};
 pub use waveform::{
