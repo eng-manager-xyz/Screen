@@ -39,6 +39,11 @@ pub fn CameraPicker() -> impl IntoView {
     let selected_id = RwSignal::new(Option::<String>::None);
     let permission = RwSignal::new(CameraPermission::Granted);
     let open = RwSignal::new(false);
+    // M-RECORD.3 — disable the trigger while a coordinated
+    // recording session is active so the user can't swap cameras
+    // mid-record (would invalidate the M-EXPORT encoder state).
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
     // Initial mount: probe permission, then enumerate.
     spawn_local(async move {
@@ -75,7 +80,12 @@ pub fn CameraPicker() -> impl IntoView {
                 class="camera-picker-trigger"
                 aria-haspopup="listbox"
                 aria-expanded=move || open.get()
-                on:click=move |_| { open.update(|o| *o = !*o); }
+                prop:disabled=move || recording_lock.get()
+                title=move || if recording_lock.get() { "Recording in progress — stop the recording to change cameras" } else { "" }
+                on:click=move |_| {
+                    if recording_lock.get() { return; }
+                    open.update(|o| *o = !*o);
+                }
             >
                 <span class="camera-picker-label">
                     {move || selected_label(&cameras.get(), selected_id.get().as_ref())}

@@ -154,6 +154,10 @@ pub fn SystemAudioPicker() -> impl IntoView {
     // M-AUDIO.METER / AUT-287 — master-stream RMS from the SCK
     // delegate. Per-app meters are deferred to M-AUDIO.METER.1.
     let level = RwSignal::new(0.0_f32);
+    // M-RECORD.3 — lock the master toggle while a coordinated
+    // session is active so the user can't drop sys-audio mid-record.
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
     system_audio_ipc::subscribe_system_audio_level(move |l| level.set(l));
 
@@ -269,7 +273,12 @@ pub fn SystemAudioPicker() -> impl IntoView {
                     role="switch"
                     aria-checked=move || enabled.get()
                     data-enabled=move || if enabled.get() { "true" } else { "false" }
-                    on:click=on_toggle_enabled
+                    prop:disabled=move || recording_lock.get()
+                    title=move || if recording_lock.get() { "Recording in progress — stop the recording to toggle system audio" } else { "" }
+                    on:click=move |evt| {
+                        if recording_lock.get() { return; }
+                        on_toggle_enabled(evt);
+                    }
                 >
                     <span class="system-audio-picker-icon" aria-hidden="true">"🔈"</span>
                     <span class="system-audio-picker-label">"System audio"</span>

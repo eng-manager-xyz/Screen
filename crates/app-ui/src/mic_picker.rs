@@ -52,6 +52,10 @@ pub fn MicPicker() -> impl IntoView {
     let open = RwSignal::new(false);
     // M-AUDIO.METER / AUT-287 — live RMS level from the worker.
     let level = RwSignal::new(0.0_f32);
+    // M-RECORD.3 — lock the trigger while a coordinated session is
+    // active.
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
     // Subscribe once at component mount. The Tauri event listener
     // leaks the closure intentionally (see subscribe_mic_level docs);
@@ -86,7 +90,12 @@ pub fn MicPicker() -> impl IntoView {
                 class="mic-picker-trigger"
                 aria-haspopup="listbox"
                 aria-expanded=move || open.get()
-                on:click=move |_| { open.update(|o| *o = !*o); }
+                prop:disabled=move || recording_lock.get()
+                title=move || if recording_lock.get() { "Recording in progress — stop the recording to change microphones" } else { "" }
+                on:click=move |_| {
+                    if recording_lock.get() { return; }
+                    open.update(|o| *o = !*o);
+                }
             >
                 <span class="mic-picker-icon" aria-hidden="true">"🎙"</span>
                 <span class="mic-picker-label">

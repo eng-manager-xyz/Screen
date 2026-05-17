@@ -175,3 +175,66 @@ pub async fn recording_status() -> RecordingStatusViewIpc {
 fn js_error_string(err: &JsValue) -> String {
     err.as_string().unwrap_or_else(|| format!("{err:?}"))
 }
+
+// ---- M-RECORD.3 — shared "recording active" listener helper -----
+
+/// Subscribe to the `recording-status` event and update `lock` to
+/// match `RecordingStatusViewIpc::is_recording()`. Used by each of
+/// the four per-channel pickers to disable their master toggle while
+/// a session is `Running` / `Starting` / `Stopping` so the user
+/// can't yank an input mid-record (M-RECORD.3).
+///
+/// Also fetches the synchronous initial status via
+/// `recording_status` on mount so a picker remounted mid-session
+/// (tray-popover → main window) starts in the locked state.
+#[cfg(target_arch = "wasm32")]
+pub fn install_recording_lock_listener(lock: leptos::prelude::RwSignal<bool>) {
+    use js_sys::Reflect;
+    use leptos::prelude::*;
+    use leptos::task::spawn_local;
+
+    // Initial poll.
+    spawn_local(async move {
+        let view = recording_status().await;
+        lock.set(view.is_recording());
+    });
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tauri_obj) = Reflect::get(&window, &JsValue::from_str("__TAURI__")) else {
+        return;
+    };
+    let Ok(event_obj) = Reflect::get(&tauri_obj, &JsValue::from_str("event")) else {
+        return;
+    };
+    let Ok(listen_fn) = Reflect::get(&event_obj, &JsValue::from_str("listen")) else {
+        return;
+    };
+    if !listen_fn.is_function() {
+        return;
+    }
+    let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move |evt: JsValue| {
+        let Ok(payload) = Reflect::get(&evt, &JsValue::from_str("payload")) else {
+            return;
+        };
+        if let Ok(parsed) =
+            serde_wasm_bindgen::from_value::<RecordingStatusViewIpc>(payload)
+        {
+            lock.set(parsed.is_recording());
+        }
+    }) as Box<dyn FnMut(JsValue)>);
+    let listen_fn: js_sys::Function = wasm_bindgen::JsCast::unchecked_into(listen_fn);
+    let _ = listen_fn.call2(
+        event_obj.as_ref(),
+        &JsValue::from_str("recording-status"),
+        callback.as_ref().unchecked_ref(),
+    );
+    callback.forget();
+}
+
+/// Native (non-wasm) stub of [`install_recording_lock_listener`].
+/// Unit tests + non-browser builds get a no-op so the `RwSignal`
+/// stays at its default `false`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_recording_lock_listener(_lock: leptos::prelude::RwSignal<bool>) {}

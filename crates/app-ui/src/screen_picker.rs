@@ -47,6 +47,10 @@ pub fn ScreenPicker() -> impl IntoView {
     // on mount; replaced on row-click; cleared when the user toggles
     // off + back on without picking a row (defaults to primary).
     let active_source_id = RwSignal::new(read_last_used());
+    // M-RECORD.3 — lock master + expand while a coordinated session
+    // is active. Picker shows current state but disallows mutation.
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
     // Probe live status on mount so the picker reflects an
     // already-running session correctly.
@@ -70,7 +74,12 @@ pub fn ScreenPicker() -> impl IntoView {
                     role="switch"
                     aria-checked=move || enabled.get()
                     data-enabled=move || if enabled.get() { "true" } else { "false" }
-                    on:click=on_toggle_enabled
+                    prop:disabled=move || recording_lock.get()
+                    title=move || if recording_lock.get() { "Recording in progress — stop the recording to toggle screen capture" } else { "" }
+                    on:click=move |evt| {
+                        if recording_lock.get() { return; }
+                        on_toggle_enabled(evt);
+                    }
                 >
                     <span class="screen-picker-icon" aria-hidden="true">"🖥"</span>
                     <span class="screen-picker-label">"Screen"</span>
