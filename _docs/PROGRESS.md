@@ -6,6 +6,23 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-RECORD-EXPORT — milestone kickoff (planning artifacts)
+- **Date:** 2026-05-17
+- **Status:** 🚧 milestone opened. One big PR on `m-record-export` branch off `main` (currently at PR #49's merge commit `a58724b`). 14 chunks across 5 phases: routing pre-flight (M-CAM.4, M-MIC.3, M-SCK.0.1/AUT-291) → orchestrator (M-RECORD.0..3) → composition+encode (M-EXPORT.0..3) → save+thumbnail (M-EXPORT.4, .5) → gate. macOS-first end-to-end; Win/Linux compile + tests pass with encoder scaffolds returning `Unsupported`.
+- **Linear:** Milestone "M-RECORD-EXPORT — coordinated capture + multi-format encode + save to disk" created under project Screen Studio (`9db1ec94-69bc-4a17-8c33-40fc87a474b1`). [AUT-291](https://linear.app/harwood/issue/AUT-291) reassigned from M-SCK to this milestone. 13 additional tickets blocked by Linear's free-tier issue cap; tracked instead in `_docs/milestone-2-record-and-export.md` + TaskList. To unblock Linear-side tracking either upgrade the workspace or hand-create from the milestone doc.
+- **Files added (planning only):**
+  - `_docs/milestone-2-record-and-export.md` — 14-chunk decomposition with Acceptance criteria + Tech notes + per-chunk Done-when bullets in the same shape as `milestone-1-drop-zone-player.md`. Out-of-scope list calls out Windows/Linux real encoders, bubble-window frame rendering, pause/resume, post-record editing, code-signing — all deferred.
+- **Files changed (planning only):**
+  - `_docs/README.md` — milestone-2 entry added under "Milestone plans"; marked as **Current milestone**; milestone-0 unmarked.
+- **User inputs that shaped the plan:**
+  1. **One milestone**, not two — `M-RECORD` and `M-EXPORT` bundled.
+  2. **Composition stays in wisp** — `RecordingScene` is reusable (editor-preview lane will consume the same scene).
+  3. **Multi-format export** — MP4 (H.264 default, H.265), WebM (VP9, AV1). AVIF is image-only so AV1 covers the "modern codec" slot; bonus AVIF poster thumbnail at session-end.
+  4. **One big PR**, autonomous execution, working end-to-end on Mac when user returns.
+- **Honest scope read:** ~8-12 hours of focused work plus the 3-OS CI fix loop. Single-PR ship gives one CI matrix run rather than 14 mini-runs.
+
+---
+
 ## M-AUDIO.PERMS — Audio permission docs + verify Info.plist (AUT-283)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — documentation-only ticket. The hypothesis "PR #47's `NSMicrophoneUsageDescription` + `NSScreenCaptureUsageDescription` cover all three audio paths" is **verified**: the M-AUDIO-SYS.0 smoke run (`cargo run -p media --example system_audio_smoke`) returned `"The user declined TCCs for application, window, display capture"` — confirming SCK audio engages the Screen Recording TCC entry, not Microphone. The `LSMinimumSystemVersion` floor was bumped 12.3 → 13.0 in M-AUDIO-SYS.0 and is documented here.
