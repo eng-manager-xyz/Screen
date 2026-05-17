@@ -62,6 +62,7 @@
   - [Webcam bubble overlay (M-BUBBLE.0 + .3)](./app-ui/chunks/webcam-bubble.md)
   - [macOS permissions — embedded Info.plist](./app-ui/chunks/macos-permissions.md)
   - [Camera pipeline worker (M-CAM.3 gst layer)](./app-ui/chunks/camera-pipeline.md)
+  - [Audio capture — microphone + system audio (M-AUDIO)](./app-ui/chunks/audio-capture.md)
 
 # `ui-storybook` — Leptos UI
 
