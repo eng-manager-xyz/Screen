@@ -6,6 +6,41 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-AUDIO-SYS.1 — Per-process audio filter (AUT-281)
+- **Date:** 2026-05-16
+- **Status:** ✅ done (backend) / 🟡 partial (Tauri commands deferred to M-AUDIO-SYS.2). `list_audio_apps()` enumerates every running app via `SCShareableContent.applications`, deduped by bundle id; `AudioAppFilter` enum + `SystemAudioStream::set_app_filter` route through `SCContentFilter`'s `initWithDisplay_includingApplications_exceptingWindows:` / `initWithDisplay_excludingApplications_exceptingWindows:`. Verified working against the user's host (enumerated Notes, Linear, Slack, Adobe Creative Cloud, etc.).
+- **Linear:** [AUT-281](https://linear.app/harwood/issue/AUT-281) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/media/examples/list_audio_apps.rs` — acceptance-criterion example. Prints every running app SCK can see with `pid` + `bundle_id` + `display_name` + icon-presence flag. Verified running against the real host returns the expected app list (`com.apple.Notes`, `com.linear`, `com.tinyspeck.slackmacgap`, etc.) with PIDs that match the user's `ps`.
+- **Files changed:**
+  - `crates/media/src/sck_audio.rs` — additions:
+    - **`AudioApp { pid, bundle_id, display_name, icon_png_bytes }`** — serde-derived; `icon_png_bytes` is `Vec::new()` in v0 (NSWorkspace icon extraction needs `objc2-app-kit` + image-encode, deferred as M-AUDIO-SYS.1.1).
+    - **`AudioAppFilter { AllAudio, OnlyApps(Vec<String>), ExcludeApps(Vec<String>) }`** — variants carry **bundle ids**, not PIDs, so the picker's persisted state survives app crash + restart (PIDs get re-resolved at filter-apply time). Default is `AllAudio` (opt-in restriction, not opt-out).
+    - **`list_audio_apps() -> Result<Vec<AudioApp>, SystemAudioError>`** — synchronous wrapper over the async `SCShareableContent.getShareableContentWithCompletionHandler` path. Walks every `SCRunningApplication`, skips apps without a usable bundle id (system services / helper processes), dedupes multi-process apps (Chrome with 1 entry per renderer collapses to one row).
+    - **`SystemAudioStream::set_app_filter(filter)`** — rebuilds `SCContentFilter` + calls `updateContentFilter_completionHandler`. Re-resolves bundle ids → live PIDs each call; missing apps (not running) are silently omitted. 5s timeout on the completion handler.
+    - **`build_content_filter` helper** — refactor target. The original `SystemAudioStream::new` inlined the filter construction; this commit extracts it so `set_app_filter` and `new` share the same code path. Three branches: `AllAudio` (empty-windows shape, M-AUDIO-SYS.0 behaviour), `OnlyApps` (`initWithDisplay_includingApplications_exceptingWindows`), `ExcludeApps` (`initWithDisplay_excludingApplications_exceptingWindows`).
+    - **`resolve_bundle_ids_to_apps` helper** — walks the shareable-content app list collecting `Retained<SCRunningApplication>` for each requested bundle id. Skips duplicates + missing.
+    - **3 new unit tests** — `AudioApp` serde round-trip preserves every field, `AudioAppFilter::default()` is `AllAudio`, `AudioAppFilter` serde round-trip every variant.
+  - `crates/media/Cargo.toml` — added `libc` feature to `objc2-screen-capture-kit` (required for `SCRunningApplication::processID()` which returns `libc::pid_t`). Registered `list_audio_apps` example.
+- **Tests:** 3 new sck_audio unit tests = **10 sck_audio tests total**. **109/109 media tests pass.** Verified end-to-end: `cargo run -p media --example list_audio_apps` enumerates real apps with correct bundle ids + display names + PIDs.
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p media --all-targets`.
+  - `cargo clippy -p media --all-targets -- -D warnings` — green after `explicit_iter_loop` cleanup.
+  - `cargo nextest run -p media` — 109/109.
+  - `cargo run -p media --example list_audio_apps` — real-host enumeration verified.
+- **Notable implementation choices:**
+  - **De-dupe by bundle id.** Chrome surfaces one `SCRunningApplication` per renderer process; the picker's UX is one row per app, not per process. Keep-first wins; the PID resolves again at filter-apply time so multi-process apps still filter cleanly (the bundle-id filter captures audio from ANY process with that bundle).
+  - **Empty bundle ids skipped.** System services / command-line invocations / helper processes surface with empty bundle ids and are unsumeable in the picker. Skipping them keeps the picker clean.
+  - **`updateContentFilter` for hot-swap** rather than tear-down + re-init. SCK supports updating the filter on a live stream via the `updateContentFilter_completionHandler` path; the alternative (drop + recreate `SCStream`) loses ~200 ms of audio per swap which would be audible. The trade-off: the 5s completion-handler timeout means a hung Apple-side call blocks the swap; in practice the completion fires in <100 ms on M-series macs.
+- **Deferred to AUT-282 (M-AUDIO-SYS.2 — UI wiring):**
+  - **Tauri commands for the picker UX.** `list_audio_apps`, `start_system_audio_capture`, `stop_system_audio_capture`, `set_system_audio_filter` all need a `SystemAudioCaptureState` similar to `MicCaptureState` (M-MIC.1). Adding the state-management plumbing inside AUT-282 keeps it co-located with the picker UI wiring rather than splitting it across two commits.
+  - **Icon-bytes (`AudioApp::icon_png_bytes`)** — empty in v0. Real icon extraction requires `objc2-app-kit` (for `NSWorkspace.iconForFile:`), an `image` re-encode pass to PNG at 32×32, and base64 envelope semantics. File as M-AUDIO-SYS.1.1 — pure additive change, no API break.
+  - **`screencaptureapps` deep-link recovery** — if the picker shows zero apps because Screen Recording isn't granted, surface a Settings deep-link. Mirror of M-RECP.6 for the system-audio entry.
+- **What this closes:** the per-app capture infrastructure. Every M-AUDIO-SYS.2 design decision (the picker's filter chips, the bundle-id-keyed checkbox grid, the 250 ms debounce on rapid checkbox toggles) can now build on `list_audio_apps` + `AudioAppFilter` + `set_app_filter` without further framework wrangling.
+
+---
+
 ## M-AUDIO-SYS.0 — SCK system audio capture (AUT-280)
 - **Date:** 2026-05-16
 - **Status:** 🟡 **partial** — real macOS ScreenCaptureKit code that compiles + links + correctly engages the TCC permission system. The example runs against the host and is gated only by Screen Recording grant: granting Screen Recording in System Settings + relaunching the binary will produce live audio capture. **Hardware verification (running a YouTube tab + observing non-zero RMS) is deferred to the user's interactive session** — no automated harness can prompt the macOS permission dialog or play audio.

@@ -45,6 +45,7 @@ objc2-screen-capture-kit = { version = "0.3", default-features = false, features
     "SCError",
     "block2",
     "dispatch2",
+    "libc",
     "objc2-core-media",
 ] }
 objc2-core-media = { version = "0.3", features = [
@@ -113,3 +114,11 @@ path = "examples/list_microphones.rs"
 [[example]]
 name = "system_audio_smoke"
 path = "examples/system_audio_smoke.rs"
+
+# M-AUDIO-SYS.1 / AUT-281 — list every running app SCK can see,
+# with bundle id + display name + PID. Drives the per-app audio
+# filter (Spotify-only capture etc.). macOS-only; same TCC entry
+# as system_audio_smoke.
+[[example]]
+name = "list_audio_apps"
+path = "examples/list_audio_apps.rs"

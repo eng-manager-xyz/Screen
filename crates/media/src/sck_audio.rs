@@ -98,8 +98,8 @@ use objc2_core_audio_types::AudioBufferList;
 use objc2_core_media::CMSampleBuffer;
 use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSString};
 use objc2_screen_capture_kit::{
-    SCContentFilter, SCShareableContent, SCStream, SCStreamConfiguration, SCStreamOutput,
-    SCStreamOutputType,
+    SCContentFilter, SCRunningApplication, SCShareableContent, SCStream, SCStreamConfiguration,
+    SCStreamOutput, SCStreamOutputType, SCWindow,
 };
 use serde::{Deserialize, Serialize};
 
@@ -176,6 +176,57 @@ impl From<AudioChunkError> for SystemAudioError {
     fn from(value: AudioChunkError) -> Self {
         Self::InvalidChunk(value.to_string())
     }
+}
+
+/// One audio-producing (or audio-capable) app currently running.
+/// Returned by [`list_audio_apps`]; consumed by [`AudioAppFilter`].
+///
+/// `icon_png_bytes` is reserved for the M-AUDIO-SYS.2 picker UI but
+/// **shipped empty in v0** — pulling the macOS bundle icon via
+/// `NSWorkspace.iconForFile(at:)` + downscale + PNG encode requires
+/// adding `objc2-app-kit` + `image` deps to the macOS-only target.
+/// The bundle-id is enough for the Tauri seam contract to round-trip;
+/// the icon-extraction is a discrete follow-up (file as
+/// M-AUDIO-SYS.1.1).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioApp {
+    /// Process identifier as observed at enumeration time. Use
+    /// `bundle_id` as the canonical identifier — PIDs change across
+    /// app restarts; the filter resolves bundle-id → PID at apply
+    /// time so a Spotify crash + restart is followed transparently.
+    pub pid: u32,
+    /// Bundle identifier (e.g. `"com.spotify.client"`). The canonical
+    /// identity used for picker persistence + filter resolution.
+    pub bundle_id: String,
+    /// Human-readable app name (`"Spotify"`).
+    pub display_name: String,
+    /// 32×32 PNG bytes for the picker icon stack. `Vec::new()` in v0;
+    /// real icon-bytes land in the M-AUDIO-SYS.1.1 follow-up.
+    pub icon_png_bytes: Vec<u8>,
+}
+
+/// Per-process audio-capture filter. Defines which apps' audio the
+/// `SystemAudioStream` emits.
+///
+/// Implementation note: the variants carry **bundle ids**, not PIDs.
+/// The Apple-side `SCContentFilter` wants `SCRunningApplication`
+/// objects (which are keyed by PID), so [`SystemAudioStream::set_app_filter`]
+/// re-resolves bundle ids → live PIDs at apply time. If a chosen
+/// app isn't currently running, it is silently omitted from the
+/// filter — the next `set_app_filter` call will pick it up once it
+/// relaunches.
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AudioAppFilter {
+    /// Capture every app's audio. The default.
+    #[default]
+    AllAudio,
+    /// Capture audio from only these apps (selected by bundle id).
+    /// Apps not in the list are silenced.
+    OnlyApps(Vec<String>),
+    /// Capture audio from every app except these (selected by
+    /// bundle id). Apps in the list are silenced; everything else
+    /// passes through.
+    ExcludeApps(Vec<String>),
 }
 
 /// Capture configuration. Defaults match the recorder's encoder
@@ -432,21 +483,12 @@ impl SystemAudioStream {
         //    can attach the SCContentFilter to a display, even
         //    though we only care about audio.
         let content = shareable_content_blocking()?;
-        let displays = unsafe { content.displays() };
-        let Some(display) = displays.iter().next() else {
-            return Err(SystemAudioError::NoDisplays);
-        };
 
-        // 2. Build the SCContentFilter. The filter shape "display +
-        //    no windows excluded" gives us system-wide capture; the
-        //    per-app filter variants (initWithDisplay_includingApps…)
-        //    are exercised in M-AUDIO-SYS.1.
-        let filter = unsafe {
-            let alloc = SCContentFilter::alloc();
-            let empty_windows: Retained<NSArray<objc2_screen_capture_kit::SCWindow>> =
-                NSArray::new();
-            SCContentFilter::initWithDisplay_excludingWindows(alloc, &display, &empty_windows)
-        };
+        // 2. Build the SCContentFilter. Default is "every display,
+        //    no per-app filter" (M-AUDIO-SYS.0 shape). Callers can
+        //    later switch to a per-app filter via `set_app_filter`
+        //    (M-AUDIO-SYS.1).
+        let filter = build_content_filter(&content, &AudioAppFilter::AllAudio)?;
 
         // 3. Build the SCStreamConfiguration.
         let stream_config = unsafe {
@@ -588,6 +630,206 @@ impl SystemAudioStream {
     pub fn config(&self) -> SystemAudioConfig {
         self.config
     }
+
+    /// Reconfigure the active stream with a per-app filter
+    /// (M-AUDIO-SYS.1 / AUT-281).
+    ///
+    /// SCK has no clean "swap filter mid-stream" path — calling
+    /// `updateContentFilter` on a running stream can race with
+    /// in-flight sample-buffer delivery in ways that produce silent
+    /// gaps. We instead enumerate the current shareable content,
+    /// resolve each requested bundle id → live PID, build a new
+    /// `SCContentFilter`, and call `updateContentFilter` via
+    /// completion handler (Apple's documented swap path). Callers
+    /// should debounce rapid filter changes (~250 ms) so a flurry
+    /// of checkbox clicks doesn't tear the stream up multiple times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SystemAudioError::EnumerationFailed`] if the
+    /// shareable-content fetch fails, [`SystemAudioError::NoDisplays`]
+    /// if no displays are attached, or [`SystemAudioError::StartFailed`]
+    /// if SCK reports an error on the filter update.
+    pub fn set_app_filter(&self, filter: &AudioAppFilter) -> Result<(), SystemAudioError> {
+        let content = shareable_content_blocking()?;
+        let new_filter = build_content_filter(&content, filter)?;
+
+        // updateContentFilter is async — bridge to sync via the
+        // same oneshot pattern as start_capture_blocking.
+        let (tx, rx) = channel::<Result<(), String>>();
+        #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "Same justification as shareable_content_blocking — the channel payload is plain Result<(), String> here (no Apple types), but the Sender wrapper still trips clippy; safe."
+        )]
+        let tx_arc = Arc::new(std::sync::Mutex::new(Some(tx)));
+        let tx_for_block = Arc::clone(&tx_arc);
+        let block = RcBlock::new(move |error: *mut objc2_foundation::NSError| {
+            let mut sender_slot = tx_for_block
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(sender) = sender_slot.take() {
+                let result = if error.is_null() {
+                    Ok(())
+                } else {
+                    // SAFETY: non-null per the branch.
+                    Err(unsafe { ns_error_description(&*error) })
+                };
+                let _ = sender.send(result);
+            }
+        });
+        // SAFETY: updateContentFilter is the documented Apple-side
+        // swap path; the block signature matches.
+        unsafe {
+            self.stream
+                .updateContentFilter_completionHandler(&new_filter, Some(&block));
+        }
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(())) => {
+                tracing::info!(?filter, "system_audio: content filter updated");
+                Ok(())
+            }
+            Ok(Err(msg)) => Err(SystemAudioError::StartFailed(msg)),
+            Err(_) => Err(SystemAudioError::StartFailed(
+                "updateContentFilter completion timed out after 5s".into(),
+            )),
+        }
+    }
+}
+
+/// Enumerate every running app SCK can see (M-AUDIO-SYS.1 / AUT-281).
+///
+/// Returned apps include every app currently running with at least
+/// one capturable window — SCK doesn't distinguish "audio-producing"
+/// from "not", so the picker UI presents every running app and lets
+/// the user pick. (System Audio MIDI Setup has the same behaviour.)
+///
+/// Triggers the macOS Screen Recording permission prompt on first
+/// run (same TCC entry as the rest of SCK; granting it once covers
+/// every SCK path).
+///
+/// # Errors
+///
+/// Returns [`SystemAudioError::EnumerationFailed`] if SCK's
+/// shareable-content fetch fails (which includes the
+/// permission-denied case — the underlying error message reports
+/// `"The user declined TCCs for application, window, display capture"`).
+pub fn list_audio_apps() -> Result<Vec<AudioApp>, SystemAudioError> {
+    let content = shareable_content_blocking()?;
+    let apps = unsafe { content.applications() };
+    let mut out: Vec<AudioApp> = Vec::with_capacity(apps.len());
+    let mut seen_bundle_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for app in &apps {
+        // SAFETY: every field accessor is a no-arg objc method that
+        // returns retained Foundation types; SCK guarantees the
+        // app reference is live for the iterator's lifetime.
+        let pid_raw = unsafe { app.processID() };
+        let bundle_ns = unsafe { app.bundleIdentifier() };
+        let display_ns = unsafe { app.applicationName() };
+        let bundle_id = bundle_ns.to_string();
+        // Skip apps without a usable bundle id (system services,
+        // command-line invocations, helper processes that SCK
+        // surfaces but the user can't meaningfully pick).
+        if bundle_id.is_empty() {
+            continue;
+        }
+        // De-dupe: multi-process apps (Chrome, etc.) appear with one
+        // entry per process; the picker should see one row per
+        // bundle. Keep the first seen — pid will resolve again at
+        // filter-apply time.
+        if !seen_bundle_ids.insert(bundle_id.clone()) {
+            continue;
+        }
+        let display_name = display_ns.to_string();
+        let pid = u32::try_from(pid_raw).unwrap_or(0);
+        out.push(AudioApp {
+            pid,
+            bundle_id,
+            display_name,
+            // v0: icon-bytes are deferred to M-AUDIO-SYS.1.1 (needs
+            // objc2-app-kit dep for NSWorkspace.iconForFile + an
+            // image-encode step). The picker's icon stack renders a
+            // generic placeholder for empty payloads.
+            icon_png_bytes: Vec::new(),
+        });
+    }
+    Ok(out)
+}
+
+/// Build an `SCContentFilter` from a shareable-content snapshot + a
+/// user-provided filter spec. Returns the new filter ready for
+/// `SCStream.updateContentFilter` or first-time
+/// `initWithFilter_configuration_delegate`.
+fn build_content_filter(
+    content: &SCShareableContent,
+    filter: &AudioAppFilter,
+) -> Result<Retained<SCContentFilter>, SystemAudioError> {
+    let displays = unsafe { content.displays() };
+    let Some(display) = displays.iter().next() else {
+        return Err(SystemAudioError::NoDisplays);
+    };
+    let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+    let apps_to_pin: Retained<NSArray<SCRunningApplication>> = match filter {
+        AudioAppFilter::AllAudio => {
+            // Empty-apps filter — degenerate to the M-AUDIO-SYS.0
+            // shape (every audio source captured).
+            return Ok(unsafe {
+                SCContentFilter::initWithDisplay_excludingWindows(
+                    SCContentFilter::alloc(),
+                    &display,
+                    &empty_windows,
+                )
+            });
+        }
+        AudioAppFilter::OnlyApps(bundle_ids) | AudioAppFilter::ExcludeApps(bundle_ids) => {
+            resolve_bundle_ids_to_apps(content, bundle_ids)
+        }
+    };
+    let new_filter = match filter {
+        AudioAppFilter::AllAudio => unreachable!("handled above"),
+        AudioAppFilter::OnlyApps(_) => unsafe {
+            SCContentFilter::initWithDisplay_includingApplications_exceptingWindows(
+                SCContentFilter::alloc(),
+                &display,
+                &apps_to_pin,
+                &empty_windows,
+            )
+        },
+        AudioAppFilter::ExcludeApps(_) => unsafe {
+            SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
+                SCContentFilter::alloc(),
+                &display,
+                &apps_to_pin,
+                &empty_windows,
+            )
+        },
+    };
+    Ok(new_filter)
+}
+
+/// Walk the shareable-content app list and collect every
+/// `SCRunningApplication` whose bundle id is in `bundle_ids`.
+/// Missing apps (not currently running) are silently skipped —
+/// the next filter-apply call will pick them up once they relaunch.
+fn resolve_bundle_ids_to_apps(
+    content: &SCShareableContent,
+    bundle_ids: &[String],
+) -> Retained<NSArray<SCRunningApplication>> {
+    let apps = unsafe { content.applications() };
+    let wanted: std::collections::HashSet<&str> = bundle_ids.iter().map(String::as_str).collect();
+    let mut matched: Vec<Retained<SCRunningApplication>> = Vec::new();
+    let mut already_added: std::collections::HashSet<String> =
+        std::collections::HashSet::with_capacity(matched.len());
+    for app in &apps {
+        let bundle_id = unsafe { app.bundleIdentifier() };
+        let bundle_str = bundle_id.to_string();
+        if bundle_str.is_empty() {
+            continue;
+        }
+        if wanted.contains(bundle_str.as_str()) && already_added.insert(bundle_str.clone()) {
+            matched.push(app.clone());
+        }
+    }
+    NSArray::from_retained_slice(&matched)
 }
 
 impl Drop for SystemAudioStream {
@@ -820,6 +1062,44 @@ mod tests {
         // 3 bytes is not a multiple of 4.
         let err = audio_buffer_to_interleaved_f32(ptr, 3).unwrap_err();
         assert!(matches!(err, ExtractError::UnalignedByteSize(3)));
+    }
+
+    #[test]
+    fn audio_app_serde_round_trip_preserves_every_field() {
+        let app = AudioApp {
+            pid: 12_345,
+            bundle_id: "com.spotify.client".into(),
+            display_name: "Spotify".into(),
+            icon_png_bytes: vec![0x89, 0x50, 0x4e, 0x47],
+        };
+        let json = serde_json::to_string(&app).unwrap();
+        let back: AudioApp = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, app);
+    }
+
+    #[test]
+    fn audio_app_filter_default_is_all_audio() {
+        // The default variant must match the M-AUDIO-SYS.0 behaviour
+        // so a fresh stream captures everything until the user picks
+        // a filter — opt-in restriction, not opt-out.
+        assert_eq!(AudioAppFilter::default(), AudioAppFilter::AllAudio);
+    }
+
+    #[test]
+    fn audio_app_filter_serde_round_trip_every_variant() {
+        let cases = [
+            AudioAppFilter::AllAudio,
+            AudioAppFilter::OnlyApps(vec![
+                "com.spotify.client".into(),
+                "com.google.Chrome".into(),
+            ]),
+            AudioAppFilter::ExcludeApps(vec!["us.zoom.xos".into()]),
+        ];
+        for filter in cases {
+            let json = serde_json::to_string(&filter).unwrap();
+            let back: AudioAppFilter = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, filter);
+        }
     }
 
     #[test]
