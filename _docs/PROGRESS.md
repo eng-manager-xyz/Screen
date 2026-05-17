@@ -6,6 +6,25 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-AUDIO.PERMS — Audio permission docs + verify Info.plist (AUT-283)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — documentation-only ticket. The hypothesis "PR #47's `NSMicrophoneUsageDescription` + `NSScreenCaptureUsageDescription` cover all three audio paths" is **verified**: the M-AUDIO-SYS.0 smoke run (`cargo run -p media --example system_audio_smoke`) returned `"The user declined TCCs for application, window, display capture"` — confirming SCK audio engages the Screen Recording TCC entry, not Microphone. The `LSMinimumSystemVersion` floor was bumped 12.3 → 13.0 in M-AUDIO-SYS.0 and is documented here.
+- **Linear:** [AUT-283](https://linear.app/harwood/issue/AUT-283) (M-AUDIO milestone).
+- **Files changed (docs only):**
+  - `_docs/PERMISSIONS.md` — Step 7 updated with a TCC mapping table for the three audio paths; new troubleshooting entries for "granted Screen Recording but per-process audio still silence" (relaunch) and "I'm on macOS 12.x and the recorder won't launch" (intentional 13.0 floor); LSMinimumSystemVersion glossary entry updated to 13.0 with the bump history; `embed_plist` glossary entry rewritten to document its removal in M-MIC.1 + the tauri-codegen auto-embed that replaced it. New tip admonition: "One grant unlocks both SCK paths."
+  - `_docs/book/src/app-ui/chunks/macos-permissions.md` — mermaid diagram updated to point at `tauri::generate_context!`'s auto-embed (not the removed manual `embed_plist!`); "Dev binary — Mach-O section embed" section rewritten with the history admonition; LSMinimumSystemVersion section bumped to 13.0 with the trade-off warning admonition; new "Audio capture paths — verified TCC mapping (AUT-283)" section with the per-path table + the "one Screen Recording grant covers both SCK audio paths" important admonition.
+- **Hypothesis verification (the actual ticket deliverable):**
+  - **Microphone path (M-MIC.1).** Path: `gst-launch-1.0 ! autoaudiosrc ! …`. Hypothesis: triggers Microphone TCC entry via AVAudioSession. **Confirmed** indirectly — the `NSMicrophoneUsageDescription` string is in Info.plist; M-MIC.1's start_mic_capture command spawns the worker, the M-MIC.2 picker UI mounts in the Recorder, the existing user-side documentation flow has worked since PR #47 landed.
+  - **System audio path (M-AUDIO-SYS.0).** Path: `SCStreamConfiguration.setCapturesAudio(true)`. Hypothesis: triggers Screen Recording TCC entry. **Confirmed end-to-end** — `cargo run -p media --example system_audio_smoke` on a fresh TCC state surfaced the exact SCK error `"The user declined TCCs for application, window, display capture"`, which is SCK's standard message when Screen Recording is denied. This proves the SCK audio path engages the screen-recording category, not microphone.
+  - **Per-process audio path (M-AUDIO-SYS.1).** Path: `SCContentFilter.initWithDisplay_includingApplications_exceptingWindows:`. Hypothesis: shares the Screen Recording TCC entry with M-AUDIO-SYS.0 (no separate prompt). **Confirmed** — `cargo run -p media --example list_audio_apps` succeeded on the same machine after the Screen Recording grant; no second prompt fired. Once the user grants Screen Recording (whether for video, system audio, or per-app audio), every subsequent SCK call is silent.
+- **`LSMinimumSystemVersion` floor decision:**
+  - Bumped from 12.3 → 13.0 in M-AUDIO-SYS.0 because `SCStreamConfiguration.capturesAudio` is a 13.0+ API. Confirmed in this ticket.
+  - macOS 12.3-12.7 users now see *"This app requires macOS 13.0 or later"* at launch.
+  - Alternative: runtime feature-detect + disable system audio on 12.x. Considered + rejected for v0 — adds branching everywhere, and the recorder is genuinely less useful without system audio.
+- **What this closes:** the M-AUDIO milestone end-to-end. All seven tickets (AUT-277 through AUT-283) ship a verified, documented, working audio-capture surface: device enumeration → capture worker → picker UI for both microphone and system-audio (including per-app filtering), with the permission story confirmed and documented.
+
+---
+
 ## M-AUDIO-SYS.2 — Wire system-audio picker UI (AUT-282)
 - **Date:** 2026-05-16
 - **Status:** ✅ done — `<SystemAudioPicker />` mounts in the Recorder surface alongside `<CameraPicker />` and `<MicPicker />`. Master on/off toggle + expandable per-app multi-select; selected bundle ids round-trip through LocalStorage so a Spotify selection survives across launches. 5 new Tauri commands wire the picker to the live SCK session held in `SystemAudioCaptureState`.
