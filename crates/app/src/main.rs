@@ -34,6 +34,8 @@ use screen_app::audio::{MicCaptureHandle, MicCaptureState};
 use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
+#[cfg(target_os = "macos")]
+use screen_app::system_audio::SystemAudioCaptureState;
 
 /// Embedded tray-icon bytes (M-TRAY.0 / AUT-249). `include_bytes!`
 /// resolves at compile time so the bundled binary doesn't need
@@ -50,7 +52,7 @@ const TICK_INTERVAL: Duration = Duration::from_millis(33);
 const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(PlayerSession::new())
         .manage(TrayState::default())
         .manage(BubbleState::default())
@@ -58,7 +60,12 @@ fn main() {
         .manage(PreviewDiagnostics::default())
         .manage(CameraPipelineHandle::default())
         .manage(MicCaptureState::default())
-        .manage(MicCaptureHandle::default())
+        .manage(MicCaptureHandle::default());
+    // System-audio state is macOS-only — the underlying
+    // SystemAudioStream depends on ScreenCaptureKit.
+    #[cfg(target_os = "macos")]
+    let builder = builder.manage(SystemAudioCaptureState::default());
+    builder
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
             // tests (M-TEST.2). Release builds omit it entirely — the
@@ -85,6 +92,11 @@ fn main() {
                     commands::stop_mic_capture,
                     commands::mic_status,
                     commands::microphone_permission_status,
+                    commands::list_audio_apps,
+                    commands::start_system_audio_capture,
+                    commands::stop_system_audio_capture,
+                    commands::set_system_audio_filter,
+                    commands::system_audio_status,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -111,6 +123,11 @@ fn main() {
                     commands::stop_mic_capture,
                     commands::mic_status,
                     commands::microphone_permission_status,
+                    commands::list_audio_apps,
+                    commands::start_system_audio_capture,
+                    commands::stop_system_audio_capture,
+                    commands::set_system_audio_filter,
+                    commands::system_audio_status,
                 ]
             }
         })

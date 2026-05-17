@@ -454,6 +454,34 @@ fn audio_buffer_to_interleaved_f32(
 /// Owns the `SCStream` + delegate; on drop, calls `stopCapture` +
 /// `removeStreamOutput` synchronously to ensure no further callbacks
 /// fire after the Receiver is gone.
+///
+/// # `Send` + `Sync`
+///
+/// We declare both manually. The wrapped `Retained<SCStream>` and
+/// `Retained<AudioOutputHandler>` are conservatively not auto-`Send`
+/// because objc2 can't statically know which Apple-method calls are
+/// thread-safe. For our usage:
+///
+/// - `SCStream::updateContentFilter_completionHandler`,
+///   `stopCaptureWithCompletionHandler`, and
+///   `removeStreamOutput_type_error` are all documented as
+///   thread-safe (they acquire SCK's internal lock).
+/// - The delegate object never has methods called on it from Rust —
+///   it's a callback target the SCK runtime invokes on its own
+///   dispatch queue.
+/// - Reference-counting (CFRetain/CFRelease) is thread-safe by Apple
+///   guarantee.
+///
+/// So `Send` + `Sync` here is sound for the operations we actually
+/// perform. The unsafe wrapper exists so Tauri can `.manage()` this
+/// state and the IPC command surface can read it from any thread in
+/// Tauri's pool.
+unsafe impl Send for SystemAudioStream {}
+unsafe impl Sync for SystemAudioStream {}
+
+/// Live SCK system-audio capture session — see the module-level
+/// docs for the full architecture. Held as an `Option` inside Tauri
+/// state via `crates/app/src/system_audio.rs::SystemAudioCaptureState`.
 pub struct SystemAudioStream {
     config: SystemAudioConfig,
     stream: Retained<SCStream>,

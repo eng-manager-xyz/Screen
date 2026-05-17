@@ -23,6 +23,8 @@ use crate::preview::{
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+#[cfg(target_os = "macos")]
+use crate::system_audio::SystemAudioCaptureState;
 use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
 use crate::tray::toggle::{Action, TrayPopoverState};
 
@@ -877,6 +879,166 @@ pub fn mic_status(state: State<'_, MicCaptureState>) -> MicLifecycle {
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+// ---------------------------------------------------------------
+// System-audio IPC surface (M-AUDIO-SYS.2 / AUT-282)
+// ---------------------------------------------------------------
+
+/// View-model for the per-app picker (M-AUDIO-SYS.2 / AUT-282).
+/// Mirrors [`media::sck_audio::AudioApp`] but lives on the shell
+/// crate so the IPC schema is owned here, not in `media`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AudioAppView {
+    /// Process identifier observed at enumeration time. The Leptos
+    /// side persists `bundle_id` for cross-restart durability, not
+    /// `pid`.
+    pub pid: u32,
+    /// Bundle identifier (e.g. `"com.spotify.client"`).
+    pub bundle_id: String,
+    /// Human-readable display name (`"Spotify"`).
+    pub display_name: String,
+    /// 32×32 PNG icon bytes. Empty in v0; populated in M-AUDIO-SYS.1.1.
+    pub icon_png_bytes: Vec<u8>,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::sck_audio::AudioApp> for AudioAppView {
+    fn from(value: media::sck_audio::AudioApp) -> Self {
+        Self {
+            pid: value.pid,
+            bundle_id: value.bundle_id,
+            display_name: value.display_name,
+            icon_png_bytes: value.icon_png_bytes,
+        }
+    }
+}
+
+/// IPC-facing view of `media::sck_audio::AudioAppFilter`. Matches
+/// the underlying enum 1-to-1 but lives in the shell crate so the
+/// serde shape is owned here.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AudioAppFilterView {
+    /// Capture every app's audio.
+    AllAudio,
+    /// Capture audio from only these apps (by bundle id).
+    OnlyApps(Vec<String>),
+    /// Capture audio from every app except these.
+    ExcludeApps(Vec<String>),
+}
+
+#[cfg(target_os = "macos")]
+impl From<AudioAppFilterView> for media::sck_audio::AudioAppFilter {
+    fn from(value: AudioAppFilterView) -> Self {
+        match value {
+            AudioAppFilterView::AllAudio => Self::AllAudio,
+            AudioAppFilterView::OnlyApps(ids) => Self::OnlyApps(ids),
+            AudioAppFilterView::ExcludeApps(ids) => Self::ExcludeApps(ids),
+        }
+    }
+}
+
+/// Enumerate every running app SCK can see (M-AUDIO-SYS.2 / AUT-282).
+///
+/// Returns an empty Vec on non-macOS targets (system audio is
+/// macOS-only); the Leptos picker treats empty as "no apps available"
+/// and renders the empty state.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error (TCC permission denied,
+/// enumeration failed, etc.) as a string so the Leptos picker
+/// can show it inline.
+#[tauri::command]
+pub fn list_audio_apps() -> Result<Vec<AudioAppView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::sck_audio::list_audio_apps()
+            .map(|apps| apps.into_iter().map(AudioAppView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Start the system-audio capture session (M-AUDIO-SYS.2 / AUT-282).
+///
+/// Triggers the macOS Screen Recording permission prompt on first
+/// run. On subsequent runs the session starts cleanly.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error message as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn start_system_audio_capture(state: State<'_, SystemAudioCaptureState>) -> Result<(), String> {
+    state
+        .start(media::sck_audio::SystemAudioConfig::default())
+        .map_err(|err| err.to_string())
+}
+
+/// Non-macOS stub for `start_system_audio_capture`. Returns a
+/// "not supported" error so the Leptos picker can show the user
+/// they're on the wrong platform.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn start_system_audio_capture() -> Result<(), String> {
+    Err("system audio capture requires macOS 13.0+".into())
+}
+
+/// Stop the active system-audio session, if any (M-AUDIO-SYS.2).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn stop_system_audio_capture(state: State<'_, SystemAudioCaptureState>) {
+    state.stop();
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn stop_system_audio_capture() {}
+
+/// Apply a per-app filter to the active system-audio session
+/// (M-AUDIO-SYS.2 / AUT-282).
+///
+/// The picker should call `start_system_audio_capture` first; if no
+/// session is active this command returns an error.
+///
+/// # Errors
+///
+/// Returns the underlying SCK error message as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn set_system_audio_filter(
+    state: State<'_, SystemAudioCaptureState>,
+    filter: AudioAppFilterView,
+) -> Result<(), String> {
+    let internal: media::sck_audio::AudioAppFilter = filter.into();
+    state.set_filter(&internal).map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn set_system_audio_filter(_filter: AudioAppFilterView) -> Result<(), String> {
+    Err("system audio capture requires macOS 13.0+".into())
+}
+
+/// Whether a system-audio session is currently active
+/// (M-AUDIO-SYS.2 / AUT-282). Drives the picker's master toggle
+/// display.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn system_audio_status(state: State<'_, SystemAudioCaptureState>) -> bool {
+    state.is_active()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn system_audio_status() -> bool {
+    false
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

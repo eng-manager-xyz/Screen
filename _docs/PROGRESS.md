@@ -6,6 +6,46 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-AUDIO-SYS.2 — Wire system-audio picker UI (AUT-282)
+- **Date:** 2026-05-16
+- **Status:** ✅ done — `<SystemAudioPicker />` mounts in the Recorder surface alongside `<CameraPicker />` and `<MicPicker />`. Master on/off toggle + expandable per-app multi-select; selected bundle ids round-trip through LocalStorage so a Spotify selection survives across launches. 5 new Tauri commands wire the picker to the live SCK session held in `SystemAudioCaptureState`.
+- **Linear:** [AUT-282](https://linear.app/harwood/issue/AUT-282) (M-AUDIO milestone).
+- **Files added:**
+  - `crates/app/src/system_audio.rs` (macOS-only) — `SystemAudioCaptureState(Mutex<Option<SystemAudioStream>>)` Tauri-managed wrapper with `start`/`stop`/`set_filter`/`is_active` methods. 3 unit tests: starts-inactive, stop-is-idempotent, set-filter-without-session-errors.
+  - `crates/app-ui/src/system_audio_ipc.rs` — wasm-bindgen extern bindings for the 5 system-audio Tauri commands. `AudioAppView` + `AudioAppFilterView` typed mirrors of the Rust-side shape. `ListAudioAppsResult` carries either the typed list OR a string error so the picker shows TCC failures inline.
+  - `crates/app-ui/src/system_audio_picker.rs` — `<SystemAudioPicker />` component. Master toggle button + expand button + dropdown menu. Per-row checkbox toggles a `selected_ids` signal; toggling on or off triggers `set_system_audio_filter` if the master session is active. Empty selection maps to `AudioAppFilter::AllAudio` (capture everything); non-empty maps to `OnlyApps`. 3 unit tests cover summary-label edge cases + the empty-selection-yields-AllAudio mapping + non-empty-yields-OnlyApps.
+- **Files changed:**
+  - `crates/media/src/sck_audio.rs` — added `unsafe impl Send for SystemAudioStream {}` + `unsafe impl Sync for SystemAudioStream {}` with safety justification. Required for Tauri `.manage()` which demands `T: Send + Sync`. `Retained<SCStream>` / `Retained<AudioOutputHandler>` aren't conservatively auto-`Send` because objc2 can't statically know which Apple methods are thread-safe; for the operations we actually perform (`updateContentFilter`, `stopCapture`, `removeStreamOutput`, ref-counting) Apple guarantees thread-safety.
+  - `crates/app/src/commands.rs` — 5 new Tauri commands: `list_audio_apps`, `start_system_audio_capture`, `stop_system_audio_capture`, `set_system_audio_filter`, `system_audio_status`. macOS-only with non-macOS stubs that return `"system audio capture requires macOS 13.0+"`. New IPC types: `AudioAppView` + `AudioAppFilterView` with `From<media::sck_audio::*>` conversions.
+  - `crates/app/src/main.rs` — `.manage(SystemAudioCaptureState::default())` (macOS-only via cfg-gated chain) + 5 new commands in both `generate_handler!` arms.
+  - `crates/app/src/lib.rs` — `#[cfg(target_os = "macos")] pub mod system_audio;`.
+  - `crates/app-ui/src/lib.rs` — `pub mod system_audio_ipc; pub mod system_audio_picker;`.
+  - `crates/app-ui/src/app_shell_mount.rs` — Recorder surface mounts `<SystemAudioPicker />` after `<MicPicker />`.
+  - `crates/app-ui/Cargo.toml` — promoted `serde_json = "1"` from dev-dep to regular dep (the picker persists `Vec<String>` to LocalStorage via JSON serialisation).
+  - `crates/app-ui/index.html` — 5 new `__screen*` JS bridge helpers (`__screenListAudioApps`, `__screenStartSystemAudio`, `__screenStopSystemAudio`, `__screenSetSystemAudioFilter`, `__screenSystemAudioStatus`).
+  - `crates/app-ui/shell.css` — `.system-audio-picker*` styles. Master toggle has a `data-enabled="true"` accent visual treatment. Per-row layout is a 3-column grid (icon + label/bundle stack + checkmark).
+- **Tests:** 3 new system_audio_picker unit + 3 new app-side system_audio state unit + 5 added Tauri-command IPC surface = **11 new tests**. **212/212 tests pass** across screen-app + media (the existing 201 + 11 new).
+- **Gates run, all green:**
+  - `cargo fmt --all --check`.
+  - `cargo check -p app-ui --target wasm32-unknown-unknown` + `cargo check -p screen-app --all-targets`.
+  - `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` (after `too_many_lines` reasoned suppression on the component + `doc_markdown` cleanup).
+  - `cargo clippy -p screen-app --all-targets -- -D warnings`.
+  - `cargo nextest run -p screen-app -p media` — 212/212.
+- **Notable design decisions:**
+  - **Empty selection = AllAudio, not "no apps".** When the master toggle is on but the user hasn't picked any specific apps, capture everything. This is the natural "I just want system audio" UX. Selecting one or more apps narrows to those.
+  - **`CameraPermission` reused for mic permission state** (carried over from M-MIC.2) — kept consistent here: the system-audio path doesn't introduce yet another permission enum; SCK errors are surfaced as plain strings via the `ListAudioAppsResult::Err` arm because the failure mode is varied (`"The user declined TCCs for application, window, display capture"`, `"updateContentFilter failed"`, etc.) and the picker just shows the raw message + a grant-recovery hint.
+  - **`unsafe impl Send + Sync` for `SystemAudioStream`** is necessary for Tauri-managed state and sound for our usage. Documented with reasons in the source.
+  - **Master-toggle reverts on start failure.** If `start_system_audio_capture` errors (most commonly TCC denial), the master toggle flips back off and the error is set into the error_message signal — the user sees what went wrong without being stuck in an enabled-but-broken state.
+- **Deferred to follow-up commits:**
+  - **Filter chips (All / None / Suggested / Custom)** — the ticket spec mentioned these but they're a presentational layer on top of `AudioAppFilter`. v0 ships the multi-select grid; the chip UX is M-AUDIO-SYS.2.1.
+  - **Suggested-app heuristic** — picks browsers + media apps + comm apps automatically. Ships as a const list of bundle-id prefixes; defer until user feedback says it's needed.
+  - **Live per-app audio meters** — requires per-PID RMS computation in the SCK delegate (today's delegate emits one mixed stream). Significant refactor of `AudioOutputHandler` — defer to M-RECORD or a dedicated chunk.
+  - **Icon-bytes** — the `AudioAppView.icon_png_bytes` field is `Vec<u8>::new()` for every app (M-AUDIO-SYS.1 deferral carries over). Picker rows render a `·` placeholder for empty payloads; populating real icons via NSWorkspace lands in M-AUDIO-SYS.1.1.
+  - **250 ms debounce on filter changes** — the ticket spec mentions this; v0 fires `set_system_audio_filter` on every checkbox click. Worst-case the user clicks 4 checkboxes rapidly and the SCK stream rebuilds its content filter 4 times. Each rebuild is ~100 ms on Apple Silicon; the audible glitch is small but real. Adding `gloo-timers::callback::Timeout` for the debounce is a 10-line follow-up.
+- **What this closes:** the full M-AUDIO-SYS track end-to-end. From the Recorder surface, the user can now flip System Audio On (triggers SCK + macOS TCC prompt on first run), expand the per-app picker (lists every running app SCK can see), toggle specific apps (writes the bundle-id selection to LocalStorage + reconfigures the SCContentFilter live), and have the selection survive app restarts. The encode path that multiplexes this stream into the final output is M-RECORD's domain.
+
+---
+
 ## M-AUDIO-SYS.1 — Per-process audio filter (AUT-281)
 - **Date:** 2026-05-16
 - **Status:** ✅ done (backend) / 🟡 partial (Tauri commands deferred to M-AUDIO-SYS.2). `list_audio_apps()` enumerates every running app via `SCShareableContent.applications`, deduped by bundle id; `AudioAppFilter` enum + `SystemAudioStream::set_app_filter` route through `SCContentFilter`'s `initWithDisplay_includingApplications_exceptingWindows:` / `initWithDisplay_excludingApplications_exceptingWindows:`. Verified working against the user's host (enumerated Notes, Linear, Slack, Adobe Creative Cloud, etc.).

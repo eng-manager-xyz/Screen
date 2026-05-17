@@ -17,4 +17,6 @@ pub mod commands;
 pub mod player_session;
 pub mod preview;
 pub mod recp;
+#[cfg(target_os = "macos")]
+pub mod system_audio;
 pub mod tray;
