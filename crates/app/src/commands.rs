@@ -577,15 +577,26 @@ pub fn list_cameras() -> Vec<CameraView> {
         .collect()
 }
 
-/// Probe the OS for camera permission (M-CAM.2 / AUT-256).
+/// Probe the OS for camera permission (M-CAM.2 / AUT-256 +
+/// M-RECP.7 / AUT-285).
 ///
-/// Today: returns `Granted` everywhere. The real macOS
-/// implementation lands in M-RECP.7 (AUT-285) via `objc2` calls
-/// into `AVCaptureDevice.authorizationStatus(for: .video)`.
+/// macOS: real `AVCaptureDevice.authorizationStatusForMediaType:`
+/// call via `objc2-av-foundation`. Returns `Granted` /
+/// `NotDetermined` / `Denied` per the live TCC state.
+///
+/// Non-macOS: returns `Granted` (no TCC-equivalent the recorder
+/// needs to probe for camera on Linux / Windows).
 #[tauri::command]
 #[must_use]
 pub fn camera_permission_status() -> CameraPermission {
-    CameraPermission::Granted
+    #[cfg(target_os = "macos")]
+    {
+        av_authorization_status(AvMediaTypeKind::Video)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
 }
 
 // ---------------------------------------------------------------
@@ -821,15 +832,14 @@ pub fn list_microphones() -> Vec<MicrophoneView> {
         .collect()
 }
 
-/// Probe the OS for microphone permission (M-MIC.2 / AUT-279).
+/// Probe the OS for microphone permission (M-MIC.2 / AUT-279 +
+/// M-RECP.7 / AUT-285).
 ///
-/// Today: returns `Granted` everywhere. The real macOS implementation
-/// would call `AVCaptureDevice.authorizationStatus(for: .audio)` via
-/// `objc2` — that lands as a sibling to M-RECP.0's camera version
-/// once we wire the `AVFoundation` probe. The picker UX (M-MIC.2) is
-/// already coded against the three-state contract
-/// (`Granted` / `NotDetermined` / `Denied`) so swapping in the real
-/// probe is a one-line change.
+/// macOS: real `AVCaptureDevice.authorizationStatusForMediaType:`
+/// call via `objc2-av-foundation`. Returns `Granted` /
+/// `NotDetermined` / `Denied` per the live TCC state.
+///
+/// Non-macOS: returns `Granted`.
 ///
 /// Reuses [`CameraPermission`] rather than introducing a separate
 /// `MicrophonePermission` enum — the three states are
@@ -838,7 +848,72 @@ pub fn list_microphones() -> Vec<MicrophoneView> {
 #[tauri::command]
 #[must_use]
 pub fn microphone_permission_status() -> CameraPermission {
-    CameraPermission::Granted
+    #[cfg(target_os = "macos")]
+    {
+        av_authorization_status(AvMediaTypeKind::Audio)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
+}
+
+/// Discriminator for [`av_authorization_status`] — avoids leaking
+/// `AVMediaType` (a Foundation type) into non-macOS callers.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug)]
+enum AvMediaTypeKind {
+    Video,
+    Audio,
+}
+
+/// Shared macOS-only probe. Maps `AVAuthorizationStatus` to the
+/// recorder's three-state [`CameraPermission`] enum. `Restricted`
+/// (enterprise-managed) collapses into `Denied` since the user
+/// can't grant it themselves. Future-proof: unknown variants fail
+/// open as `Granted` to avoid bricking the picker on a future macOS
+/// release.
+#[cfg(target_os = "macos")]
+#[allow(
+    unsafe_code,
+    reason = "AVFoundation FFI interop — every unsafe block has a SAFETY comment above it justifying soundness."
+)]
+fn av_authorization_status(kind: AvMediaTypeKind) -> CameraPermission {
+    use objc2_av_foundation::{
+        AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo,
+    };
+    // SAFETY: the `AVMediaType*` statics are Objective-C externals
+    // marked `Option<&'static AVMediaType>`. They're populated by
+    // AVFoundation's framework init, which runs before any Rust
+    // code in a macOS process. Both should always be Some on a
+    // healthy system — `.expect` documents the invariant.
+    let media_type = match kind {
+        AvMediaTypeKind::Video => unsafe { AVMediaTypeVideo }.expect("AVMediaTypeVideo present"),
+        AvMediaTypeKind::Audio => unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio present"),
+    };
+    // SAFETY: `authorizationStatusForMediaType:` is a class method
+    // (no instance state) and documented thread-safe. The only
+    // failure mode is being passed a media-type other than Video /
+    // Audio, which throws an NSInvalidArgumentException — we only
+    // ever pass those two constants above.
+    let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type) };
+    match status {
+        AVAuthorizationStatus::Authorized => CameraPermission::Granted,
+        AVAuthorizationStatus::NotDetermined => CameraPermission::NotDetermined,
+        AVAuthorizationStatus::Denied | AVAuthorizationStatus::Restricted => {
+            CameraPermission::Denied
+        }
+        _ => {
+            // Future variant — fail-open so the picker stays usable.
+            // Logged so a future macOS release surprise is diagnosable.
+            tracing::warn!(
+                ?kind,
+                ?status,
+                "av_authorization_status: unknown variant; defaulting to Granted"
+            );
+            CameraPermission::Granted
+        }
+    }
 }
 
 /// Start the microphone capture worker (M-MIC.1 / AUT-278).
