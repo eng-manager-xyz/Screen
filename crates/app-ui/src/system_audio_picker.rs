@@ -39,7 +39,10 @@ const ENABLED_KEY: &str = "screen.system_audio.enabled";
 /// (M-AUDIO-SYS.3 / AUT-288). SCK's `updateContentFilter` takes
 /// ~100 ms; 250 ms lets the user click 3-4 checkboxes in rapid
 /// succession and only rebuild the stream once on the trailing
-/// edge.
+/// edge. Only referenced from the wasm32 branch of
+/// `schedule_filter_apply` — native builds skip the gloo-timers
+/// path entirely.
+#[cfg(target_arch = "wasm32")]
 const FILTER_DEBOUNCE_MS: u32 = 250;
 
 /// Suggested-app heuristic (M-AUDIO-SYS.3 / AUT-288). Best-effort
