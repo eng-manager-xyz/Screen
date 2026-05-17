@@ -121,6 +121,20 @@
       window.__screenSystemAudioStatus = () =>
         window.__TAURI__?.core?.invoke("system_audio_status") ?? Promise.resolve(false);
 
+      // M-SCK.1/.2/.4 / AUT-268/269/271 — screen video capture IPC.
+      window.__screenListScreenDisplays = () =>
+        window.__TAURI__?.core?.invoke("list_screen_displays") ?? Promise.resolve([]);
+      window.__screenListScreenWindows = () =>
+        window.__TAURI__?.core?.invoke("list_screen_windows") ?? Promise.resolve([]);
+      window.__screenStartScreenCapture = () =>
+        window.__TAURI__?.core?.invoke("start_screen_capture") ?? Promise.resolve();
+      window.__screenStopScreenCapture = () =>
+        window.__TAURI__?.core?.invoke("stop_screen_capture") ?? Promise.resolve();
+      window.__screenScreenCaptureStatus = () =>
+        window.__TAURI__?.core?.invoke("screen_capture_status") ?? Promise.resolve(false);
+      window.__screenScreenCaptureFrameCount = () =>
+        window.__TAURI__?.core?.invoke("screen_capture_frame_count") ?? Promise.resolve(0);
+
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder
       // surface is open to render the small "Camera pipeline" overlay.

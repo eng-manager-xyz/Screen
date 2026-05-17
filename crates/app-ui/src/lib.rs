@@ -120,5 +120,7 @@ pub mod camera_preview;
 pub mod mic_ipc;
 pub mod mic_picker;
 pub mod routing;
+pub mod screen_ipc;
+pub mod screen_picker;
 pub mod system_audio_ipc;
 pub mod system_audio_picker;
