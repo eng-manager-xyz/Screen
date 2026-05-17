@@ -482,3 +482,35 @@
   background: var(--accent, #4fc3f7);
   transition: width 50ms linear;
 }
+
+/* Filter chips for the system-audio picker (M-AUDIO-SYS.3 /
+   AUT-288). Compact row above the per-app checkbox list. */
+.system-audio-picker-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #333);
+}
+.system-audio-picker-chip {
+  flex: 1;
+  padding: 4px 10px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 999px;
+  color: var(--fg, #fff);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.system-audio-picker-chip:hover:not(:disabled) {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-chip[data-active="true"] {
+  background: var(--accent-soft, #1a2a3a);
+  border-color: var(--accent, #4fc3f7);
+  color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

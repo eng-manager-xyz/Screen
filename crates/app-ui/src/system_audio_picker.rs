@@ -35,6 +35,106 @@ const SELECTED_KEY: &str = "screen.system_audio.selected_bundle_ids";
 #[cfg(target_arch = "wasm32")]
 const ENABLED_KEY: &str = "screen.system_audio.enabled";
 
+/// Debounce window for `set_system_audio_filter` invocations
+/// (M-AUDIO-SYS.3 / AUT-288). SCK's `updateContentFilter` takes
+/// ~100 ms; 250 ms lets the user click 3-4 checkboxes in rapid
+/// succession and only rebuild the stream once on the trailing
+/// edge.
+const FILTER_DEBOUNCE_MS: u32 = 250;
+
+/// Suggested-app heuristic (M-AUDIO-SYS.3 / AUT-288). Best-effort
+/// baseline list of bundle-id prefixes the recorder thinks the
+/// user probably wants when they click the "Suggested" chip:
+/// browsers, media / streaming apps, and comm apps. Excludes
+/// system services + the recorder itself by omission.
+///
+/// Match is **prefix-based** so versioned bundles like
+/// `com.google.Chrome.beta` still hit. PRs welcome — this is a
+/// pragmatic baseline, not a curated taxonomy.
+const SUGGESTED_BUNDLE_PREFIXES: &[&str] = &[
+    // Browsers
+    "com.google.Chrome",
+    "com.apple.Safari",
+    "org.mozilla.firefox",
+    "com.brave.Browser",
+    "company.thebrowser.Browser", // Arc
+    "com.microsoft.edgemac",
+    // Media / streaming
+    "com.spotify.client",
+    "com.apple.Music",
+    "com.apple.TV",
+    "tv.plex.player",
+    "com.netflix.Netflix",
+    // Communication
+    "com.tinyspeck.slackmacgap",
+    "us.zoom.xos",
+    "com.microsoft.teams2",
+    "com.hnc.Discord",
+    "com.google.meet",
+];
+
+/// Which filter-chip is visually active given the current picker
+/// state. `Custom` is the implicit "user hand-edited the
+/// checkboxes" mode — no chip is mapped to it as a click target;
+/// it just lights up when none of the other three describe the
+/// current selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveChip {
+    /// All apps captured (no filter).
+    All,
+    /// Master toggle is off — no system audio captured.
+    None,
+    /// Selection exactly matches the suggested-heuristic result.
+    Suggested,
+    /// User hand-edited the checkboxes; no chip describes it.
+    Custom,
+}
+
+/// Compute which chip should appear active. Order matters — when
+/// multiple chips could describe the state (e.g. empty selection
+/// could be "All" OR "Suggested produced no matches"), the most
+/// specific wins.
+fn compute_active_chip(
+    enabled: bool,
+    selected: &[String],
+    all_apps: &[AudioAppView],
+) -> ActiveChip {
+    if !enabled {
+        return ActiveChip::None;
+    }
+    if selected.is_empty() {
+        return ActiveChip::All;
+    }
+    let suggested = suggested_bundle_ids(all_apps);
+    if same_set(selected, &suggested) {
+        ActiveChip::Suggested
+    } else {
+        ActiveChip::Custom
+    }
+}
+
+/// Order-insensitive equality of two bundle-id lists.
+fn same_set(a: &[String], b: &[String]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let set: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
+    b.iter().all(|s| set.contains(s.as_str()))
+}
+
+/// Walk the running-app list and pull out bundle ids whose prefix
+/// is in [`SUGGESTED_BUNDLE_PREFIXES`].
+fn suggested_bundle_ids(apps: &[AudioAppView]) -> Vec<String> {
+    apps.iter()
+        .filter(|a| {
+            SUGGESTED_BUNDLE_PREFIXES
+                .iter()
+                .any(|p| a.bundle_id.starts_with(p))
+        })
+        .map(|a| a.bundle_id.clone())
+        .collect()
+}
+
 /// `<SystemAudioPicker />` — master toggle + expandable per-app
 /// checklist.
 #[allow(
@@ -111,8 +211,48 @@ pub fn SystemAudioPicker() -> impl IntoView {
         let selected_now = selected_ids.get();
         write_selected_ids(&selected_now);
         if enabled.get() {
+            schedule_filter_apply(selected_now);
+        }
+    };
+
+    // Chip-click handlers (M-AUDIO-SYS.3 / AUT-288). Each chip
+    // mutates `(enabled, selected_ids)` to the canonical state for
+    // that chip, persists, and (when enabled) schedules a
+    // debounced filter apply.
+    let on_chip_all = move |_| {
+        selected_ids.set(Vec::new());
+        write_selected_ids(&[]);
+        if enabled.get() {
+            schedule_filter_apply(Vec::new());
+        } else {
+            enabled.set(true);
+            write_enabled(true);
             spawn_local(async move {
-                apply_filter_from_selection(&selected_now).await;
+                let _ = system_audio_ipc::start_system_audio_capture().await;
+                schedule_filter_apply(Vec::new());
+            });
+        }
+    };
+    let on_chip_none = move |_| {
+        enabled.set(false);
+        write_enabled(false);
+        spawn_local(async move {
+            system_audio_ipc::stop_system_audio_capture().await;
+        });
+    };
+    let on_chip_suggested = move |_| {
+        let pick = suggested_bundle_ids(&apps.get());
+        selected_ids.set(pick.clone());
+        write_selected_ids(&pick);
+        if enabled.get() {
+            schedule_filter_apply(pick);
+        } else {
+            enabled.set(true);
+            write_enabled(true);
+            let pick_for_start = pick.clone();
+            spawn_local(async move {
+                let _ = system_audio_ipc::start_system_audio_capture().await;
+                schedule_filter_apply(pick_for_start);
             });
         }
     };
@@ -155,6 +295,39 @@ pub fn SystemAudioPicker() -> impl IntoView {
             </div>
             <Show when=move || expanded.get() fallback=|| view! { <></> }>
                 <div class="system-audio-picker-menu" role="listbox">
+                    <div class="system-audio-picker-chips">
+                        {
+                            let chip_signal = Memo::new(move |_| {
+                                compute_active_chip(enabled.get(), &selected_ids.get(), &apps.get())
+                            });
+                            view! {
+                                <button
+                                    type="button"
+                                    class="system-audio-picker-chip"
+                                    data-active=move || (chip_signal.get() == ActiveChip::All).to_string()
+                                    on:click=on_chip_all
+                                >"All"</button>
+                                <button
+                                    type="button"
+                                    class="system-audio-picker-chip"
+                                    data-active=move || (chip_signal.get() == ActiveChip::None).to_string()
+                                    on:click=on_chip_none
+                                >"None"</button>
+                                <button
+                                    type="button"
+                                    class="system-audio-picker-chip"
+                                    data-active=move || (chip_signal.get() == ActiveChip::Suggested).to_string()
+                                    on:click=on_chip_suggested
+                                >"Suggested"</button>
+                                <button
+                                    type="button"
+                                    class="system-audio-picker-chip"
+                                    data-active=move || (chip_signal.get() == ActiveChip::Custom).to_string()
+                                    disabled=true
+                                >"Custom"</button>
+                            }
+                        }
+                    </div>
                     <SystemAudioBody
                         apps=apps
                         selected_ids=selected_ids
@@ -263,6 +436,37 @@ async fn apply_filter_from_selection(selected_ids: &[String]) {
         AudioAppFilterView::OnlyApps(selected_ids.to_vec())
     };
     let _ = system_audio_ipc::set_system_audio_filter(filter).await;
+}
+
+/// Debounced wrapper around [`apply_filter_from_selection`]
+/// (M-AUDIO-SYS.3 / AUT-288). Replaces any pending timeout with a
+/// fresh `FILTER_DEBOUNCE_MS`-ms one — the previous Timeout drops,
+/// which cancels it. Single-threaded wasm32 means a `RefCell` is
+/// sufficient for the shared handle.
+#[cfg(target_arch = "wasm32")]
+fn schedule_filter_apply(selected_ids: Vec<String>) {
+    use gloo_timers::callback::Timeout;
+    use std::cell::RefCell;
+    thread_local! {
+        static PENDING: RefCell<Option<Timeout>> = const { RefCell::new(None) };
+    }
+    let timeout = Timeout::new(FILTER_DEBOUNCE_MS, move || {
+        let ids = selected_ids.clone();
+        leptos::task::spawn_local(async move {
+            apply_filter_from_selection(&ids).await;
+        });
+    });
+    PENDING.with(|cell| {
+        // Replacing drops the previous Timeout (cancels it).
+        *cell.borrow_mut() = Some(timeout);
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn schedule_filter_apply(_selected_ids: Vec<String>) {
+    // Native target — no event loop to schedule on; tests exercise
+    // `apply_filter_from_selection` + `compute_active_chip` /
+    // `suggested_bundle_ids` directly.
 }
 
 fn summary_label(count: usize) -> String {
@@ -377,5 +581,79 @@ mod tests {
             AudioAppFilterView::OnlyApps(selected.clone())
         };
         assert_eq!(filter, AudioAppFilterView::OnlyApps(selected));
+    }
+
+    fn app(bundle: &str) -> AudioAppView {
+        AudioAppView {
+            pid: 0,
+            bundle_id: bundle.to_string(),
+            display_name: bundle.to_string(),
+            icon_png_bytes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn suggested_picks_browsers_media_comm() {
+        let running = vec![
+            app("com.google.Chrome"),
+            app("com.spotify.client"),
+            app("us.zoom.xos"),
+            app("com.apple.Notes"), // not in suggested list
+            app("com.apple.dock"),  // not in suggested list
+        ];
+        let picked = suggested_bundle_ids(&running);
+        assert_eq!(picked.len(), 3);
+        assert!(picked.contains(&"com.google.Chrome".to_string()));
+        assert!(picked.contains(&"com.spotify.client".to_string()));
+        assert!(picked.contains(&"us.zoom.xos".to_string()));
+        assert!(!picked.contains(&"com.apple.Notes".to_string()));
+    }
+
+    #[test]
+    fn suggested_prefix_match_catches_versioned_bundles() {
+        let running = vec![app("com.google.Chrome.beta"), app("com.brave.Browser.dev")];
+        let picked = suggested_bundle_ids(&running);
+        assert_eq!(picked.len(), 2, "versioned bundles should match by prefix");
+    }
+
+    #[test]
+    fn active_chip_none_when_disabled() {
+        let chip = compute_active_chip(false, &[], &[]);
+        assert_eq!(chip, ActiveChip::None);
+    }
+
+    #[test]
+    fn active_chip_all_when_enabled_with_empty_selection() {
+        let chip = compute_active_chip(true, &[], &[]);
+        assert_eq!(chip, ActiveChip::All);
+    }
+
+    #[test]
+    fn active_chip_suggested_when_selection_matches_heuristic() {
+        let running = vec![app("com.spotify.client"), app("com.apple.Notes")];
+        let selected = vec!["com.spotify.client".to_string()];
+        assert_eq!(
+            compute_active_chip(true, &selected, &running),
+            ActiveChip::Suggested
+        );
+    }
+
+    #[test]
+    fn active_chip_custom_when_selection_doesnt_match_heuristic() {
+        let running = vec![app("com.spotify.client"), app("com.apple.Notes")];
+        let selected = vec!["com.apple.Notes".to_string()];
+        assert_eq!(
+            compute_active_chip(true, &selected, &running),
+            ActiveChip::Custom
+        );
+    }
+
+    #[test]
+    fn same_set_is_order_insensitive() {
+        let a = vec!["a".to_string(), "b".to_string()];
+        let b = vec!["b".to_string(), "a".to_string()];
+        assert!(same_set(&a, &b));
+        let c = vec!["a".to_string()];
+        assert!(!same_set(&a, &c));
     }
 }
