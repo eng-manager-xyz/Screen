@@ -134,3 +134,11 @@ path = "examples/list_audio_apps.rs"
 [[example]]
 name = "list_screen_sources"
 path = "examples/list_screen_sources.rs"
+
+# M-SCK.0 / AUT-267 — open an SCStream on the primary display + observe
+# the frame counter for 2 seconds. Verifies the SCK video-capture
+# pipeline reaches Rust end-to-end without yet doing pixel
+# extraction (data-delivery is a separate ticket).
+[[example]]
+name = "screen_capture_smoke"
+path = "examples/screen_capture_smoke.rs"
