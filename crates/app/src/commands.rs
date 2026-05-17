@@ -1146,9 +1146,12 @@ pub fn list_audio_apps() -> Result<Vec<AudioAppView>, String> {
 /// Returns the underlying SCK error message as a string.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn start_system_audio_capture(state: State<'_, SystemAudioCaptureState>) -> Result<(), String> {
+pub fn start_system_audio_capture(
+    app: tauri::AppHandle,
+    state: State<'_, SystemAudioCaptureState>,
+) -> Result<(), String> {
     state
-        .start(media::sck_audio::SystemAudioConfig::default())
+        .start(&app, media::sck_audio::SystemAudioConfig::default())
         .map_err(|err| err.to_string())
 }
 

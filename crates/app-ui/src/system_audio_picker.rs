@@ -48,6 +48,11 @@ pub fn SystemAudioPicker() -> impl IntoView {
     let apps = RwSignal::new(Vec::<AudioAppView>::new());
     let error_message = RwSignal::new(Option::<String>::None);
     let selected_ids = RwSignal::new(read_selected_ids());
+    // M-AUDIO.METER / AUT-287 — master-stream RMS from the SCK
+    // delegate. Per-app meters are deferred to M-AUDIO.METER.1.
+    let level = RwSignal::new(0.0_f32);
+
+    system_audio_ipc::subscribe_system_audio_level(move |l| level.set(l));
 
     // Master toggle: clicking starts/stops the SCK session.
     let on_toggle_enabled = move |_| {
@@ -141,6 +146,12 @@ pub fn SystemAudioPicker() -> impl IntoView {
                     </span>
                     <span class="system-audio-picker-chevron" aria-hidden="true">"▾"</span>
                 </button>
+            </div>
+            <div class="audio-meter" aria-label="System audio output level">
+                <div
+                    class="audio-meter-bar"
+                    style:width=move || format!("{:.1}%", (level.get() * 100.0).clamp(0.0, 100.0))
+                ></div>
             </div>
             <Show when=move || expanded.get() fallback=|| view! { <></> }>
                 <div class="system-audio-picker-menu" role="listbox">

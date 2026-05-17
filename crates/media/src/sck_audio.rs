@@ -114,6 +114,18 @@ use crate::clock::MediaTime;
 /// stalls (e.g., the encoder thread blocks on disk I/O).
 const CHANNEL_DEPTH_BOUND: usize = 64;
 
+/// EMA smoothing factor for the master-stream level meter
+/// (M-AUDIO.METER / AUT-287). Matches the mic meter's
+/// `MIC_LEVEL_EMA_ALPHA` so the two bars feel consistent.
+const SYSTEM_AUDIO_LEVEL_EMA_ALPHA: f32 = 0.3;
+
+/// Callback invoked from inside the `SCStreamOutput` delegate on
+/// every received sample buffer (M-AUDIO.METER / AUT-287). Receives
+/// an **EMA-smoothed** RMS in `[0.0, ~1.0]`. Implemented as a `Box<dyn
+/// Fn>` so the `media` crate stays `tauri`-free — the `app` side
+/// passes a closure that emits a `system-audio-level` Tauri event.
+pub type LevelSink = Box<dyn Fn(f32) + Send + Sync + 'static>;
+
 /// Default sample rate the recorder requests from SCK. Matches the
 /// mic path's `MIC_SAMPLE_RATE` (M-MIC.1) so the encoder's resampler
 /// stays trivial. SCK negotiates around this if the underlying
@@ -293,6 +305,24 @@ define_class!(
             // single buffer is preferable to panicking.
             match extract_pcm_from_sample_buffer(sample_buffer) {
                 Ok(samples) if !samples.is_empty() => {
+                    // M-AUDIO.METER / AUT-287 — compute RMS + EMA-
+                    // smooth + push to the optional level sink. Runs
+                    // here (inside the SCK callback) rather than on
+                    // the consumer side so a missing consumer doesn't
+                    // freeze the meter. RMS over interleaved samples
+                    // is the master-stream level; per-app meters are
+                    // a separate ticket (M-AUDIO.METER.1).
+                    if let Some(sink) = self.ivars().level_sink.as_ref() {
+                        let rms = rms_of(&samples);
+                        let mut state = self
+                            .ivars()
+                            .smoothed_level
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        *state = SYSTEM_AUDIO_LEVEL_EMA_ALPHA * rms
+                            + (1.0 - SYSTEM_AUDIO_LEVEL_EMA_ALPHA) * *state;
+                        sink(*state);
+                    }
                     // try_send equivalent: if the receiver is gone
                     // (Drop in progress) we silently drop. The Sender
                     // is mpsc, send blocks only when the channel is
@@ -313,11 +343,23 @@ define_class!(
 
 pub(crate) struct AudioOutputIvars {
     sender: Sender<DeliveredSamples>,
+    /// Optional per-buffer level callback (M-AUDIO.METER / AUT-287).
+    /// EMA-smoothed master-stream RMS is pushed here on every
+    /// successfully-extracted sample buffer. `None` disables the
+    /// meter (used in tests + when system audio is captured without
+    /// a UI consumer).
+    level_sink: Option<LevelSink>,
+    /// Persisted EMA state across buffer callbacks.
+    smoothed_level: std::sync::Mutex<f32>,
 }
 
 impl AudioOutputHandler {
-    fn new(sender: Sender<DeliveredSamples>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(AudioOutputIvars { sender });
+    fn new(sender: Sender<DeliveredSamples>, level_sink: Option<LevelSink>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(AudioOutputIvars {
+            sender,
+            level_sink,
+            smoothed_level: std::sync::Mutex::new(0.0),
+        });
         // SAFETY: `init` on NSObject takes Allocated<Self> + returns
         // Retained<Self>. The class derives from NSObject (via
         // define_class!) so the runtime call is well-formed.
@@ -432,6 +474,27 @@ fn extract_pcm_from_sample_buffer(buf: &CMSampleBuffer) -> Result<Vec<f32>, Extr
     Ok(interleaved)
 }
 
+/// Root-mean-square over interleaved Float32 PCM. Used by
+/// [`AudioOutputHandler`]'s per-buffer meter (M-AUDIO.METER /
+/// AUT-287). Empty buffer → 0.0.
+fn rms_of(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum_sq: f64 = samples.iter().map(|&s| f64::from(s).powi(2)).sum();
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "sample count well below 2^53 for realistic chunk sizes"
+    )]
+    let mean = sum_sq / (samples.len() as f64);
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "RMS in [0, 1] easily fits f32"
+    )]
+    let rms = mean.sqrt() as f32;
+    rms
+}
+
 fn audio_buffer_to_interleaved_f32(
     data: *mut std::ffi::c_void,
     byte_size: u32,
@@ -503,9 +566,25 @@ impl SystemAudioStream {
     /// (granted via `NSScreenCaptureUsageDescription`); after grant
     /// the user must relaunch the app for the new TCC entry to take
     /// effect.
+    ///
+    /// Convenience wrapper that opens with no meter [`LevelSink`].
+    /// Callers that want the M-AUDIO.METER / AUT-287 meter use
+    /// [`Self::new_with_level_sink`] instead.
     pub fn new(config: SystemAudioConfig) -> Result<Self, SystemAudioError> {
+        Self::new_with_level_sink(config, None)
+    }
+
+    /// As [`Self::new`] but accepts an optional [`LevelSink`] for
+    /// the master-stream RMS meter. Pass `Some(closure)` to receive
+    /// EMA-smoothed level values on every SCK sample buffer; pass
+    /// `None` to disable the meter (saves an `rms_of` pass per
+    /// callback when no consumer wants the value).
+    pub fn new_with_level_sink(
+        config: SystemAudioConfig,
+        level_sink: Option<LevelSink>,
+    ) -> Result<Self, SystemAudioError> {
         let (sender, receiver) = channel();
-        let delegate = AudioOutputHandler::new(sender);
+        let delegate = AudioOutputHandler::new(sender, level_sink);
 
         // 1. Get shareable content (displays + apps). Required so we
         //    can attach the SCContentFilter to a display, even

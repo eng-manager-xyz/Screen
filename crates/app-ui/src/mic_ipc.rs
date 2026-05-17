@@ -10,6 +10,7 @@
 //! player IPC modules.
 
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
 
@@ -136,4 +137,48 @@ pub async fn microphone_permission_status() -> CameraPermission {
 /// [`crate::camera_ipc::open_settings_camera`].
 pub async fn open_settings_microphone() {
     let _ = open_settings_microphone_js().await;
+}
+
+/// Subscribe to the `mic-level` Tauri event (M-AUDIO.METER /
+/// AUT-287) emitted by `MicCapturePipeline` at ~20 Hz. The handler
+/// receives an EMA-smoothed RMS in `[0.0, ~1.0]`.
+///
+/// Returns immediately; the listener runs for the lifetime of the
+/// app (no cancellation today — the worker stops emitting when
+/// `stop_mic_capture` drops the pipeline, which is sufficient
+/// cleanup).
+pub fn subscribe_mic_level(handler: impl Fn(f32) + 'static) {
+    use wasm_bindgen::closure::Closure;
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tauri) = js_sys::Reflect::get(&window, &"__TAURI__".into()) else {
+        return;
+    };
+    let Ok(event) = js_sys::Reflect::get(&tauri, &"event".into()) else {
+        return;
+    };
+    let Ok(listen) = js_sys::Reflect::get(&event, &"listen".into()) else {
+        return;
+    };
+    let Ok(listen_fn) = listen.dyn_into::<js_sys::Function>() else {
+        return;
+    };
+    let cb = Closure::wrap(Box::new(move |payload: JsValue| {
+        // payload shape from Tauri: { event, id, payload }
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "RMS in [0, 1] easily fits f32"
+        )]
+        let level = js_sys::Reflect::get(&payload, &"payload".into())
+            .ok()
+            .and_then(|v| v.as_f64())
+            .map_or(0.0_f32, |v| v as f32);
+        handler(level);
+    }) as Box<dyn Fn(JsValue)>);
+    let _ = listen_fn.call2(&event, &"mic-level".into(), cb.as_ref().unchecked_ref());
+    // Leak the closure so the listener stays alive forever — matches
+    // the app's "no cleanup until process exit" event-listener pattern
+    // already established in player_ipc.rs.
+    cb.forget();
 }

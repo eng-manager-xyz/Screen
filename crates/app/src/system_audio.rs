@@ -19,6 +19,7 @@
 use std::sync::Mutex;
 
 use media::sck_audio::{AudioAppFilter, SystemAudioConfig, SystemAudioError, SystemAudioStream};
+use tauri::{AppHandle, Emitter};
 
 /// Tauri-managed wrapper around the active system-audio capture
 /// session. Held in `tauri::State`; the four `system_audio_*` IPC
@@ -30,7 +31,17 @@ impl SystemAudioCaptureState {
     /// Start a fresh session. If one is already active it's dropped
     /// first (which calls Drop → stopCapture). Idempotent under
     /// concurrent calls — the mutex serialises.
-    pub fn start(&self, config: SystemAudioConfig) -> Result<(), SystemAudioError> {
+    ///
+    /// `app` is captured into the level-sink closure
+    /// (M-AUDIO.METER / AUT-287) so the SCK delegate can emit
+    /// `system-audio-level` events directly. `AppHandle` is
+    /// `Send + Sync` and lightly cloneable; one capture per
+    /// session.
+    pub fn start(
+        &self,
+        app: &AppHandle,
+        config: SystemAudioConfig,
+    ) -> Result<(), SystemAudioError> {
         let mut guard = self
             .0
             .lock()
@@ -38,7 +49,18 @@ impl SystemAudioCaptureState {
         // Drop the previous stream BEFORE creating the new one so
         // SCK isn't trying to run two sessions simultaneously.
         *guard = None;
-        let stream = SystemAudioStream::new(config)?;
+        let app_for_sink = app.clone();
+        let level_sink: media::sck_audio::LevelSink = Box::new(move |level: f32| {
+            // Mirror `audio::pipeline::emit_mic_level`'s
+            // failure-swallow stance — at ~20 Hz a missed emit is
+            // invisible and surfacing the event-bus error to the
+            // SCK delegate (which runs on Apple's dispatch queue)
+            // would risk worse failure modes.
+            if let Err(err) = app_for_sink.emit("system-audio-level", level) {
+                tracing::trace!(?err, "emit system-audio-level failed");
+            }
+        });
+        let stream = SystemAudioStream::new_with_level_sink(config, Some(level_sink))?;
         *guard = Some(stream);
         Ok(())
     }

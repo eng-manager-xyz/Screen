@@ -63,12 +63,18 @@ pub const MIC_SAMPLE_RATE: u32 = 48_000;
 /// for `channels == 0`.
 pub const MIC_CHANNELS: u8 = 2;
 
-/// Frames per `next_chunk` call. 4800 frames @ 48 kHz = 100 ms of
-/// audio per chunk — a comfortable balance between IPC overhead
-/// (one chunk-pull per 100 ms is cheap) and lifecycle responsiveness
-/// (the `Starting → Running` transition fires within 100 ms of the
-/// first PCM frame leaving gst).
-pub const MIC_CHUNK_FRAMES: u64 = 4_800;
+/// Frames per `next_chunk` call. 2400 frames @ 48 kHz = 50 ms of
+/// audio per chunk — gives the M-AUDIO.METER / AUT-287 audio-level
+/// meter ~20 Hz update cadence (one chunk → one RMS sample → one
+/// `mic-level` event). Previously 4800 (100 ms / 10 Hz); reduced for
+/// meter smoothness without measurable IPC overhead.
+pub const MIC_CHUNK_FRAMES: u64 = 2_400;
+
+/// EMA smoothing factor for the mic level meter (M-AUDIO.METER /
+/// AUT-287). Higher = more reactive to transients; lower = smoother.
+/// 0.3 balances "responds visibly when you speak" against
+/// "doesn't flicker on micro-pauses."
+pub const MIC_LEVEL_EMA_ALPHA: f32 = 0.3;
 
 // Compile-time invariants for the mic-pipeline constants. These fire
 // at compile time (zero runtime cost) and fail the build if a future
@@ -85,8 +91,8 @@ const _: () = assert!(
      layout downstream assumes interleaved stereo"
 );
 const _: () = assert!(
-    MIC_CHUNK_FRAMES == 4_800,
-    "MIC_CHUNK_FRAMES must equal 100 ms @ MIC_SAMPLE_RATE for the lifecycle responsiveness target"
+    MIC_CHUNK_FRAMES == 2_400,
+    "MIC_CHUNK_FRAMES must equal 50 ms @ MIC_SAMPLE_RATE for the M-AUDIO.METER 20 Hz update cadence"
 );
 
 /// Mic-pipeline worker handle. Owns the spawned thread and a
@@ -162,13 +168,22 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
         "mic-capture opened; awaiting first chunk"
     );
 
+    // M-AUDIO.METER / AUT-287 — running EMA-smoothed RMS so the
+    // Leptos meter doesn't flicker on transients. Emitted to the
+    // webview via the `mic-level` Tauri event on every chunk
+    // (~20 Hz at MIC_CHUNK_FRAMES = 50 ms).
+    let mut smoothed_level: f32 = 0.0;
+
     while !cancel.load(Ordering::Relaxed) {
         match capture.next_chunk(MIC_CHUNK_FRAMES) {
             Ok(chunk) => {
                 advance_to_running(app);
-                // Chunk is otherwise unused here — the M-MIC.2
-                // `audio-levels` event emitter + the M-RECORD encode
-                // path consume it in follow-up commits.
+                let raw_rms = chunk.rms();
+                smoothed_level =
+                    MIC_LEVEL_EMA_ALPHA * raw_rms + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
+                emit_mic_level(app, smoothed_level);
+                // Chunk is otherwise unused here — the M-RECORD
+                // encode path consumes it in follow-up commits.
                 drop(chunk);
             }
             Err(err) => {
@@ -183,6 +198,18 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
     // `capture` drops here → gst-launch child killed + reaped per
     // CLAUDE.md's "Drop-kill the child" pattern.
     drop(capture);
+}
+
+/// Push the smoothed mic level to the webview via the `mic-level`
+/// Tauri event (M-AUDIO.METER / AUT-287). Failures are swallowed +
+/// `tracing::trace!`'d — at 20 Hz a missed emit is invisible, and
+/// surfacing the error to the worker loop would break audio
+/// capture for cosmetic event-bus issues.
+fn emit_mic_level(app: &tauri::AppHandle, level: f32) {
+    use tauri::Emitter;
+    if let Err(err) = app.emit("mic-level", level) {
+        tracing::trace!(?err, "emit mic-level failed");
+    }
 }
 
 /// Mark the mic lifecycle as `Running` (idempotent — already-
