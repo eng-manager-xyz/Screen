@@ -90,6 +90,7 @@
 pub mod audio;
 pub mod camera;
 pub mod clock;
+pub mod encode;
 pub mod gstreamer;
 pub mod gstreamer_audio;
 pub mod gstreamer_video;
