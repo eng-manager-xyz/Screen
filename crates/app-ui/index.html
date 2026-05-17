@@ -90,6 +90,19 @@
       window.__screenMicrophonePermissionStatus = () =>
         window.__TAURI__?.core?.invoke("microphone_permission_status") ?? Promise.resolve("Granted");
 
+      // M-RECP.0 / AUT-261 (camera), M-RECP.6 / AUT-272 (screen),
+      // M-RECP.8 / AUT-286 (microphone) — Settings deep-links.
+      // Each returns a Promise that resolves on successful spawn or
+      // rejects with the spawn-error string. Linux is a no-op (no
+      // universal Settings deep-link); macOS + Windows shell out via
+      // `open` / `cmd /c start` respectively.
+      window.__screenOpenSettingsCamera = () =>
+        window.__TAURI__?.core?.invoke("open_settings_camera") ?? Promise.resolve();
+      window.__screenOpenSettingsMicrophone = () =>
+        window.__TAURI__?.core?.invoke("open_settings_microphone") ?? Promise.resolve();
+      window.__screenOpenSettingsScreenRecording = () =>
+        window.__TAURI__?.core?.invoke("open_settings_screen_recording") ?? Promise.resolve();
+
       // M-AUDIO-SYS.2 / AUT-282 — system audio (speakers + per-app)
       // IPC. Same shape as the camera / mic bridge; the per-app
       // filter accepts a tagged enum: `{ AllAudio: null }` /
@@ -107,6 +120,20 @@
         window.__TAURI__?.core?.invoke("set_system_audio_filter", { filter }) ?? Promise.resolve();
       window.__screenSystemAudioStatus = () =>
         window.__TAURI__?.core?.invoke("system_audio_status") ?? Promise.resolve(false);
+
+      // M-SCK.1/.2/.4 / AUT-268/269/271 — screen video capture IPC.
+      window.__screenListScreenDisplays = () =>
+        window.__TAURI__?.core?.invoke("list_screen_displays") ?? Promise.resolve([]);
+      window.__screenListScreenWindows = () =>
+        window.__TAURI__?.core?.invoke("list_screen_windows") ?? Promise.resolve([]);
+      window.__screenStartScreenCapture = () =>
+        window.__TAURI__?.core?.invoke("start_screen_capture") ?? Promise.resolve();
+      window.__screenStopScreenCapture = () =>
+        window.__TAURI__?.core?.invoke("stop_screen_capture") ?? Promise.resolve();
+      window.__screenScreenCaptureStatus = () =>
+        window.__TAURI__?.core?.invoke("screen_capture_status") ?? Promise.resolve(false);
+      window.__screenScreenCaptureFrameCount = () =>
+        window.__TAURI__?.core?.invoke("screen_capture_frame_count") ?? Promise.resolve(0);
 
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder

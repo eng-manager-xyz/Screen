@@ -22,7 +22,10 @@ use crate::preview::{
     PreviewLifecycle, PreviewState,
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
+use crate::recp::settings_deep_link::{SettingsPane, open_command};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+#[cfg(target_os = "macos")]
+use crate::screen_capture::ScreenCaptureState;
 #[cfg(target_os = "macos")]
 use crate::system_audio::SystemAudioCaptureState;
 use crate::tray::bubble_toggle::{BubbleAction, BubbleVisibility};
@@ -576,15 +579,97 @@ pub fn list_cameras() -> Vec<CameraView> {
         .collect()
 }
 
-/// Probe the OS for camera permission (M-CAM.2 / AUT-256).
+/// Probe the OS for camera permission (M-CAM.2 / AUT-256 +
+/// M-RECP.7 / AUT-285).
 ///
-/// Today: returns `Granted` everywhere. The real macOS
-/// implementation lands in M-RECP.0 (AUT-261) via `objc2` calls
-/// into `AVCaptureDevice.authorizationStatus(for: .video)`.
+/// macOS: real `AVCaptureDevice.authorizationStatusForMediaType:`
+/// call via `objc2-av-foundation`. Returns `Granted` /
+/// `NotDetermined` / `Denied` per the live TCC state.
+///
+/// Non-macOS: returns `Granted` (no TCC-equivalent the recorder
+/// needs to probe for camera on Linux / Windows).
 #[tauri::command]
 #[must_use]
 pub fn camera_permission_status() -> CameraPermission {
-    CameraPermission::Granted
+    #[cfg(target_os = "macos")]
+    {
+        av_authorization_status(AvMediaTypeKind::Video)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
+}
+
+// ---------------------------------------------------------------
+// Settings deep-link commands (M-RECP.0 / AUT-261 — camera,
+// M-RECP.6 / AUT-272 — screen recording, M-RECP.8 / AUT-286 — mic)
+//
+// Each wraps `settings_deep_link::open_command(pane)` and shells
+// out via `std::process::Command`. Returns the underlying spawn
+// error as a string so the Leptos picker can render it inline.
+// macOS + Windows return real URLs; Linux is a no-op (the desktop
+// environment determines the right command — no universal handle).
+// ---------------------------------------------------------------
+
+/// Shell out to open System Settings → Privacy & Security → Camera.
+/// Falls back to a no-op on Linux (no universal Settings deep-link).
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string if `Command::spawn` fails
+/// (e.g. `open` not on PATH on macOS — should never happen).
+#[tauri::command]
+pub fn open_settings_camera() -> Result<(), String> {
+    open_settings_pane(SettingsPane::Camera)
+}
+
+/// Shell out to open System Settings → Privacy & Security →
+/// Microphone. Linux no-op.
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string.
+#[tauri::command]
+pub fn open_settings_microphone() -> Result<(), String> {
+    open_settings_pane(SettingsPane::Microphone)
+}
+
+/// Shell out to open System Settings → Privacy & Security →
+/// Screen Recording. macOS only — Windows + Linux return a no-op
+/// `Ok(())` because neither has a system-level Screen Recording
+/// pane the recorder can deep-link to.
+///
+/// # Errors
+///
+/// Returns the OS spawn error as a string.
+#[tauri::command]
+pub fn open_settings_screen_recording() -> Result<(), String> {
+    open_settings_pane(SettingsPane::ScreenRecording)
+}
+
+/// Shared shell-out helper. Resolves the OS-specific argv from
+/// [`open_command`] and spawns it. Returns `Ok(())` even when no
+/// deep-link is known for the pane on this OS (Linux, or Screen
+/// Recording on Windows) — the caller treats "no error" as
+/// "instruction displayed."
+fn open_settings_pane(pane: SettingsPane) -> Result<(), String> {
+    let Some(command_parts) = open_command(pane) else {
+        tracing::info!(
+            ?pane,
+            "open_settings_pane: no deep-link known for this OS — no-op"
+        );
+        return Ok(());
+    };
+    let Some((program, rest)) = command_parts.split_first() else {
+        return Err("open_command returned empty command".into());
+    };
+    std::process::Command::new(program)
+        .args(rest)
+        .spawn()
+        .map_err(|err| format!("failed to open settings pane {pane:?}: {err}"))?;
+    tracing::info!(?pane, ?command_parts, "open_settings_pane: spawned");
+    Ok(())
 }
 
 /// Start the camera preview pipeline (M-CAM.2 / AUT-256).
@@ -721,6 +806,13 @@ pub struct MicrophoneView {
     /// Native sample rate (typically 48000 / 44100). `0` means
     /// unknown — Leptos should default to 48000.
     pub sample_rate_hz: u32,
+    /// Platform-native device identifier (M-MIC.3 / AUT-284).
+    /// Round-tripped back through `start_mic_capture` so the worker
+    /// can route it into the per-OS gst element (`osxaudiosrc
+    /// device-uid=…` etc.). Empty when the underlying gst plugin
+    /// didn't expose `unique-id` for this device — the worker
+    /// falls back to `autoaudiosrc` in that case.
+    pub native_id: String,
 }
 
 impl From<media::MicrophoneDevice> for MicrophoneView {
@@ -731,6 +823,7 @@ impl From<media::MicrophoneDevice> for MicrophoneView {
             is_default: value.is_default,
             channels: value.channels,
             sample_rate_hz: value.sample_rate_hz,
+            native_id: value.native_id,
         }
     }
 }
@@ -749,15 +842,14 @@ pub fn list_microphones() -> Vec<MicrophoneView> {
         .collect()
 }
 
-/// Probe the OS for microphone permission (M-MIC.2 / AUT-279).
+/// Probe the OS for microphone permission (M-MIC.2 / AUT-279 +
+/// M-RECP.7 / AUT-285).
 ///
-/// Today: returns `Granted` everywhere. The real macOS implementation
-/// would call `AVCaptureDevice.authorizationStatus(for: .audio)` via
-/// `objc2` — that lands as a sibling to M-RECP.0's camera version
-/// once we wire the `AVFoundation` probe. The picker UX (M-MIC.2) is
-/// already coded against the three-state contract
-/// (`Granted` / `NotDetermined` / `Denied`) so swapping in the real
-/// probe is a one-line change.
+/// macOS: real `AVCaptureDevice.authorizationStatusForMediaType:`
+/// call via `objc2-av-foundation`. Returns `Granted` /
+/// `NotDetermined` / `Denied` per the live TCC state.
+///
+/// Non-macOS: returns `Granted`.
 ///
 /// Reuses [`CameraPermission`] rather than introducing a separate
 /// `MicrophonePermission` enum — the three states are
@@ -766,7 +858,72 @@ pub fn list_microphones() -> Vec<MicrophoneView> {
 #[tauri::command]
 #[must_use]
 pub fn microphone_permission_status() -> CameraPermission {
-    CameraPermission::Granted
+    #[cfg(target_os = "macos")]
+    {
+        av_authorization_status(AvMediaTypeKind::Audio)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
+}
+
+/// Discriminator for [`av_authorization_status`] — avoids leaking
+/// `AVMediaType` (a Foundation type) into non-macOS callers.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug)]
+enum AvMediaTypeKind {
+    Video,
+    Audio,
+}
+
+/// Shared macOS-only probe. Maps `AVAuthorizationStatus` to the
+/// recorder's three-state [`CameraPermission`] enum. `Restricted`
+/// (enterprise-managed) collapses into `Denied` since the user
+/// can't grant it themselves. Future-proof: unknown variants fail
+/// open as `Granted` to avoid bricking the picker on a future macOS
+/// release.
+#[cfg(target_os = "macos")]
+#[allow(
+    unsafe_code,
+    reason = "AVFoundation FFI interop — every unsafe block has a SAFETY comment above it justifying soundness."
+)]
+fn av_authorization_status(kind: AvMediaTypeKind) -> CameraPermission {
+    use objc2_av_foundation::{
+        AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo,
+    };
+    // SAFETY: the `AVMediaType*` statics are Objective-C externals
+    // marked `Option<&'static AVMediaType>`. They're populated by
+    // AVFoundation's framework init, which runs before any Rust
+    // code in a macOS process. Both should always be Some on a
+    // healthy system — `.expect` documents the invariant.
+    let media_type = match kind {
+        AvMediaTypeKind::Video => unsafe { AVMediaTypeVideo }.expect("AVMediaTypeVideo present"),
+        AvMediaTypeKind::Audio => unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio present"),
+    };
+    // SAFETY: `authorizationStatusForMediaType:` is a class method
+    // (no instance state) and documented thread-safe. The only
+    // failure mode is being passed a media-type other than Video /
+    // Audio, which throws an NSInvalidArgumentException — we only
+    // ever pass those two constants above.
+    let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type) };
+    match status {
+        AVAuthorizationStatus::Authorized => CameraPermission::Granted,
+        AVAuthorizationStatus::NotDetermined => CameraPermission::NotDetermined,
+        AVAuthorizationStatus::Denied | AVAuthorizationStatus::Restricted => {
+            CameraPermission::Denied
+        }
+        _ => {
+            // Future variant — fail-open so the picker stays usable.
+            // Logged so a future macOS release surprise is diagnosable.
+            tracing::warn!(
+                ?kind,
+                ?status,
+                "av_authorization_status: unknown variant; defaulting to Granted"
+            );
+            CameraPermission::Granted
+        }
+    }
 }
 
 /// Start the microphone capture worker (M-MIC.1 / AUT-278).
@@ -791,6 +948,23 @@ pub fn start_mic_capture(
     pipeline_state: State<'_, MicCaptureHandle>,
     mic_id: String,
 ) -> Result<(), MicError> {
+    // M-MIC.3 / AUT-284 — resolve the FNV-1a mic_id to the
+    // platform-native device identifier (osxaudiosrc device-uid /
+    // pulsesrc device / wasapisrc device) by re-enumerating. Empty
+    // native_id (id not found, OR the device didn't expose
+    // unique-id) routes the worker to autoaudiosrc fallback.
+    let native_id = media::list_microphones()
+        .into_iter()
+        .find(|m| m.id == mic_id)
+        .map(|m| m.native_id)
+        .unwrap_or_default();
+    if native_id.is_empty() && !mic_id.is_empty() {
+        tracing::warn!(
+            mic_id = %mic_id,
+            "start_mic_capture: no native_id for mic_id; falling back to autoaudiosrc (OS default)"
+        );
+    }
+
     // Re-entrant calls: if a session is already up, tear it down
     // first so the new mic-id wins. Mirrors the M-CAM.2/.3
     // start_preview re-entrance contract — except the camera path
@@ -827,9 +1001,10 @@ pub fn start_mic_capture(
     }
     tracing::info!(
         mic_id = %mic_id,
+        native_id = %native_id,
         "mic-capture Starting — spawning gst worker"
     );
-    let pipeline = MicCapturePipeline::spawn(app, mic_id)?;
+    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id)?;
     pipeline_state.install(pipeline);
     Ok(())
 }
@@ -973,9 +1148,12 @@ pub fn list_audio_apps() -> Result<Vec<AudioAppView>, String> {
 /// Returns the underlying SCK error message as a string.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn start_system_audio_capture(state: State<'_, SystemAudioCaptureState>) -> Result<(), String> {
+pub fn start_system_audio_capture(
+    app: tauri::AppHandle,
+    state: State<'_, SystemAudioCaptureState>,
+) -> Result<(), String> {
     state
-        .start(media::sck_audio::SystemAudioConfig::default())
+        .start(&app, media::sck_audio::SystemAudioConfig::default())
         .map_err(|err| err.to_string())
 }
 
@@ -1050,6 +1228,189 @@ pub fn system_audio_status(state: State<'_, SystemAudioCaptureState>) -> bool {
 #[must_use]
 pub fn system_audio_status() -> bool {
     false
+}
+
+// ---------------------------------------------------------------
+// Screen-capture IPC surface (M-SCK.1 / AUT-268 + M-SCK.2 / AUT-269,
+// lifecycle-only — frame channel deferred per the PR scope).
+// ---------------------------------------------------------------
+
+/// View-model for a display source (M-SCK.1 / AUT-268). Mirrors
+/// `media::screen::DisplaySource` but lives in the shell crate so
+/// the IPC schema is owned here.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DisplaySourceView {
+    /// Stable id (`display-<displayID>`).
+    pub id: String,
+    /// Human-readable label.
+    pub label: String,
+    /// Width in points.
+    pub width: u32,
+    /// Height in points.
+    pub height: u32,
+    /// `true` for the first display in the enumeration.
+    pub is_primary: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::screen::DisplaySource> for DisplaySourceView {
+    fn from(value: media::screen::DisplaySource) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            width: value.width,
+            height: value.height,
+            is_primary: value.is_primary,
+        }
+    }
+}
+
+/// View-model for a window source (M-SCK.1 / AUT-268).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WindowSourceView {
+    /// Stable id for the current session (`window-<windowID>`).
+    pub id: String,
+    /// Window title (or empty).
+    pub label: String,
+    /// Width in points.
+    pub width: u32,
+    /// Height in points.
+    pub height: u32,
+    /// Owning app bundle id.
+    pub bundle_id: String,
+    /// Owning app display name.
+    pub display_name: String,
+}
+
+#[cfg(target_os = "macos")]
+impl From<media::screen::WindowSource> for WindowSourceView {
+    fn from(value: media::screen::WindowSource) -> Self {
+        Self {
+            id: value.id,
+            label: value.label,
+            width: value.width,
+            height: value.height,
+            bundle_id: value.bundle_id,
+            display_name: value.display_name,
+        }
+    }
+}
+
+/// Enumerate every display SCK can see (M-SCK.1 / AUT-268).
+/// Returns empty Vec on non-macOS targets.
+///
+/// # Errors
+///
+/// Returns the SCK error as a string when SCK refuses (TCC denied,
+/// enumeration failed).
+#[tauri::command]
+pub fn list_screen_displays() -> Result<Vec<DisplaySourceView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::screen::list_displays()
+            .map(|v| v.into_iter().map(DisplaySourceView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Enumerate every visible window SCK can see (M-SCK.1 / AUT-268).
+///
+/// # Errors
+///
+/// Returns the SCK error as a string.
+#[tauri::command]
+pub fn list_screen_windows() -> Result<Vec<WindowSourceView>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        media::screen::list_windows()
+            .map(|v| v.into_iter().map(WindowSourceView::from).collect())
+            .map_err(|err| err.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+/// Start the screen-capture session on the primary display
+/// (M-SCK.2 / AUT-269, partial). Defaults to 1920×1080 @ 30fps with
+/// cursor shown. Triggers the macOS Screen Recording TCC prompt on
+/// first run.
+///
+/// # Errors
+///
+/// Returns the SCK error as a string.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn start_screen_capture(state: State<'_, ScreenCaptureState>) -> Result<(), String> {
+    state
+        .start(media::sck_video::ScreenCaptureConfig::default())
+        .map_err(|err| err.to_string())
+}
+
+/// Non-macOS stub for `start_screen_capture`. Returns the
+/// requires-macOS-13.0 error so the Leptos picker surfaces a
+/// consistent message across platforms.
+///
+/// # Errors
+///
+/// Always returns `"screen capture requires macOS 13.0+"`.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn start_screen_capture() -> Result<(), String> {
+    Err("screen capture requires macOS 13.0+".into())
+}
+
+/// Stop the active screen-capture session, if any.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn stop_screen_capture(state: State<'_, ScreenCaptureState>) {
+    state.stop();
+}
+
+/// Non-macOS stub for `stop_screen_capture`. No-op.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn stop_screen_capture() {}
+
+/// `true` when a screen-capture session is currently running
+/// (M-SCK.2 / AUT-269). The Leptos picker reads this on mount + on
+/// every chevron-toggle to seed UI state.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_status(state: State<'_, ScreenCaptureState>) -> bool {
+    state.is_active()
+}
+
+/// Non-macOS stub for `screen_capture_status`. Always `false`.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_status() -> bool {
+    false
+}
+
+/// Cumulative frame counter for the active session
+/// (M-SCK.2 / AUT-269). Returns `0` when no session is active. Used
+/// by the Leptos diagnostic overlay + future frame-rate monitor.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_frame_count(state: State<'_, ScreenCaptureState>) -> u64 {
+    state.frames_received()
+}
+
+/// Non-macOS stub. Always 0.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn screen_capture_frame_count() -> u64 {
+    0
 }
 
 /// Test-only entry point for `WebDriver` e2e suites. Emits a

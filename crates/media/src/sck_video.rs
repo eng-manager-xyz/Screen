@@ -1,0 +1,537 @@
+//! macOS ScreenCaptureKit screen / window video capture
+//! (M-SCK.0 / AUT-267).
+//!
+//! Spins up an `SCStream` configured for **video** output, attaches
+//! an `SCStreamOutput` delegate that receives BGRA `CMSampleBuffer`
+//! frames on the SCK dispatch queue, and tracks a frame counter +
+//! a "Starting → Running" lifecycle transition off the first
+//! received buffer. Direct sibling of [`crate::sck_audio`] — same
+//! framework, same delegate pattern, video pixel buffers instead
+//! of audio sample buffers.
+//!
+//! ```admonish important title="What this commit ships vs. what's deferred"
+//! This module establishes the **capture path** end-to-end:
+//!
+//! - SCK initialisation + permission handshake (TCC)
+//! - `SCContentFilter` targeting a specific display
+//! - `SCStreamConfiguration` with width / height / target FPS
+//! - `SCStreamOutput` delegate receiving video frames
+//! - Atomic frame counter + lifecycle hook
+//! - Drop-safe teardown
+//!
+//! What's intentionally **NOT** here:
+//!
+//! - **BGRA pixel extraction** from CMSampleBuffer's
+//!   CVPixelBuffer / IOSurface. The delegate counts frames and
+//!   discards the buffer — the M-SCK pipeline that pipes frames
+//!   into wisp + reads back to a canvas is deferred per the user's
+//!   "data delivered = skip for now" scoping. The capture worker
+//!   is functional + verified (frame counter increments); the
+//!   downstream consumer is a separate ticket.
+//! - **Cursor capture toggling** — defaults to "show cursor"
+//!   (`showsCursor = true`). The setting toggle is a settings
+//!   follow-up.
+//! - **Window capture** — this module targets a *display*; the
+//!   window-capture path uses a different `SCContentFilter`
+//!   constructor and lands as M-SCK.0.1 if needed.
+//! ```
+//!
+//! Mirror of `sck_audio.rs`'s Drop discipline: `stopCapture` is
+//! called synchronously on drop with a 500 ms safety timeout, and
+//! the output delegate is removed first so late-firing callbacks
+//! don't touch freed memory.
+
+#![cfg(target_os = "macos")]
+#![allow(
+    unsafe_code,
+    reason = "ScreenCaptureKit is FFI-by-design; every unsafe block has a SAFETY comment above it."
+)]
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::channel;
+use std::time::Duration;
+
+use block2::RcBlock;
+use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
+use objc2::{AllocAnyThread, DefinedClass, define_class, msg_send};
+use objc2_core_media::{CMSampleBuffer, CMTime};
+use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSString};
+use objc2_screen_capture_kit::{
+    SCContentFilter, SCStream, SCStreamConfiguration, SCStreamOutput, SCStreamOutputType, SCWindow,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::sck_audio::{SystemAudioError, shareable_content_blocking};
+
+/// Result type — reuses [`SystemAudioError`] so the screen-capture
+/// path surfaces failures with the same string conversion as the
+/// audio path. Same TCC entry, same SCK error shapes.
+pub type ScreenError = SystemAudioError;
+
+/// Default capture width when [`ScreenCaptureConfig::width`] is `0`
+/// (caller wants "native display size"). Matches Apple's
+/// `SCStreamConfiguration` default.
+pub const DEFAULT_WIDTH: u32 = 1920;
+
+/// Default capture height. Pairs with [`DEFAULT_WIDTH`].
+pub const DEFAULT_HEIGHT: u32 = 1080;
+
+/// Default target frame rate. 30 fps balances "feels smooth" vs.
+/// "doesn't melt the machine when readback lands." The recorder
+/// can bump this later if user feedback wants 60.
+pub const DEFAULT_TARGET_FPS: u32 = 30;
+
+/// Screen-capture configuration. Each field has a sensible default;
+/// pass `Default::default()` for "primary display, 1920×1080, 30
+/// fps." Override `width` / `height` to a specific source-rect
+/// sub-region or to the display's actual size; override
+/// `target_fps` to match a 60Hz display.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScreenCaptureConfig {
+    /// Capture width in pixels. `0` falls back to [`DEFAULT_WIDTH`].
+    pub width: u32,
+    /// Capture height in pixels. `0` falls back to [`DEFAULT_HEIGHT`].
+    pub height: u32,
+    /// Target frame rate. `0` falls back to [`DEFAULT_TARGET_FPS`].
+    pub target_fps: u32,
+    /// `true` to include the mouse cursor in captured frames.
+    /// Defaults `true` because that's what the user expects for
+    /// every screencast they've ever seen.
+    pub shows_cursor: bool,
+}
+
+impl Default for ScreenCaptureConfig {
+    fn default() -> Self {
+        Self {
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            target_fps: DEFAULT_TARGET_FPS,
+            shows_cursor: true,
+        }
+    }
+}
+
+/// Atomic counters surfaced for diagnostics (M-CAM.3's
+/// `PreviewDiagnostics` pattern). Used by the lifecycle helper to
+/// flip `Starting → Running` on first frame and by future ticks /
+/// frame-rate-monitors to observe throughput.
+#[derive(Default)]
+pub struct ScreenCaptureCounters {
+    /// Cumulative frames received from the SCK delegate.
+    pub frames_received: AtomicU64,
+}
+
+impl ScreenCaptureCounters {
+    /// Read the current frame count (atomic, lock-free).
+    #[must_use]
+    pub fn frames_received(&self) -> u64 {
+        self.frames_received.load(Ordering::Relaxed)
+    }
+}
+
+// `SCStreamOutput` delegate for video output. Receives SCK sample
+// buffers on a dispatch queue, increments the shared counter, and
+// drops the buffer. Stays minimal so the delegate doesn't block
+// SCK's queue — pixel extraction is a separate ticket per the
+// module-level admonish.
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "ScreenVideoOutputHandler"]
+    #[ivars = ScreenOutputIvars]
+    pub(crate) struct ScreenOutputHandler;
+
+    impl ScreenOutputHandler {}
+
+    unsafe impl NSObjectProtocol for ScreenOutputHandler {}
+
+    unsafe impl SCStreamOutput for ScreenOutputHandler {
+        #[unsafe(method(stream:didOutputSampleBuffer:ofType:))]
+        #[allow(
+            non_snake_case,
+            reason = "method name must match Apple selector exactly for the runtime to dispatch"
+        )]
+        unsafe fn stream_didOutputSampleBuffer_ofType(
+            &self,
+            _stream: &SCStream,
+            _sample_buffer: &CMSampleBuffer,
+            r#type: SCStreamOutputType,
+        ) {
+            if r#type != SCStreamOutputType::Screen {
+                return;
+            }
+            self.ivars()
+                .counters
+                .frames_received
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    }
+);
+
+pub(crate) struct ScreenOutputIvars {
+    counters: Arc<ScreenCaptureCounters>,
+}
+
+impl ScreenOutputHandler {
+    fn new(counters: Arc<ScreenCaptureCounters>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(ScreenOutputIvars { counters });
+        // SAFETY: `init` on NSObject takes Allocated<Self> + returns
+        // Retained<Self>. Class derives NSObject via define_class!.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// Active SCK screen-capture session. Owns the `SCStream` + the
+/// `Retained<ScreenOutputHandler>` for the lifetime of the session.
+/// Drop is fully synchronous: removes the output delegate, then
+/// calls `stopCapture` with a 500 ms safety timeout.
+///
+/// # `Send` + `Sync`
+///
+/// Same justification as [`crate::sck_audio::SystemAudioStream`] —
+/// objc2's conservative auto-impl doesn't see CFRetain/CFRelease
+/// as thread-safe even though Apple documents them as such. We
+/// declare both manually so the field can sit inside Tauri-managed
+/// state.
+unsafe impl Send for ScreenCaptureStream {}
+unsafe impl Sync for ScreenCaptureStream {}
+
+/// Live SCK screen-capture session. See module docs for the
+/// architecture overview + what's intentionally NOT here.
+pub struct ScreenCaptureStream {
+    config: ScreenCaptureConfig,
+    stream: Retained<SCStream>,
+    delegate: Retained<ScreenOutputHandler>,
+    counters: Arc<ScreenCaptureCounters>,
+}
+
+impl ScreenCaptureStream {
+    /// Build + start a capture session on the **first available
+    /// display**. Triggers the macOS Screen Recording TCC prompt
+    /// on first run if not yet granted.
+    ///
+    /// # Errors
+    ///
+    /// Same shape as [`crate::sck_audio::SystemAudioStream::new`] —
+    /// `EnumerationFailed` / `NoDisplays` / `StreamCreationFailed` /
+    /// `StartFailed`.
+    pub fn new(config: ScreenCaptureConfig) -> Result<Self, ScreenError> {
+        let counters = Arc::new(ScreenCaptureCounters::default());
+        let delegate = ScreenOutputHandler::new(Arc::clone(&counters));
+
+        // 1. Get shareable content + pick the first display.
+        let content = shareable_content_blocking()?;
+        let displays = unsafe { content.displays() };
+        let Some(display) = displays.iter().next() else {
+            return Err(ScreenError::NoDisplays);
+        };
+
+        // 2. Build the SCContentFilter (full-display capture; no
+        //    excluded windows). Window-specific capture is a
+        //    separate ticket (M-SCK.0.1).
+        let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+        let filter = unsafe {
+            SCContentFilter::initWithDisplay_excludingWindows(
+                SCContentFilter::alloc(),
+                &display,
+                &empty_windows,
+            )
+        };
+
+        // 3. Build the SCStreamConfiguration. Width/height/fps
+        //    fall back to defaults when caller passed 0 (so a
+        //    plain `Default::default()` works).
+        let stream_config = unsafe {
+            let alloc = SCStreamConfiguration::alloc();
+            let cfg: Retained<SCStreamConfiguration> = msg_send![alloc, init];
+            let width = if config.width == 0 {
+                DEFAULT_WIDTH
+            } else {
+                config.width
+            };
+            let height = if config.height == 0 {
+                DEFAULT_HEIGHT
+            } else {
+                config.height
+            };
+            let fps = if config.target_fps == 0 {
+                DEFAULT_TARGET_FPS
+            } else {
+                config.target_fps
+            };
+            cfg.setWidth(width as usize);
+            cfg.setHeight(height as usize);
+            cfg.setShowsCursor(config.shows_cursor);
+            // minimumFrameInterval is the seconds-between-frames
+            // cap. `CMTime { value: 1, timescale: fps, ... }`
+            // means 1/fps seconds per frame.
+            cfg.setMinimumFrameInterval(CMTime {
+                value: 1,
+                timescale: fps.try_into().unwrap_or(30),
+                flags: objc2_core_media::CMTimeFlags(1), // kCMTimeFlags_Valid
+                epoch: 0,
+            });
+            cfg
+        };
+
+        // 4. Construct the SCStream with no stream-delegate (we
+        //    don't consume `streamDidStopWithError`).
+        let stream = unsafe {
+            SCStream::initWithFilter_configuration_delegate(
+                SCStream::alloc(),
+                &filter,
+                &stream_config,
+                None,
+            )
+        };
+
+        // 5. Attach the video output delegate. None for the queue
+        //    lets SCK use its default dispatch queue.
+        let output_proto: &ProtocolObject<dyn SCStreamOutput> =
+            ProtocolObject::from_ref(&*delegate);
+        unsafe {
+            stream
+                .addStreamOutput_type_sampleHandlerQueue_error(
+                    output_proto,
+                    SCStreamOutputType::Screen,
+                    None,
+                )
+                .map_err(|err| ScreenError::StreamCreationFailed(ns_error_description(&err)))?;
+        }
+
+        // 6. Start capture. SCK runs startCapture asynchronously;
+        //    bridge to sync via a oneshot channel.
+        start_capture_blocking(&stream)?;
+
+        tracing::info!(
+            width = config.width,
+            height = config.height,
+            target_fps = config.target_fps,
+            shows_cursor = config.shows_cursor,
+            "sck_video: capture started"
+        );
+
+        Ok(Self {
+            config,
+            stream,
+            delegate,
+            counters,
+        })
+    }
+
+    /// Configuration the stream was built with.
+    #[must_use]
+    pub fn config(&self) -> ScreenCaptureConfig {
+        self.config
+    }
+
+    /// Atomic counters readable from any thread — see
+    /// [`ScreenCaptureCounters::frames_received`].
+    #[must_use]
+    pub fn counters(&self) -> Arc<ScreenCaptureCounters> {
+        Arc::clone(&self.counters)
+    }
+}
+
+impl Drop for ScreenCaptureStream {
+    fn drop(&mut self) {
+        let stream = &self.stream;
+        // Remove the output delegate FIRST so late-firing callbacks
+        // don't touch the about-to-be-dropped counter Arc.
+        let output_proto: &ProtocolObject<dyn SCStreamOutput> =
+            ProtocolObject::from_ref(&*self.delegate);
+        // SAFETY: removeStreamOutput is documented thread-safe;
+        // delegate is still alive (we hold the Retained).
+        unsafe {
+            let _ = stream.removeStreamOutput_type_error(output_proto, SCStreamOutputType::Screen);
+        }
+
+        // Synchronous stop with a 500 ms safety cap — mirrors the
+        // sck_audio Drop pattern.
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let tx_arc = Arc::new(std::sync::Mutex::new(Some(tx)));
+        let tx_for_block = Arc::clone(&tx_arc);
+        let block = RcBlock::new(move |_err: *mut objc2_foundation::NSError| {
+            if let Some(tx) = tx_for_block
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
+                let _ = tx.send(());
+            }
+        });
+        // SAFETY: stopCapture is the documented teardown path.
+        unsafe {
+            stream.stopCaptureWithCompletionHandler(Some(&block));
+        }
+        let _ = rx.recv_timeout(Duration::from_millis(500));
+        tracing::info!("sck_video: capture stopped");
+    }
+}
+
+/// Sync wrapper around `SCStream.startCapture`. Same shape as the
+/// audio path's `start_capture_blocking`.
+fn start_capture_blocking(stream: &SCStream) -> Result<(), ScreenError> {
+    let (tx, rx) = channel::<Result<(), String>>();
+    #[allow(
+        clippy::arc_with_non_send_sync,
+        reason = "Sender<Result<(), String>> is Send; clippy can't see the inner String through Mutex/Option. Mirror of sck_audio.rs's same allow."
+    )]
+    let tx_arc = Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_for_block = Arc::clone(&tx_arc);
+    let block = RcBlock::new(move |error: *mut objc2_foundation::NSError| {
+        let mut slot = tx_for_block
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(sender) = slot.take() {
+            let result = if error.is_null() {
+                Ok(())
+            } else {
+                // SAFETY: non-null per the branch.
+                Err(unsafe { ns_error_description(&*error) })
+            };
+            let _ = sender.send(result);
+        }
+    });
+    // SAFETY: startCapture is documented + the block signature matches.
+    unsafe {
+        stream.startCaptureWithCompletionHandler(Some(&block));
+    }
+    match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(msg)) => Err(ScreenError::StartFailed(msg)),
+        Err(_) => Err(ScreenError::StartFailed(
+            "startCapture completion timed out after 10s".into(),
+        )),
+    }
+}
+
+/// Extract `localizedDescription` from an `NSError`. Tiny helper
+/// duplicated from `sck_audio` rather than exposed publicly — the
+/// modules are siblings + nothing else needs it.
+fn ns_error_description(error: &objc2_foundation::NSError) -> String {
+    let description: Retained<NSString> = unsafe { msg_send![error, localizedDescription] };
+    description.to_string()
+}
+
+/// View-model for an active screen-capture session (M-SCK.2 / AUT-269).
+/// Mirrors `MicLifecycle`'s shape — kept here so the Tauri command
+/// surface can return + render it without importing internal types.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScreenLifecycle {
+    /// No capture running.
+    #[default]
+    Idle,
+    /// `start_screen_capture` invoked; awaiting first frame.
+    Starting,
+    /// Capture is producing frames.
+    Running,
+    /// `stop_screen_capture` invoked; tearing down.
+    Stopping,
+}
+
+impl ScreenLifecycle {
+    /// Idle → Starting; other states unchanged.
+    #[must_use]
+    pub fn try_start(self) -> Self {
+        match self {
+            Self::Idle => Self::Starting,
+            other => other,
+        }
+    }
+
+    /// Starting → Running on first frame; idempotent on Running.
+    #[must_use]
+    pub fn mark_running(self) -> Self {
+        match self {
+            Self::Starting => Self::Running,
+            other => other,
+        }
+    }
+
+    /// Starting / Running → Stopping; Idle / Stopping unchanged.
+    #[must_use]
+    pub fn try_stop(self) -> Self {
+        match self {
+            Self::Running | Self::Starting => Self::Stopping,
+            other => other,
+        }
+    }
+
+    /// Stopping → Idle; other states unchanged.
+    #[must_use]
+    pub fn finish_stop(self) -> Self {
+        match self {
+            Self::Stopping => Self::Idle,
+            other => other,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_uses_1920_1080_30fps_with_cursor() {
+        let cfg = ScreenCaptureConfig::default();
+        assert_eq!(cfg.width, DEFAULT_WIDTH);
+        assert_eq!(cfg.height, DEFAULT_HEIGHT);
+        assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
+        assert!(cfg.shows_cursor);
+    }
+
+    #[test]
+    fn counters_start_at_zero() {
+        let c = ScreenCaptureCounters::default();
+        assert_eq!(c.frames_received(), 0);
+    }
+
+    #[test]
+    fn counters_increment_via_atomic() {
+        let c = ScreenCaptureCounters::default();
+        c.frames_received.fetch_add(7, Ordering::Relaxed);
+        assert_eq!(c.frames_received(), 7);
+    }
+
+    #[test]
+    fn lifecycle_full_round_trip() {
+        let mut s = ScreenLifecycle::default();
+        assert_eq!(s, ScreenLifecycle::Idle);
+        s = s.try_start();
+        assert_eq!(s, ScreenLifecycle::Starting);
+        s = s.mark_running();
+        assert_eq!(s, ScreenLifecycle::Running);
+        s = s.try_stop();
+        assert_eq!(s, ScreenLifecycle::Stopping);
+        s = s.finish_stop();
+        assert_eq!(s, ScreenLifecycle::Idle);
+    }
+
+    #[test]
+    fn lifecycle_re_entrant_start_is_noop() {
+        assert_eq!(
+            ScreenLifecycle::Starting.try_start(),
+            ScreenLifecycle::Starting
+        );
+        assert_eq!(
+            ScreenLifecycle::Running.try_start(),
+            ScreenLifecycle::Running
+        );
+    }
+
+    #[test]
+    fn lifecycle_serde_round_trip() {
+        for v in [
+            ScreenLifecycle::Idle,
+            ScreenLifecycle::Starting,
+            ScreenLifecycle::Running,
+            ScreenLifecycle::Stopping,
+        ] {
+            let json = serde_json::to_string(&v).unwrap();
+            let back: ScreenLifecycle = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, v);
+        }
+    }
+}

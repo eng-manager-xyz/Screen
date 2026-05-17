@@ -75,6 +75,7 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
                 <crate::camera_picker::CameraPicker />
                 <crate::mic_picker::MicPicker />
                 <crate::system_audio_picker::SystemAudioPicker />
+                <crate::screen_picker::ScreenPicker />
                 <crate::camera_preview::CameraPreview />
                 <crate::camera_diagnostics::CameraDiagnostics />
                 <BubbleToggleButton />

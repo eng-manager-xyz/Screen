@@ -35,6 +35,8 @@ use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
 #[cfg(target_os = "macos")]
+use screen_app::screen_capture::ScreenCaptureState;
+#[cfg(target_os = "macos")]
 use screen_app::system_audio::SystemAudioCaptureState;
 
 /// Embedded tray-icon bytes (M-TRAY.0 / AUT-249). `include_bytes!`
@@ -51,6 +53,10 @@ const TICK_INTERVAL: Duration = Duration::from_millis(33);
 /// every tick would emit, hammering the webview event bridge.
 const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "fn main() is a Tauri builder chain — the bulk is two cfg-gated generate_handler! arms listing every IPC command (now 30+). Splitting them into helpers doesn't reduce complexity; the lints fire on growth, not nesting."
+)]
 fn main() {
     let builder = tauri::Builder::default()
         .manage(PlayerSession::new())
@@ -61,10 +67,12 @@ fn main() {
         .manage(CameraPipelineHandle::default())
         .manage(MicCaptureState::default())
         .manage(MicCaptureHandle::default());
-    // System-audio state is macOS-only — the underlying
-    // SystemAudioStream depends on ScreenCaptureKit.
+    // System-audio + screen-capture states are macOS-only — both
+    // depend on ScreenCaptureKit.
     #[cfg(target_os = "macos")]
-    let builder = builder.manage(SystemAudioCaptureState::default());
+    let builder = builder
+        .manage(SystemAudioCaptureState::default())
+        .manage(ScreenCaptureState::default());
     builder
         .invoke_handler({
             // Debug builds expose `__test_drop_file` for WebDriver e2e
@@ -92,11 +100,20 @@ fn main() {
                     commands::stop_mic_capture,
                     commands::mic_status,
                     commands::microphone_permission_status,
+                    commands::open_settings_camera,
+                    commands::open_settings_microphone,
+                    commands::open_settings_screen_recording,
                     commands::list_audio_apps,
                     commands::start_system_audio_capture,
                     commands::stop_system_audio_capture,
                     commands::set_system_audio_filter,
                     commands::system_audio_status,
+                    commands::list_screen_displays,
+                    commands::list_screen_windows,
+                    commands::start_screen_capture,
+                    commands::stop_screen_capture,
+                    commands::screen_capture_status,
+                    commands::screen_capture_frame_count,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -123,11 +140,20 @@ fn main() {
                     commands::stop_mic_capture,
                     commands::mic_status,
                     commands::microphone_permission_status,
+                    commands::open_settings_camera,
+                    commands::open_settings_microphone,
+                    commands::open_settings_screen_recording,
                     commands::list_audio_apps,
                     commands::start_system_audio_capture,
                     commands::stop_system_audio_capture,
                     commands::set_system_audio_filter,
                     commands::system_audio_status,
+                    commands::list_screen_displays,
+                    commands::list_screen_windows,
+                    commands::start_screen_capture,
+                    commands::stop_screen_capture,
+                    commands::screen_capture_status,
+                    commands::screen_capture_frame_count,
                 ]
             }
         })

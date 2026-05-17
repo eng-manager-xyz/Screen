@@ -161,15 +161,17 @@ impl GstreamerAudioCapture {
         )
     }
 
-    /// Build a capture from the OS default microphone via
-    /// `autoaudiosrc` (M-MIC.1 / AUT-278).
+    /// Build a capture from a specific microphone via the
+    /// per-OS gst element (M-MIC.1 / AUT-278 + M-MIC.3 / AUT-284).
     ///
-    /// `mic_id` is the stable id from
-    /// [`crate::list_microphones`]; v0 stores it only for log
-    /// context — `autoaudiosrc` always opens the OS default. Per-mic
-    /// selection (`osxaudiosrc device-uid=…` / `pulsesrc device=…`)
-    /// is a deliberate follow-up so the lifecycle layer ships
-    /// first, matching the staging that M-CAM.0/.3 took.
+    /// - macOS: `osxaudiosrc device-uid=<native_id>`
+    /// - Linux: `pulsesrc device=<native_id>`
+    /// - Windows: `wasapisrc device=<native_id>`
+    ///
+    /// When `native_id` is empty (the device didn't expose
+    /// `unique-id` in gst-device-monitor output, OR the caller
+    /// wants the OS default), the pipeline falls back to
+    /// `autoaudiosrc` which opens the OS default mic.
     ///
     /// `format` must use [`SampleFormat::F32`] — the pipeline caps
     /// to `F32LE` explicitly. Non-`F32` rejects at construction (same
@@ -183,19 +185,38 @@ impl GstreamerAudioCapture {
     /// `audioresample` + `audioconvert` in the pipeline handle the
     /// downstream conversion when a future encoder wants S16.
     /// ```
-    pub fn from_microphone(mic_id: &str, format: AudioFormat) -> Result<Self, Error> {
+    pub fn from_microphone(
+        mic_id: &str,
+        native_id: &str,
+        format: AudioFormat,
+    ) -> Result<Self, Error> {
         Self::reject_non_f32(format)?;
         let caps = caps_string(format);
-        tracing::info!(
-            mic_id,
-            sample_rate = format.sample_rate,
-            channels = format.channels,
-            "from_microphone: spawning gst-launch (autoaudiosrc opens OS default)"
-        );
-        Self::spawn(
-            &[
-                "-q",
-                "autoaudiosrc",
+        let mut args: Vec<String> = vec!["-q".to_string()];
+        if let Some((element, prop)) = resolve_mic_element(native_id) {
+            let prop_arg = format!("{prop}={native_id}");
+            args.push(element.to_string());
+            args.push(prop_arg);
+            tracing::info!(
+                mic_id,
+                native_id,
+                element,
+                sample_rate = format.sample_rate,
+                channels = format.channels,
+                "from_microphone: spawning gst-launch with per-device element"
+            );
+        } else {
+            args.push("autoaudiosrc".to_string());
+            tracing::info!(
+                mic_id,
+                has_native_id = !native_id.is_empty(),
+                sample_rate = format.sample_rate,
+                channels = format.channels,
+                "from_microphone: spawning gst-launch (autoaudiosrc — OS default)"
+            );
+        }
+        args.extend(
+            [
                 "!",
                 "audioconvert",
                 "!",
@@ -205,9 +226,12 @@ impl GstreamerAudioCapture {
                 "!",
                 "fdsink",
                 "fd=1",
-            ],
-            format,
-        )
+            ]
+            .iter()
+            .map(|s| (*s).to_string()),
+        );
+        let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+        Self::spawn(&args_ref, format)
     }
 
     /// Format of the produced chunks (same as the format passed at
@@ -312,6 +336,42 @@ fn caps_string(format: AudioFormat) -> String {
         rate = format.sample_rate,
         channels = format.channels,
     )
+}
+
+/// Pick the per-OS gst element + property name that takes the
+/// device's native identifier (M-MIC.3 / AUT-284). Returns `None`
+/// when `native_id` is empty OR when the current target OS isn't
+/// one we know an element name for — callers fall back to
+/// `autoaudiosrc` in that case.
+///
+/// Property names per platform:
+///
+/// | OS      | Element        | Property     |
+/// | ------- | -------------- | ------------ |
+/// | macOS   | `osxaudiosrc`  | `device-uid` |
+/// | Linux   | `pulsesrc`     | `device`     |
+/// | Windows | `wasapisrc`    | `device`     |
+#[must_use]
+pub fn resolve_mic_element(native_id: &str) -> Option<(&'static str, &'static str)> {
+    if native_id.is_empty() {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Some(("osxaudiosrc", "device-uid"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Some(("pulsesrc", "device"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(("wasapisrc", "device"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
 }
 
 #[cfg(test)]

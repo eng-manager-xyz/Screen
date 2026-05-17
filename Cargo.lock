@@ -196,6 +196,8 @@ name = "app-ui"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "gloo-timers",
+ "js-sys",
  "leptos",
  "serde",
  "serde-wasm-bindgen",
@@ -2501,6 +2503,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloo-timers"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb143cf96099802033e0d4f4963b19fd2e0b728bcf076cd9cf7f6634f092994"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "gloo-utils"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4332,6 +4344,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-av-foundation"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "478ae33fcac9df0a18db8302387c666b8ef08a3e2d62b510ca4fc278a384b6c0"
+dependencies = [
+ "bitflags 2.11.1",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "objc2-cloud-kit"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4630,6 +4653,8 @@ dependencies = [
  "dispatch2",
  "libc",
  "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-core-media",
  "objc2-foundation 0.3.2",
 ]
@@ -6160,6 +6185,8 @@ dependencies = [
  "decode",
  "image",
  "media",
+ "objc2 0.6.4",
+ "objc2-av-foundation",
  "playback",
  "pollster",
  "screen-wisp",

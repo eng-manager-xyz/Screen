@@ -56,6 +56,20 @@ pub struct MicrophoneDevice {
     /// capture defaults to 48000. GStreamer's `audioresample` will
     /// convert as needed for the encoder.
     pub sample_rate_hz: u32,
+    /// Platform-native device identifier from gst's `unique-id`
+    /// property — what the OS-specific gst element actually wants
+    /// to select the device (M-MIC.3 / AUT-284):
+    ///
+    /// - macOS `osxaudiosrc device-uid=…` — e.g.
+    ///   `"AppleUSBAudioEngine:Insta360:Insta360 Link:100000:3"`.
+    /// - Linux `pulsesrc device=…` — e.g.
+    ///   `"alsa_input.pci-0000_00_1f.3.analog-stereo"`.
+    /// - Windows `wasapisrc device=…` — a `{GUID}` string.
+    ///
+    /// Empty when the device didn't expose a `unique-id` (some
+    /// gst plugin / OS combinations) — callers fall back to
+    /// `autoaudiosrc` (OS default) in that case.
+    pub native_id: String,
 }
 
 /// Enumerate every microphone the OS exposes via
@@ -155,6 +169,7 @@ pub fn parse_device_monitor_output(text: &str) -> Vec<MicrophoneDevice> {
             is_default: p.explicit_default,
             channels: p.channels,
             sample_rate_hz: p.sample_rate_hz,
+            native_id: p.native_id,
         })
         .collect()
 }
@@ -182,6 +197,7 @@ struct ParsedDevice {
     explicit_default: bool,
     channels: u8,
     sample_rate_hz: u32,
+    native_id: String,
 }
 
 /// Cut the gst output into one `String` per `Device found:` block.
@@ -214,6 +230,7 @@ fn parse_one_device_block(block: &str) -> Option<ParsedDevice> {
     let mut channels: u8 = 0;
     let mut sample_rate_hz: u32 = 0;
     let mut first_caps_line: Option<String> = None;
+    let mut native_id = String::new();
 
     for raw_line in block.lines() {
         let line = raw_line.trim();
@@ -243,6 +260,16 @@ fn parse_one_device_block(block: &str) -> Option<ParsedDevice> {
             && value.eq_ignore_ascii_case("true")
         {
             explicit_default = true;
+            continue;
+        }
+
+        // M-MIC.3 / AUT-284 — `unique-id` is the platform-native
+        // device identifier the OS-specific gst element needs.
+        if native_id.is_empty()
+            && let Some(value) = parse_property(line, "unique-id")
+            && !value.is_empty()
+        {
+            native_id = value.to_string();
         }
     }
 
@@ -260,6 +287,7 @@ fn parse_one_device_block(block: &str) -> Option<ParsedDevice> {
         explicit_default,
         channels,
         sample_rate_hz,
+        native_id,
     })
 }
 
@@ -414,6 +442,17 @@ Device found:
         assert!(mics[2].is_default);
         assert_eq!(mics[2].channels, 1);
         assert_eq!(mics[2].sample_rate_hz, 16_000);
+
+        // M-MIC.3 / AUT-284 — native_id round-trips from the
+        // `unique-id` property; the worker uses it to route to
+        // `osxaudiosrc device-uid=…` rather than always opening
+        // the OS default.
+        assert_eq!(mics[0].native_id, "com.loom.desktop.audio-device.device");
+        assert_eq!(
+            mics[1].native_id,
+            "AppleUSBAudioEngine:Insta360:Insta360 Link:100000:3"
+        );
+        assert_eq!(mics[2].native_id, "80-C3-BA-87-28-6D:input");
     }
 
     #[test]
@@ -523,10 +562,23 @@ Device found:
             is_default: true,
             channels: 2,
             sample_rate_hz: 48_000,
+            native_id: "AppleUSBAudioEngine:Foo:Bar:1234:5".into(),
         };
         let json = serde_json::to_string(&mic).unwrap();
         let parsed: MicrophoneDevice = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, mic);
+    }
+
+    #[test]
+    fn parser_pulse_block_without_unique_id_yields_empty_native_id() {
+        // M-MIC.3 / AUT-284 — when gst doesn't expose `unique-id`
+        // (some plugin/OS combos), native_id is empty and the
+        // worker falls back to autoaudiosrc rather than passing an
+        // empty `device-uid=` arg that would crash gst-launch.
+        let mics = parse_device_monitor_output(PULSE_NO_DEFAULT_PROPERTY);
+        assert_eq!(mics.len(), 2);
+        assert_eq!(mics[0].native_id, "");
+        assert_eq!(mics[1].native_id, "");
     }
 
     #[test]

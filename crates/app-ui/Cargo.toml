@@ -28,6 +28,16 @@ ui-storybook = { path = "../ui-storybook", default-features = false, features = 
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+# M-AUDIO.METER / AUT-287 — js-sys's Reflect + Function bindings are
+# needed for the `tauri.event.listen` subscription path used by the
+# mic + system-audio level meters. wasm-bindgen pulls js-sys
+# transitively but the explicit dep is what makes `js_sys::Reflect`
+# importable.
+js-sys = "0.3"
+# M-AUDIO-SYS.3 / AUT-288 — debounce rapid checkbox toggling on the
+# system-audio picker so SCK's updateContentFilter doesn't rebuild
+# the stream 5 times when the user clicks 5 checkboxes quickly.
+gloo-timers = "0.3"
 web-sys = { version = "0.3", features = ["CustomEvent", "Window", "Location", "History", "Storage", "EventTarget", "Event", "HtmlVideoElement", "HtmlMediaElement", "console"] }
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"

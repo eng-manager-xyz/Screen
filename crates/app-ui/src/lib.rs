@@ -16,6 +16,15 @@
 //! with the Rust-side player. See [`player_ipc`] for the JS-bridge
 //! `extern` declarations and the [`player_ipc::PlayerStatus`] mirror.
 
+// The Recorder surface composes 4 picker components (Camera + Mic +
+// SystemAudio + Screen) plus the preview canvas + diagnostics overlay
+// + bubble toggles, all returning deeply-nested Leptos `view!{}`
+// types. Type resolution overflows the default 128-frame recursion
+// limit during `cargo test --no-run` (which monomorphises the
+// nested `IntoAny::into_any::resolve<...>` futures). 256 is the
+// compiler's suggested bump and has plenty of headroom for the next
+// few picker additions before we'd need to revisit.
+#![recursion_limit = "256"]
 #![allow(
     clippy::must_use_candidate,
     clippy::needless_pass_by_value,
@@ -120,5 +129,7 @@ pub mod camera_preview;
 pub mod mic_ipc;
 pub mod mic_picker;
 pub mod routing;
+pub mod screen_ipc;
+pub mod screen_picker;
 pub mod system_audio_ipc;
 pub mod system_audio_picker;

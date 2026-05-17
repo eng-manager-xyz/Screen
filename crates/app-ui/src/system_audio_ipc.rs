@@ -7,6 +7,7 @@
 //! `window.__TAURI__.core.invoke(...)`.
 
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
 
@@ -62,6 +63,12 @@ extern "C" {
     /// `__screenSystemAudioStatus()` — returns `Promise<boolean>`.
     #[wasm_bindgen(js_name = __screenSystemAudioStatus, catch)]
     pub async fn system_audio_status_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenOpenSettingsScreenRecording()` (M-RECP.6 / AUT-272)
+    /// — shells out to open System Settings → Privacy & Security →
+    /// Screen Recording. macOS only; Linux/Windows no-op.
+    #[wasm_bindgen(js_name = __screenOpenSettingsScreenRecording, catch)]
+    pub async fn open_settings_screen_recording_js() -> Result<JsValue, JsValue>;
 }
 
 /// Result shape carrying either the typed list or a string error so
@@ -115,6 +122,55 @@ pub async fn system_audio_status() -> bool {
         Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(false),
         Err(_) => false,
     }
+}
+
+/// Async helper: shell out to open System Settings → Screen
+/// Recording (M-RECP.6 / AUT-272). Silently no-ops outside Tauri
+/// and silently swallows spawn errors — same shape as the other
+/// deep-link helpers.
+pub async fn open_settings_screen_recording() {
+    let _ = open_settings_screen_recording_js().await;
+}
+
+/// Subscribe to the `system-audio-level` Tauri event
+/// (M-AUDIO.METER / AUT-287) emitted by the SCK delegate at the
+/// stream's natural buffer rate (~20-100 Hz). Handler receives an
+/// EMA-smoothed master-stream RMS in `[0.0, ~1.0]`. Mirror of
+/// [`crate::mic_ipc::subscribe_mic_level`].
+pub fn subscribe_system_audio_level(handler: impl Fn(f32) + 'static) {
+    use wasm_bindgen::closure::Closure;
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tauri) = js_sys::Reflect::get(&window, &"__TAURI__".into()) else {
+        return;
+    };
+    let Ok(event) = js_sys::Reflect::get(&tauri, &"event".into()) else {
+        return;
+    };
+    let Ok(listen) = js_sys::Reflect::get(&event, &"listen".into()) else {
+        return;
+    };
+    let Ok(listen_fn) = listen.dyn_into::<js_sys::Function>() else {
+        return;
+    };
+    let cb = Closure::wrap(Box::new(move |payload: JsValue| {
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "RMS in [0, 1] easily fits f32"
+        )]
+        let level = js_sys::Reflect::get(&payload, &"payload".into())
+            .ok()
+            .and_then(|v| v.as_f64())
+            .map_or(0.0_f32, |v| v as f32);
+        handler(level);
+    }) as Box<dyn Fn(JsValue)>);
+    let _ = listen_fn.call2(
+        &event,
+        &"system-audio-level".into(),
+        cb.as_ref().unchecked_ref(),
+    );
+    cb.forget();
 }
 
 /// Best-effort: turn a `JsValue` error into a human-readable string

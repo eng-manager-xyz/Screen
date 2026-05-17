@@ -50,6 +50,13 @@ pub fn MicPicker() -> impl IntoView {
     let selected_id = RwSignal::new(Option::<String>::None);
     let permission = RwSignal::new(CameraPermission::Granted);
     let open = RwSignal::new(false);
+    // M-AUDIO.METER / AUT-287 — live RMS level from the worker.
+    let level = RwSignal::new(0.0_f32);
+
+    // Subscribe once at component mount. The Tauri event listener
+    // leaks the closure intentionally (see subscribe_mic_level docs);
+    // the worker stops emitting when the user clicks stop_mic_capture.
+    mic_ipc::subscribe_mic_level(move |l| level.set(l));
 
     // Initial mount: probe permission, enumerate, restore last-used
     // selection. Note: unlike the camera picker we do NOT auto-start
@@ -87,6 +94,12 @@ pub fn MicPicker() -> impl IntoView {
                 </span>
                 <span class="mic-picker-chevron" aria-hidden="true">"▾"</span>
             </button>
+            <div class="audio-meter" aria-label="Microphone input level">
+                <div
+                    class="audio-meter-bar"
+                    style:width=move || format!("{:.1}%", (level.get() * 100.0).clamp(0.0, 100.0))
+                ></div>
+            </div>
             <Show when=move || open.get() fallback=|| view! { <></> }>
                 <div class="mic-picker-menu" role="listbox">
                     <MicPickerBody
@@ -116,6 +129,17 @@ fn MicPickerBody(
                 <p class="mic-picker-state-help">
                     {"Grant access in System Settings → Privacy & Security, then re-open this picker."}
                 </p>
+                <button
+                    type="button"
+                    class="mic-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            mic_ipc::open_settings_microphone().await;
+                        });
+                    }
+                >
+                    {"Open System Settings → Microphone"}
+                </button>
             </div>
         }
         .into_any(),
@@ -273,6 +297,7 @@ mod tests {
             is_default,
             channels: 2,
             sample_rate_hz: 48_000,
+            native_id: String::new(),
         }
     }
 
