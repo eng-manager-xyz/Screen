@@ -33,6 +33,10 @@ media = { path = "../media" }
 wisp = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+# M-CAM.3 diagnostic — encode the first received frame to PNG so the
+# user has visual proof BGRA pixels reached Rust. PNG-only build of
+# `image` keeps the dep surface minimal (no JPEG/WebP/etc decoders).
+image = { version = "0.25", default-features = false, features = ["png"] }
 pollster = { workspace = true }
 tracing = { workspace = true }
 

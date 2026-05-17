@@ -13,8 +13,10 @@
 //! including Windows, where Tauri 2's `mock_builder` won't even link
 //! at test-time (per CLAUDE.md).
 
+pub mod diagnostics;
 pub mod pipeline;
 
+pub use diagnostics::{DiagnosticsSnapshot, PreviewDiagnostics};
 pub use pipeline::{CameraPipeline, CameraPipelineHandle};
 
 use std::sync::Mutex;
