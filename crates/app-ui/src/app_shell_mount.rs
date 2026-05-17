@@ -72,6 +72,7 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
         >
             <section class="app-surface app-surface--recorder">
                 <h1>"Recorder"</h1>
+                <crate::recorder_controls::RecorderControls />
                 <crate::camera_picker::CameraPicker />
                 <crate::mic_picker::MicPicker />
                 <crate::system_audio_picker::SystemAudioPicker />

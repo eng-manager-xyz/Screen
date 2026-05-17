@@ -633,3 +633,132 @@
   font-size: 12px;
   margin-top: 4px;
 }
+
+/* M-RECORD.2 — RecorderControls (master Record button + LEDs) */
+.recorder-controls {
+  background: var(--bg-elev-1, #1a1a1a);
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.recorder-controls[data-recording="true"] {
+  border-color: var(--danger, #ff4444);
+  box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.35);
+}
+.recorder-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.recorder-controls-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--danger, #d93030);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.recorder-controls-record:hover {
+  background: var(--danger-strong, #ff4040);
+}
+.recorder-controls-record:active {
+  transform: scale(0.97);
+}
+.recorder-controls[data-recording="true"] .recorder-controls-record {
+  background: var(--bg-elev-2, #2a2a2a);
+  color: var(--danger, #ff4444);
+  border: 1px solid var(--danger, #ff4444);
+}
+.recorder-controls-record-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.recorder-controls-elapsed {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.recorder-controls-elapsed-time {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg, #eee);
+}
+.recorder-controls-elapsed-tag {
+  font-size: 11px;
+  color: var(--fg-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.recorder-controls-channels {
+  display: inline-flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.recorder-controls-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fg, #ddd);
+  cursor: pointer;
+  user-select: none;
+}
+.recorder-controls-channel input[type="checkbox"]:disabled + span {
+  color: var(--fg-muted, #666);
+}
+.recorder-controls-leds {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.recorder-controls-led {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-elev-2, #222);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--fg, #ddd);
+}
+.recorder-controls-led-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--fg-muted, #555);
+}
+.recorder-controls-led[data-colour="green"] .recorder-controls-led-dot {
+  background: #44d97a;
+  box-shadow: 0 0 6px rgba(68, 217, 122, 0.7);
+}
+.recorder-controls-led[data-colour="yellow"] .recorder-controls-led-dot {
+  background: #f0c040;
+  box-shadow: 0 0 6px rgba(240, 192, 64, 0.7);
+}
+.recorder-controls-led[data-colour="red"] .recorder-controls-led-dot {
+  background: #ff4444;
+  box-shadow: 0 0 6px rgba(255, 68, 68, 0.7);
+}
+.recorder-controls-error {
+  padding: 8px 12px;
+  background: rgba(255, 68, 68, 0.12);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 6px;
+  color: var(--danger, #ff7676);
+  font-size: 13px;
+}
