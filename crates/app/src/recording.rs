@@ -431,6 +431,75 @@ impl std::fmt::Debug for EncoderHandle {
 }
 
 impl EncoderHandle {
+    /// Start the encoder + a real-capture feed thread that pulls
+    /// composed frames from [`crate::recording_compose::RecordingCompose`]
+    /// and mixed audio from [`SharedAudioMixer`] (M-PIX.6).
+    ///
+    /// The compose pump is constructed *inside* the feed thread —
+    /// wisp's `Application` (wgpu Device + Queue) isn't `Send`
+    /// across the worker boundary in all configurations, and
+    /// constructing it on the thread that uses it avoids the
+    /// question entirely.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying encode error if the encoder can't
+    /// be constructed (parent dir missing, scratch file open
+    /// failure). Wisp init errors at compose-pump construction
+    /// happen on the feed thread; logged but don't fail the
+    /// handle creation.
+    pub fn start_with_real_capture(
+        encoder_config: media::encode::EncoderConfig,
+        camera_slot: FrameSlot,
+        screen_slot: FrameSlot,
+        audio_mixer: SharedAudioMixer,
+        screen_dims: wisp::recording::StreamDimensions,
+        cam_dims: wisp::recording::StreamDimensions,
+    ) -> Result<Self, media::encode::EncodeError> {
+        crate::recording_paths::ensure_parent_dir(&encoder_config.output_path)
+            .map_err(media::encode::EncodeError::Io)?;
+
+        let width = encoder_config.width;
+        let height = encoder_config.height;
+        let framerate = encoder_config.framerate;
+        let output_path = encoder_config.output_path.clone();
+
+        let inner = GstreamerEncoder::new(encoder_config)?;
+        let encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>> =
+            Arc::new(Mutex::new(Some(Box::new(inner))));
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        let cancel_thread = Arc::clone(&cancel);
+        let encoder_thread = Arc::clone(&encoder);
+        let feed_thread = std::thread::Builder::new()
+            .name(format!("recording-encoder-real-{width}x{height}"))
+            .spawn(move || {
+                feed_real_capture(
+                    encoder_thread,
+                    cancel_thread,
+                    camera_slot,
+                    screen_slot,
+                    audio_mixer,
+                    width,
+                    height,
+                    framerate,
+                    screen_dims,
+                    cam_dims,
+                );
+            })
+            .map_err(|err| media::encode::EncodeError::Spawn {
+                source: err,
+                path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+            })?;
+
+        Ok(Self {
+            cancel,
+            encoder,
+            output_path,
+            feed_thread: Some(feed_thread),
+        })
+    }
+
     /// Start an encoder + spawn the test-pattern feed thread.
     /// Returns a handle whose `finalize_now()` produces the final
     /// container path.
@@ -510,6 +579,102 @@ impl EncoderHandle {
             None => Ok(self.output_path),
         }
     }
+}
+
+/// Real-capture feed loop (M-PIX.6) — pulls composed frames from
+/// [`crate::recording_compose::RecordingCompose`] + mixed audio
+/// from the shared [`SharedAudioMixer`] until cancel fires.
+///
+/// Built inside the worker thread so wisp's wgpu Application
+/// doesn't cross thread boundaries. If the compose pump fails to
+/// init (no GPU adapter, etc.) the thread logs + exits cleanly —
+/// the encoder still finalizes whatever audio happened to arrive.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_pass_by_value,
+    reason = "arg list is the necessary capture-state surface; Arcs are taken by value because this fn IS the thread body."
+)]
+fn feed_real_capture(
+    encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>>,
+    cancel: Arc<AtomicBool>,
+    camera_slot: FrameSlot,
+    screen_slot: FrameSlot,
+    audio_mixer: SharedAudioMixer,
+    width: u32,
+    height: u32,
+    framerate: u32,
+    screen_dims: wisp::recording::StreamDimensions,
+    cam_dims: wisp::recording::StreamDimensions,
+) {
+    let mut compose =
+        match crate::recording_compose::RecordingCompose::new(width, height, screen_dims, cam_dims)
+        {
+            Ok(c) => c,
+            Err(err) => {
+                tracing::error!(
+                    ?err,
+                    "feed_real_capture: RecordingCompose::new failed; exiting"
+                );
+                return;
+            }
+        };
+
+    let frame_interval = Duration::from_micros(1_000_000_u64 / u64::from(framerate.max(1)));
+    let started_at = Instant::now();
+    let mut next_pts_frames: u64 = 0;
+    let mut frames_pushed: u64 = 0;
+
+    while !cancel.load(Ordering::Relaxed) {
+        let pts =
+            Duration::from_micros(next_pts_frames * (1_000_000_u64 / u64::from(framerate.max(1))));
+        // Compose this tick. None means no real content has arrived
+        // yet — skip the push so we don't pollute the .mp4 with
+        // clear-colour frames before the first capture lands.
+        let composed = compose.compose_frame(&camera_slot, &screen_slot);
+        if let Some(frame) = composed {
+            let mut guard = encoder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(ref mut enc) = *guard else { break };
+            if let Err(err) = enc.push_video_frame(&frame.bytes, pts) {
+                tracing::warn!(?err, "feed_real_capture: push_video_frame failed");
+                break;
+            }
+            frames_pushed = frames_pushed.saturating_add(1);
+        }
+
+        // Pull any mixed audio for this tick.
+        let audio_samples = {
+            let mut mixer_guard = audio_mixer
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            mixer_guard.pull()
+        };
+        if !audio_samples.is_empty() {
+            let mut guard = encoder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(ref mut enc) = *guard
+                && let Err(err) = enc.push_audio_chunk(&audio_samples, pts)
+            {
+                tracing::trace!(
+                    ?err,
+                    "feed_real_capture: push_audio_chunk failed (continuing)"
+                );
+            }
+        }
+
+        next_pts_frames = next_pts_frames.saturating_add(1);
+        let multiplier = u32::try_from(next_pts_frames).unwrap_or(u32::MAX);
+        let target = started_at + frame_interval * multiplier;
+        if let Some(sleep) = target.checked_duration_since(Instant::now()) {
+            std::thread::sleep(sleep);
+        }
+    }
+    tracing::info!(
+        frames = frames_pushed,
+        "feed_real_capture: feed thread exiting"
+    );
 }
 
 /// Test-pattern feed loop running on a dedicated thread. Pushes a

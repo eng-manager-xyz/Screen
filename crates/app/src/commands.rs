@@ -1498,6 +1498,10 @@ pub fn screen_capture_frame_count() -> u64 {
 /// - Underlying per-channel start error, prefixed with the channel
 ///   name (e.g. `"camera start failed: ..."`).
 #[tauri::command]
+#[allow(
+    clippy::too_many_lines,
+    reason = "Top-level orchestrator: input validation + per-channel start (camera, screen, mic, sys-audio) + encoder spin-up + session persist. Splitting per-channel helpers would just push the line count one level down while obscuring the rollback contract — every per-channel start must roll back the prior ones on failure, which is most natural as a flat sequence here."
+)]
 pub fn start_recording(
     app: tauri::AppHandle,
     recording_state: State<'_, RecordingState>,
@@ -1578,21 +1582,60 @@ pub fn start_recording(
         started.push(StreamKind::SystemAudio);
     }
 
-    // M-EXPORT.3 — spin up the encoder + its test-pattern feed
-    // thread. Output path + format come from the caller (M-EXPORT.4
-    // defaults applied UI-side); failure here rolls back per-channel
-    // streams too.
+    // M-EXPORT.3 + M-PIX.6 — spin up the encoder. Two feed-thread
+    // variants:
+    //
+    // - If any video channel (camera or screen) is enabled, use
+    //   the M-PIX.6 real-capture feed: pulls composed frames from
+    //   the wisp render pump + mixed audio from the AudioMixer.
+    // - Otherwise (audio-only or no-channels-enabled debug),
+    //   fall back to the M-EXPORT.3 test-pattern feed so the
+    //   encoder still produces a valid container.
+    //
+    // Output path + format come from the caller (M-EXPORT.4
+    // defaults applied UI-side); failure here rolls back per-
+    // channel streams too.
     let encoder_config = build_encoder_config_for_session(&config)?;
     let session_id_for_palette = session.id;
-    match crate::recording::EncoderHandle::start_with_test_pattern(
-        encoder_config,
-        session_id_for_palette,
-    ) {
+    let has_video = config.streams.camera || config.streams.screen;
+    let handle_result = if has_video {
+        use wisp::recording::StreamDimensions;
+        // Scene dims match what the capture sides emit. Screen
+        // dims come from the SCStreamConfiguration default
+        // (1920×1080). Camera dims come from the preview pipeline
+        // constants (PREVIEW_WIDTH × PREVIEW_HEIGHT = 480×480).
+        let screen_dims = StreamDimensions::new(
+            media::sck_video::DEFAULT_WIDTH,
+            media::sck_video::DEFAULT_HEIGHT,
+        );
+        let cam_dims = StreamDimensions::new(
+            crate::preview::pipeline::PREVIEW_WIDTH,
+            crate::preview::pipeline::PREVIEW_HEIGHT,
+        );
+        let camera_slot = crate::recording::FrameSlot::clone(&recording_state.camera_frame_slot);
+        let screen_slot = crate::recording::FrameSlot::clone(&recording_state.screen_frame_slot);
+        let mixer = crate::recording::SharedAudioMixer::clone(&recording_state.audio_mixer);
+        crate::recording::EncoderHandle::start_with_real_capture(
+            encoder_config,
+            camera_slot,
+            screen_slot,
+            mixer,
+            screen_dims,
+            cam_dims,
+        )
+    } else {
+        crate::recording::EncoderHandle::start_with_test_pattern(
+            encoder_config,
+            session_id_for_palette,
+        )
+    };
+    match handle_result {
         Ok(handle) => {
             tracing::info!(
                 session_id,
                 output_path = %handle.output_path.display(),
-                "start_recording: encoder started (test-pattern feed)"
+                feed_kind = if has_video { "real-capture" } else { "test-pattern" },
+                "start_recording: encoder started"
             );
             recording_state.install_encoder(handle);
         }
