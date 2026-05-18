@@ -428,19 +428,58 @@ test-recorder:
 # Total time: ~5–10 min cold (full Tauri bundle pipeline), ~1 min
 # warm. Always launches the bundle (not the raw binary), so TCC
 # permissions persist across re-runs.
-test-recorder-bundled:
-    @echo "→ [1/3] Cleaning stale wasm bundle…"
+# ─── Modular sub-recipes ─────────────────────────────────────────
+# `app-build` / `app-sign` / `app-open` are the atomic steps.
+# `app-bundle` composes build+sign (no open). `test-recorder-bundled`
+# composes the whole flow.
+#
+# Use `app-build` + `app-sign` directly if you want to script your
+# own flow (e.g. CI smoke), `app-bundle` for "compile + sign in one
+# go without opening", and `test-recorder-bundled` for the
+# one-command end-to-end manual smoke.
+
+# Step 1 of the bundled flow — clean wasm + build the .app via
+# `cargo tauri build --debug --bundles app`. Output:
+# `target/debug/bundle/macos/screen-app.app`.
+app-build:
+    @echo "→ Cleaning stale wasm bundle…"
     rm -rf crates/app-ui/dist
-    @echo "→ [2/3] Building .app bundle (cargo tauri build --debug --bundles app)…"
+    @echo "→ Building .app bundle (cargo tauri build --debug --bundles app)…"
     cd crates/app && cargo tauri build --debug --bundles app
-    @echo "→ [3/3] Re-signing with the correct ad-hoc identifier so macOS TCC sees `com.screen.app`…"
+    @echo "→ Bundle ready at target/debug/bundle/macos/screen-app.app"
+
+# Step 2 — re-sign the .app with an ad-hoc signature using the
+# `com.screen.app` identifier so macOS TCC tracks grants against
+# the stable bundle id (not the linker's per-rebuild-changing
+# hash). Idempotent — safe to re-run on an already-signed bundle.
+app-sign:
+    @echo "→ Re-signing with ad-hoc identity --identifier com.screen.app…"
     codesign --force --deep --sign - --identifier com.screen.app target/debug/bundle/macos/screen-app.app
-    @echo "    Verify:"
+    @echo "→ Verifying:"
     codesign -dv target/debug/bundle/macos/screen-app.app 2>&1 | head -4
+
+# Composed: build + sign, no open. Use when you want to bundle for
+# later launch (e.g. drop the .app into Applications, then double-
+# click) without immediately opening it from the terminal.
+app-bundle: app-build app-sign
     @echo ""
-    @echo "→ Opening the bundled .app — click the menubar circle to open the AppShell."
+    @echo "→ Build + sign complete. .app at target/debug/bundle/macos/screen-app.app"
+    @echo "  Launch with: just app-open  (or open it from Finder)"
+
+# Step 3 — open the bundled .app. macOS launches it as a proper
+# LaunchServices-registered app; first device access fires TCC
+# prompts. Use after `just app-bundle` if you skipped the
+# combined `test-recorder-bundled` recipe.
+app-open:
+    @echo "→ Opening bundled .app — click the menubar circle to open the AppShell."
     @echo "  First device access fires the macOS TCC prompts; click Allow on each."
     open target/debug/bundle/macos/screen-app.app
+
+# Top-level convenience: build + sign + open. The single command for
+# "I want to record + verify the recorder works end-to-end."
+# Depends on `app-bundle` (which depends on `app-build` + `app-sign`)
+# + adds the open step.
+test-recorder-bundled: app-bundle app-open
 
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
