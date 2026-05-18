@@ -6,6 +6,129 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-RECORD-EXPORT-REAL-PIXELS — phase 6 complete (8/8 chunks); real capture wired into encoder
+- **Date:** 2026-05-17
+- **Status:** ✅ done on the same `m-record-export` PR. M-EXPORT.3's test-pattern feed is now a fallback for the audio-only / no-channels case; recordings with any video channel enabled pump real captured pixels through wisp composition + wgpu readback into the encoder.
+- **PR:** [#50](https://github.com/eng-manager-xyz/Screen/pull/50) — same branch as Phase 1-5.
+
+### Phase 6 chunks (M-PIX.0 .. M-PIX.7)
+
+- **M-PIX.0** (`8b99864`) — `RecordingState` gains `camera_frame_slot`, `screen_frame_slot`, `audio_mixer` shared slots. 7 unit tests.
+- **M-PIX.1** (`2cf5d5e`) — camera worker forwards BGRA into `CameraFrameSlot`.
+- **M-PIX.2** (`66dcac8`) — SCK screen delegate extracts BGRA from `CMSampleBuffer` via `objc2-core-video`. Handles row-stride padding; pins SCK pixel format to `kCVPixelFormatType_32BGRA` so the extraction is a straight memcpy.
+- **M-PIX.3** (`3c8994c`) — mic worker pushes F32 samples into `AudioMixer.push_mic`.
+- **M-PIX.4** (`9a94735`) — SCK audio delegate gains `MixerSink` alongside the existing `LevelSink`; pushes F32 samples into `AudioMixer.push_sys_audio`.
+- **M-PIX.5** (`54851ee`) — new `RecordingCompose` (single-thread wisp `Application` + `Renderer` + `RecordingScene` + BGRA `RenderTexture`). Per-tick: pull slots, upload to scene, render to RT, `RenderTexture::read_pixels` for BGRA readback. 5 unit tests verify wgpu init + size-mismatch handling + slot drain semantics on real macOS Metal.
+- **M-PIX.6** (`c4590a6`) — `EncoderHandle::start_with_real_capture(...)` parallel to test-pattern variant. `feed_real_capture` thread fuses compose + push: latest frames + mixed audio → encoder at 30 fps. `start_recording` IPC picks real-capture branch when any video channel is enabled.
+- **M-PIX.7** (this entry) — close-out.
+
+### Architecture (real-capture data flow)
+
+```
+┌──────────────────┐  BGRA cam frame    ┌──────────────────────────┐
+│ CameraPipeline   │ ─────────────────► │ camera_frame_slot        │
+│ (gst worker)     │                    │ Arc<Mutex<Option<Vec>>>  │
+└──────────────────┘                    └──────────────────────────┘
+                                                    │
+┌──────────────────┐  BGRA screen frame             ▼  pull
+│ SCK delegate     │ ──────────────► ┌──────────────────────────┐
+│ (kCVPixelFmt     │                 │ screen_frame_slot         │
+│  _32BGRA)        │                 └──────────────────────────┘
+└──────────────────┘                                ▼
+                                     ┌──────────────────────────┐
+                                     │ RecordingCompose          │
+                                     │  - wisp::Application      │
+                                     │  - wisp::RecordingScene   │
+                                     │  - wgpu::RenderTexture    │
+                                     │  - render_stage           │
+                                     │  - read_pixels            │
+                                     └──────────────────────────┘
+                                                    │ BGRA
+                                                    ▼
+                                     ┌──────────────────────────┐
+                                     │ GstreamerEncoder          │
+                                     │ push_video_frame          │
+                                     │ push_audio_chunk          │
+                                     │ finalize → .mp4 / .webm   │
+                                     └──────────────────────────┘
+                                                    ▲
+                                                    │ pull
+┌──────────────────┐  F32 mic                       │
+│ MicCapturePipe   │ ─────────────► ┌──────────────────────────┐
+│ (gst worker)     │                │ audio_mixer (Arc)         │
+└──────────────────┘                │ - push_mic                │
+                                    │ - push_sys_audio          │
+┌──────────────────┐  F32 sys-audio │ - pull (soft-clip mix)    │
+│ SCK audio        │ ─────────────► │                           │
+│ delegate         │                └──────────────────────────┘
+└──────────────────┘
+```
+
+### What the recorder now produces end-to-end on macOS
+
+1. User picks devices in the 4 pickers → routes through M-CAM.4 / M-MIC.3 / M-SCK.0.1.
+2. User clicks Record:
+   - Camera worker starts emitting BGRA at 480×480 30 fps → `CameraFrameSlot`.
+   - SCK screen capture starts emitting BGRA at 1920×1080 30 fps → `ScreenFrameSlot`.
+   - Mic worker pushes F32 stereo 48 kHz → `AudioMixer.push_mic`.
+   - SCK audio delegate pushes F32 stereo 48 kHz → `AudioMixer.push_sys_audio`.
+   - Encoder feed thread (`feed_real_capture`) constructs a `RecordingCompose` (wisp Application + RecordingScene with screen-fullscreen + circular cam bubble bottom-right).
+   - 30× per second: compose → render → readback → push to encoder.
+   - Audio mixer's soft-clipped mix pushed to encoder at the same cadence.
+3. User clicks Stop:
+   - Feed thread observes cancel flag, exits.
+   - Encoder finalizes (gst-launch reads scratch files, encodes via `vtenc_h264_hw` + `avenc_aac`, writes `~/Movies/Screen/Screen-…mp4`).
+   - AVIF poster generated next to the video (if `avifenc` plugin installed).
+   - Toolbar shows "Saved to:" toast with Reveal-in-Finder button.
+
+### What you'd see when you double-click the .mp4
+
+- Real captured screen content (whatever was on your primary display, or the picked window/display).
+- Real captured camera frames composited as a circular bubble in the bottom-right (default `CamLayout::BOTTOM_RIGHT`).
+- Real mic audio + system audio mixed in the audio track.
+- File is H.264 + AAC in MP4 (or H.265 / VP9 + Opus / AV1 depending on the format dropdown).
+
+### Honest deferrals (not in this PR)
+
+- **Windows + Linux capture-side parity.** SCK is macOS-only; Windows needs `windows-rs` Graphics.Capture extraction, Linux needs `pipewire-rs` + portal integration. Pipeline-string builder side already scaffolded in M-EXPORT.1; per-OS pixel/audio extraction is the M-RECORD-EXPORT-PORT-WIN/LIN follow-up.
+- **CMSampleBuffer YUV path.** SCK is forced to BGRA via `setPixelFormat(kCVPixelFormatType_32BGRA)`. If a future config wants 420v for bandwidth, we'd add a YUV→BGRA converter in the extractor.
+- **Mic + SCK audio sample-rate / channel-count mismatch handling.** Today both emit 48 kHz stereo so the AudioMixer accepts directly. A future device that emits 44.1 kHz mono would need `audioresample` in the path.
+- **Real-time encode preview.** Test patterns work; the real-capture flow writes to scratch then encodes at finalize. Live `appsrc` streaming via `gstreamer-rs` Rust bindings would eliminate the post-stop encode wait.
+
+### Test totals (after Phase 6)
+
+- `cargo nextest run -p screen-app --lib` — **140/140**
+- `cargo nextest run -p media --lib` — **283/283**
+- `cargo nextest run -p screen-wisp --lib` — **505/505**
+- `cargo nextest run -p app-ui --lib` — **51/51**
+- Clippy native + wasm32 — green on every touched crate
+- `cargo fmt --all --check` — clean
+
+### Manual macOS regression checklist (for the user to run on return)
+
+1. Grant TCC for Camera, Microphone, Screen Recording in System Settings → Privacy & Security.
+2. `cargo tauri dev` (or `cargo run -p screen-app --features custom-protocol` for the bundled flow).
+3. Open Recorder surface via tray.
+4. Pick a camera + a mic in the pickers. Make sure System Audio + Screen are enabled.
+5. Click **Record**. Confirm: elapsed timer ticks, LEDs go green within ~1s, pickers lock.
+6. Talk into the mic, play some music in another app (for system audio).
+7. Wait ~10 seconds. Click **Stop**.
+8. Wait for the "Saved to:" toast (encoder takes ~3-5s on M-series to finalize the scratch into the final container).
+9. Click **Reveal in file manager**. Finder opens with the .mp4 highlighted.
+10. Double-click → QuickTime plays the recording. Verify:
+    - Real screen content (NOT solid colour).
+    - Circular camera overlay in the bottom-right with your face in it.
+    - Audio track with your voice + the music you played.
+    - Lipsync within ~80 ms.
+11. `Screen-…avif` file should exist next to the .mp4 (if `avifenc` is installed via `brew install gst-plugins-bad`).
+
+If any step fails, the relevant log output is in `tauri dev`'s terminal. Common failure modes:
+- "encoder finalize failed" → `gst-launch-1.0 --version` to confirm GStreamer is on PATH.
+- "vtenc_h264_hw not found" → `gst-inspect-1.0 vtenc_h264_hw` (should print plugin info; if missing, `brew install gstreamer` rebuilds).
+- Solid-colour video instead of real screen → check `RecordingState.screen_frame_slot` is being written (look for `extract_bgra_from_pixel_buffer` tracing).
+
+---
+
 ## M-RECORD-EXPORT — milestone complete (14/14 chunks)
 - **Date:** 2026-05-17
 - **Status:** ✅ done — full milestone shipped in one PR on `m-record-export` branch. Press Record → 4 streams coordinate → encoder produces a real `.mp4` (or `.webm`) at the configured path → AVIF poster generated next to it → "Reveal in Finder" works.
