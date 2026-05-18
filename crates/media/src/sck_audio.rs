@@ -126,6 +126,14 @@ const SYSTEM_AUDIO_LEVEL_EMA_ALPHA: f32 = 0.3;
 /// passes a closure that emits a `system-audio-level` Tauri event.
 pub type LevelSink = Box<dyn Fn(f32) + Send + Sync + 'static>;
 
+/// Optional consumer for raw system-audio samples (M-PIX.4).
+/// Called from inside the SCK delegate with the freshly-extracted
+/// F32LE interleaved buffer. Use this to push samples into
+/// `media::audio_mix::AudioMixer` for the encoder feed thread to
+/// pull. Mirror of [`LevelSink`] — pass `None` when the consumer
+/// doesn't need raw samples (legacy meter-only path).
+pub type MixerSink = Box<dyn Fn(&[f32]) + Send + Sync + 'static>;
+
 /// Default sample rate the recorder requests from SCK. Matches the
 /// mic path's `MIC_SAMPLE_RATE` (M-MIC.1) so the encoder's resampler
 /// stays trivial. SCK negotiates around this if the underlying
@@ -323,6 +331,12 @@ define_class!(
                             + (1.0 - SYSTEM_AUDIO_LEVEL_EMA_ALPHA) * *state;
                         sink(*state);
                     }
+                    // M-PIX.4 — push raw samples into the
+                    // recorder's shared AudioMixer (mic + sys
+                    // → encoder).
+                    if let Some(sink) = self.ivars().mixer_sink.as_ref() {
+                        sink(&samples);
+                    }
                     // try_send equivalent: if the receiver is gone
                     // (Drop in progress) we silently drop. The Sender
                     // is mpsc, send blocks only when the channel is
@@ -349,15 +363,25 @@ pub(crate) struct AudioOutputIvars {
     /// meter (used in tests + when system audio is captured without
     /// a UI consumer).
     level_sink: Option<LevelSink>,
+    /// Optional per-buffer raw-sample callback (M-PIX.4). Pushes
+    /// the freshly-extracted F32LE samples into the recorder's
+    /// shared `AudioMixer` so the encoder feed thread can pull
+    /// them. `None` keeps the legacy meter-only behaviour.
+    mixer_sink: Option<MixerSink>,
     /// Persisted EMA state across buffer callbacks.
     smoothed_level: std::sync::Mutex<f32>,
 }
 
 impl AudioOutputHandler {
-    fn new(sender: Sender<DeliveredSamples>, level_sink: Option<LevelSink>) -> Retained<Self> {
+    fn new(
+        sender: Sender<DeliveredSamples>,
+        level_sink: Option<LevelSink>,
+        mixer_sink: Option<MixerSink>,
+    ) -> Retained<Self> {
         let this = Self::alloc().set_ivars(AudioOutputIvars {
             sender,
             level_sink,
+            mixer_sink,
             smoothed_level: std::sync::Mutex::new(0.0),
         });
         // SAFETY: `init` on NSObject takes Allocated<Self> + returns
@@ -583,8 +607,19 @@ impl SystemAudioStream {
         config: SystemAudioConfig,
         level_sink: Option<LevelSink>,
     ) -> Result<Self, SystemAudioError> {
+        Self::new_with_sinks(config, level_sink, None)
+    }
+
+    /// Full-fat constructor accepting both the [`LevelSink`] (for the
+    /// meter) and the M-PIX.4 [`MixerSink`] (for the recorder's
+    /// shared `AudioMixer`). Both are optional and independent.
+    pub fn new_with_sinks(
+        config: SystemAudioConfig,
+        level_sink: Option<LevelSink>,
+        mixer_sink: Option<MixerSink>,
+    ) -> Result<Self, SystemAudioError> {
         let (sender, receiver) = channel();
-        let delegate = AudioOutputHandler::new(sender, level_sink);
+        let delegate = AudioOutputHandler::new(sender, level_sink, mixer_sink);
 
         // 1. Get shareable content (displays + apps). Required so we
         //    can attach the SCContentFilter to a display, even

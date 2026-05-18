@@ -42,6 +42,19 @@ impl SystemAudioCaptureState {
         app: &AppHandle,
         config: SystemAudioConfig,
     ) -> Result<(), SystemAudioError> {
+        self.start_with_mixer(app, config, None)
+    }
+
+    /// Same as [`Self::start`] but accepts an optional
+    /// `mixer_sink` (M-PIX.4) that pushes raw F32LE samples into
+    /// the recorder's shared `AudioMixer` for the encoder feed
+    /// thread to consume.
+    pub fn start_with_mixer(
+        &self,
+        app: &AppHandle,
+        config: SystemAudioConfig,
+        mixer: Option<crate::recording::SharedAudioMixer>,
+    ) -> Result<(), SystemAudioError> {
         let mut guard = self
             .0
             .lock()
@@ -51,16 +64,25 @@ impl SystemAudioCaptureState {
         *guard = None;
         let app_for_sink = app.clone();
         let level_sink: media::sck_audio::LevelSink = Box::new(move |level: f32| {
-            // Mirror `audio::pipeline::emit_mic_level`'s
-            // failure-swallow stance — at ~20 Hz a missed emit is
-            // invisible and surfacing the event-bus error to the
-            // SCK delegate (which runs on Apple's dispatch queue)
-            // would risk worse failure modes.
             if let Err(err) = app_for_sink.emit("system-audio-level", level) {
                 tracing::trace!(?err, "emit system-audio-level failed");
             }
         });
-        let stream = SystemAudioStream::new_with_level_sink(config, Some(level_sink))?;
+        let mixer_sink: Option<media::sck_audio::MixerSink> = mixer.map(|m| {
+            let mixer_clone = m;
+            let sink: media::sck_audio::MixerSink = Box::new(move |samples: &[f32]| {
+                let mut guard = mixer_clone
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Err(err) = guard.push_sys_audio(samples) {
+                    // Misalignment shouldn't happen — SCK emits
+                    // aligned buffers — but warn instead of panic.
+                    tracing::warn!(?err, "AudioMixer::push_sys_audio rejected SCK buffer");
+                }
+            });
+            sink
+        });
+        let stream = SystemAudioStream::new_with_sinks(config, Some(level_sink), mixer_sink)?;
         *guard = Some(stream);
         Ok(())
     }

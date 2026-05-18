@@ -1920,8 +1920,14 @@ fn start_sys_audio_for_session(app: &tauri::AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<SystemAudioCaptureState>() else {
         return Err("SystemAudioCaptureState not managed".into());
     };
+    // M-PIX.4 — plumb the shared AudioMixer from RecordingState so
+    // the SCK delegate forwards system-audio F32 samples into it
+    // for the encoder feed thread to pull.
+    let mixer = app
+        .try_state::<RecordingState>()
+        .map(|s| crate::recording::SharedAudioMixer::clone(&s.audio_mixer));
     state
-        .start(app, media::sck_audio::SystemAudioConfig::default())
+        .start_with_mixer(app, media::sck_audio::SystemAudioConfig::default(), mixer)
         .map_err(|e| e.to_string())
 }
 
