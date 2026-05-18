@@ -88,6 +88,7 @@
 //! | [`manifest`] | M-MEDIA.20 (AUT-116) | scaffolded |
 
 pub mod audio;
+pub mod audio_mix;
 pub mod camera;
 pub mod clock;
 pub mod encode;
