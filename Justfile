@@ -481,6 +481,44 @@ app-open:
 # + adds the open step.
 test-recorder-bundled: app-bundle app-open
 
+# Nuke everything related to the bundled .app so the next
+# `app-bundle` run is forced from scratch:
+#
+# * `cargo clean -p screen-app -p app-ui` — forces both crates to
+#   recompile. Cheap: only these two crates rebuild; the wisp /
+#   media / dep tree caches survive. (`cargo clean` without `-p`
+#   would nuke 30+ GB of cached deps — DON'T do that.)
+# * `rm -rf crates/app-ui/dist` — forces trunk to rebuild the wasm
+#   bundle.
+# * `rm -rf target/debug/bundle` — forces Tauri's bundler to
+#   re-create the .app from scratch.
+# * `tccutil reset` for Camera + Microphone + ScreenCapture —
+#   forces macOS to re-prompt on next launch. Errors silently
+#   ignored (no entry exists = nothing to reset).
+#
+# After this, `just app-bundle` / `just test-recorder-bundled` will
+# rebuild + re-sign + (optionally) re-open from a known clean
+# state. Use this when "permissions aren't working" / "I just want
+# a clean slate to debug from."
+app-clean:
+    @echo "→ Cleaning build artifacts…"
+    cargo clean -p screen-app -p app-ui
+    rm -rf crates/app-ui/dist
+    rm -rf target/debug/bundle
+    @echo "→ Resetting macOS TCC entries for com.screen.app (silent if not registered yet)…"
+    -tccutil reset Camera com.screen.app 2>/dev/null
+    -tccutil reset Microphone com.screen.app 2>/dev/null
+    -tccutil reset ScreenCapture com.screen.app 2>/dev/null
+    @echo "→ Clean. Next bundle run starts from scratch."
+
+# One-shot: clean everything + rebuild + sign + open. Use this when
+# the permissions / pickers / preview is being weird and you want to
+# rule out staleness in a single command.
+#
+# Total time: ~5-10 min (full screen-app + app-ui recompile + Tauri
+# bundle pipeline).
+app-fresh: app-clean app-bundle app-open
+
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
 # `mdbook serve` has built-in live reload (filesystem watch + websocket
