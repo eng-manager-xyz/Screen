@@ -2209,6 +2209,34 @@ pub fn default_recording_output_path(format_slug: Option<String>) -> String {
         .into_owned()
 }
 
+/// Return the latest BGRA frame from the camera capture slot
+/// (M-PIX.8). Used by `<CameraPreview />`'s 15fps poll to paint
+/// the live webcam into the canvas. Returns raw bytes via
+/// `tauri::ipc::Response` so the JS side receives an `ArrayBuffer`
+/// directly (no JSON-array serialization overhead).
+///
+/// Empty `Response` when no frame is available yet — the JS side
+/// skips painting on this tick.
+///
+/// Reads the same `CameraFrameSlot` the encoder feed thread reads
+/// from. The capture worker writes latest-frame-wins, so both
+/// consumers see the most recent frame; neither blocks the other
+/// (the preview's `take()` clears the slot, but the next capture
+/// tick re-fills within ~33 ms at 30 fps).
+#[tauri::command]
+#[must_use]
+pub fn latest_camera_frame_bgra(
+    recording_state: State<'_, RecordingState>,
+) -> tauri::ipc::Response {
+    let bytes = recording_state
+        .camera_frame_slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+        .unwrap_or_default();
+    tauri::ipc::Response::new(bytes)
+}
+
 /// Open the OS file manager focused on the given recording file
 /// (M-EXPORT.4). macOS: `open -R`. Windows:
 /// `explorer /select,`. Linux: `xdg-open <parent-dir>` (no portable

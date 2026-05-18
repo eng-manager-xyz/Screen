@@ -121,6 +121,7 @@ fn main() {
                     commands::recording_status,
                     commands::default_recording_output_path,
                     commands::reveal_recording_in_file_manager,
+                    commands::latest_camera_frame_bgra,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -166,6 +167,7 @@ fn main() {
                     commands::recording_status,
                     commands::default_recording_output_path,
                     commands::reveal_recording_in_file_manager,
+                    commands::latest_camera_frame_bgra,
                 ]
             }
         })

@@ -107,14 +107,20 @@ impl RecordingCompose {
         camera_slot: &FrameSlot,
         screen_slot: &FrameSlot,
     ) -> Option<ComposedFrame> {
+        // CLONE not take — M-PIX.8 added a second consumer (the
+        // <CameraPreview /> 15fps poll). Both consumers need to
+        // see the latest frame; latest-frame-wins still holds
+        // because capture-side writes unconditionally overwrite.
+        // Cost: one BGRA clone per consumer per tick — at 480×480
+        // ≈ 920 KB/clone, negligible.
         let cam = camera_slot
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+            .clone();
         let screen = screen_slot
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+            .clone();
 
         if let Some(bytes) = cam {
             let expected = self.scene.cam_dims().byte_len();
@@ -219,13 +225,20 @@ mod tests {
     }
 
     #[test]
-    fn compose_frame_clears_slots_on_each_call() {
+    fn compose_frame_leaves_slots_intact_for_other_consumers() {
+        // M-PIX.8: compose now CLONES (not takes) so the camera
+        // preview's 15fps poll sees the same latest-frame-wins
+        // contents. Verify the slot still holds the bytes after
+        // a compose tick.
         let (screen, cam) = test_dims();
         let mut compose = RecordingCompose::new(64, 64, screen, cam).expect("init");
         let cam_slot: FrameSlot = Arc::new(Mutex::new(None));
-        let screen_slot: FrameSlot = Arc::new(Mutex::new(Some(vec![64u8; 64 * 64 * 4])));
+        let screen_bytes = vec![64u8; 64 * 64 * 4];
+        let screen_slot: FrameSlot = Arc::new(Mutex::new(Some(screen_bytes.clone())));
         let _ = compose.compose_frame(&cam_slot, &screen_slot);
+        // Slot still holds the latest frame for other consumers.
+        assert_eq!(screen_slot.lock().unwrap().as_ref(), Some(&screen_bytes));
+        // Cam slot was always None — stays None.
         assert!(cam_slot.lock().unwrap().is_none());
-        assert!(screen_slot.lock().unwrap().is_none());
     }
 }

@@ -96,12 +96,13 @@
   border-radius: 12px;
 }
 
-/* Camera preview surface (M-CAM.3 / AUT-257).
+/* Camera preview surface (M-CAM.3 / AUT-257 + M-PIX.8 circle).
  *
- * IMPORTANT: no `border-radius` on `.camera-preview`. The circular
- * mask is rendered into the wisp scene + baked into the BGRA
- * readback bytes. CSS-rounding the same edge would visibly
- * double-crop the circle. */
+ * M-PIX.8: the canvas is painted with raw rectangular BGRA frames
+ * pulled from CameraFrameSlot, so the circular mask lives in CSS
+ * here (border-radius: 50%). The wisp-baked circular mask still
+ * applies to the RECORDED output via RecordingScene's clip — that
+ * path is independent of this preview. */
 .camera-preview-surface {
   position: relative;
   display: flex;
@@ -115,6 +116,11 @@
   display: block;
   margin: 0 auto;
   background: var(--surface-1, #1a1d21);
+  border-radius: 50%;
+  /* Faint ring so the circle reads even when the camera content
+   * is mostly dark / pre-paint. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  object-fit: cover;
 }
 .camera-preview-surface[data-state="initialising"] .camera-preview,
 .camera-preview-surface[data-state="awaiting-permission"] .camera-preview,
