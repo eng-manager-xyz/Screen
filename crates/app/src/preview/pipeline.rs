@@ -185,6 +185,15 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool, camera_id: &str) {
         "camera-pipeline opened; awaiting first frame"
     );
 
+    // M-PIX.1 — forward frames into the encoder's CameraFrameSlot
+    // when a recording session is active. Slot is `Option`-wrapped
+    // because the slot belongs to RecordingState which may not be
+    // managed (defensive read) and writes are no-ops when the slot
+    // is absent.
+    let camera_frame_slot = app
+        .try_state::<crate::recording::RecordingState>()
+        .map(|state| crate::recording::FrameSlot::clone(&state.camera_frame_slot));
+
     while !cancel.load(Ordering::Relaxed) {
         match stream.next_frame() {
             Ok(frame) => {
@@ -200,9 +209,20 @@ fn run_pipeline(app: &tauri::AppHandle, cancel: &AtomicBool, camera_id: &str) {
                     frame.width,
                     frame.height,
                 );
-                // Frame is otherwise unused here — the wisp render +
-                // Tauri Channel emit layers consume it in follow-up
-                // commits.
+                // M-PIX.1 — push BGRA bytes into the shared slot
+                // (latest-frame-wins). Encoder feed thread clones
+                // out at render time. Clone here is unavoidable —
+                // `frame` is consumed by drop below; the slot
+                // outlives this iteration. Cost: one ~480×480×4 =
+                // 920 KB copy per frame at 30 fps = ~28 MB/s on
+                // the heap, negligible at the workloads this
+                // recorder targets.
+                if let Some(ref slot) = camera_frame_slot {
+                    let mut guard = slot
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    *guard = Some(frame.bgra.clone());
+                }
                 drop(frame);
             }
             Err(err) => {
