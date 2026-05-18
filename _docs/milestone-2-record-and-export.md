@@ -163,6 +163,65 @@ End-to-end on macOS:
 
 ---
 
+## Phase 6 — Real pixel forwarding (M-PIX, 8 chunks) — appended 2026-05-17
+
+The M-RECORD-EXPORT.GATE closeout shipped with a test-pattern encoder feed (solid colour + silence). The recorder produces a real `.mp4` end-to-end but the content isn't the user's actual screen / camera / mic / system audio. **M-PIX replaces the test-pattern feed with real captured frames.**
+
+### Phase 6.1 — Capture-side frame extraction (4 chunks)
+
+#### M-PIX.0 — Shared frame slots + AudioMixer plumbing in `RecordingState`
+- Add `camera_frame_slot: Arc<Mutex<Option<Vec<u8>>>>`, `screen_frame_slot: Arc<Mutex<Option<Vec<u8>>>>`, `audio_mixer: Arc<Mutex<AudioMixer>>` to `RecordingState`.
+- Slots are latest-frame-wins: capture pipelines overwrite with each new frame; encoder feed thread reads at render time.
+- **Done when:** unit tests cover slot semantics + concurrent read/write.
+
+#### M-PIX.1 — Camera worker forwards BGRA to `CameraFrameSlot`
+- Extend `CameraPipeline::spawn` worker to clone the BGRA bytes from each `next_frame` into the shared slot.
+- Worker takes `Option<Arc<...>>` — None preserves the legacy preview-only behaviour.
+- **Done when:** running session sees the slot fill within ~100 ms of preview-up.
+
+#### M-PIX.2 — SCK screen delegate extracts BGRA from `CMSampleBuffer`
+- `ScreenOutputHandler::stream_didOutputSampleBuffer_ofType` locks the `CVPixelBuffer`, memcpys out the BGRA bytes (handling row-stride padding), unlocks, writes to `ScreenFrameSlot`.
+- Adds `objc2-core-video` dep.
+- **Done when:** unit tests cover stride math + a manual macOS smoke shows the slot fills at SCK's framerate.
+
+#### M-PIX.3 — Mic worker pushes F32 samples to shared `AudioMixer`
+- Extend mic capture worker to clone F32LE chunks into `AudioMixer.push_mic(samples)`.
+- Worker takes `Option<Arc<Mutex<AudioMixer>>>`.
+- **Done when:** unit tests verify push_mic alignment; manual smoke confirms `mixer.mic_queued()` grows.
+
+#### M-PIX.4 — SCK audio delegate extracts F32 to `AudioMixer`
+- `AudioOutputHandler` extracts F32LE from `AudioBufferList` (handles interleaved vs non-interleaved).
+- Pushes to `AudioMixer.push_sys_audio`.
+- **Done when:** unit tests cover layout-detection math; manual smoke confirms sys-audio samples reach the mixer.
+
+### Phase 6.2 — Encoder-side composition (3 chunks)
+
+#### M-PIX.5 — wisp render thread with wgpu readback
+- New compose worker owns `wisp::Application` + `Renderer` + `RecordingScene` + 1920×1080 `RenderTexture` + wgpu staging buffer.
+- 30 fps loop: pull latest cam → `set_camera_frame`; pull latest screen → `set_screen_frame`; render scene; copy RT → staging; map + read BGRA bytes; emit on output channel.
+- Handle dimension mismatches via wisp's sprite scaling.
+- **Done when:** integration test creates synthetic cam+screen slots, composes 30 frames, asserts the readback bytes are non-zero (real compose happened).
+
+#### M-PIX.6 — Replace test-pattern feed with real-capture feed in `EncoderHandle`
+- New `EncoderHandle::start_with_real_capture(config, slots, mixer)`.
+- Real-capture feed thread: pull composed BGRA from M-PIX.5 receiver → `push_video_frame`; pull `AudioMixer` → `push_audio_chunk`; pace at framerate.
+- `start_recording` picks real-capture path when at least one channel enabled.
+- Keep test-pattern path as a debug fallback for "no channels enabled."
+- **Done when:** macOS smoke records a real 5-s session, file plays back with actual content.
+
+### Phase 6.3 — Validation (1 chunk)
+
+#### M-PIX.7 — End-to-end macOS smoke + PROGRESS update
+- Manual record 10 s with all 4 inputs enabled.
+- Verify: real screen content + circular cam overlay; real mic + sys-audio mixed; lipsync ~80 ms; AVIF poster shows real frame.
+- PROGRESS.md entry summarising M-PIX phase; PR body refreshed.
+
+### Out of scope for M-PIX (deferred to M-RECORD-EXPORT-PORT)
+
+- **Windows/Linux pixel extraction.** SCK is macOS-only. Windows needs `windows-rs` Graphics.Capture; Linux needs `pipewire-rs`. Both are sizeable separate efforts.
+- **Cursor smoothing / zoom effects.** M-CURSOR.
+- **Multi-display compose** (record display 1 + display 2 side-by-side). M-SCK.MULTI.
+
 ## Out of scope for this milestone
 
 Explicitly punted to follow-up milestones:
