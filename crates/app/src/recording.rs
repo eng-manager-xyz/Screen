@@ -28,10 +28,12 @@
 //! unit-testable without Tauri's `AppHandle`.
 //! ```
 
+use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use media::encode::{GstreamerEncoder, VideoEncoder};
 use serde::{Deserialize, Serialize};
 
 /// Monotonically-increasing session id. Resets per process start;
@@ -271,14 +273,38 @@ impl RecordingSession {
 /// `recording_status` IPC commands + the 500 ms event-push task
 /// share one source of truth. Mirror of `MicCaptureState` /
 /// `ScreenCaptureState`.
+///
+/// Two slots:
+/// - `session: Mutex<Option<RecordingSession>>` — the immutable
+///   snapshot (id, `started_at`, state, streams).
+/// - `encoder: Mutex<Option<EncoderHandle>>` — the live encoder +
+///   test-pattern feed thread. Separated from `session` so the
+///   500 ms `recording-status` event push can take a cheap clone
+///   of the session snapshot without holding the encoder mutex.
 #[derive(Default)]
-pub struct RecordingState(pub Mutex<Option<RecordingSession>>);
+pub struct RecordingState {
+    /// Immutable per-session snapshot.
+    pub session: Mutex<Option<RecordingSession>>,
+    /// Active encoder + its background feed thread. M-EXPORT.3.
+    pub encoder: Mutex<Option<EncoderHandle>>,
+}
 
+/// Backwards-compatible field-tuple access — the M-RECORD.1 commands
+/// were written when `RecordingState` was a `Mutex<Option<...>>`
+/// tuple struct. This helper preserves the `state.0.lock()` call
+/// shape used in those sites.
 impl RecordingState {
+    /// `&self.session` — sugar for the call sites that still
+    /// reach for `state.0.lock()`.
+    #[allow(dead_code, reason = "compat shim for the M-RECORD.1 call sites")]
+    pub fn legacy_lock(&self) -> &Mutex<Option<RecordingSession>> {
+        &self.session
+    }
+
     /// `true` if a session is currently held.
     #[must_use]
     pub fn is_active(&self) -> bool {
-        self.0
+        self.session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_some()
@@ -288,11 +314,224 @@ impl RecordingState {
     /// don't hold the mutex across the rest of their work.
     #[must_use]
     pub fn snapshot(&self) -> Option<RecordingSession> {
-        self.0
+        self.session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
+
+    /// Install a fresh encoder handle (M-EXPORT.3). Replaces any
+    /// prior handle without finalising — caller is responsible for
+    /// having finalised the previous session first.
+    pub fn install_encoder(&self, handle: EncoderHandle) {
+        let mut guard = self
+            .encoder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(handle);
+    }
+
+    /// Take the encoder handle out for finalisation. Returns `None`
+    /// when no session was active.
+    #[must_use]
+    pub fn take_encoder(&self) -> Option<EncoderHandle> {
+        self.encoder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+}
+
+/// Live encoder + its background feed-thread cancel flag. Owned by
+/// [`RecordingState::encoder`] for the duration of a session.
+///
+/// The M-EXPORT.3 v0 ships with a **test-pattern feed thread** —
+/// pushes a solid-colour BGRA frame at 30 fps so the encoder
+/// produces a real (trivial) `.mp4` file the user can verify the
+/// orchestration end-to-end with. Real per-channel pixel forwarding
+/// (extending camera/screen/SCK pipelines to push frames) is the
+/// `M-EXPORT.3.1` follow-up.
+pub struct EncoderHandle {
+    /// Cooperative cancel flag for the feed thread.
+    pub cancel: Arc<AtomicBool>,
+    /// The encoder itself. Wrapped in `Mutex<Option<...>>` so the
+    /// feed thread can push from its lock; `finalize` calls `take()`
+    /// + invokes `Box::finalize` after the thread joins.
+    pub encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>>,
+    /// Output path the encoder was configured to write to. Mirrored
+    /// here so `stop_recording` can include it in `RecordingSummary`
+    /// without re-querying.
+    pub output_path: std::path::PathBuf,
+    /// Background thread feeding the encoder. `Some` while active,
+    /// `None` after `take_for_finalize()` removes it.
+    pub feed_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl std::fmt::Debug for EncoderHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EncoderHandle")
+            .field("output_path", &self.output_path)
+            .field("feed_thread_alive", &self.feed_thread.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl EncoderHandle {
+    /// Start an encoder + spawn the test-pattern feed thread.
+    /// Returns a handle whose `finalize_now()` produces the final
+    /// container path.
+    ///
+    /// `palette_seed` controls the test-pattern colour (different
+    /// per session id so multiple recordings produce visually
+    /// distinct previews).
+    pub fn start_with_test_pattern(
+        encoder_config: media::encode::EncoderConfig,
+        palette_seed: u64,
+    ) -> Result<Self, media::encode::EncodeError> {
+        // Ensure the parent dir of the output exists (M-EXPORT.4
+        // helper). `EncoderConfig.output_path` is a file path.
+        crate::recording_paths::ensure_parent_dir(&encoder_config.output_path)
+            .map_err(media::encode::EncodeError::Io)?;
+
+        let width = encoder_config.width;
+        let height = encoder_config.height;
+        let framerate = encoder_config.framerate;
+        let channels = encoder_config.channels;
+        let sample_rate = encoder_config.sample_rate;
+        let output_path = encoder_config.output_path.clone();
+
+        let inner = GstreamerEncoder::new(encoder_config)?;
+        let encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>> =
+            Arc::new(Mutex::new(Some(Box::new(inner))));
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        let cancel_thread = Arc::clone(&cancel);
+        let encoder_thread = Arc::clone(&encoder);
+        let feed_thread = std::thread::Builder::new()
+            .name(format!("recording-encoder-feed-{palette_seed}"))
+            .spawn(move || {
+                feed_test_pattern(
+                    encoder_thread,
+                    cancel_thread,
+                    width,
+                    height,
+                    framerate,
+                    channels,
+                    sample_rate,
+                    palette_seed,
+                );
+            })
+            .map_err(|err| media::encode::EncodeError::Spawn {
+                source: err,
+                path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+            })?;
+
+        Ok(Self {
+            cancel,
+            encoder,
+            output_path,
+            feed_thread: Some(feed_thread),
+        })
+    }
+
+    /// Stop the feed thread and finalize the encoder. Returns the
+    /// output path on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying [`media::encode::EncodeError`] if the
+    /// gst-launch subprocess fails.
+    pub fn finalize_now(mut self) -> Result<std::path::PathBuf, media::encode::EncodeError> {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.feed_thread.take() {
+            let _ = handle.join();
+        }
+        let encoder = self
+            .encoder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        match encoder {
+            Some(boxed) => boxed.finalize(),
+            None => Ok(self.output_path),
+        }
+    }
+}
+
+/// Test-pattern feed loop running on a dedicated thread. Pushes a
+/// solid colour BGRA frame at the encoder's framerate (and a chunk
+/// of silence at the audio sample rate) until cancel fires.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments,
+    clippy::needless_pass_by_value,
+    reason = "test-pattern math: u64 seed → u8 channel via wrapping arithmetic; arg list is the necessary EncoderConfig surface for this self-contained feeder; Arc<...> args are taken by value because this fn IS the thread body — the caller move-spawns and the Arcs are dropped when the closure returns."
+)]
+fn feed_test_pattern(
+    encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>>,
+    cancel: Arc<AtomicBool>,
+    width: u32,
+    height: u32,
+    framerate: u32,
+    channels: u8,
+    sample_rate: u32,
+    palette_seed: u64,
+) {
+    let frame_interval = Duration::from_micros(1_000_000_u64 / u64::from(framerate.max(1)));
+    let bytes_per_frame = (width as usize) * (height as usize) * 4;
+    let mut frame = vec![0u8; bytes_per_frame];
+    // Solid colour from the palette seed (different per session).
+    let b = (palette_seed.wrapping_mul(73) & 0xff) as u8;
+    let g = (palette_seed.wrapping_mul(151) & 0xff) as u8;
+    let r = (palette_seed.wrapping_mul(229) & 0xff) as u8;
+    for px in frame.chunks_exact_mut(4) {
+        px[0] = b;
+        px[1] = g;
+        px[2] = r;
+        px[3] = 255;
+    }
+    // Silence chunk sized for one frame interval at the configured
+    // audio caps.
+    let samples_per_frame =
+        (u64::from(sample_rate) / u64::from(framerate.max(1))) as usize * channels as usize;
+    let silence = vec![0.0_f32; samples_per_frame];
+
+    let started_at = Instant::now();
+    let mut next_pts_frames: u64 = 0;
+    while !cancel.load(Ordering::Relaxed) {
+        let pts =
+            Duration::from_micros(next_pts_frames * (1_000_000_u64 / u64::from(framerate.max(1))));
+        {
+            let mut guard = encoder
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(ref mut enc) = *guard {
+                if let Err(err) = enc.push_video_frame(&frame, pts) {
+                    tracing::warn!(?err, "feed_test_pattern: push_video_frame failed");
+                    break;
+                }
+                if let Err(err) = enc.push_audio_chunk(&silence, pts) {
+                    tracing::trace!(
+                        ?err,
+                        "feed_test_pattern: push_audio_chunk failed (continuing)"
+                    );
+                }
+            } else {
+                break;
+            }
+        }
+        next_pts_frames = next_pts_frames.saturating_add(1);
+        // Pace at framerate without drifting too badly under load.
+        let target = started_at + frame_interval * (next_pts_frames as u32);
+        if let Some(sleep) = target.checked_duration_since(Instant::now()) {
+            std::thread::sleep(sleep);
+        }
+    }
+    tracing::info!(
+        frames = next_pts_frames,
+        "feed_test_pattern: feed thread exiting"
+    );
 }
 
 // ---- IPC view types (M-RECORD.1) ---------------------------------
@@ -616,7 +855,7 @@ mod tests {
     fn recording_state_holds_then_releases_session() {
         let s = RecordingState::default();
         {
-            let mut guard = s.0.lock().unwrap();
+            let mut guard = s.session.lock().unwrap();
             *guard = Some(RecordingSession::starting(SessionStreams {
                 camera: true,
                 ..Default::default()
@@ -628,7 +867,7 @@ mod tests {
         assert!(snap.streams.camera);
 
         // Clear it
-        s.0.lock().unwrap().take();
+        s.session.lock().unwrap().take();
         assert!(!s.is_active());
     }
 

@@ -1578,15 +1578,72 @@ pub fn start_recording(
         started.push(StreamKind::SystemAudio);
     }
 
+    // M-EXPORT.3 — spin up the encoder + its test-pattern feed
+    // thread. Output path + format come from the caller (M-EXPORT.4
+    // defaults applied UI-side); failure here rolls back per-channel
+    // streams too.
+    let encoder_config = build_encoder_config_for_session(&config)?;
+    let session_id_for_palette = session.id;
+    match crate::recording::EncoderHandle::start_with_test_pattern(
+        encoder_config,
+        session_id_for_palette,
+    ) {
+        Ok(handle) => {
+            tracing::info!(
+                session_id,
+                output_path = %handle.output_path.display(),
+                "start_recording: encoder started (test-pattern feed)"
+            );
+            recording_state.install_encoder(handle);
+        }
+        Err(err) => {
+            rollback_started(&app, &started);
+            return Err(format!("encoder start failed: {err}"));
+        }
+    }
+
     {
         let mut guard = recording_state
-            .0
+            .session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = Some(session);
     }
     spawn_status_emitter(app.clone(), session_id);
     Ok(session_id)
+}
+
+/// Map a [`RecordingConfig`] (M-RECORD.1 IPC) to an
+/// [`EncoderConfig`] (M-EXPORT.1). Resolves the format slug and the
+/// output path; falls back to defaults for missing fields. Returns
+/// `Result` for forward-compat (M-EXPORT.3.1 will add path-extension
+/// validation that can fail).
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "Forward-compat: M-EXPORT.3.1 adds validation that returns Err on extension mismatch; keeping Result now avoids a churn-only signature change later."
+)]
+fn build_encoder_config_for_session(
+    config: &RecordingConfig,
+) -> Result<media::encode::EncoderConfig, String> {
+    use media::encode::OutputFormat;
+    let format = config
+        .format
+        .as_deref()
+        .and_then(OutputFormat::from_slug)
+        .unwrap_or_default();
+    let output_path = config.output_path.clone().map_or_else(
+        || {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            crate::recording_paths::default_output_path(now_secs, format)
+        },
+        std::path::PathBuf::from,
+    );
+    Ok(media::encode::EncoderConfig::for_output(
+        output_path,
+        format,
+    ))
 }
 
 /// Stop the active recording session (M-RECORD.1).
@@ -1615,7 +1672,7 @@ pub fn stop_recording(
     session.begin_stop();
     {
         let mut guard = recording_state
-            .0
+            .session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = Some(session.clone());
@@ -1641,16 +1698,52 @@ pub fn stop_recording(
 
     session.finish_stop();
     let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+    // M-EXPORT.3 — finalize the encoder + generate the AVIF poster.
+    let output_path = if let Some(handle) = recording_state.take_encoder() {
+        let path = handle.output_path.clone();
+        match handle.finalize_now() {
+            Ok(final_path) => {
+                tracing::info!(
+                    session_id = session.id,
+                    output = %final_path.display(),
+                    "stop_recording: encoder finalized"
+                );
+                // M-EXPORT.5 — best-effort poster (silently skipped
+                // when `avifenc` not installed; logged when it
+                // genuinely fails).
+                match media::encode::generate_poster(&final_path) {
+                    Ok(Some(poster)) => {
+                        tracing::info!(poster = %poster.display(), "stop_recording: poster ready");
+                    }
+                    Ok(None) => {
+                        tracing::debug!("stop_recording: poster skipped (avifenc missing)");
+                    }
+                    Err(err) => {
+                        tracing::warn!(?err, "stop_recording: poster generation failed");
+                    }
+                }
+                Some(final_path.to_string_lossy().into_owned())
+            }
+            Err(err) => {
+                tracing::error!(?err, output = %path.display(), "stop_recording: encoder finalize failed");
+                Some(path.to_string_lossy().into_owned())
+            }
+        }
+    } else {
+        None
+    };
+
     let summary = RecordingSummary {
         session_id: session.id,
         elapsed_ms,
         streams: final_health,
-        output_path: None,
+        output_path,
     };
 
     {
         let mut guard = recording_state
-            .0
+            .session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = None;
@@ -2012,9 +2105,10 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
                     && view.streams.iter().all(|h| h.lifecycle != "Idle")
                     && let Some(s) = app.try_state::<RecordingState>()
                 {
-                    let mut guard =
-                        s.0.lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut guard = s
+                        .session
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if let Some(ref mut sess) = *guard {
                         sess.mark_running();
                     }
