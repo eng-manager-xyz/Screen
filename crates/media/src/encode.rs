@@ -510,6 +510,105 @@ pub fn build_pipeline_args(
     Ok(args)
 }
 
+// ---- M-EXPORT.5 — AVIF poster-frame thumbnail -----------------------
+
+/// Generate an AVIF poster image next to the encoded video.
+/// Spawns a one-shot `gst-launch-1.0` pipeline that extracts a
+/// single frame from `video_path`, scales it to ≤640 px wide, and
+/// writes it to `<video_path-without-ext>.avif`.
+///
+/// Returns `Ok(Some(path))` on success, `Ok(None)` when the
+/// `avifenc` GStreamer element isn't installed (silent skip with a
+/// `tracing::warn` — poster is a free side-benefit, not a hard
+/// requirement). Returns `Err` on any other failure (e.g. video
+/// file missing).
+///
+/// # Errors
+///
+/// Returns [`EncodeError::Spawn`] if `gst-launch-1.0` isn't on PATH,
+/// or [`EncodeError::PipelineFailed`] if the spawn ran but exited
+/// non-zero for a reason other than "missing avifenc."
+pub fn generate_poster(video_path: &Path) -> Result<Option<PathBuf>, EncodeError> {
+    if !video_path.exists() {
+        return Err(EncodeError::InvalidConfig(format!(
+            "video file does not exist: {}",
+            video_path.display()
+        )));
+    }
+    let poster_path = poster_path_for(video_path);
+    let args = poster_pipeline_args(video_path, &poster_path);
+
+    let output = Command::new("gst-launch-1.0")
+        .args(&args)
+        .output()
+        .map_err(|err| EncodeError::Spawn {
+            source: err,
+            path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+        })?;
+
+    if output.status.success() {
+        tracing::info!(
+            video = %video_path.display(),
+            poster = %poster_path.display(),
+            "generate_poster: AVIF thumbnail written"
+        );
+        Ok(Some(poster_path))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Heuristic: "no such element" / "Unknown element" / "no
+        // element ... avifenc" — silent-skip the missing-encoder
+        // case so the recorder UX doesn't break on machines without
+        // gst-plugins-bad. The poster is a free side-benefit.
+        if stderr.contains("avifenc") && stderr.to_lowercase().contains("no such element")
+            || stderr.contains("no element \"avifenc\"")
+        {
+            tracing::warn!(
+                "generate_poster: avifenc GStreamer element not installed — \
+                 skipping AVIF poster (install gst-plugins-bad to enable)"
+            );
+            return Ok(None);
+        }
+        Err(EncodeError::PipelineFailed {
+            exit: output.status.code(),
+            stderr: stderr.into_owned(),
+        })
+    }
+}
+
+/// Build the gst-launch argv for the poster pipeline. Split out so
+/// tests can assert the shape without spawning gst.
+#[must_use]
+pub fn poster_pipeline_args(video_path: &Path, poster_path: &Path) -> Vec<String> {
+    vec![
+        "-q".to_string(),
+        "filesrc".to_string(),
+        format!("location={}", video_path.display()),
+        "!".to_string(),
+        "decodebin".to_string(),
+        "!".to_string(),
+        "videoconvert".to_string(),
+        "!".to_string(),
+        "videoscale".to_string(),
+        "!".to_string(),
+        "video/x-raw,width=640".to_string(),
+        "!".to_string(),
+        "avifenc".to_string(),
+        "!".to_string(),
+        "filesink".to_string(),
+        format!("location={}", poster_path.display()),
+    ]
+}
+
+/// Compute the poster path for `<video>.<ext>` → `<video>.avif`.
+/// Replaces the video extension entirely (so `Screen-...mp4` →
+/// `Screen-...avif`, not `Screen-...mp4.avif`).
+#[must_use]
+pub fn poster_path_for(video_path: &Path) -> PathBuf {
+    let mut p = video_path.to_path_buf();
+    p.set_extension("avif");
+    p
+}
+
 fn mux_to_parser(format: OutputFormat) -> &'static str {
     match format {
         OutputFormat::Mp4H264Aac => "h264parse",
@@ -804,5 +903,42 @@ mod tests {
     fn scratch_path_handles_no_extension() {
         let p = scratch_path(Path::new("/tmp/outfile"), ".scratch");
         assert_eq!(p, PathBuf::from("/tmp/outfile.scratch"));
+    }
+
+    // ---- M-EXPORT.5 — poster helpers ----
+
+    #[test]
+    fn poster_path_replaces_extension() {
+        assert_eq!(
+            poster_path_for(Path::new("/tmp/Screen-2026-05-17-180000.mp4")),
+            PathBuf::from("/tmp/Screen-2026-05-17-180000.avif")
+        );
+        assert_eq!(
+            poster_path_for(Path::new("/tmp/Screen-2026-05-17-180000.webm")),
+            PathBuf::from("/tmp/Screen-2026-05-17-180000.avif")
+        );
+    }
+
+    #[test]
+    fn poster_pipeline_args_contains_required_elements() {
+        let args = poster_pipeline_args(Path::new("/tmp/test.mp4"), Path::new("/tmp/test.avif"));
+        // filesrc location=<video>
+        assert!(args.iter().any(|a| a == "filesrc"));
+        assert!(args.iter().any(|a| a == "location=/tmp/test.mp4"));
+        // decodebin → videoconvert → videoscale chain
+        assert!(args.iter().any(|a| a == "decodebin"));
+        assert!(args.iter().any(|a| a == "videoconvert"));
+        assert!(args.iter().any(|a| a == "videoscale"));
+        // scale to 640 wide
+        assert!(args.iter().any(|a| a == "video/x-raw,width=640"));
+        // avifenc → filesink location=<poster>
+        assert!(args.iter().any(|a| a == "avifenc"));
+        assert!(args.iter().any(|a| a == "location=/tmp/test.avif"));
+    }
+
+    #[test]
+    fn generate_poster_rejects_missing_video_file() {
+        let result = generate_poster(Path::new("/tmp/definitely-not-a-real-video.mp4"));
+        assert!(matches!(result, Err(EncodeError::InvalidConfig(_))));
     }
 }
