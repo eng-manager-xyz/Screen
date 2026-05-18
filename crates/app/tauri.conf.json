@@ -56,6 +56,14 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["app"],
+    "category": "Productivity",
+    "shortDescription": "Cinematic screen recorder",
+    "longDescription": "Screen — coordinated webcam + screen + mic + system audio recording with multi-format export (MP4 / WebM).",
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }
