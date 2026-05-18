@@ -1895,8 +1895,14 @@ fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> 
         Some(id) if id.starts_with("window-") => ScreenCaptureSource::Window(id.to_string()),
         Some(other) => return Err(format!("unknown source_id prefix `{other}`")),
     };
+    // M-PIX.2 — plumb the shared screen frame slot from
+    // RecordingState into the SCK delegate so it writes BGRA bytes
+    // there for the encoder feed thread.
+    let frame_slot = app
+        .try_state::<RecordingState>()
+        .map(|s| crate::recording::FrameSlot::clone(&s.screen_frame_slot));
     state
-        .start(ScreenCaptureConfig::for_source(source))
+        .start_with_frame_slot(ScreenCaptureConfig::for_source(source), frame_slot)
         .map_err(|e| e.to_string())
 }
 
