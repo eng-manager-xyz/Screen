@@ -2028,6 +2028,47 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
         .expect("recording-status-emitter thread spawn must succeed");
 }
 
+// ---- M-EXPORT.4 — file save + reveal IPC ----------------------------
+
+/// Resolve the default output path for a recording starting now
+/// with the given format slug. Returns the absolute path as a
+/// string (the JS side feeds it back into `start_recording`'s
+/// `output_path` if the user doesn't override).
+///
+/// `format_slug` is one of `"mp4-h264"`, `"mp4-h265"`, `"webm-vp9"`,
+/// `"webm-av1"`. Unknown slugs fall back to the default
+/// (`mp4-h264`).
+#[tauri::command]
+#[must_use]
+pub fn default_recording_output_path(format_slug: Option<String>) -> String {
+    use media::encode::OutputFormat;
+    let format = format_slug
+        .as_deref()
+        .and_then(OutputFormat::from_slug)
+        .unwrap_or_default();
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    crate::recording_paths::default_output_path(now_secs, format)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Open the OS file manager focused on the given recording file
+/// (M-EXPORT.4). macOS: `open -R`. Windows:
+/// `explorer /select,`. Linux: `xdg-open <parent-dir>` (no portable
+/// "select" verb).
+///
+/// # Errors
+///
+/// Returns the spawn error as a string when the file-manager binary
+/// isn't on PATH.
+#[tauri::command]
+pub fn reveal_recording_in_file_manager(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    crate::recording_paths::reveal_in_file_manager(&p)
+}
+
 /// Test-only entry point for `WebDriver` e2e suites. Emits a
 /// `file-dropped` event with the same shape as the real OS drag-drop
 /// handler in `main.rs`. Gated on `debug_assertions` so it's stripped

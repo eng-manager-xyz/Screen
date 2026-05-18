@@ -27,7 +27,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::recording_ipc::{
     RecordingConfigView, RecordingStatusViewIpc, SessionStreamsView, StreamHealthView,
-    recording_status, start_recording, stop_recording,
+    default_output_path, recording_status, reveal_in_file_manager, start_recording, stop_recording,
 };
 
 /// `<RecorderControls />` — master Record button + per-stream LEDs.
@@ -47,6 +47,10 @@ pub fn RecorderControls() -> impl IntoView {
     let screen_on = RwSignal::new(true);
     let sys_audio_on = RwSignal::new(true);
     let error_msg = RwSignal::new(Option::<String>::None);
+    // M-EXPORT.4 — format dropdown selection + last-recorded path
+    // for the Reveal-in-Finder button.
+    let format_slug = RwSignal::new("mp4-h264".to_string());
+    let last_output_path = RwSignal::new(Option::<String>::None);
 
     // Mount-time seed: ask the Rust side if a session is already up
     // (e.g. tray-popover → main window re-open).
@@ -67,12 +71,16 @@ pub fn RecorderControls() -> impl IntoView {
                 match stop_recording().await {
                     Ok(summary) => {
                         tracing_log(&format!(
-                            "recording stopped — session {} ran for {} ms ({} streams)",
+                            "recording stopped — session {} ran for {} ms ({} streams) → {}",
                             summary.session_id,
                             summary.elapsed_ms,
-                            summary.streams.len()
+                            summary.streams.len(),
+                            summary.output_path.as_deref().unwrap_or("(no file)"),
                         ));
                         error_msg.set(None);
+                        // Remember the output path so the Reveal
+                        // button can target it.
+                        last_output_path.set(summary.output_path);
                         status.set(RecordingStatusViewIpc::idle());
                     }
                     Err(err) => {
@@ -81,35 +89,62 @@ pub fn RecorderControls() -> impl IntoView {
                 }
             });
         } else {
-            // Start path. Pull picker selections from LocalStorage
-            // (each picker persists its own choice; we just read the
-            // keys).
-            let config = RecordingConfigView {
-                streams: SessionStreamsView {
-                    camera: cam_on.get(),
-                    screen: screen_on.get(),
-                    microphone: mic_on.get(),
-                    system_audio: sys_audio_on.get(),
-                },
-                camera_id: read_localstorage_string("screen.camera.last_used_id"),
-                microphone_id: read_localstorage_string("screen.mic.last_used_id"),
-                screen_source_id: read_localstorage_optional_string(
-                    "screen.screen_capture.last_source_id",
-                ),
-                output_path: None,
-                format: None,
-            };
+            // Start path. Pull picker selections from LocalStorage,
+            // resolve the default output path via the M-EXPORT.4
+            // helper (uses current wall-clock time + format slug).
+            let selected_format = format_slug.get();
+            let format_for_path = selected_format.clone();
             spawn_local(async move {
+                let path = default_output_path(Some(&format_for_path)).await;
+                let resolved_path = if path.is_empty() { None } else { Some(path) };
+                let config = RecordingConfigView {
+                    streams: SessionStreamsView {
+                        camera: cam_on.get(),
+                        screen: screen_on.get(),
+                        microphone: mic_on.get(),
+                        system_audio: sys_audio_on.get(),
+                    },
+                    camera_id: read_localstorage_string("screen.camera.last_used_id"),
+                    microphone_id: read_localstorage_string("screen.mic.last_used_id"),
+                    screen_source_id: read_localstorage_optional_string(
+                        "screen.screen_capture.last_source_id",
+                    ),
+                    output_path: resolved_path,
+                    format: Some(selected_format),
+                };
                 match start_recording(config).await {
                     Ok(id) => {
                         tracing_log(&format!("recording started — session {id}"));
                         error_msg.set(None);
+                        last_output_path.set(None);
                     }
                     Err(err) => {
                         error_msg.set(Some(err));
                     }
                 }
             });
+        }
+    };
+
+    let on_reveal_click = move |_: MouseEvent| {
+        if let Some(path) = last_output_path.get() {
+            spawn_local(async move {
+                if let Err(err) = reveal_in_file_manager(&path).await {
+                    error_msg.set(Some(err));
+                }
+            });
+        }
+    };
+
+    let on_format_change = move |evt: leptos::ev::Event| {
+        // SAFETY: change events on <select> targets always carry an
+        // HtmlSelectElement.
+        use wasm_bindgen::JsCast as _;
+        if let Some(target) = evt
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok())
+        {
+            format_slug.set(target.value());
         }
     };
 
@@ -142,7 +177,32 @@ pub fn RecorderControls() -> impl IntoView {
                     sys_audio=sys_audio_on
                     disabled=Signal::derive(is_recording)
                 />
+                <select
+                    class="recorder-controls-format"
+                    prop:disabled=is_recording
+                    on:change=on_format_change
+                >
+                    <option value="mp4-h264" selected=move || format_slug.get() == "mp4-h264">"MP4 · H.264"</option>
+                    <option value="mp4-h265" selected=move || format_slug.get() == "mp4-h265">"MP4 · H.265"</option>
+                    <option value="webm-vp9" selected=move || format_slug.get() == "webm-vp9">"WebM · VP9"</option>
+                    <option value="webm-av1" selected=move || format_slug.get() == "webm-av1">"WebM · AV1"</option>
+                </select>
             </div>
+            <Show when=move || last_output_path.get().is_some() && !is_recording() fallback=|| view! { <></> }>
+                <div class="recorder-controls-saved">
+                    <span class="recorder-controls-saved-label">
+                        {"Saved to: "}
+                        <code>{move || last_output_path.get().unwrap_or_default()}</code>
+                    </span>
+                    <button
+                        type="button"
+                        class="recorder-controls-reveal"
+                        on:click=on_reveal_click
+                    >
+                        {"Reveal in file manager"}
+                    </button>
+                </div>
+            </Show>
             <Show when=move || !status.get().streams.is_empty() fallback=|| view! { <></> }>
                 <div class="recorder-controls-leds" role="status">
                     {move || status.get().streams.into_iter().map(led_for_stream).collect_view()}

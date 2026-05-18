@@ -139,6 +139,41 @@ extern "C" {
     /// `__screenRecordingStatus()` — `Promise<RecordingStatusView>`.
     #[wasm_bindgen(js_name = __screenRecordingStatus, catch)]
     pub async fn recording_status_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenDefaultRecordingOutputPath(formatSlug?: string)` —
+    /// `Promise<string>` returning the auto-generated default path
+    /// (M-EXPORT.4).
+    #[wasm_bindgen(js_name = __screenDefaultRecordingOutputPath, catch)]
+    pub async fn default_output_path_js(format_slug: JsValue) -> Result<JsValue, JsValue>;
+
+    /// `__screenRevealRecordingInFileManager(path: string)` —
+    /// `Promise<void>`. Opens the OS file manager focused on the
+    /// given path (M-EXPORT.4).
+    #[wasm_bindgen(js_name = __screenRevealRecordingInFileManager, catch)]
+    pub async fn reveal_in_file_manager_js(path: String) -> Result<JsValue, JsValue>;
+}
+
+/// Resolve the default output path the recorder would write to if
+/// the user started recording right now with the given format.
+/// Returns empty string on IPC failure (caller treats as "use no
+/// override").
+pub async fn default_output_path(format_slug: Option<&str>) -> String {
+    let arg = match format_slug {
+        Some(s) => JsValue::from_str(s),
+        None => JsValue::NULL,
+    };
+    match default_output_path_js(arg).await {
+        Ok(value) => value.as_string().unwrap_or_default(),
+        Err(_) => String::new(),
+    }
+}
+
+/// Open the OS file manager focused on `path` (M-EXPORT.4).
+pub async fn reveal_in_file_manager(path: &str) -> Result<(), String> {
+    reveal_in_file_manager_js(path.to_string())
+        .await
+        .map(|_| ())
+        .map_err(|err| js_error_string(&err))
 }
 
 /// Start a coordinated recording session. Returns the session id on

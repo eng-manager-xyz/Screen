@@ -150,6 +150,11 @@
         window.__TAURI__?.core?.invoke("stop_recording") ?? Promise.resolve(null);
       window.__screenRecordingStatus = () =>
         window.__TAURI__?.core?.invoke("recording_status") ?? Promise.resolve(null);
+      // M-EXPORT.4 — default-path resolver + Reveal-in-Finder.
+      window.__screenDefaultRecordingOutputPath = (formatSlug) =>
+        window.__TAURI__?.core?.invoke("default_recording_output_path", { formatSlug: formatSlug ?? null }) ?? Promise.resolve("");
+      window.__screenRevealRecordingInFileManager = (path) =>
+        window.__TAURI__?.core?.invoke("reveal_recording_in_file_manager", { path }) ?? Promise.resolve();
 
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder
