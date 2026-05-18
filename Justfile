@@ -408,6 +408,40 @@ test-recorder:
     # `trunk serve` running in this flow → blank webview without it).
     cargo run -p screen-app --features custom-protocol
 
+# M-PIX.10 — bundled-app variant of `test-recorder` that works
+# correctly with macOS TCC.
+#
+# Why: `cargo run` produces a raw binary whose code-signing identifier
+# is the Rust linker's default (`screen_app-<hash>`), NOT the
+# Info.plist's `CFBundleIdentifier` (`com.screen.app`). macOS TCC
+# keys on the code-signing identity, so `AVCaptureDevice.requestAccess`
+# silently no-ops because the identity mismatches what macOS would
+# need to track grants against. Result: prompts never fire, the
+# bundle id never registers in the TCC database, `tccutil reset
+# Camera com.screen.app` returns "No such bundle identifier".
+#
+# Fix: produce a real `.app` bundle, then re-sign with an ad-hoc
+# signature using the correct `--identifier`. macOS now treats the
+# bundle as a registered app with stable identity; TCC prompts fire
+# on first device access.
+#
+# Total time: ~5–10 min cold (full Tauri bundle pipeline), ~1 min
+# warm. Always launches the bundle (not the raw binary), so TCC
+# permissions persist across re-runs.
+test-recorder-bundled:
+    @echo "→ [1/3] Cleaning stale wasm bundle…"
+    rm -rf crates/app-ui/dist
+    @echo "→ [2/3] Building .app bundle (cargo tauri build --debug --bundles app)…"
+    cd crates/app && cargo tauri build --debug --bundles app
+    @echo "→ [3/3] Re-signing with the correct ad-hoc identifier so macOS TCC sees `com.screen.app`…"
+    codesign --force --deep --sign - --identifier com.screen.app target/debug/bundle/macos/screen-app.app
+    @echo "    Verify:"
+    codesign -dv target/debug/bundle/macos/screen-app.app 2>&1 | head -4
+    @echo ""
+    @echo "→ Opening the bundled .app — click the menubar circle to open the AppShell."
+    @echo "  First device access fires the macOS TCC prompts; click Allow on each."
+    open target/debug/bundle/macos/screen-app.app
+
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
 # `mdbook serve` has built-in live reload (filesystem watch + websocket

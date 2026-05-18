@@ -26,7 +26,7 @@ tauri-build = { version = "2", features = [] }
 custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "macos-private-api"] }
 playback = { path = "../playback" }
 decode = { path = "../decode" }
 media = { path = "../media" }
