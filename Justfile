@@ -347,14 +347,14 @@ dev-remote-stop:
 dev-appshell:
     cd crates/app-ui && trunk serve --features tray-appshell-preview
 
-# M-RECORDER-V0 (AUT-249..260) + M-RECORDER-V1 (AUT-261..266) —
-# clean-slate manual smoke test for the recorder track.
+# M-RECORDER-V0 + M-RECORD-EXPORT + M-RECORD-EXPORT-REAL-PIXELS —
+# one-command end-to-end manual smoke test for the recorder.
 #
-# One-shot: nukes the stale wasm bundle, removes the `app-ui` +
-# `screen-app` build artifacts, rebuilds the wasm bundle via trunk,
-# then `cargo run -p screen-app`. Use for "does the tray icon + the
-# AppShell + the camera picker actually work end-to-end on my
-# machine?" before opening a PR or filing a bug.
+# Nukes the stale wasm bundle, removes the `app-ui` + `screen-app`
+# build artifacts, rebuilds the wasm bundle via trunk, then
+# `cargo run -p screen-app --features custom-protocol`. Use this as
+# the single "does the recorder actually work on my machine?"
+# command before manual verification.
 #
 # For *active* development use `cd crates/app && cargo tauri dev`
 # instead — it has hot-reload (trunk serve watches app-ui sources
@@ -362,16 +362,36 @@ dev-appshell:
 # the heavy fresh-build alternative for when you specifically want
 # to verify a from-scratch build path.
 #
-# Expected when the window opens:
+# Prerequisites (macOS, one-time):
+#   • System Settings → Privacy & Security → enable for Screen:
+#     Camera + Microphone + Screen Recording.
+#   • `brew install gstreamer` (includes `vtenc_h264_hw` for HW H.264
+#     encode). Optional: `brew install gst-plugins-bad` for the
+#     AVIF poster generator.
+#   • Verify: `gst-inspect-1.0 vtenc_h264_hw` should print plugin
+#     info.
+#
+# Expected when the window opens (M-PIX state, as of the
+# M-RECORD-EXPORT-REAL-PIXELS milestone):
 #   • Small filled-circle icon on the macOS menubar.
-#   • Left-click → 1200×720 AppShell window opens (NavigationRail on
-#     the left, Recorder surface in the middle).
-#   • NavigationRail clicks swap surfaces; URL updates `?surface=…`.
-#   • Recorder surface shows a camera picker dropdown. Clicking it
-#     enumerates your real cameras via `gst-device-monitor-1.0`.
-#   • Preview canvas stays BLANK — the wisp pipeline body is the
-#     M-CAM.3 deferred follow-up (see _docs/PROGRESS.md).
-#   • Left-click tray again → window hides.
+#   • Left-click → 1200×720 AppShell window opens (NavigationRail
+#     on the left, Recorder surface in the middle).
+#   • Recorder surface: master Record button + format dropdown
+#     + per-stream LEDs + 4 pickers (Camera / Mic / Screen / Sys
+#     Audio).
+#   • Pick a camera → your face appears in the circular preview
+#     bubble within ~1 sec (M-PIX.8 live preview).
+#   • Pick mic / display / system-audio → level meters tick live.
+#   • Click Record → all enabled channels start, pickers lock,
+#     elapsed timer counts up, per-stream LEDs go green.
+#   • Click Stop → wait ~3-5 sec for the encoder to finalize the
+#     scratch into the final container.
+#   • "Saved to: ~/Movies/Screen/Screen-YYYY-MM-DD-HHMMSS.<ext>"
+#     toast with Reveal-in-Finder button.
+#   • Click Reveal → Finder opens with the .mp4 highlighted.
+#   • Double-click → QuickTime plays it: real screen content +
+#     circular cam overlay (bottom-right) + mic+sys-audio mixed in
+#     the audio track. Lipsync within ~80 ms.
 #
 # Total time: ~5–8 min cold (wasm + native rebuilds), ~30s warm.
 test-recorder:
