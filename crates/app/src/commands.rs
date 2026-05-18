@@ -1600,14 +1600,20 @@ pub fn start_recording(
     let has_video = config.streams.camera || config.streams.screen;
     let handle_result = if has_video {
         use wisp::recording::StreamDimensions;
-        // Scene dims match what the capture sides emit. Screen
-        // dims come from the SCStreamConfiguration default
-        // (1920×1080). Camera dims come from the preview pipeline
-        // constants (PREVIEW_WIDTH × PREVIEW_HEIGHT = 480×480).
-        let screen_dims = StreamDimensions::new(
+        // Scene dims match what the capture sides emit. On
+        // non-macOS the SCK constants don't exist; the
+        // SCK-derived screen dims default to 1920×1080 verbatim
+        // (matching `media::sck_video::DEFAULT_WIDTH/HEIGHT`)
+        // since neither the screen nor system-audio channel
+        // actually runs there yet (rolled back at top of fn).
+        #[cfg(target_os = "macos")]
+        let (sck_w, sck_h) = (
             media::sck_video::DEFAULT_WIDTH,
             media::sck_video::DEFAULT_HEIGHT,
         );
+        #[cfg(not(target_os = "macos"))]
+        let (sck_w, sck_h) = (1920_u32, 1080_u32);
+        let screen_dims = StreamDimensions::new(sck_w, sck_h);
         let cam_dims = StreamDimensions::new(
             crate::preview::pipeline::PREVIEW_WIDTH,
             crate::preview::pipeline::PREVIEW_HEIGHT,
