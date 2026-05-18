@@ -139,7 +139,28 @@ fn CameraPickerBody(
             <div class="camera-picker-state camera-picker-state--empty">
                 <p>{"No cameras detected."}</p>
                 <p class="camera-picker-state-help">
-                    {"Plug in or pair a camera, then re-open this picker."}
+                    {"On first launch the macOS permission prompts may not have fired yet. Click below to grant access to camera + microphone + screen recording in one go, then re-open this picker."}
+                </p>
+                <button
+                    type="button"
+                    class="camera-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            let result = camera_ipc::request_all_permissions().await;
+                            log_to_console(&format!(
+                                "request_all_permissions returned: camera={:?}, mic={:?}, screen={:?}",
+                                result.camera, result.microphone, result.screen_recording
+                            ));
+                            // Re-enumerate after the user grants access.
+                            let list = camera_ipc::list_cameras().await;
+                            cameras.set(list);
+                        });
+                    }
+                >
+                    {"Grant access (camera, mic, screen recording)"}
+                </button>
+                <p class="camera-picker-state-help">
+                    {"If the prompts don't appear: System Settings → Privacy & Security → enable Screen under Camera, Microphone, and Screen Recording."}
                 </p>
             </div>
         }
@@ -249,6 +270,16 @@ fn write_last_used(_id: &str) {
     // Native: no-op. LocalStorage is only meaningful in the browser
     // CSR target.
 }
+
+/// Best-effort `console.log(msg)` so the user sees the
+/// permission-request result in the webview's devtools console.
+#[cfg(target_arch = "wasm32")]
+fn log_to_console(msg: &str) {
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(msg));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn log_to_console(_msg: &str) {}
 
 #[cfg(test)]
 mod tests {

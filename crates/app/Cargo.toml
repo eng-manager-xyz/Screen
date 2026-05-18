@@ -52,7 +52,11 @@ objc2-av-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "AVCaptureDevice",
     "AVMediaFormat",
+    "block2",
 ] }
+# M-PIX.9 — block2 closures for AVCaptureDevice requestAccess
+# completion handler; objc2 runtime types for the Bool result.
+block2 = "0.6"
 
 [dev-dependencies]
 # `test` feature enables `tauri::test::mock_builder` etc. for the IPC

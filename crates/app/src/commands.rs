@@ -933,6 +933,133 @@ fn av_authorization_status(kind: AvMediaTypeKind) -> CameraPermission {
     }
 }
 
+/// Proactively request macOS TCC permissions for all four protected
+/// resources (M-PIX.9 of M-RECORD-EXPORT-REAL-PIXELS). Fires the
+/// OS-level prompts that register `com.screen.app` in the TCC
+/// database — without this, pickers enumerate empty on first launch
+/// because no entry exists yet.
+///
+/// Returns the status of each resource after the user responds
+/// (`Authorized` / `Denied` / `NotDetermined`). Blocks for up to
+/// ~30 seconds while the user clicks; returns the current status
+/// if the user dismisses without choosing.
+///
+/// Order matters: camera first (sync, quickest to dismiss), then
+/// microphone, then screen-recording via SCK (which fires its own
+/// prompt the first time `SCShareableContent.current` is called).
+#[tauri::command]
+pub async fn request_all_permissions() -> RequestPermissionsResult {
+    #[cfg(target_os = "macos")]
+    {
+        // All three prompts run on a Tauri-provided worker thread
+        // (each blocks for up to 30 s waiting on user input). Doing
+        // them sequentially is fine — user can only click one
+        // dialog at a time.
+        tauri::async_runtime::spawn_blocking(|| {
+            let camera = request_av_access_blocking(AvMediaTypeKind::Video);
+            let microphone = request_av_access_blocking(AvMediaTypeKind::Audio);
+            let screen_recording = request_screen_recording_access_blocking();
+            RequestPermissionsResult {
+                camera,
+                microphone,
+                screen_recording,
+            }
+        })
+        .await
+        .unwrap_or(RequestPermissionsResult {
+            camera: CameraPermission::NotDetermined,
+            microphone: CameraPermission::NotDetermined,
+            screen_recording: CameraPermission::NotDetermined,
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        RequestPermissionsResult {
+            camera: CameraPermission::Granted,
+            microphone: CameraPermission::Granted,
+            screen_recording: CameraPermission::Granted,
+        }
+    }
+}
+
+/// IPC view for the M-PIX.9 batch-request result. Each field is the
+/// post-prompt status the OS reported.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RequestPermissionsResult {
+    /// Camera access status after the prompt.
+    pub camera: CameraPermission,
+    /// Microphone access status after the prompt.
+    pub microphone: CameraPermission,
+    /// Screen Recording access status after the prompt.
+    pub screen_recording: CameraPermission,
+}
+
+/// Wrapper around `AVCaptureDevice.requestAccessForMediaType:
+/// completionHandler:`. Triggers the macOS prompt (registers the
+/// bundle id in TCC), waits up to 30 seconds for the user's
+/// response, returns the final status.
+///
+/// Blocks the calling thread on the channel `recv_timeout` — called
+/// from inside `tauri::async_runtime::spawn_blocking` in the
+/// `request_all_permissions` outer command so the Tauri runtime
+/// stays unblocked.
+#[cfg(target_os = "macos")]
+#[allow(
+    unsafe_code,
+    reason = "AVFoundation FFI interop — every unsafe block has a SAFETY justification."
+)]
+fn request_av_access_blocking(kind: AvMediaTypeKind) -> CameraPermission {
+    use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo};
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::mpsc::channel;
+
+    // SAFETY: framework-init populated externals — see
+    // av_authorization_status for the matching SAFETY comment.
+    let media_type = match kind {
+        AvMediaTypeKind::Video => unsafe { AVMediaTypeVideo }.expect("AVMediaTypeVideo present"),
+        AvMediaTypeKind::Audio => unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio present"),
+    };
+
+    let (tx, rx) = channel::<bool>();
+    let tx_arc: Arc<Mutex<Option<std::sync::mpsc::Sender<bool>>>> = Arc::new(Mutex::new(Some(tx)));
+    let tx_for_block = Arc::clone(&tx_arc);
+    let block = block2::RcBlock::new(move |granted: objc2::runtime::Bool| {
+        if let Some(sender) = tx_for_block
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+        {
+            let _ = sender.send(granted.as_bool());
+        }
+    });
+    // SAFETY: requestAccess is documented + the completion block
+    // signature matches `(BOOL) -> void`.
+    unsafe {
+        AVCaptureDevice::requestAccessForMediaType_completionHandler(media_type, &block);
+    }
+    let _ = rx.recv_timeout(std::time::Duration::from_secs(30));
+    av_authorization_status(kind)
+}
+
+/// Trigger the Screen Recording TCC prompt by invoking SCK's
+/// `SCShareableContent.current` (via the existing public
+/// `media::screen::list_displays` entry point — same internal
+/// call, registered as TCC trigger).
+///
+/// The first call registers the bundle id + fires the prompt; we
+/// don't actually USE the returned content here, just the side
+/// effect of registering with TCC. Blocks the calling thread —
+/// caller is responsible for invoking from inside
+/// `tauri::async_runtime::spawn_blocking`.
+#[cfg(target_os = "macos")]
+fn request_screen_recording_access_blocking() -> CameraPermission {
+    match media::screen::list_displays() {
+        Ok(_) => CameraPermission::Granted,
+        Err(_) => CameraPermission::Denied,
+    }
+}
+
 /// Start the microphone capture worker (M-MIC.1 / AUT-278).
 ///
 /// Advances [`MicLifecycle`] Idle → Starting and spawns a

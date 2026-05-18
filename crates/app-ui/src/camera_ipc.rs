@@ -58,6 +58,25 @@ extern "C" {
     /// out to open System Settings → Privacy & Security → Camera.
     #[wasm_bindgen(js_name = __screenOpenSettingsCamera, catch)]
     pub async fn open_settings_camera_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenRequestAllPermissions()` (M-PIX.9) — fires the
+    /// macOS TCC prompts for Camera + Mic + Screen Recording.
+    /// Returns `{ camera, microphone, screen_recording }` statuses.
+    #[wasm_bindgen(js_name = __screenRequestAllPermissions, catch)]
+    pub async fn request_all_permissions_js() -> Result<JsValue, JsValue>;
+}
+
+/// Result of [`request_all_permissions`] — final TCC status for
+/// each protected resource.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AllPermissionsResult {
+    /// Camera access status.
+    pub camera: CameraPermission,
+    /// Microphone access status.
+    pub microphone: CameraPermission,
+    /// Screen Recording access status.
+    pub screen_recording: CameraPermission,
 }
 
 /// Async helper: list every camera the OS exposes.
@@ -105,4 +124,22 @@ pub async fn camera_permission_status() -> CameraPermission {
 /// case is rare enough that surfacing it adds more noise than value.
 pub async fn open_settings_camera() {
     let _ = open_settings_camera_js().await;
+}
+
+/// Async helper: fire the macOS TCC prompts (M-PIX.9). Returns the
+/// post-prompt statuses. Outside Tauri this returns `Granted` for
+/// every channel so the picker UX in `trunk serve` is unaffected.
+pub async fn request_all_permissions() -> AllPermissionsResult {
+    match request_all_permissions_js().await {
+        Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(AllPermissionsResult {
+            camera: CameraPermission::Granted,
+            microphone: CameraPermission::Granted,
+            screen_recording: CameraPermission::Granted,
+        }),
+        Err(_) => AllPermissionsResult {
+            camera: CameraPermission::Granted,
+            microphone: CameraPermission::Granted,
+            screen_recording: CameraPermission::Granted,
+        },
+    }
 }

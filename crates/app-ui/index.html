@@ -162,6 +162,13 @@
       window.__screenLatestCameraFrameBgra = () =>
         window.__TAURI__?.core?.invoke("latest_camera_frame_bgra") ?? Promise.resolve(new ArrayBuffer(0));
 
+      // M-PIX.9 — proactive TCC permission requester. Fires the
+      // macOS prompts for Camera + Mic + Screen Recording so the
+      // bundle id registers in TCC; returns the final status of
+      // each resource.
+      window.__screenRequestAllPermissions = () =>
+        window.__TAURI__?.core?.invoke("request_all_permissions") ?? Promise.resolve({ camera: "Granted", microphone: "Granted", screen_recording: "Granted" });
+
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder
       // surface is open to render the small "Camera pipeline" overlay.
