@@ -33,8 +33,38 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use media::audio_mix::AudioMixer;
 use media::encode::{GstreamerEncoder, VideoEncoder};
 use serde::{Deserialize, Serialize};
+
+/// Default audio mixer channel count (stereo). Matches the
+/// `EncoderConfig` default + the SCK / mic worker output formats.
+const DEFAULT_AUDIO_CHANNELS: u8 = 2;
+
+/// Latest-frame-wins slot the capture pipelines write into and the
+/// encoder feed thread reads from (M-PIX.0). `None` until the first
+/// frame; the capture pipeline overwrites with each new frame; the
+/// encoder reads (cloned) at render time.
+pub type FrameSlot = Arc<Mutex<Option<Vec<u8>>>>;
+
+/// Shared audio mixer (M-PIX.0) the mic worker + SCK audio
+/// delegate push samples into, and the encoder feed thread drains
+/// via `AudioMixer::pull()`.
+pub type SharedAudioMixer = Arc<Mutex<AudioMixer>>;
+
+/// Construct a fresh frame slot — `Arc<Mutex<None>>`.
+#[must_use]
+pub fn new_frame_slot() -> FrameSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh shared mixer with the default channel count.
+#[must_use]
+pub fn new_audio_mixer() -> SharedAudioMixer {
+    Arc::new(Mutex::new(
+        AudioMixer::new(DEFAULT_AUDIO_CHANNELS).expect("DEFAULT_AUDIO_CHANNELS > 0"),
+    ))
+}
 
 /// Monotonically-increasing session id. Resets per process start;
 /// the id only needs to be unique within a single app run so the
@@ -281,12 +311,36 @@ impl RecordingSession {
 ///   test-pattern feed thread. Separated from `session` so the
 ///   500 ms `recording-status` event push can take a cheap clone
 ///   of the session snapshot without holding the encoder mutex.
-#[derive(Default)]
 pub struct RecordingState {
     /// Immutable per-session snapshot.
     pub session: Mutex<Option<RecordingSession>>,
     /// Active encoder + its background feed thread. M-EXPORT.3.
     pub encoder: Mutex<Option<EncoderHandle>>,
+    /// Latest BGRA frame from the camera capture worker (M-PIX.0).
+    /// Written by `crates/app/src/preview/pipeline.rs::run_pipeline`;
+    /// consumed by M-PIX.5's compose thread.
+    pub camera_frame_slot: FrameSlot,
+    /// Latest BGRA frame from the SCK screen-capture delegate
+    /// (M-PIX.0). Written by
+    /// `crates/media/src/sck_video.rs::ScreenOutputHandler`;
+    /// consumed by M-PIX.5's compose thread.
+    pub screen_frame_slot: FrameSlot,
+    /// Shared two-source mic + system-audio mixer (M-PIX.0). Mic
+    /// worker calls `push_mic`; SCK audio delegate calls
+    /// `push_sys_audio`; encoder feed thread calls `pull()`.
+    pub audio_mixer: SharedAudioMixer,
+}
+
+impl Default for RecordingState {
+    fn default() -> Self {
+        Self {
+            session: Mutex::new(None),
+            encoder: Mutex::new(None),
+            camera_frame_slot: new_frame_slot(),
+            screen_frame_slot: new_frame_slot(),
+            audio_mixer: new_audio_mixer(),
+        }
+    }
 }
 
 /// Backwards-compatible field-tuple access — the M-RECORD.1 commands
@@ -843,6 +897,66 @@ mod tests {
     }
 
     // ---- RecordingState wrapper ----
+
+    // ---- M-PIX.0 slot + mixer plumbing ----
+
+    #[test]
+    fn new_frame_slot_starts_none() {
+        let slot = new_frame_slot();
+        assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn frame_slot_latest_wins_on_overwrite() {
+        let slot = new_frame_slot();
+        *slot.lock().unwrap() = Some(vec![1, 2, 3]);
+        *slot.lock().unwrap() = Some(vec![4, 5, 6, 7]);
+        let read = slot.lock().unwrap().clone();
+        assert_eq!(read, Some(vec![4, 5, 6, 7]));
+    }
+
+    #[test]
+    fn frame_slot_take_clears() {
+        let slot = new_frame_slot();
+        *slot.lock().unwrap() = Some(vec![1, 2, 3]);
+        let taken = slot.lock().unwrap().take();
+        assert_eq!(taken, Some(vec![1, 2, 3]));
+        assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn frame_slot_is_arc_cheap_to_clone() {
+        let slot = new_frame_slot();
+        let clone1 = Arc::clone(&slot);
+        let clone2 = Arc::clone(&slot);
+        *clone1.lock().unwrap() = Some(vec![0xff; 16]);
+        assert_eq!(clone2.lock().unwrap().as_ref().unwrap().len(), 16);
+        assert_eq!(slot.lock().unwrap().as_ref().unwrap().len(), 16);
+    }
+
+    #[test]
+    fn new_audio_mixer_has_stereo_channels() {
+        let mixer = new_audio_mixer();
+        assert_eq!(mixer.lock().unwrap().channels(), DEFAULT_AUDIO_CHANNELS);
+        assert_eq!(mixer.lock().unwrap().channels(), 2);
+    }
+
+    #[test]
+    fn shared_audio_mixer_is_arc_cheap_to_clone() {
+        let mixer = new_audio_mixer();
+        let writer_clone = Arc::clone(&mixer);
+        let reader_clone = Arc::clone(&mixer);
+        writer_clone.lock().unwrap().push_mic(&[0.1, 0.2]).unwrap();
+        assert_eq!(reader_clone.lock().unwrap().mic_queued(), 2);
+    }
+
+    #[test]
+    fn recording_state_default_wires_slots_and_mixer() {
+        let state = RecordingState::default();
+        assert!(state.camera_frame_slot.lock().unwrap().is_none());
+        assert!(state.screen_frame_slot.lock().unwrap().is_none());
+        assert_eq!(state.audio_mixer.lock().unwrap().channels(), 2);
+    }
 
     #[test]
     fn recording_state_starts_inactive() {
