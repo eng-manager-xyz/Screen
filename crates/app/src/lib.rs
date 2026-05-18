@@ -17,6 +17,7 @@ pub mod commands;
 pub mod player_session;
 pub mod preview;
 pub mod recording;
+pub mod recording_compose;
 pub mod recording_paths;
 pub mod recp;
 #[cfg(target_os = "macos")]
