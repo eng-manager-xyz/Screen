@@ -948,6 +948,10 @@ fn av_authorization_status(kind: AvMediaTypeKind) -> CameraPermission {
 /// microphone, then screen-recording via SCK (which fires its own
 /// prompt the first time `SCShareableContent.current` is called).
 #[tauri::command]
+#[allow(
+    clippy::unused_async,
+    reason = "Tauri commands must be async to keep a uniform signature across platforms; the macOS branch awaits spawn_blocking, the stub branch returns synchronously."
+)]
 pub async fn request_all_permissions() -> RequestPermissionsResult {
     #[cfg(target_os = "macos")]
     {
@@ -1066,6 +1070,10 @@ pub fn screen_recording_permission_status() -> CameraPermission {
 /// causes macOS to show the Screen & System Audio Recording consent sheet
 /// and add the current app identity to the Settings list.
 #[tauri::command]
+#[allow(
+    clippy::unused_async,
+    reason = "Tauri commands must be async to keep a uniform signature across platforms; the macOS branch awaits spawn_blocking, the stub branch returns synchronously."
+)]
 pub async fn request_screen_recording_permission() -> CameraPermission {
     #[cfg(target_os = "macos")]
     {
