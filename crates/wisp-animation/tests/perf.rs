@@ -103,8 +103,19 @@ fn batch_tick_allocates_nothing_across_1000_frames() {
     let (mut stage, mut anims) = build_arena();
     let mut driver = BatchDriver::fixed(Duration::from_secs_f32(1.0 / 60.0));
     driver.play();
-    // Warm-up — first tick may grow the staging buffer.
-    driver.tick_scalars(Duration::ZERO, &mut anims, &mut stage);
+    // Warm up the full tween lifecycle: interpolation phase
+    // (elapsed < 500 ms) AND saturated phase (elapsed >= 500 ms).
+    // A single warm-up tick only exercises the interpolation
+    // branch; the saturation branch's first call on Linux glibc
+    // has been observed to trigger a small number of allocator
+    // book-keeping allocations the first time it runs, which trips
+    // a strict-zero assertion non-deterministically (see commit
+    // log for the main-branch failure on dbff349). 64 ticks at
+    // ~16.66 ms/tick crosses the 500 ms tween end and lets any
+    // first-call infrastructure paths complete before measurement.
+    for _ in 0..64 {
+        driver.tick_scalars(Duration::ZERO, &mut anims, &mut stage);
+    }
 
     let before = ALLOC_COUNT.load(Ordering::SeqCst);
     for _ in 0..1000 {
