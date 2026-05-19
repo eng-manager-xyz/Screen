@@ -54,6 +54,10 @@ objc2-av-foundation = { version = "0.3", default-features = false, features = [
     "AVMediaFormat",
     "block2",
 ] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "std",
+    "CGWindow",
+] }
 # M-PIX.9 — block2 closures for AVCaptureDevice requestAccess
 # completion handler; objc2 runtime types for the Bool result.
 block2 = "0.6"

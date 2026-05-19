@@ -451,6 +451,7 @@
    so it reads as actionable. */
 .camera-picker-state-button,
 .mic-picker-state-button,
+.screen-picker-state-button,
 .system-audio-picker-state-button {
   display: inline-block;
   margin-top: 12px;
@@ -465,6 +466,7 @@
 }
 .camera-picker-state-button:hover,
 .mic-picker-state-button:hover,
+.screen-picker-state-button:hover,
 .system-audio-picker-state-button:hover {
   background: var(--accent, #4fc3f7);
   color: var(--bg, #0f1115);

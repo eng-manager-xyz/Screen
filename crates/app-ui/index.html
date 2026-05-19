@@ -102,6 +102,10 @@
         window.__TAURI__?.core?.invoke("open_settings_microphone") ?? Promise.resolve();
       window.__screenOpenSettingsScreenRecording = () =>
         window.__TAURI__?.core?.invoke("open_settings_screen_recording") ?? Promise.resolve();
+      window.__screenScreenRecordingPermissionStatus = () =>
+        window.__TAURI__?.core?.invoke("screen_recording_permission_status") ?? Promise.resolve("Granted");
+      window.__screenRequestScreenRecordingPermission = () =>
+        window.__TAURI__?.core?.invoke("request_screen_recording_permission") ?? Promise.resolve("Granted");
 
       // M-AUDIO-SYS.2 / AUT-282 — system audio (speakers + per-app)
       // IPC. Same shape as the camera / mic bridge; the per-app

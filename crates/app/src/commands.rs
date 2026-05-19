@@ -1042,21 +1042,85 @@ fn request_av_access_blocking(kind: AvMediaTypeKind) -> CameraPermission {
     av_authorization_status(kind)
 }
 
-/// Trigger the Screen Recording TCC prompt by invoking SCK's
-/// `SCShareableContent.current` (via the existing public
-/// `media::screen::list_displays` entry point — same internal
-/// call, registered as TCC trigger).
+/// Query the platform Screen Recording grant without touching SCK.
 ///
-/// The first call registers the bundle id + fires the prompt; we
-/// don't actually USE the returned content here, just the side
-/// effect of registering with TCC. Blocks the calling thread —
-/// caller is responsible for invoking from inside
-/// `tauri::async_runtime::spawn_blocking`.
+/// This uses CoreGraphics' screen-capture TCC preflight API, which is
+/// the cheap permission check Apple exposes for this privacy class.
+#[tauri::command]
+#[must_use]
+pub fn screen_recording_permission_status() -> CameraPermission {
+    #[cfg(target_os = "macos")]
+    {
+        screen_recording_permission_status_macos()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
+}
+
+/// Proactively trigger the Screen Recording TCC request.
+///
+/// This is intentionally separate from `screen_recording_permission_status`:
+/// status is a side-effect-free preflight, while this function is what
+/// causes macOS to show the Screen & System Audio Recording consent sheet
+/// and add the current app identity to the Settings list.
+#[tauri::command]
+pub async fn request_screen_recording_permission() -> CameraPermission {
+    #[cfg(target_os = "macos")]
+    {
+        tauri::async_runtime::spawn_blocking(request_screen_recording_access_blocking)
+            .await
+            .unwrap_or(CameraPermission::NotDetermined)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CameraPermission::Granted
+    }
+}
+
+/// Trigger the Screen Recording TCC flow with CoreGraphics rather than
+/// using `SCShareableContent` as an accidental permission probe.
+///
+/// SCK enumeration can fail for reasons other than missing TCC. Keeping
+/// the permission request on `CGRequestScreenCaptureAccess` lets the UI
+/// distinguish "permission not active for this app identity" from "SCK
+/// source enumeration failed after permission was granted".
 #[cfg(target_os = "macos")]
 fn request_screen_recording_access_blocking() -> CameraPermission {
-    match media::screen::list_displays() {
-        Ok(_) => CameraPermission::Granted,
-        Err(_) => CameraPermission::Denied,
+    use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+
+    if CGPreflightScreenCaptureAccess() {
+        return CameraPermission::Granted;
+    }
+    let _ = CGRequestScreenCaptureAccess();
+    screen_recording_permission_status_macos()
+}
+
+#[cfg(target_os = "macos")]
+fn screen_recording_permission_status_macos() -> CameraPermission {
+    use objc2_core_graphics::CGPreflightScreenCaptureAccess;
+
+    if CGPreflightScreenCaptureAccess() {
+        CameraPermission::Granted
+    } else {
+        CameraPermission::Denied
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_screen_recording_access() -> Result<(), String> {
+    match screen_recording_permission_status_macos() {
+        CameraPermission::Granted => Ok(()),
+        CameraPermission::Denied | CameraPermission::NotDetermined => {
+            let requested = request_screen_recording_access_blocking();
+            if matches!(requested, CameraPermission::Granted) {
+                return Ok(());
+            }
+            Err(
+                "Screen Recording permission is not active for this app identity. Enable screen-app.app in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen the app without rebuilding. If this persists on macOS 15+, rebuild with SCREEN_CODESIGN_IDENTITY set to an Apple Development or Developer ID signing identity; ad-hoc signatures cannot reliably satisfy ScreenCapture TCC.".into(),
+            )
+        }
     }
 }
 
@@ -1280,6 +1344,7 @@ impl From<AudioAppFilterView> for media::sck_audio::AudioAppFilter {
 pub fn list_audio_apps() -> Result<Vec<AudioAppView>, String> {
     #[cfg(target_os = "macos")]
     {
+        ensure_screen_recording_access()?;
         media::sck_audio::list_audio_apps()
             .map(|apps| apps.into_iter().map(AudioAppView::from).collect())
             .map_err(|err| err.to_string())
@@ -1304,6 +1369,7 @@ pub fn start_system_audio_capture(
     app: tauri::AppHandle,
     state: State<'_, SystemAudioCaptureState>,
 ) -> Result<(), String> {
+    ensure_screen_recording_access()?;
     state
         .start(&app, media::sck_audio::SystemAudioConfig::default())
         .map_err(|err| err.to_string())
@@ -1459,6 +1525,7 @@ impl From<media::screen::WindowSource> for WindowSourceView {
 pub fn list_screen_displays() -> Result<Vec<DisplaySourceView>, String> {
     #[cfg(target_os = "macos")]
     {
+        ensure_screen_recording_access()?;
         media::screen::list_displays()
             .map(|v| v.into_iter().map(DisplaySourceView::from).collect())
             .map_err(|err| err.to_string())
@@ -1478,6 +1545,7 @@ pub fn list_screen_displays() -> Result<Vec<DisplaySourceView>, String> {
 pub fn list_screen_windows() -> Result<Vec<WindowSourceView>, String> {
     #[cfg(target_os = "macos")]
     {
+        ensure_screen_recording_access()?;
         media::screen::list_windows()
             .map(|v| v.into_iter().map(WindowSourceView::from).collect())
             .map_err(|err| err.to_string())
@@ -1514,6 +1582,7 @@ pub fn start_screen_capture(
     source_id: Option<String>,
 ) -> Result<(), String> {
     use media::sck_video::{ScreenCaptureConfig, ScreenCaptureSource};
+    ensure_screen_recording_access()?;
     let source = match source_id.as_deref() {
         None | Some("") => ScreenCaptureSource::PrimaryDisplay,
         Some(id) if id.starts_with("display-") => ScreenCaptureSource::Display(id.to_string()),
@@ -1648,6 +1717,12 @@ pub fn start_recording(
     {
         if config.streams.screen || config.streams.system_audio {
             return Err("screen + system audio capture require macOS 13.0+".into());
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if config.streams.screen || config.streams.system_audio {
+            ensure_screen_recording_access()?;
         }
     }
 

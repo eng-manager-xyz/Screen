@@ -69,6 +69,11 @@ extern "C" {
     /// Screen Recording. macOS only; Linux/Windows no-op.
     #[wasm_bindgen(js_name = __screenOpenSettingsScreenRecording, catch)]
     pub async fn open_settings_screen_recording_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenRequestScreenRecordingPermission()` — triggers the
+    /// macOS Screen & System Audio Recording TCC request.
+    #[wasm_bindgen(js_name = __screenRequestScreenRecordingPermission, catch)]
+    pub async fn request_screen_recording_permission_js() -> Result<JsValue, JsValue>;
 }
 
 /// Result shape carrying either the typed list or a string error so
@@ -130,6 +135,13 @@ pub async fn system_audio_status() -> bool {
 /// deep-link helpers.
 pub async fn open_settings_screen_recording() {
     let _ = open_settings_screen_recording_js().await;
+}
+
+/// Async helper: trigger Screen Recording TCC before opening Settings.
+/// After `tccutil reset ScreenCapture`, this call is what makes macOS
+/// recreate the app row in the Screen & System Audio Recording list.
+pub async fn request_screen_recording_permission() {
+    let _ = request_screen_recording_permission_js().await;
 }
 
 /// Subscribe to the `system-audio-level` Tauri event

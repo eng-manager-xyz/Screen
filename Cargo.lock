@@ -6203,6 +6203,7 @@ dependencies = [
  "media",
  "objc2 0.6.4",
  "objc2-av-foundation",
+ "objc2-core-graphics",
  "playback",
  "pollster",
  "screen-wisp",

@@ -235,8 +235,17 @@ pub fn SystemAudioPicker() -> impl IntoView {
             enabled.set(true);
             write_enabled(true);
             spawn_local(async move {
-                let _ = system_audio_ipc::start_system_audio_capture().await;
-                schedule_filter_apply(Vec::new());
+                match system_audio_ipc::start_system_audio_capture().await {
+                    Ok(()) => {
+                        error_message.set(None);
+                        schedule_filter_apply(Vec::new());
+                    }
+                    Err(err) => {
+                        enabled.set(false);
+                        write_enabled(false);
+                        error_message.set(Some(err));
+                    }
+                }
             });
         }
     };
@@ -258,8 +267,17 @@ pub fn SystemAudioPicker() -> impl IntoView {
             write_enabled(true);
             let pick_for_start = pick.clone();
             spawn_local(async move {
-                let _ = system_audio_ipc::start_system_audio_capture().await;
-                schedule_filter_apply(pick_for_start);
+                match system_audio_ipc::start_system_audio_capture().await {
+                    Ok(()) => {
+                        error_message.set(None);
+                        schedule_filter_apply(pick_for_start);
+                    }
+                    Err(err) => {
+                        enabled.set(false);
+                        write_enabled(false);
+                        error_message.set(Some(err));
+                    }
+                }
             });
         }
     };
@@ -366,18 +384,19 @@ fn SystemAudioBody(
                 <p>{"Couldn't list apps."}</p>
                 <p class="system-audio-picker-state-help">{msg}</p>
                 <p class="system-audio-picker-state-help">
-                    {"Grant Screen Recording in System Settings → Privacy & Security, then quit and reopen the app."}
+                    {"Request access first; macOS will then add this app to System Settings. After enabling it, quit and reopen the app."}
                 </p>
                 <button
                     type="button"
                     class="system-audio-picker-state-button"
                     on:click=move |_| {
                         spawn_local(async move {
+                            system_audio_ipc::request_screen_recording_permission().await;
                             system_audio_ipc::open_settings_screen_recording().await;
                         });
                     }
                 >
-                    {"Open System Settings → Screen Recording"}
+                    {"Request Screen Recording Access"}
                 </button>
             </div>
         }

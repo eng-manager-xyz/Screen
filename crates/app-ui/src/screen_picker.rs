@@ -224,8 +224,20 @@ fn ScreenPickerBody(
                     <p>{"Couldn't list screen sources."}</p>
                     <p class="screen-picker-state-help">{msg}</p>
                     <p class="screen-picker-state-help">
-                        {"Grant Screen Recording in System Settings → Privacy & Security, then quit and reopen the app."}
+                        {"Request access first; macOS will then add this app to System Settings. After enabling it, quit and reopen the app."}
                     </p>
+                    <button
+                        type="button"
+                        class="screen-picker-state-button"
+                        on:click=move |_| {
+                            spawn_local(async move {
+                                screen_ipc::request_screen_recording_permission().await;
+                                screen_ipc::open_settings_screen_recording().await;
+                            });
+                        }
+                    >
+                        {"Request Screen Recording Access"}
+                    </button>
                 </div>
             }
             .into_any(),

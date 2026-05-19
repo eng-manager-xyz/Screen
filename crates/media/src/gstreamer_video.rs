@@ -134,19 +134,10 @@ impl GstreamerVideoCapture {
             "video/x-raw,format=BGRA,width={width},height={height},framerate={framerate}/1"
         );
         let mut cmd = Command::new("gst-launch-1.0");
-        cmd.args([
-            "-q",
-            "autovideosrc",
-            "!",
-            "videoconvert",
-            "!",
-            &caps,
-            "!",
-            "fdsink",
-            "fd=1",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        cmd.args(["-q", "autovideosrc"])
+            .args(live_camera_tail_args(&caps))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
         let mut child = cmd.spawn().map_err(|source| Error::Spawn {
             source,
             path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
@@ -218,7 +209,7 @@ impl GstreamerVideoCapture {
         for tok in &source_tokens {
             cmd.arg(tok);
         }
-        cmd.args(["!", "videoconvert", "!", &caps, "!", "fdsink", "fd=1"])
+        cmd.args(live_camera_tail_args(&caps))
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         tracing::info!(
@@ -353,6 +344,20 @@ impl GstreamerVideoCapture {
     }
 }
 
+fn live_camera_tail_args(caps: &str) -> [&str; 9] {
+    [
+        "!",
+        "videoconvert",
+        "!",
+        "videoscale",
+        "!",
+        caps,
+        "!",
+        "fdsink",
+        "fd=1",
+    ]
+}
+
 impl Drop for GstreamerVideoCapture {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -410,5 +415,24 @@ mod tests {
     fn capture_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<GstreamerVideoCapture>();
+    }
+
+    #[test]
+    fn live_camera_pipeline_scales_before_square_caps() {
+        let caps = "video/x-raw,format=BGRA,width=480,height=480,framerate=30/1";
+        let args = live_camera_tail_args(caps);
+        let scale_pos = args
+            .iter()
+            .position(|arg| *arg == "videoscale")
+            .expect("live camera pipeline should include videoscale");
+        let caps_pos = args
+            .iter()
+            .position(|arg| arg.starts_with("video/x-raw"))
+            .expect("live camera pipeline should include raw caps");
+
+        assert!(
+            scale_pos < caps_pos,
+            "live camera sources output native sizes; videoscale must run before square preview caps"
+        );
     }
 }

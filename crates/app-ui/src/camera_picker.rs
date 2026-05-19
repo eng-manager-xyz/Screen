@@ -45,23 +45,7 @@ pub fn CameraPicker() -> impl IntoView {
     let recording_lock = RwSignal::new(false);
     crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
-    // Initial mount: probe permission, then enumerate.
-    spawn_local(async move {
-        let perm = camera_ipc::camera_permission_status().await;
-        permission.set(perm);
-        let list = camera_ipc::list_cameras().await;
-        let default_id = resolve_default(&list);
-        if let Some(id) = &default_id {
-            // Auto-start the preview on first mount so the canvas
-            // gets frames the moment the wisp pipeline lands.
-            let id = id.clone();
-            spawn_local(async move {
-                camera_ipc::start_preview(id).await;
-            });
-        }
-        selected_id.set(default_id);
-        cameras.set(list);
-    });
+    refresh_cameras(cameras, selected_id, permission, true);
 
     let on_select = move |id: String| {
         // Persist + propagate.
@@ -84,7 +68,11 @@ pub fn CameraPicker() -> impl IntoView {
                 title=move || if recording_lock.get() { "Recording in progress — stop the recording to change cameras" } else { "" }
                 on:click=move |_| {
                     if recording_lock.get() { return; }
-                    open.update(|o| *o = !*o);
+                    let will_open = !open.get_untracked();
+                    open.set(will_open);
+                    if will_open {
+                        refresh_cameras(cameras, selected_id, permission, false);
+                    }
                 }
             >
                 <span class="camera-picker-label">
@@ -152,6 +140,7 @@ fn CameraPickerBody(
                                 result.camera, result.microphone, result.screen_recording
                             ));
                             // Re-enumerate after the user grants access.
+                            permission.set(result.camera);
                             let list = camera_ipc::list_cameras().await;
                             cameras.set(list);
                         });
@@ -176,6 +165,31 @@ fn CameraPickerBody(
         .into_any(),
     }
     }
+}
+
+fn refresh_cameras(
+    cameras: RwSignal<Vec<CameraView>>,
+    selected_id: RwSignal<Option<String>>,
+    permission: RwSignal<CameraPermission>,
+    autostart_preview: bool,
+) {
+    spawn_local(async move {
+        let perm = camera_ipc::camera_permission_status().await;
+        permission.set(perm);
+        let list = camera_ipc::list_cameras().await;
+        let default_id = selected_id
+            .get_untracked()
+            .filter(|id| list.iter().any(|cam| cam.id == *id))
+            .or_else(|| resolve_default(&list));
+        if autostart_preview && let Some(id) = &default_id {
+            let id = id.clone();
+            spawn_local(async move {
+                camera_ipc::start_preview(id).await;
+            });
+        }
+        selected_id.set(default_id);
+        cameras.set(list);
+    });
 }
 
 fn render_row(

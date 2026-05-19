@@ -345,7 +345,7 @@ dev-remote-stop:
 #
 # Open http://localhost:8080 after this prints "Compiled successfully".
 dev-appshell:
-    cd crates/app-ui && trunk serve --features tray-appshell-preview
+    cd crates/app-ui && env -u NO_COLOR trunk serve --features tray-appshell-preview
 
 # M-RECORDER-V0 + M-RECORD-EXPORT + M-RECORD-EXPORT-REAL-PIXELS —
 # one-command end-to-end manual smoke test for the recorder.
@@ -399,7 +399,7 @@ test-recorder:
     rm -rf crates/app-ui/dist
     -cargo clean -p app-ui -p screen-app 2>/dev/null
     @echo "→ [2/3] Building app-ui wasm bundle via trunk…"
-    cd crates/app-ui && trunk build
+    cd crates/app-ui && env -u NO_COLOR trunk build
     @echo "→ [3/3] Launching screen-app — click the menubar circle to open the AppShell."
     @echo ""
     # `--features custom-protocol` forwards to `tauri/custom-protocol`,
@@ -420,10 +420,12 @@ test-recorder:
 # bundle id never registers in the TCC database, `tccutil reset
 # Camera com.screen.app` returns "No such bundle identifier".
 #
-# Fix: produce a real `.app` bundle, then re-sign with an ad-hoc
-# signature using the correct `--identifier`. macOS now treats the
-# bundle as a registered app with stable identity; TCC prompts fire
-# on first device access.
+# Fix: produce a real `.app` bundle, then sign it with the correct
+# `--identifier`. For ScreenCaptureKit / Screen & System Audio
+# Recording, macOS 15+ needs a stable certificate-backed signing
+# identity. Set `SCREEN_CODESIGN_IDENTITY` to an Apple Development /
+# Developer ID identity. The ad-hoc fallback keeps camera/mic smoke
+# usable but ScreenCapture TCC is expected to fail on current macOS.
 #
 # Total time: ~5–10 min cold (full Tauri bundle pipeline), ~1 min
 # warm. Always launches the bundle (not the raw binary), so TCC
@@ -445,18 +447,33 @@ app-build:
     @echo "→ Cleaning stale wasm bundle…"
     rm -rf crates/app-ui/dist
     @echo "→ Building .app bundle (cargo tauri build --debug --bundles app)…"
-    cd crates/app && cargo tauri build --debug --bundles app
+    cd crates/app && env -u NO_COLOR cargo tauri build --debug --bundles app
     @echo "→ Bundle ready at target/debug/bundle/macos/screen-app.app"
 
-# Step 2 — re-sign the .app with an ad-hoc signature using the
-# `com.screen.app` identifier so macOS TCC tracks grants against
-# the stable bundle id (not the linker's per-rebuild-changing
-# hash). Idempotent — safe to re-run on an already-signed bundle.
+# Step 2 — re-sign the .app with the `com.screen.app` identifier.
+# Set SCREEN_CODESIGN_IDENTITY to a stable certificate identity for
+# normal Apple code signing. Without it, codesign falls back to
+# ad-hoc signing, but we still stamp a stable identifier-only
+# designated requirement so local TCC grants can match the next reopen.
 app-sign:
-    @echo "→ Re-signing with ad-hoc identity --identifier com.screen.app…"
-    codesign --force --deep --sign - --identifier com.screen.app target/debug/bundle/macos/screen-app.app
-    @echo "→ Verifying:"
-    codesign -dv target/debug/bundle/macos/screen-app.app 2>&1 | head -4
+    @identity="${SCREEN_CODESIGN_IDENTITY:--}"; \
+    if [ "$identity" = "-" ]; then \
+      echo "→ Re-signing with ad-hoc identity + stable com.screen.app designated requirement…"; \
+      echo "  WARNING: macOS Screen & System Audio Recording can still reject ad-hoc signatures."; \
+      echo "  For screen/system-audio smoke tests, set SCREEN_CODESIGN_IDENTITY to an Apple Development or Developer ID identity."; \
+      codesign --force --deep --sign - --identifier com.screen.app --requirements '=designated => identifier "com.screen.app"' target/debug/bundle/macos/screen-app.app; \
+    else \
+      echo "→ Re-signing with identity '$identity' --identifier com.screen.app…"; \
+      codesign --force --deep --sign "$identity" --identifier com.screen.app target/debug/bundle/macos/screen-app.app; \
+    fi; \
+    echo "→ Verifying signature:"; \
+    codesign -dv target/debug/bundle/macos/screen-app.app 2>&1 | sed -n '1,8p'; \
+    echo "→ Designated requirement:"; \
+    codesign -d -r- target/debug/bundle/macos/screen-app.app 2>&1 | sed -n '1,3p'
+
+# List installed identities that can be used for SCREEN_CODESIGN_IDENTITY.
+app-signing-identities:
+    security find-identity -v -p codesigning
 
 # Composed: build + sign, no open. Use when you want to bundle for
 # later launch (e.g. drop the .app into Applications, then double-
@@ -472,8 +489,20 @@ app-bundle: app-build app-sign
 # combined `test-recorder-bundled` recipe.
 app-open:
     @echo "→ Opening bundled .app — click the menubar circle to open the AppShell."
-    @echo "  First device access fires the macOS TCC prompts; click Allow on each."
+    @echo "  First device access fires macOS TCC prompts; click Allow on each."
+    @echo "  After enabling Screen & System Audio Recording, quit the app and run 'just app-open' again."
     open target/debug/bundle/macos/screen-app.app
+
+# Quit the bundled app. Useful after granting Screen & System Audio
+# Recording, because macOS does not apply that grant to the already-
+# running process.
+app-quit:
+    @echo "→ Quitting screen-app if it is running…"
+    -osascript -e 'tell application id "com.screen.app" to quit' 2>/dev/null
+    -pkill -x screen-app 2>/dev/null
+
+# Quit and reopen the existing bundle without rebuilding or resetting TCC.
+app-reopen: app-quit app-open
 
 # Top-level convenience: build + sign + open. The single command for
 # "I want to record + verify the recorder works end-to-end."
@@ -481,8 +510,10 @@ app-open:
 # + adds the open step.
 test-recorder-bundled: app-bundle app-open
 
-# Nuke everything related to the bundled .app so the next
-# `app-bundle` run is forced from scratch:
+# Nuke build artifacts related to the bundled .app so the next
+# `app-bundle` run is forced from scratch. This deliberately does
+# NOT reset TCC permissions; use `app-tcc-reset` when you explicitly
+# want macOS to forget grants and re-prompt.
 #
 # * `cargo clean -p screen-app -p app-ui` — forces both crates to
 #   recompile. Cheap: only these two crates rebuild; the wisp /
@@ -492,28 +523,37 @@ test-recorder-bundled: app-bundle app-open
 #   bundle.
 # * `rm -rf target/debug/bundle` — forces Tauri's bundler to
 #   re-create the .app from scratch.
-# * `tccutil reset` for Camera + Microphone + ScreenCapture —
-#   forces macOS to re-prompt on next launch. Errors silently
-#   ignored (no entry exists = nothing to reset).
-#
 # After this, `just app-bundle` / `just test-recorder-bundled` will
 # rebuild + re-sign + (optionally) re-open from a known clean
-# state. Use this when "permissions aren't working" / "I just want
-# a clean slate to debug from."
+# build state without destroying existing privacy grants.
 app-clean:
     @echo "→ Cleaning build artifacts…"
     cargo clean -p screen-app -p app-ui
     rm -rf crates/app-ui/dist
     rm -rf target/debug/bundle
+    @echo "→ Clean. Next bundle run starts from scratch; existing TCC grants were preserved."
+
+# Explicitly reset macOS privacy grants for the recorder. Use this only
+# when you want to re-test the first-run permission flow; after granting
+# Screen & System Audio Recording, quit and reopen the app.
+app-tcc-reset:
     @echo "→ Resetting macOS TCC entries for com.screen.app (silent if not registered yet)…"
     -tccutil reset Camera com.screen.app 2>/dev/null
     -tccutil reset Microphone com.screen.app 2>/dev/null
     -tccutil reset ScreenCapture com.screen.app 2>/dev/null
-    @echo "→ Clean. Next bundle run starts from scratch."
+    @echo "→ TCC reset complete. Next launch will prompt again."
 
-# One-shot: clean everything + rebuild + sign + open. Use this when
-# the permissions / pickers / preview is being weird and you want to
-# rule out staleness in a single command.
+# Reset only Screen & System Audio Recording. Use this after changing the
+# code-signing requirement so macOS drops the stale ScreenCapture row
+# without forgetting Camera / Microphone grants.
+app-tcc-reset-screen:
+    @echo "→ Resetting Screen & System Audio Recording TCC entry for com.screen.app…"
+    -tccutil reset ScreenCapture com.screen.app 2>/dev/null
+    @echo "→ ScreenCapture TCC reset complete. Next launch will prompt for screen capture again."
+
+# One-shot: clean build artifacts + rebuild + sign + open. Keeps TCC
+# grants intact; use `just app-tcc-reset app-fresh` only when you
+# intentionally want to re-run first-launch prompts.
 #
 # Total time: ~5-10 min (full screen-app + app-ui recompile + Tauri
 # bundle pipeline).
@@ -648,15 +688,15 @@ storybook:
 
 # Run the UI storybook (Leptos) in the browser via Trunk.
 ui-storybook:
-    cd crates/ui-storybook && trunk serve --no-default-features --features csr --open
+    cd crates/ui-storybook && env -u NO_COLOR trunk serve --no-default-features --features csr --open
 
 # Build the recorder shell (Leptos CSR) — dev server with hot reload.
 app-ui:
-    cd crates/app-ui && trunk serve --open
+    cd crates/app-ui && env -u NO_COLOR trunk serve --open
 
 # Production-build the recorder shell into `crates/app-ui/dist/`.
 app-ui-build:
-    cd crates/app-ui && trunk build --release
+    cd crates/app-ui && env -u NO_COLOR trunk build --release
 
 # ─── Supply chain & dependency hygiene ────────────────────────────────────────
 
