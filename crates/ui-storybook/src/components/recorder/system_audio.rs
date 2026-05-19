@@ -16,11 +16,11 @@ use crate::components::primitives::{Badge, BadgeKind, Meter, ToggleSwitch};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppIconView {
     /// Stable id.
-    pub id: &'static str,
+    pub id: String,
     /// 1- or 2-letter monogram drawn inside the tile.
-    pub monogram: &'static str,
+    pub monogram: String,
     /// CSS background color string.
-    pub color: &'static str,
+    pub color: String,
 }
 
 /// View-model for the collapsed `SystemAudioRow`.
@@ -77,11 +77,11 @@ impl AudioFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioAppView {
     /// Stable id (matches the underlying app handle).
-    pub id: &'static str,
+    pub id: String,
     /// Display name (`"Spotify"`, `"Chrome"`).
-    pub name: &'static str,
+    pub name: String,
     /// Secondary context (`"Discovery Weekly · 18 m left"`, `"YouTube"`).
-    pub context: &'static str,
+    pub context: String,
     /// `true` when this app is in the active selection set.
     pub selected: bool,
     /// `true` to render the "Suggested" badge.
@@ -132,7 +132,7 @@ fn build_icon_stack(icons: Vec<AppIconView>) -> AnyView {
         .into_iter()
         .map(|icon| {
             let style = format!("background:{}", icon.color);
-            let monogram = icon.monogram;
+            let monogram = icon.monogram.clone();
             view! {
                 <span class="system-audio-icon" style=style aria-hidden="true">{monogram}</span>
             }
@@ -192,7 +192,7 @@ fn render_app_row(app: AudioAppView) -> impl IntoView {
         class.push_str(" audio-app-row-live");
     }
     let icon_style = format!("background:{}", app.icon.color);
-    let monogram = app.icon.monogram;
+    let monogram = app.icon.monogram.clone();
     let level_view = app.level.map(|l| view! { <Meter level=l bar_count=8 /> });
     view! {
         <li class=class role="option" aria-selected=app.selected>

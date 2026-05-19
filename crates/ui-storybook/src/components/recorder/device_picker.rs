@@ -16,22 +16,22 @@ use super::capture_source_row::CaptureSourceKind;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceThumb {
     /// Background CSS color.
-    pub background: &'static str,
+    pub background: String,
     /// Overlay glyph (1-2 chars).
-    pub glyph: &'static str,
+    pub glyph: String,
 }
 
 /// View-model for one option inside the picker.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceOptionView {
     /// Stable id.
-    pub id: &'static str,
+    pub id: String,
     /// Primary text.
-    pub name: &'static str,
+    pub name: String,
     /// Secondary text (resolution, connection hint).
-    pub detail: &'static str,
+    pub detail: String,
     /// Optional small badge ("Wireless", "New").
-    pub badge: Option<&'static str>,
+    pub badge: Option<String>,
     /// `true` when this option is currently selected.
     pub selected: bool,
     /// Optional live audio level — microphone rows only.
@@ -136,7 +136,7 @@ fn render_row(opt: DeviceOptionView) -> impl IntoView {
     let level_view = opt.level.map(|l| view! { <Meter level=l bar_count=10 /> });
     let thumb_view = opt.thumbnail.as_ref().map(|t| {
         let style = format!("background:{}", t.background);
-        let glyph = t.glyph;
+        let glyph = t.glyph.clone();
         view! {
             <span class="device-picker-thumb" style=style aria-hidden="true">
                 <span class="device-picker-thumb-glyph">{glyph}</span>

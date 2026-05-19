@@ -83,22 +83,22 @@ pub fn sample_on_screen_options(
     vec![
         OnScreenOptionView {
             id: OnScreenOptionKind::CleanDesktop,
-            title: "Clean up the desktop",
-            description: "Hide icons + the dock for a clean recording. Wallpaper stays.",
+            title: "Clean up the desktop".to_owned(),
+            description: "Hide icons + the dock for a clean recording. Wallpaper stays.".to_owned(),
             enabled: true,
             disabled: false,
         },
         OnScreenOptionView {
             id: OnScreenOptionKind::ShowKeys,
-            title: "Show keys you press",
-            description: "Render ⌘C / ⌃-space badges over the recording so viewers can follow along.",
+            title: "Show keys you press".to_owned(),
+            description: "Render ⌘C / ⌃-space badges over the recording so viewers can follow along.".to_owned(),
             enabled: true,
             disabled: false,
         },
         OnScreenOptionView {
             id: OnScreenOptionKind::BlurSensitiveInfo,
-            title: "Blur sensitive info",
-            description: "Auto-detect password fields and other sensitive regions, and blur them. Coming soon.",
+            title: "Blur sensitive info".to_owned(),
+            description: "Auto-detect password fields and other sensitive regions, and blur them. Coming soon.".to_owned(),
             enabled: false,
             disabled: sensitive_disabled,
         },
@@ -126,15 +126,15 @@ pub fn sample_on_screen_options_long_copy() -> Vec<crate::components::recorder::
     vec![
         OnScreenOptionView {
             id: OnScreenOptionKind::CleanDesktop,
-            title: "Clean up the desktop background and remove distracting icons",
-            description: "Hide every desktop icon plus the entire dock for a noise-free recording. Wallpaper remains visible. This setting reverts when the recording ends; nothing changes permanently on disk.",
+            title: "Clean up the desktop background and remove distracting icons".to_owned(),
+            description: "Hide every desktop icon plus the entire dock for a noise-free recording. Wallpaper remains visible. This setting reverts when the recording ends; nothing changes permanently on disk.".to_owned(),
             enabled: true,
             disabled: false,
         },
         OnScreenOptionView {
             id: OnScreenOptionKind::ShowKeys,
-            title: "Show keys you press during the recording",
-            description: "Render small badges in the bottom-right showing each modifier + key press. Useful for tutorial-style content where viewers want to follow along with what shortcut was used.",
+            title: "Show keys you press during the recording".to_owned(),
+            description: "Render small badges in the bottom-right showing each modifier + key press. Useful for tutorial-style content where viewers want to follow along with what shortcut was used.".to_owned(),
             enabled: false,
             disabled: false,
         },

@@ -38,9 +38,9 @@ pub struct OnScreenOptionView {
     /// Which option this row drives.
     pub id: OnScreenOptionKind,
     /// Display title.
-    pub title: &'static str,
+    pub title: String,
     /// Multi-line description shown beneath the title.
-    pub description: &'static str,
+    pub description: String,
     /// `true` when the toggle is on.
     pub enabled: bool,
     /// `true` to render the row dimmed and non-interactive (e.g.
