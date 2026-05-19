@@ -59,6 +59,14 @@ objc2-core-media = { version = "0.3", features = [
     "CMFormatDescription",
     "CMBase",
 ] }
+objc2-core-video = { version = "0.3", features = [
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVBuffer",
+    "CVBase",
+    "CVReturn",
+    "CVPixelFormatDescription",
+] }
 objc2-core-audio-types = { version = "0.3", features = ["CoreAudioBaseTypes"] }
 block2 = "0.6"
 dispatch2 = "0.3"

@@ -52,6 +52,10 @@ pub fn MicPicker() -> impl IntoView {
     let open = RwSignal::new(false);
     // M-AUDIO.METER / AUT-287 — live RMS level from the worker.
     let level = RwSignal::new(0.0_f32);
+    // M-RECORD.3 — lock the trigger while a coordinated session is
+    // active.
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
     // Subscribe once at component mount. The Tauri event listener
     // leaks the closure intentionally (see subscribe_mic_level docs);
@@ -61,14 +65,7 @@ pub fn MicPicker() -> impl IntoView {
     // Initial mount: probe permission, enumerate, restore last-used
     // selection. Note: unlike the camera picker we do NOT auto-start
     // the worker — mic capture is opt-in (see module docs).
-    spawn_local(async move {
-        let perm = mic_ipc::microphone_permission_status().await;
-        permission.set(perm);
-        let list = mic_ipc::list_microphones().await;
-        let default_id = resolve_default(&list);
-        selected_id.set(default_id);
-        mics.set(list);
-    });
+    refresh_microphones(mics, selected_id, permission);
 
     let on_select = move |id: String| {
         write_last_used(&id);
@@ -86,7 +83,16 @@ pub fn MicPicker() -> impl IntoView {
                 class="mic-picker-trigger"
                 aria-haspopup="listbox"
                 aria-expanded=move || open.get()
-                on:click=move |_| { open.update(|o| *o = !*o); }
+                prop:disabled=move || recording_lock.get()
+                title=move || if recording_lock.get() { "Recording in progress — stop the recording to change microphones" } else { "" }
+                on:click=move |_| {
+                    if recording_lock.get() { return; }
+                    let will_open = !open.get_untracked();
+                    open.set(will_open);
+                    if will_open {
+                        refresh_microphones(mics, selected_id, permission);
+                    }
+                }
             >
                 <span class="mic-picker-icon" aria-hidden="true">"🎙"</span>
                 <span class="mic-picker-label">
@@ -163,6 +169,24 @@ fn MicPickerBody(
         .into_any(),
     }
     }
+}
+
+fn refresh_microphones(
+    mics: RwSignal<Vec<MicrophoneView>>,
+    selected_id: RwSignal<Option<String>>,
+    permission: RwSignal<CameraPermission>,
+) {
+    spawn_local(async move {
+        let perm = mic_ipc::microphone_permission_status().await;
+        permission.set(perm);
+        let list = mic_ipc::list_microphones().await;
+        let default_id = selected_id
+            .get_untracked()
+            .filter(|id| list.iter().any(|mic| mic.id == *id))
+            .or_else(|| resolve_default(&list));
+        selected_id.set(default_id);
+        mics.set(list);
+    });
 }
 
 fn render_row(

@@ -6,6 +6,13 @@
 
 [build]
 target = "index.html"
+# Trunk's default preload block includes the wasm file:
+#   <link rel="preload" ... as="fetch" type="application/wasm">
+# WKWebView under Tauri does not match that preload to wasm-bindgen's
+# runtime `fetch(...)`, so DevTools reports it as unused even though
+# the module loads correctly. Keep the JS module preload and let
+# wasm-bindgen fetch the .wasm once.
+pattern_preload = '<link rel="modulepreload" href="{base}{js}" crossorigin="{crossorigin}">'
 
 [serve]
 address = "127.0.0.1"

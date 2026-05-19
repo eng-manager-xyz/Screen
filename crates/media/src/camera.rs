@@ -38,6 +38,15 @@ pub struct CameraDevice {
     /// "first in the list" — which generally matches the macOS /
     /// Windows default-device selection.
     pub is_default: bool,
+    /// gst-launch source-element tokens that pin capture to *this*
+    /// physical device — extracted from `gst-device-monitor-1.0`'s
+    /// per-device hint line (e.g. `"avfvideosrc device-index=0"`).
+    /// `None` when the parser couldn't find a hint line; callers
+    /// should fall back to `autovideosrc` in that case. Used by
+    /// [`super::gstreamer_video::GstreamerVideoCapture::from_camera`]
+    /// to actually route to the picked camera (M-CAM.4).
+    #[serde(default)]
+    pub gst_source: Option<String>,
 }
 
 /// Enumerate every camera the OS exposes via `gst-device-monitor-1.0`.
@@ -114,16 +123,25 @@ pub fn list_cameras() -> Vec<CameraDevice> {
 /// Pure-Rust parser for `gst-device-monitor-1.0 Video/Source` text
 /// output. Split out from [`list_cameras`] so the parser is testable
 /// against captured fixtures without needing gst installed.
+///
+/// Captures (per device block): the `name : ...` line as `label`, and
+/// the `gst-launch-1.0 <src-element> [<props>] ! ...` example line as
+/// [`CameraDevice::gst_source`] (verbatim source-element tokens).
 #[must_use]
 pub fn parse_device_monitor_output(text: &str) -> Vec<CameraDevice> {
     let mut devices = Vec::new();
     let mut current_name: Option<String> = None;
+    let mut current_source: Option<String> = None;
     for raw_line in text.lines() {
         let line = raw_line.trim();
         if line.starts_with("Device found:") {
             // New device block — emit the previous one if pending.
             if let Some(label) = current_name.take() {
-                devices.push(make_device(label, devices.is_empty()));
+                devices.push(make_device(
+                    label,
+                    current_source.take(),
+                    devices.is_empty(),
+                ));
             }
             continue;
         }
@@ -134,21 +152,51 @@ pub fn parse_device_monitor_output(text: &str) -> Vec<CameraDevice> {
             if !value.is_empty() && current_name.is_none() {
                 current_name = Some(value.to_string());
             }
+            continue;
+        }
+        // Per-device hint line: `gst-launch-1.0 <src> [<props>] ! ...`.
+        // Extract everything between `gst-launch-1.0 ` and ` ! `; if
+        // there's no ` ! ` (one-element pipelines hint), take the rest
+        // of the line. M-CAM.4 uses this verbatim as the routing
+        // source so `device-index=N` actually pins capture.
+        if let Some(rest) = line.strip_prefix("gst-launch-1.0 ")
+            && current_source.is_none()
+        {
+            let source = rest.split(" ! ").next().unwrap_or(rest).trim();
+            if !source.is_empty() {
+                current_source = Some(source.to_string());
+            }
         }
     }
     if let Some(label) = current_name.take() {
-        devices.push(make_device(label, devices.is_empty()));
+        devices.push(make_device(
+            label,
+            current_source.take(),
+            devices.is_empty(),
+        ));
     }
     devices
 }
 
-fn make_device(label: String, is_first: bool) -> CameraDevice {
+fn make_device(label: String, gst_source: Option<String>, is_first: bool) -> CameraDevice {
     let id = stable_id_for(&label);
     CameraDevice {
         id,
         label,
         is_default: is_first,
+        gst_source,
     }
+}
+
+/// Locate the [`CameraDevice`] whose stable id matches `id` by
+/// re-probing the OS via [`list_cameras`]. Used by
+/// [`super::gstreamer_video::GstreamerVideoCapture::from_camera`] to
+/// resolve the picker's camera id back to its OS-native source
+/// element on every recording start (M-CAM.4). Returns `None` when
+/// the camera has been unplugged since enumeration.
+#[must_use]
+pub fn find_by_id(id: &str) -> Option<CameraDevice> {
+    list_cameras().into_iter().find(|d| d.id == id)
 }
 
 /// Derive a stable ID for a camera from its human-readable label
@@ -213,6 +261,56 @@ Device found:
     }
 
     #[test]
+    fn parser_extracts_macos_gst_source_with_device_index() {
+        // M-CAM.4 — the `gst-launch-1.0 avfvideosrc device-index=0 ! ...`
+        // hint line is what routes capture to *this* camera.
+        let cams = parse_device_monitor_output(MACOS_SINGLE_CAM);
+        assert_eq!(
+            cams[0].gst_source.as_deref(),
+            Some("avfvideosrc device-index=0")
+        );
+    }
+
+    #[test]
+    fn parser_extracts_per_device_gst_source_for_each_block() {
+        // Synthetic two-cam output where each device has a distinct
+        // gst-launch hint. Confirms the per-device state machine
+        // emits a fresh `gst_source` per `Device found:` block (vs.
+        // accidentally reusing the first device's source for both).
+        let two_cams_with_hints = "Device found:
+
+\tname  : FaceTime HD Camera
+\tclass : Video/Source
+\tgst-launch-1.0 avfvideosrc device-index=0 ! ...
+
+Device found:
+
+\tname  : External USB Cam
+\tclass : Video/Source
+\tgst-launch-1.0 avfvideosrc device-index=1 ! ...
+";
+        let cams = parse_device_monitor_output(two_cams_with_hints);
+        assert_eq!(cams.len(), 2);
+        assert_eq!(
+            cams[0].gst_source.as_deref(),
+            Some("avfvideosrc device-index=0")
+        );
+        assert_eq!(
+            cams[1].gst_source.as_deref(),
+            Some("avfvideosrc device-index=1")
+        );
+    }
+
+    #[test]
+    fn parser_emits_none_gst_source_when_hint_absent() {
+        // The legacy TWO_CAMS fixture has no `gst-launch-1.0` line —
+        // the parser should report `None` so `from_camera` falls back
+        // to `autovideosrc` rather than building a malformed pipeline.
+        let cams = parse_device_monitor_output(TWO_CAMS);
+        assert!(cams.iter().all(|d| d.gst_source.is_none()));
+    }
+
+    #[test]
     fn parser_returns_empty_for_empty_input() {
         assert!(parse_device_monitor_output("").is_empty());
         assert!(parse_device_monitor_output("Probing devices...").is_empty());
@@ -242,9 +340,22 @@ Device found:
             id: "cam-feedface".into(),
             label: "Test Cam".into(),
             is_default: true,
+            gst_source: Some("avfvideosrc device-index=2".into()),
         };
         let json = serde_json::to_string(&cam).unwrap();
         let parsed: CameraDevice = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, cam);
+    }
+
+    #[test]
+    fn camera_device_serde_back_compat_when_gst_source_absent() {
+        // Pre-M-CAM.4 persisted records (or external JSON fixtures)
+        // won't carry `gst_source`. The `#[serde(default)]` on the
+        // field must let those deserialize cleanly — otherwise we'd
+        // silently break any external consumer.
+        let legacy_json = r#"{"id":"cam-feedface","label":"Test Cam","is_default":true}"#;
+        let parsed: CameraDevice = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(parsed.id, "cam-feedface");
+        assert!(parsed.gst_source.is_none());
     }
 }

@@ -102,6 +102,10 @@
         window.__TAURI__?.core?.invoke("open_settings_microphone") ?? Promise.resolve();
       window.__screenOpenSettingsScreenRecording = () =>
         window.__TAURI__?.core?.invoke("open_settings_screen_recording") ?? Promise.resolve();
+      window.__screenScreenRecordingPermissionStatus = () =>
+        window.__TAURI__?.core?.invoke("screen_recording_permission_status") ?? Promise.resolve("Granted");
+      window.__screenRequestScreenRecordingPermission = () =>
+        window.__TAURI__?.core?.invoke("request_screen_recording_permission") ?? Promise.resolve("Granted");
 
       // M-AUDIO-SYS.2 / AUT-282 — system audio (speakers + per-app)
       // IPC. Same shape as the camera / mic bridge; the per-app
@@ -126,14 +130,48 @@
         window.__TAURI__?.core?.invoke("list_screen_displays") ?? Promise.resolve([]);
       window.__screenListScreenWindows = () =>
         window.__TAURI__?.core?.invoke("list_screen_windows") ?? Promise.resolve([]);
-      window.__screenStartScreenCapture = () =>
-        window.__TAURI__?.core?.invoke("start_screen_capture") ?? Promise.resolve();
+      // M-SCK.0.1 / AUT-291 — start_screen_capture now takes an
+      // optional source_id (`"display-<id>"` / `"window-<id>"`).
+      // `null` keeps the M-SCK.0 default (primary display).
+      window.__screenStartScreenCapture = (sourceId) =>
+        window.__TAURI__?.core?.invoke("start_screen_capture", { sourceId: sourceId ?? null }) ?? Promise.resolve();
       window.__screenStopScreenCapture = () =>
         window.__TAURI__?.core?.invoke("stop_screen_capture") ?? Promise.resolve();
       window.__screenScreenCaptureStatus = () =>
         window.__TAURI__?.core?.invoke("screen_capture_status") ?? Promise.resolve(false);
       window.__screenScreenCaptureFrameCount = () =>
         window.__TAURI__?.core?.invoke("screen_capture_frame_count") ?? Promise.resolve(0);
+
+      // M-RECORD.1 — coordinated recording IPC. Three commands +
+      // the `recording-status` push event (subscribed via the
+      // ui-side IPC helper). `start_recording` takes the full
+      // RecordingConfig object; `stop_recording` returns the final
+      // RecordingSummary; `recording_status` is the synchronous
+      // initial-mount poll companion to the 500ms event push.
+      window.__screenStartRecording = (config) =>
+        window.__TAURI__?.core?.invoke("start_recording", { config }) ?? Promise.resolve(0);
+      window.__screenStopRecording = () =>
+        window.__TAURI__?.core?.invoke("stop_recording") ?? Promise.resolve(null);
+      window.__screenRecordingStatus = () =>
+        window.__TAURI__?.core?.invoke("recording_status") ?? Promise.resolve(null);
+      // M-EXPORT.4 — default-path resolver + Reveal-in-Finder.
+      window.__screenDefaultRecordingOutputPath = (formatSlug) =>
+        window.__TAURI__?.core?.invoke("default_recording_output_path", { formatSlug: formatSlug ?? null }) ?? Promise.resolve("");
+      window.__screenRevealRecordingInFileManager = (path) =>
+        window.__TAURI__?.core?.invoke("reveal_recording_in_file_manager", { path }) ?? Promise.resolve();
+
+      // M-PIX.8 — live webcam preview poll. Returns raw BGRA bytes
+      // as an ArrayBuffer via tauri::ipc::Response (zero JSON
+      // overhead). Empty when no frame is available yet.
+      window.__screenLatestCameraFrameBgra = () =>
+        window.__TAURI__?.core?.invoke("latest_camera_frame_bgra") ?? Promise.resolve(new ArrayBuffer(0));
+
+      // M-PIX.9 — proactive TCC permission requester. Fires the
+      // macOS prompts for Camera + Mic + Screen Recording so the
+      // bundle id registers in TCC; returns the final status of
+      // each resource.
+      window.__screenRequestAllPermissions = () =>
+        window.__TAURI__?.core?.invoke("request_all_permissions") ?? Promise.resolve({ camera: "Granted", microphone: "Granted", screen_recording: "Granted" });
 
       // M-CAM.3 diagnostic / AUT-257 — poll the camera-pipeline
       // counters. Leptos calls this every 500ms while the Recorder

@@ -62,9 +62,12 @@ extern "C" {
     #[wasm_bindgen(js_name = __screenListScreenWindows, catch)]
     pub async fn list_screen_windows_js() -> Result<JsValue, JsValue>;
 
-    /// `__screenStartScreenCapture()` — `Promise<void>` (or string error).
+    /// `__screenStartScreenCapture(sourceId?: string)` —
+    /// `Promise<void>` (or string error). `sourceId` is
+    /// `"display-<id>"` / `"window-<id>"` / `null` for primary
+    /// display (M-SCK.0.1 / AUT-291).
     #[wasm_bindgen(js_name = __screenStartScreenCapture, catch)]
-    pub async fn start_screen_capture_js() -> Result<JsValue, JsValue>;
+    pub async fn start_screen_capture_js(source_id: JsValue) -> Result<JsValue, JsValue>;
 
     /// `__screenStopScreenCapture()` — `Promise<void>`.
     #[wasm_bindgen(js_name = __screenStopScreenCapture, catch)]
@@ -77,6 +80,16 @@ extern "C" {
     /// `__screenScreenCaptureFrameCount()` — `Promise<number>`.
     #[wasm_bindgen(js_name = __screenScreenCaptureFrameCount, catch)]
     pub async fn screen_capture_frame_count_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenRequestScreenRecordingPermission()` — triggers the
+    /// macOS Screen & System Audio Recording TCC request.
+    #[wasm_bindgen(js_name = __screenRequestScreenRecordingPermission, catch)]
+    pub async fn request_screen_recording_permission_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenOpenSettingsScreenRecording()` — opens the OS privacy
+    /// pane where the user enables Screen & System Audio Recording.
+    #[wasm_bindgen(js_name = __screenOpenSettingsScreenRecording, catch)]
+    pub async fn open_settings_screen_recording_js() -> Result<JsValue, JsValue>;
 }
 
 /// Enumerate displays. Empty `Vec` outside Tauri.
@@ -101,9 +114,16 @@ pub async fn list_screen_windows() -> ScreenSourcesResult<WindowSourceView> {
     }
 }
 
-/// Start screen capture. Returns `Ok(())` or `Err(message)`.
-pub async fn start_screen_capture() -> Result<(), String> {
-    start_screen_capture_js()
+/// Start screen capture. `source_id` of `None` captures the primary
+/// display (M-SCK.0 default); `Some("display-<id>")` / `Some("window-<id>")`
+/// pin to a specific source (M-SCK.0.1 / AUT-291). Returns
+/// `Ok(())` or `Err(message)`.
+pub async fn start_screen_capture(source_id: Option<String>) -> Result<(), String> {
+    let arg = match source_id {
+        Some(id) => JsValue::from_str(&id),
+        None => JsValue::NULL,
+    };
+    start_screen_capture_js(arg)
         .await
         .map(|_| ())
         .map_err(|err| js_error_string(&err))
@@ -128,6 +148,18 @@ pub async fn screen_capture_frame_count() -> u64 {
         Ok(value) => serde_wasm_bindgen::from_value(value).unwrap_or(0),
         Err(_) => 0,
     }
+}
+
+/// Trigger the platform Screen Recording permission flow. On macOS this
+/// is the call that creates the row in System Settings after a TCC reset.
+pub async fn request_screen_recording_permission() {
+    let _ = request_screen_recording_permission_js().await;
+}
+
+/// Open System Settings → Privacy & Security → Screen & System Audio
+/// Recording. No-op outside Tauri.
+pub async fn open_settings_screen_recording() {
+    let _ = open_settings_screen_recording_js().await;
 }
 
 fn js_error_string(err: &JsValue) -> String {

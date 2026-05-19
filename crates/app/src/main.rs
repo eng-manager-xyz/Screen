@@ -34,6 +34,7 @@ use screen_app::audio::{MicCaptureHandle, MicCaptureState};
 use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
+use screen_app::recording::RecordingState;
 #[cfg(target_os = "macos")]
 use screen_app::screen_capture::ScreenCaptureState;
 #[cfg(target_os = "macos")]
@@ -66,7 +67,8 @@ fn main() {
         .manage(PreviewDiagnostics::default())
         .manage(CameraPipelineHandle::default())
         .manage(MicCaptureState::default())
-        .manage(MicCaptureHandle::default());
+        .manage(MicCaptureHandle::default())
+        .manage(RecordingState::default());
     // System-audio + screen-capture states are macOS-only — both
     // depend on ScreenCaptureKit.
     #[cfg(target_os = "macos")]
@@ -103,6 +105,8 @@ fn main() {
                     commands::open_settings_camera,
                     commands::open_settings_microphone,
                     commands::open_settings_screen_recording,
+                    commands::screen_recording_permission_status,
+                    commands::request_screen_recording_permission,
                     commands::list_audio_apps,
                     commands::start_system_audio_capture,
                     commands::stop_system_audio_capture,
@@ -114,6 +118,13 @@ fn main() {
                     commands::stop_screen_capture,
                     commands::screen_capture_status,
                     commands::screen_capture_frame_count,
+                    commands::start_recording,
+                    commands::stop_recording,
+                    commands::recording_status,
+                    commands::default_recording_output_path,
+                    commands::reveal_recording_in_file_manager,
+                    commands::latest_camera_frame_bgra,
+                    commands::request_all_permissions,
                     commands::__test_drop_file,
                     commands::__test_drag_enter,
                     commands::__test_drag_leave,
@@ -143,6 +154,8 @@ fn main() {
                     commands::open_settings_camera,
                     commands::open_settings_microphone,
                     commands::open_settings_screen_recording,
+                    commands::screen_recording_permission_status,
+                    commands::request_screen_recording_permission,
                     commands::list_audio_apps,
                     commands::start_system_audio_capture,
                     commands::stop_system_audio_capture,
@@ -154,6 +167,13 @@ fn main() {
                     commands::stop_screen_capture,
                     commands::screen_capture_status,
                     commands::screen_capture_frame_count,
+                    commands::start_recording,
+                    commands::stop_recording,
+                    commands::recording_status,
+                    commands::default_recording_output_path,
+                    commands::reveal_recording_in_file_manager,
+                    commands::latest_camera_frame_bgra,
+                    commands::request_all_permissions,
                 ]
             }
         })

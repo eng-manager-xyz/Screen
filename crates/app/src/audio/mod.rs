@@ -62,6 +62,16 @@ pub enum MicError {
     /// gst-launch pipeline spawn / runtime failure.
     #[error("gst pipeline failed: {0}")]
     GstFailed(String),
+    /// The picker handed us a `mic_id` that no longer matches any
+    /// device on the host — typically the mic was unplugged between
+    /// `list_microphones()` and `start_mic_capture` (Bluetooth
+    /// devices sleep, USB devices yanked). Caller should re-enumerate
+    /// + re-prompt the user.
+    ///
+    /// M-MIC.3 / AUT-284 + M-RECORD-EXPORT tightening — was silently
+    /// falling back to `autoaudiosrc`, which gave the wrong device.
+    #[error("microphone id `{0}` not present on this host (was the mic unplugged?)")]
+    NotFound(String),
 }
 
 /// Tauri-managed wrapper around [`MicLifecycle`]. Held in
@@ -195,6 +205,7 @@ mod tests {
             MicError::PermissionDenied,
             MicError::DeviceBusy,
             MicError::GstFailed("spawn failed: ENOENT".into()),
+            MicError::NotFound("mic-cafebabe".into()),
         ];
         for err in cases {
             let json = serde_json::to_string(&err).unwrap();

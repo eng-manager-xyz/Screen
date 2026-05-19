@@ -35,12 +35,23 @@ impl ScreenCaptureState {
     /// Start a session. Drops any in-flight stream first so SCK
     /// isn't asked to run two captures simultaneously.
     pub fn start(&self, config: ScreenCaptureConfig) -> Result<(), ScreenError> {
+        self.start_with_frame_slot(config, None)
+    }
+
+    /// Same as [`Self::start`] but plumbs the M-PIX.2 frame slot
+    /// into the SCK delegate so each captured frame's BGRA bytes
+    /// are written to the shared slot for the encoder feed thread.
+    pub fn start_with_frame_slot(
+        &self,
+        config: ScreenCaptureConfig,
+        frame_slot: Option<media::sck_video::ScreenFrameSlot>,
+    ) -> Result<(), ScreenError> {
         let mut guard = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = None;
-        let stream = ScreenCaptureStream::new(config)?;
+        let stream = ScreenCaptureStream::new_with_frame_slot(config, frame_slot)?;
         *guard = Some(stream);
         Ok(())
     }

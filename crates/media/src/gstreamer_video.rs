@@ -58,6 +58,16 @@ pub enum Error {
         /// Requested framerate in fps.
         framerate: f64,
     },
+    /// The picker handed us a `camera_id` that no longer matches any
+    /// device on the host — typically the camera was unplugged
+    /// between `list_cameras()` and `from_camera()`. Callers should
+    /// re-enumerate and re-prompt (M-CAM.4 / AUT — see
+    /// `milestone-2-record-and-export.md`).
+    #[error("camera id `{id}` not present on this host (was the camera unplugged?)")]
+    CameraNotFound {
+        /// The id the caller passed in.
+        id: String,
+    },
 }
 
 /// Streaming video capture wrapping a `gst-launch-1.0` child process.
@@ -124,19 +134,90 @@ impl GstreamerVideoCapture {
             "video/x-raw,format=BGRA,width={width},height={height},framerate={framerate}/1"
         );
         let mut cmd = Command::new("gst-launch-1.0");
-        cmd.args([
-            "-q",
-            "autovideosrc",
-            "!",
-            "videoconvert",
-            "!",
-            &caps,
-            "!",
-            "fdsink",
-            "fd=1",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        cmd.args(["-q", "autovideosrc"])
+            .args(live_camera_tail_args(&caps))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut child = cmd.spawn().map_err(|source| Error::Spawn {
+            source,
+            path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+        })?;
+        let stdout = child.stdout.take().ok_or(Error::NoStdout)?;
+        Ok(Self {
+            child,
+            stdout,
+            width,
+            height,
+            framerate: f64::from(framerate),
+            next_index: 0,
+            raw_buffer: Vec::new(),
+        })
+    }
+
+    /// Build a capture pinned to a *specific* camera resolved by its
+    /// stable id (M-CAM.4). Re-probes `list_cameras()` at call time to
+    /// turn `camera_id` into the OS-native source element + props
+    /// (`avfvideosrc device-index=N` on macOS, `mfvideosrc
+    /// device-path=...` on Windows, `v4l2src device=...` on Linux).
+    ///
+    /// If the camera is in the enumeration but the parser couldn't
+    /// extract a `gst_source` for it (unusual — would indicate a
+    /// gst-device-monitor output format the parser didn't recognise),
+    /// falls back to `autovideosrc` with a `tracing::warn` so the user
+    /// still sees *some* camera. The picker just won't be honored.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::InvalidFormat`] if any dimension is zero.
+    /// - [`Error::CameraNotFound`] if no enumerated camera matches
+    ///   `camera_id` (typical: the camera was unplugged between
+    ///   `list_cameras()` and `from_camera()`).
+    /// - [`Error::Spawn`] if `gst-launch-1.0` isn't on `PATH`.
+    /// - [`Error::NoStdout`] if the child's stdout pipe is missing.
+    pub fn from_camera(
+        camera_id: &str,
+        width: u32,
+        height: u32,
+        framerate: u32,
+    ) -> Result<Self, Error> {
+        if width == 0 || height == 0 || framerate == 0 {
+            return Err(Error::InvalidFormat {
+                width,
+                height,
+                framerate: f64::from(framerate),
+            });
+        }
+        let device = crate::camera::find_by_id(camera_id).ok_or_else(|| Error::CameraNotFound {
+            id: camera_id.to_string(),
+        })?;
+        let source_tokens: Vec<String> = if let Some(ref s) = device.gst_source {
+            s.split_whitespace().map(str::to_string).collect()
+        } else {
+            tracing::warn!(
+                camera_id = %camera_id,
+                label = %device.label,
+                "from_camera: device enumerated but `gst_source` was None — falling back to autovideosrc; \
+                 per-device routing will NOT pin to this physical camera"
+            );
+            vec!["autovideosrc".to_string()]
+        };
+        let caps = format!(
+            "video/x-raw,format=BGRA,width={width},height={height},framerate={framerate}/1"
+        );
+        let mut cmd = Command::new("gst-launch-1.0");
+        cmd.arg("-q");
+        for tok in &source_tokens {
+            cmd.arg(tok);
+        }
+        cmd.args(live_camera_tail_args(&caps))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        tracing::info!(
+            camera_id = %camera_id,
+            label = %device.label,
+            source = %source_tokens.join(" "),
+            "from_camera: spawning gst-launch with pinned source"
+        );
         let mut child = cmd.spawn().map_err(|source| Error::Spawn {
             source,
             path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
@@ -263,6 +344,20 @@ impl GstreamerVideoCapture {
     }
 }
 
+fn live_camera_tail_args(caps: &str) -> [&str; 9] {
+    [
+        "!",
+        "videoconvert",
+        "!",
+        "videoscale",
+        "!",
+        caps,
+        "!",
+        "fdsink",
+        "fd=1",
+    ]
+}
+
 impl Drop for GstreamerVideoCapture {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -320,5 +415,24 @@ mod tests {
     fn capture_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<GstreamerVideoCapture>();
+    }
+
+    #[test]
+    fn live_camera_pipeline_scales_before_square_caps() {
+        let caps = "video/x-raw,format=BGRA,width=480,height=480,framerate=30/1";
+        let args = live_camera_tail_args(caps);
+        let scale_pos = args
+            .iter()
+            .position(|arg| *arg == "videoscale")
+            .expect("live camera pipeline should include videoscale");
+        let caps_pos = args
+            .iter()
+            .position(|arg| arg.starts_with("video/x-raw"))
+            .expect("live camera pipeline should include raw caps");
+
+        assert!(
+            scale_pos < caps_pos,
+            "live camera sources output native sizes; videoscale must run before square preview caps"
+        );
     }
 }

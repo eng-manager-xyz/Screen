@@ -5,8 +5,14 @@
   "identifier": "com.screen.app",
   "build": {
     "frontendDist": "../app-ui/dist",
-    "beforeDevCommand": "cd app-ui && trunk serve --port 1420",
-    "beforeBuildCommand": "cd app-ui && trunk build --release",
+    "beforeDevCommand": {
+      "script": "env -u NO_COLOR trunk serve --port 1420",
+      "cwd": "../app-ui"
+    },
+    "beforeBuildCommand": {
+      "script": "env -u NO_COLOR trunk build --release",
+      "cwd": "../app-ui"
+    },
     "devUrl": "http://localhost:1420"
   },
   "app": {
@@ -53,9 +59,19 @@
         "enable": true,
         "scope": ["**"]
       }
-    }
+    },
+    "macOSPrivateApi": true,
+    "withGlobalTauri": true
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["app"],
+    "category": "Productivity",
+    "shortDescription": "Cinematic screen recorder",
+    "longDescription": "Screen — coordinated webcam + screen + mic + system audio recording with multi-format export (MP4 / WebM).",
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }

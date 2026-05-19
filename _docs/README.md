@@ -15,8 +15,9 @@ All project docs live here. Categories:
 
 | File | Purpose |
 |---|---|
-| `milestone-0-renderer.md` | M0: build the `wisp` crate. 21 chunks. **Current milestone.** |
+| `milestone-0-renderer.md` | M0: build the `wisp` crate. 21 chunks. |
 | `milestone-1-drop-zone-player.md` | M1: Tauri+Leptos drop-zone + HTML5 video player. 11 chunks. |
+| `milestone-2-record-and-export.md` | M2 (M-RECORD-EXPORT): coordinated capture + multi-format encode + save to disk. 14 chunks. **Current milestone.** |
 
 ## Architecture & design (read when designing or onboarding)
 

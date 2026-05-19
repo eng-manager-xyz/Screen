@@ -96,12 +96,13 @@
   border-radius: 12px;
 }
 
-/* Camera preview surface (M-CAM.3 / AUT-257).
+/* Camera preview surface (M-CAM.3 / AUT-257 + M-PIX.8 circle).
  *
- * IMPORTANT: no `border-radius` on `.camera-preview`. The circular
- * mask is rendered into the wisp scene + baked into the BGRA
- * readback bytes. CSS-rounding the same edge would visibly
- * double-crop the circle. */
+ * M-PIX.8: the canvas is painted with raw rectangular BGRA frames
+ * pulled from CameraFrameSlot, so the circular mask lives in CSS
+ * here (border-radius: 50%). The wisp-baked circular mask still
+ * applies to the RECORDED output via RecordingScene's clip — that
+ * path is independent of this preview. */
 .camera-preview-surface {
   position: relative;
   display: flex;
@@ -115,6 +116,11 @@
   display: block;
   margin: 0 auto;
   background: var(--surface-1, #1a1d21);
+  border-radius: 50%;
+  /* Faint ring so the circle reads even when the camera content
+   * is mostly dark / pre-paint. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  object-fit: cover;
 }
 .camera-preview-surface[data-state="initialising"] .camera-preview,
 .camera-preview-surface[data-state="awaiting-permission"] .camera-preview,
@@ -203,4 +209,612 @@
 .camera-picker-state-help {
   font-size: 12px;
   margin-top: 4px;
+}
+
+/* Mic picker dropdown (M-MIC.2 / AUT-279). Same shape as the camera
+   picker — keeping the visual contract identical until M-REC.0
+   formalises a shared CaptureSourceRow wrap. The mic-specific
+   tweaks are the leading microphone icon and the per-row "48 kHz ·
+   stereo · default" subline. */
+.mic-picker {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto 12px;
+}
+.mic-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.mic-picker-trigger:hover {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-icon {
+  opacity: 0.85;
+}
+.mic-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 280px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.mic-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mic-picker-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #fff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  row-gap: 2px;
+  column-gap: 8px;
+}
+.mic-picker-row:hover {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-row-selected {
+  background: var(--surface-2, #25282d);
+}
+.mic-picker-row-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+.mic-picker-row-sub {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+.mic-picker-row-check {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--accent, #4fc3f7);
+}
+.mic-picker-state {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.mic-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* System-audio picker (M-AUDIO-SYS.2 / AUT-282). Master toggle +
+   expandable per-app multi-select. Same visual idiom as the mic
+   picker; the inline "1 app" / "5 apps" summary lets the user
+   know they've scoped the capture without expanding. */
+.system-audio-picker {
+  position: relative;
+  display: block;
+  margin: 0 auto 12px;
+  max-width: 320px;
+}
+.system-audio-picker-header {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.system-audio-picker-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px 0 0 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+  flex: 1;
+}
+.system-audio-picker-toggle[data-enabled="true"] {
+  background: var(--accent-soft, #1a2a3a);
+  border-color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-toggle:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-label {
+  flex: 1;
+}
+.system-audio-picker-state {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+.system-audio-picker-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 0 6px 6px 0;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.system-audio-picker-expand:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-summary {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.system-audio-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.system-audio-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.system-audio-picker-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #fff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  row-gap: 2px;
+  column-gap: 8px;
+}
+.system-audio-picker-row:hover {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-row-selected {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-row-icon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  opacity: 0.6;
+}
+.system-audio-picker-row-label {
+  grid-column: 2;
+  grid-row: 1;
+}
+.system-audio-picker-row-bundle {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+.system-audio-picker-row-check {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-state-msg {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.system-audio-picker-state-msg--error p:first-child {
+  color: var(--danger, #ff7676);
+}
+.system-audio-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* Settings deep-link buttons in picker `PermissionNeeded` /
+   error states (M-RECP.0 / .6 / .8 — AUT-261 / 272 / 286). One
+   visual treatment shared across all three pickers since the
+   action shape is identical ("click to open Settings → <pane>").
+   The per-picker state container already constrains width + sets
+   the muted-text color; the button overrides with an accent border
+   so it reads as actionable. */
+.camera-picker-state-button,
+.mic-picker-state-button,
+.screen-picker-state-button,
+.system-audio-picker-state-button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: var(--accent-soft, #1a2a3a);
+  border: 1px solid var(--accent, #4fc3f7);
+  border-radius: 6px;
+  color: var(--accent, #4fc3f7);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.camera-picker-state-button:hover,
+.mic-picker-state-button:hover,
+.screen-picker-state-button:hover,
+.system-audio-picker-state-button:hover {
+  background: var(--accent, #4fc3f7);
+  color: var(--bg, #0f1115);
+}
+
+/* Live audio-level meter (M-AUDIO.METER / AUT-287). One visual
+   shared by both the mic picker (per-input meter under the trigger)
+   and the system-audio picker (master-stream meter under the
+   header). 50 ms CSS transition smooths the ~20 Hz event-driven
+   updates without burning CPU on a high-frequency reflow. */
+.audio-meter {
+  height: 4px;
+  margin: 4px auto 0;
+  max-width: 280px;
+  background: var(--surface-2, #25282d);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.audio-meter-bar {
+  height: 100%;
+  background: var(--accent, #4fc3f7);
+  transition: width 50ms linear;
+}
+
+/* Filter chips for the system-audio picker (M-AUDIO-SYS.3 /
+   AUT-288). Compact row above the per-app checkbox list. */
+.system-audio-picker-chips {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #333);
+}
+.system-audio-picker-chip {
+  flex: 1;
+  padding: 4px 10px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 999px;
+  color: var(--fg, #fff);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.system-audio-picker-chip:hover:not(:disabled) {
+  background: var(--surface-2, #25282d);
+}
+.system-audio-picker-chip[data-active="true"] {
+  background: var(--accent-soft, #1a2a3a);
+  border-color: var(--accent, #4fc3f7);
+  color: var(--accent, #4fc3f7);
+}
+.system-audio-picker-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Screen picker (M-SCK.4 / AUT-271). Same shape as the
+   system-audio picker (master toggle + expand → dropdown) so we
+   keep the visual contract consistent. Per-row layout is simpler —
+   no checkbox column since selecting a non-default source isn't
+   yet wired (M-SCK.0.1 follow-up). */
+.screen-picker {
+  position: relative;
+  display: block;
+  margin: 0 auto 12px;
+  max-width: 320px;
+}
+.screen-picker-header {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.screen-picker-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px 0 0 6px;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+  flex: 1;
+}
+.screen-picker-toggle[data-enabled="true"] {
+  background: var(--accent-soft, #1a2a3a);
+  border-color: var(--accent, #4fc3f7);
+}
+.screen-picker-toggle:hover {
+  background: var(--surface-2, #25282d);
+}
+.screen-picker-label {
+  flex: 1;
+}
+.screen-picker-state {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+.screen-picker-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 0 6px 6px 0;
+  color: var(--fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.screen-picker-expand:hover {
+  background: var(--surface-2, #25282d);
+}
+.screen-picker-summary {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.screen-picker-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+}
+.screen-picker-section-label {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted, #9aa0a6);
+}
+.screen-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.screen-picker-row {
+  display: grid;
+  grid-template-rows: auto auto;
+  padding: 6px 12px;
+  color: var(--fg, #fff);
+  row-gap: 2px;
+}
+.screen-picker-row-label {
+  grid-row: 1;
+}
+.screen-picker-row-sub {
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+.screen-picker-state-msg {
+  padding: 12px;
+  color: var(--fg-muted, #aaa);
+  text-align: center;
+}
+.screen-picker-state-msg--error p:first-child {
+  color: var(--danger, #ff7676);
+}
+.screen-picker-state-help {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* M-RECORD.2 — RecorderControls (master Record button + LEDs) */
+.recorder-controls {
+  background: var(--bg-elev-1, #1a1a1a);
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.recorder-controls[data-recording="true"] {
+  border-color: var(--danger, #ff4444);
+  box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.35);
+}
+.recorder-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.recorder-controls-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--danger, #d93030);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.recorder-controls-record:hover {
+  background: var(--danger-strong, #ff4040);
+}
+.recorder-controls-record:active {
+  transform: scale(0.97);
+}
+.recorder-controls[data-recording="true"] .recorder-controls-record {
+  background: var(--bg-elev-2, #2a2a2a);
+  color: var(--danger, #ff4444);
+  border: 1px solid var(--danger, #ff4444);
+}
+.recorder-controls-record-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.recorder-controls-elapsed {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.recorder-controls-elapsed-time {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg, #eee);
+}
+.recorder-controls-elapsed-tag {
+  font-size: 11px;
+  color: var(--fg-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.recorder-controls-channels {
+  display: inline-flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.recorder-controls-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fg, #ddd);
+  cursor: pointer;
+  user-select: none;
+}
+.recorder-controls-channel input[type="checkbox"]:disabled + span {
+  color: var(--fg-muted, #666);
+}
+.recorder-controls-leds {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.recorder-controls-led {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-elev-2, #222);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--fg, #ddd);
+}
+.recorder-controls-led-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--fg-muted, #555);
+}
+.recorder-controls-led[data-colour="green"] .recorder-controls-led-dot {
+  background: #44d97a;
+  box-shadow: 0 0 6px rgba(68, 217, 122, 0.7);
+}
+.recorder-controls-led[data-colour="yellow"] .recorder-controls-led-dot {
+  background: #f0c040;
+  box-shadow: 0 0 6px rgba(240, 192, 64, 0.7);
+}
+.recorder-controls-led[data-colour="red"] .recorder-controls-led-dot {
+  background: #ff4444;
+  box-shadow: 0 0 6px rgba(255, 68, 68, 0.7);
+}
+.recorder-controls-error {
+  padding: 8px 12px;
+  background: rgba(255, 68, 68, 0.12);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 6px;
+  color: var(--danger, #ff7676);
+  font-size: 13px;
+}
+
+/* M-EXPORT.4 — format dropdown + Reveal-in-Finder + saved-path row */
+.recorder-controls-format {
+  background: var(--bg-elev-2, #222);
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 6px;
+  color: var(--fg, #eee);
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.recorder-controls-format:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.recorder-controls-saved {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(68, 217, 122, 0.08);
+  border: 1px solid rgba(68, 217, 122, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.recorder-controls-saved-label {
+  color: var(--fg, #ddd);
+}
+.recorder-controls-saved-label code {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  word-break: break-all;
+}
+.recorder-controls-reveal {
+  margin-left: auto;
+  padding: 6px 12px;
+  background: var(--bg-elev-2, #2a2a2a);
+  color: var(--fg, #eee);
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.recorder-controls-reveal:hover {
+  background: var(--bg-elev-3, #3a3a3a);
 }

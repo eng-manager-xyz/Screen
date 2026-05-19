@@ -48,6 +48,7 @@ use std::thread::{self, JoinHandle};
 
 use media::audio::AudioFormat;
 use media::gstreamer_audio::GstreamerAudioCapture;
+use tauri::Manager;
 
 use super::{MicCaptureState, MicError};
 
@@ -174,6 +175,14 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
     // (~20 Hz at MIC_CHUNK_FRAMES = 50 ms).
     let mut smoothed_level: f32 = 0.0;
 
+    // M-PIX.3 — forward chunks into the shared AudioMixer so the
+    // encoder feed thread (M-PIX.5/6) sees mic samples on its
+    // pull. Defensive Option — None preserves the legacy
+    // meter-only behaviour for tests + standalone preview.
+    let mixer = app
+        .try_state::<crate::recording::RecordingState>()
+        .map(|s| crate::recording::SharedAudioMixer::clone(&s.audio_mixer));
+
     while !cancel.load(Ordering::Relaxed) {
         match capture.next_chunk(MIC_CHUNK_FRAMES) {
             Ok(chunk) => {
@@ -182,8 +191,22 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
                 smoothed_level =
                     MIC_LEVEL_EMA_ALPHA * raw_rms + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
                 emit_mic_level(app, smoothed_level);
-                // Chunk is otherwise unused here — the M-RECORD
-                // encode path consumes it in follow-up commits.
+                // M-PIX.3 — feed the mixer. The mic worker emits
+                // stereo F32LE matching the mixer's default
+                // channel count; alignment is enforced by the
+                // mixer.
+                if let Some(ref mixer_arc) = mixer {
+                    let mut mixer_guard = mixer_arc
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if let Err(err) = mixer_guard.push_mic(chunk.samples()) {
+                        // Misalignment shouldn't happen — chunk is
+                        // already validated — but warn instead of
+                        // panic so a stray sample-count anomaly
+                        // doesn't kill the worker.
+                        tracing::warn!(?err, "AudioMixer::push_mic rejected chunk");
+                    }
+                }
                 drop(chunk);
             }
             Err(err) => {

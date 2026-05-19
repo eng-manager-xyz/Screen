@@ -57,13 +57,26 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{AllocAnyThread, DefinedClass, define_class, msg_send};
 use objc2_core_media::{CMSampleBuffer, CMTime};
+use objc2_core_video::{
+    CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight,
+    CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidth, CVPixelBufferLockBaseAddress,
+    CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress, kCVPixelFormatType_32BGRA,
+};
 use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSString};
 use objc2_screen_capture_kit::{
-    SCContentFilter, SCStream, SCStreamConfiguration, SCStreamOutput, SCStreamOutputType, SCWindow,
+    SCContentFilter, SCShareableContent, SCStream, SCStreamConfiguration, SCStreamOutput,
+    SCStreamOutputType, SCWindow,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::sck_audio::{SystemAudioError, shareable_content_blocking};
+
+/// Shared latest-frame slot the [`ScreenOutputHandler`] writes BGRA
+/// bytes into (M-PIX.2). Plumbed in from the app crate (lives on
+/// `crate::recording::RecordingState`); typed here as a free
+/// `Arc<Mutex<Option<Vec<u8>>>>` so the `media` crate doesn't depend
+/// on `app`.
+pub type ScreenFrameSlot = Arc<std::sync::Mutex<Option<Vec<u8>>>>;
 
 /// Result type — reuses [`SystemAudioError`] so the screen-capture
 /// path surfaces failures with the same string conversion as the
@@ -83,12 +96,34 @@ pub const DEFAULT_HEIGHT: u32 = 1080;
 /// can bump this later if user feedback wants 60.
 pub const DEFAULT_TARGET_FPS: u32 = 30;
 
+/// Which screen / window the capture session targets
+/// (M-SCK.0.1 / AUT-291). `Default = PrimaryDisplay` so an existing
+/// `ScreenCaptureConfig::default()` keeps the M-SCK.0 behaviour.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ScreenCaptureSource {
+    /// First display in `SCShareableContent.displays` — M-SCK.0's
+    /// historical behaviour.
+    #[default]
+    PrimaryDisplay,
+    /// Specific display by id. Format matches what
+    /// [`crate::screen::list_displays`] emits: `"display-<displayID>"`
+    /// where `displayID` is the SCDisplay's macOS `CGDirectDisplayID`.
+    Display(String),
+    /// Specific window by id. Format matches what
+    /// [`crate::screen::list_windows`] emits: `"window-<windowID>"`
+    /// where `windowID` is the SCWindow's `CGWindowID`. Window IDs are
+    /// **not stable across app launches** — the picker persists +
+    /// recovers on no-match, see `<ScreenPicker />`.
+    Window(String),
+}
+
 /// Screen-capture configuration. Each field has a sensible default;
 /// pass `Default::default()` for "primary display, 1920×1080, 30
 /// fps." Override `width` / `height` to a specific source-rect
 /// sub-region or to the display's actual size; override
-/// `target_fps` to match a 60Hz display.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// `target_fps` to match a 60Hz display; override `source` to capture
+/// a non-primary display or a specific window (M-SCK.0.1 / AUT-291).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScreenCaptureConfig {
     /// Capture width in pixels. `0` falls back to [`DEFAULT_WIDTH`].
     pub width: u32,
@@ -100,6 +135,10 @@ pub struct ScreenCaptureConfig {
     /// Defaults `true` because that's what the user expects for
     /// every screencast they've ever seen.
     pub shows_cursor: bool,
+    /// Which display / window to capture (M-SCK.0.1 / AUT-291). The
+    /// `Default::default()` value is [`ScreenCaptureSource::PrimaryDisplay`]
+    /// so legacy callers keep the M-SCK.0 behaviour.
+    pub source: ScreenCaptureSource,
 }
 
 impl Default for ScreenCaptureConfig {
@@ -109,6 +148,21 @@ impl Default for ScreenCaptureConfig {
             height: DEFAULT_HEIGHT,
             target_fps: DEFAULT_TARGET_FPS,
             shows_cursor: true,
+            source: ScreenCaptureSource::PrimaryDisplay,
+        }
+    }
+}
+
+impl ScreenCaptureConfig {
+    /// Construct a config that captures `source` with the M-SCK.0
+    /// defaults for everything else (1920×1080 @ 30 fps, cursor on).
+    /// Most call sites use this rather than literal struct init since
+    /// the source is the field that actually varies per-session.
+    #[must_use]
+    pub fn for_source(source: ScreenCaptureSource) -> Self {
+        Self {
+            source,
+            ..Self::default()
         }
     }
 }
@@ -155,7 +209,7 @@ define_class!(
         unsafe fn stream_didOutputSampleBuffer_ofType(
             &self,
             _stream: &SCStream,
-            _sample_buffer: &CMSampleBuffer,
+            sample_buffer: &CMSampleBuffer,
             r#type: SCStreamOutputType,
         ) {
             if r#type != SCStreamOutputType::Screen {
@@ -165,21 +219,114 @@ define_class!(
                 .counters
                 .frames_received
                 .fetch_add(1, Ordering::Relaxed);
+
+            // M-PIX.2 — extract BGRA bytes + write to the shared
+            // frame slot, if a recording session is wired. No-op
+            // when the slot is absent (slot is None on the ivars
+            // when SCK is running for diagnostics only).
+            let Some(ref slot) = self.ivars().frame_slot else {
+                return;
+            };
+            // SAFETY: SCK guarantees the sample buffer is live for
+            // the callback's duration; CMSampleBufferGetImageBuffer
+            // is documented thread-safe on the SCK dispatch queue.
+            let Some(image_buffer) = (unsafe { sample_buffer.image_buffer() }) else {
+                return;
+            };
+            // CVImageBuffer === CVPixelBuffer (typedef in
+            // objc2-core-video).
+            let pixel_buffer: &objc2_core_video::CVPixelBuffer = &image_buffer;
+            if let Some(bytes) = extract_bgra_from_pixel_buffer(pixel_buffer) {
+                let mut guard = slot
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *guard = Some(bytes);
+            }
         }
     }
 );
 
 pub(crate) struct ScreenOutputIvars {
     counters: Arc<ScreenCaptureCounters>,
+    /// M-PIX.2 — optional shared slot the delegate writes BGRA
+    /// bytes into. `None` keeps the M-SCK.0 frame-counting-only
+    /// behaviour for tests + standalone diagnostics.
+    frame_slot: Option<ScreenFrameSlot>,
 }
 
 impl ScreenOutputHandler {
-    fn new(counters: Arc<ScreenCaptureCounters>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(ScreenOutputIvars { counters });
+    fn new(
+        counters: Arc<ScreenCaptureCounters>,
+        frame_slot: Option<ScreenFrameSlot>,
+    ) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(ScreenOutputIvars {
+            counters,
+            frame_slot,
+        });
         // SAFETY: `init` on NSObject takes Allocated<Self> + returns
         // Retained<Self>. Class derives NSObject via define_class!.
         unsafe { msg_send![super(this), init] }
     }
+}
+
+/// Extract a freshly-allocated BGRA `Vec<u8>` from a `CVPixelBuffer`.
+/// Handles row-stride padding — many IOSurfaces have
+/// `bytes_per_row > width * 4` so the source rows have trailing
+/// padding bytes that must be stripped.
+///
+/// Returns `None` when the pixel format isn't `32BGRA` (the
+/// `SCStreamConfiguration` pixelFormat is set to `32BGRA` in
+/// [`ScreenCaptureStream::new`], so this branch is defensive — if
+/// we somehow get a YUV / non-BGRA buffer, drop it rather than
+/// corrupting the encoder feed).
+pub(crate) fn extract_bgra_from_pixel_buffer(
+    pixel_buffer: &objc2_core_video::CVPixelBuffer,
+) -> Option<Vec<u8>> {
+    let format = CVPixelBufferGetPixelFormatType(pixel_buffer);
+    if format != kCVPixelFormatType_32BGRA {
+        tracing::trace!(
+            format = format,
+            "extract_bgra_from_pixel_buffer: non-BGRA format, skipping"
+        );
+        return None;
+    }
+    // SAFETY: CVPixelBufferLockBaseAddress is documented thread-safe
+    // for read-only locks. We pair with Unlock before return.
+    let lock_result =
+        unsafe { CVPixelBufferLockBaseAddress(pixel_buffer, CVPixelBufferLockFlags::ReadOnly) };
+    if lock_result != 0 {
+        tracing::warn!(
+            cv_return = lock_result,
+            "CVPixelBufferLockBaseAddress failed"
+        );
+        return None;
+    }
+    let width = CVPixelBufferGetWidth(pixel_buffer);
+    let height = CVPixelBufferGetHeight(pixel_buffer);
+    let bytes_per_row = CVPixelBufferGetBytesPerRow(pixel_buffer);
+    let base = CVPixelBufferGetBaseAddress(pixel_buffer);
+    let result = if base.is_null() || width == 0 || height == 0 {
+        None
+    } else {
+        let row_bytes_packed = width.saturating_mul(4);
+        let mut out: Vec<u8> = Vec::with_capacity(row_bytes_packed.saturating_mul(height));
+        // SAFETY: base + bytes_per_row * row stays inside the
+        // pixel-buffer allocation per Apple's docs (rows are
+        // contiguous; bytes_per_row is the stride). Lock guarantees
+        // the memory is live until Unlock.
+        unsafe {
+            for row in 0..height {
+                let src_row = base.cast::<u8>().add(row * bytes_per_row);
+                out.extend_from_slice(std::slice::from_raw_parts(src_row, row_bytes_packed));
+            }
+        }
+        Some(out)
+    };
+    // SAFETY: matching unlock for the lock above.
+    unsafe {
+        let _ = CVPixelBufferUnlockBaseAddress(pixel_buffer, CVPixelBufferLockFlags::ReadOnly);
+    }
+    result
 }
 
 /// Active SCK screen-capture session. Owns the `SCStream` + the
@@ -206,6 +353,77 @@ pub struct ScreenCaptureStream {
     counters: Arc<ScreenCaptureCounters>,
 }
 
+/// Resolve [`ScreenCaptureSource`] to an `SCContentFilter`
+/// (M-SCK.0.1 / AUT-291). Extracted from `ScreenCaptureStream::new`
+/// so that function stays under the `clippy::too_many_lines` cap.
+fn build_content_filter(
+    content: &SCShareableContent,
+    source: &ScreenCaptureSource,
+) -> Result<Retained<SCContentFilter>, ScreenError> {
+    match source {
+        ScreenCaptureSource::PrimaryDisplay => {
+            let displays = unsafe { content.displays() };
+            let Some(display) = displays.iter().next() else {
+                return Err(ScreenError::NoDisplays);
+            };
+            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            Ok(unsafe {
+                SCContentFilter::initWithDisplay_excludingWindows(
+                    SCContentFilter::alloc(),
+                    &display,
+                    &empty_windows,
+                )
+            })
+        }
+        ScreenCaptureSource::Display(id) => {
+            let target_id = parse_display_id(id).ok_or_else(|| {
+                ScreenError::StreamCreationFailed(format!(
+                    "malformed display source id `{id}` (expected `display-<displayID>`)"
+                ))
+            })?;
+            let displays = unsafe { content.displays() };
+            let matched = displays
+                .iter()
+                .find(|d| unsafe { d.displayID() } == target_id)
+                .ok_or_else(|| {
+                    ScreenError::StreamCreationFailed(format!(
+                        "display id `{id}` not present (was the display unplugged?)"
+                    ))
+                })?;
+            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            Ok(unsafe {
+                SCContentFilter::initWithDisplay_excludingWindows(
+                    SCContentFilter::alloc(),
+                    &matched,
+                    &empty_windows,
+                )
+            })
+        }
+        ScreenCaptureSource::Window(id) => {
+            let target_id = parse_window_id(id).ok_or_else(|| {
+                ScreenError::StreamCreationFailed(format!(
+                    "malformed window source id `{id}` (expected `window-<windowID>`)"
+                ))
+            })?;
+            let windows = unsafe { content.windows() };
+            let matched = windows
+                .iter()
+                .find(|w| unsafe { w.windowID() } == target_id)
+                .ok_or_else(|| {
+                    ScreenError::StreamCreationFailed(format!(
+                        "window id `{id}` not present (was it closed?)"
+                    ))
+                })?;
+            Ok(unsafe {
+                SCContentFilter::initWithDesktopIndependentWindow(
+                    SCContentFilter::alloc(),
+                    &matched,
+                )
+            })
+        }
+    }
+}
+
 impl ScreenCaptureStream {
     /// Build + start a capture session on the **first available
     /// display**. Triggers the macOS Screen Recording TCC prompt
@@ -217,27 +435,24 @@ impl ScreenCaptureStream {
     /// `EnumerationFailed` / `NoDisplays` / `StreamCreationFailed` /
     /// `StartFailed`.
     pub fn new(config: ScreenCaptureConfig) -> Result<Self, ScreenError> {
+        Self::new_with_frame_slot(config, None)
+    }
+
+    /// Same as [`Self::new`] but plumbs the M-PIX.2 frame slot into
+    /// the delegate so each captured frame's BGRA bytes are written
+    /// to the slot for the encoder feed thread to pick up.
+    pub fn new_with_frame_slot(
+        config: ScreenCaptureConfig,
+        frame_slot: Option<ScreenFrameSlot>,
+    ) -> Result<Self, ScreenError> {
         let counters = Arc::new(ScreenCaptureCounters::default());
-        let delegate = ScreenOutputHandler::new(Arc::clone(&counters));
+        let delegate = ScreenOutputHandler::new(Arc::clone(&counters), frame_slot);
 
-        // 1. Get shareable content + pick the first display.
+        // 1+2. Get shareable content + resolve `config.source` to the
+        //      right SCContentFilter (M-SCK.0.1 / AUT-291). Three
+        //      filter constructors → one helper to keep `new` short.
         let content = shareable_content_blocking()?;
-        let displays = unsafe { content.displays() };
-        let Some(display) = displays.iter().next() else {
-            return Err(ScreenError::NoDisplays);
-        };
-
-        // 2. Build the SCContentFilter (full-display capture; no
-        //    excluded windows). Window-specific capture is a
-        //    separate ticket (M-SCK.0.1).
-        let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
-        let filter = unsafe {
-            SCContentFilter::initWithDisplay_excludingWindows(
-                SCContentFilter::alloc(),
-                &display,
-                &empty_windows,
-            )
-        };
+        let filter = build_content_filter(&content, &config.source)?;
 
         // 3. Build the SCStreamConfiguration. Width/height/fps
         //    fall back to defaults when caller passed 0 (so a
@@ -263,6 +478,12 @@ impl ScreenCaptureStream {
             cfg.setWidth(width as usize);
             cfg.setHeight(height as usize);
             cfg.setShowsCursor(config.shows_cursor);
+            // M-PIX.2 — pin pixel format to 32BGRA so the
+            // delegate's `extract_bgra_from_pixel_buffer` doesn't
+            // have to do YUV→BGRA conversion. SCK normally returns
+            // 420v (YUV) on Apple Silicon; setting this flips to
+            // BGRA at the cost of a slight extra GPU copy in SCK.
+            cfg.setPixelFormat(kCVPixelFormatType_32BGRA);
             // minimumFrameInterval is the seconds-between-frames
             // cap. `CMTime { value: 1, timescale: fps, ... }`
             // means 1/fps seconds per frame.
@@ -320,10 +541,13 @@ impl ScreenCaptureStream {
         })
     }
 
-    /// Configuration the stream was built with.
+    /// Configuration the stream was built with. Returns a clone so
+    /// callers can hold it without taking a borrow on the live
+    /// session (was `Copy` until M-SCK.0.1 added the `String`-bearing
+    /// `source` field).
     #[must_use]
     pub fn config(&self) -> ScreenCaptureConfig {
-        self.config
+        self.config.clone()
     }
 
     /// Atomic counters readable from any thread — see
@@ -415,6 +639,20 @@ fn ns_error_description(error: &objc2_foundation::NSError) -> String {
     description.to_string()
 }
 
+/// Parse `"display-<u32>"` → `Some(u32)`. Returns `None` on any
+/// non-matching prefix or non-numeric tail (M-SCK.0.1 / AUT-291).
+#[must_use]
+pub fn parse_display_id(id: &str) -> Option<u32> {
+    id.strip_prefix("display-").and_then(|s| s.parse().ok())
+}
+
+/// Parse `"window-<u32>"` → `Some(u32)`. Returns `None` on any
+/// non-matching prefix or non-numeric tail (M-SCK.0.1 / AUT-291).
+#[must_use]
+pub fn parse_window_id(id: &str) -> Option<u32> {
+    id.strip_prefix("window-").and_then(|s| s.parse().ok())
+}
+
 /// View-model for an active screen-capture session (M-SCK.2 / AUT-269).
 /// Mirrors `MicLifecycle`'s shape — kept here so the Tauri command
 /// surface can return + render it without importing internal types.
@@ -480,6 +718,74 @@ mod tests {
         assert_eq!(cfg.height, DEFAULT_HEIGHT);
         assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
         assert!(cfg.shows_cursor);
+        assert_eq!(cfg.source, ScreenCaptureSource::PrimaryDisplay);
+    }
+
+    #[test]
+    fn for_source_overrides_only_source() {
+        let cfg =
+            ScreenCaptureConfig::for_source(ScreenCaptureSource::Display("display-12345".into()));
+        assert_eq!(cfg.width, DEFAULT_WIDTH);
+        assert_eq!(cfg.target_fps, DEFAULT_TARGET_FPS);
+        assert_eq!(
+            cfg.source,
+            ScreenCaptureSource::Display("display-12345".into())
+        );
+    }
+
+    #[test]
+    fn screen_capture_source_default_is_primary_display() {
+        assert_eq!(
+            ScreenCaptureSource::default(),
+            ScreenCaptureSource::PrimaryDisplay
+        );
+    }
+
+    #[test]
+    fn screen_capture_source_serde_round_trips_all_variants() {
+        // M-SCK.0.1 — source crosses the IPC seam, so all 3 variants
+        // must round-trip.
+        for v in [
+            ScreenCaptureSource::PrimaryDisplay,
+            ScreenCaptureSource::Display("display-987654321".into()),
+            ScreenCaptureSource::Window("window-42".into()),
+        ] {
+            let json = serde_json::to_string(&v).unwrap();
+            let back: ScreenCaptureSource = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, v);
+        }
+    }
+
+    #[test]
+    fn parse_display_id_extracts_numeric_suffix() {
+        assert_eq!(parse_display_id("display-1"), Some(1));
+        assert_eq!(parse_display_id("display-1234567890"), Some(1_234_567_890));
+        assert_eq!(parse_display_id("display-0"), Some(0));
+    }
+
+    #[test]
+    fn parse_display_id_rejects_malformed_ids() {
+        assert_eq!(parse_display_id(""), None);
+        assert_eq!(parse_display_id("display-"), None);
+        assert_eq!(parse_display_id("display-abc"), None);
+        assert_eq!(parse_display_id("window-42"), None);
+        assert_eq!(parse_display_id("not-a-display"), None);
+        // Don't accept negatives — CGDirectDisplayID is u32.
+        assert_eq!(parse_display_id("display--1"), None);
+    }
+
+    #[test]
+    fn parse_window_id_extracts_numeric_suffix() {
+        assert_eq!(parse_window_id("window-1"), Some(1));
+        assert_eq!(parse_window_id("window-99999"), Some(99_999));
+    }
+
+    #[test]
+    fn parse_window_id_rejects_malformed_ids() {
+        assert_eq!(parse_window_id(""), None);
+        assert_eq!(parse_window_id("window-"), None);
+        assert_eq!(parse_window_id("window-abc"), None);
+        assert_eq!(parse_window_id("display-42"), None);
     }
 
     #[test]

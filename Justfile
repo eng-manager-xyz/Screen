@@ -345,16 +345,16 @@ dev-remote-stop:
 #
 # Open http://localhost:8080 after this prints "Compiled successfully".
 dev-appshell:
-    cd crates/app-ui && trunk serve --features tray-appshell-preview
+    cd crates/app-ui && env -u NO_COLOR trunk serve --features tray-appshell-preview
 
-# M-RECORDER-V0 (AUT-249..260) + M-RECORDER-V1 (AUT-261..266) —
-# clean-slate manual smoke test for the recorder track.
+# M-RECORDER-V0 + M-RECORD-EXPORT + M-RECORD-EXPORT-REAL-PIXELS —
+# one-command end-to-end manual smoke test for the recorder.
 #
-# One-shot: nukes the stale wasm bundle, removes the `app-ui` +
-# `screen-app` build artifacts, rebuilds the wasm bundle via trunk,
-# then `cargo run -p screen-app`. Use for "does the tray icon + the
-# AppShell + the camera picker actually work end-to-end on my
-# machine?" before opening a PR or filing a bug.
+# Nukes the stale wasm bundle, removes the `app-ui` + `screen-app`
+# build artifacts, rebuilds the wasm bundle via trunk, then
+# `cargo run -p screen-app --features custom-protocol`. Use this as
+# the single "does the recorder actually work on my machine?"
+# command before manual verification.
 #
 # For *active* development use `cd crates/app && cargo tauri dev`
 # instead — it has hot-reload (trunk serve watches app-ui sources
@@ -362,16 +362,36 @@ dev-appshell:
 # the heavy fresh-build alternative for when you specifically want
 # to verify a from-scratch build path.
 #
-# Expected when the window opens:
+# Prerequisites (macOS, one-time):
+#   • System Settings → Privacy & Security → enable for Screen:
+#     Camera + Microphone + Screen Recording.
+#   • `brew install gstreamer` (includes `vtenc_h264_hw` for HW H.264
+#     encode). Optional: `brew install gst-plugins-bad` for the
+#     AVIF poster generator.
+#   • Verify: `gst-inspect-1.0 vtenc_h264_hw` should print plugin
+#     info.
+#
+# Expected when the window opens (M-PIX state, as of the
+# M-RECORD-EXPORT-REAL-PIXELS milestone):
 #   • Small filled-circle icon on the macOS menubar.
-#   • Left-click → 1200×720 AppShell window opens (NavigationRail on
-#     the left, Recorder surface in the middle).
-#   • NavigationRail clicks swap surfaces; URL updates `?surface=…`.
-#   • Recorder surface shows a camera picker dropdown. Clicking it
-#     enumerates your real cameras via `gst-device-monitor-1.0`.
-#   • Preview canvas stays BLANK — the wisp pipeline body is the
-#     M-CAM.3 deferred follow-up (see _docs/PROGRESS.md).
-#   • Left-click tray again → window hides.
+#   • Left-click → 1200×720 AppShell window opens (NavigationRail
+#     on the left, Recorder surface in the middle).
+#   • Recorder surface: master Record button + format dropdown
+#     + per-stream LEDs + 4 pickers (Camera / Mic / Screen / Sys
+#     Audio).
+#   • Pick a camera → your face appears in the circular preview
+#     bubble within ~1 sec (M-PIX.8 live preview).
+#   • Pick mic / display / system-audio → level meters tick live.
+#   • Click Record → all enabled channels start, pickers lock,
+#     elapsed timer counts up, per-stream LEDs go green.
+#   • Click Stop → wait ~3-5 sec for the encoder to finalize the
+#     scratch into the final container.
+#   • "Saved to: ~/Movies/Screen/Screen-YYYY-MM-DD-HHMMSS.<ext>"
+#     toast with Reveal-in-Finder button.
+#   • Click Reveal → Finder opens with the .mp4 highlighted.
+#   • Double-click → QuickTime plays it: real screen content +
+#     circular cam overlay (bottom-right) + mic+sys-audio mixed in
+#     the audio track. Lipsync within ~80 ms.
 #
 # Total time: ~5–8 min cold (wasm + native rebuilds), ~30s warm.
 test-recorder:
@@ -379,7 +399,7 @@ test-recorder:
     rm -rf crates/app-ui/dist
     -cargo clean -p app-ui -p screen-app 2>/dev/null
     @echo "→ [2/3] Building app-ui wasm bundle via trunk…"
-    cd crates/app-ui && trunk build
+    cd crates/app-ui && env -u NO_COLOR trunk build
     @echo "→ [3/3] Launching screen-app — click the menubar circle to open the AppShell."
     @echo ""
     # `--features custom-protocol` forwards to `tauri/custom-protocol`,
@@ -387,6 +407,157 @@ test-recorder:
     # loads the bundled `frontendDist` instead of `devUrl` (no
     # `trunk serve` running in this flow → blank webview without it).
     cargo run -p screen-app --features custom-protocol
+
+# M-PIX.10 — bundled-app variant of `test-recorder` that works
+# correctly with macOS TCC.
+#
+# Why: `cargo run` produces a raw binary whose code-signing identifier
+# is the Rust linker's default (`screen_app-<hash>`), NOT the
+# Info.plist's `CFBundleIdentifier` (`com.screen.app`). macOS TCC
+# keys on the code-signing identity, so `AVCaptureDevice.requestAccess`
+# silently no-ops because the identity mismatches what macOS would
+# need to track grants against. Result: prompts never fire, the
+# bundle id never registers in the TCC database, `tccutil reset
+# Camera com.screen.app` returns "No such bundle identifier".
+#
+# Fix: produce a real `.app` bundle, then sign it with the correct
+# `--identifier`. For ScreenCaptureKit / Screen & System Audio
+# Recording, macOS 15+ needs a stable certificate-backed signing
+# identity. Set `SCREEN_CODESIGN_IDENTITY` to an Apple Development /
+# Developer ID identity. The ad-hoc fallback keeps camera/mic smoke
+# usable but ScreenCapture TCC is expected to fail on current macOS.
+#
+# Total time: ~5–10 min cold (full Tauri bundle pipeline), ~1 min
+# warm. Always launches the bundle (not the raw binary), so TCC
+# permissions persist across re-runs.
+# ─── Modular sub-recipes ─────────────────────────────────────────
+# `app-build` / `app-sign` / `app-open` are the atomic steps.
+# `app-bundle` composes build+sign (no open). `test-recorder-bundled`
+# composes the whole flow.
+#
+# Use `app-build` + `app-sign` directly if you want to script your
+# own flow (e.g. CI smoke), `app-bundle` for "compile + sign in one
+# go without opening", and `test-recorder-bundled` for the
+# one-command end-to-end manual smoke.
+
+# Step 1 of the bundled flow — clean wasm + build the .app via
+# `cargo tauri build --debug --bundles app`. Output:
+# `target/debug/bundle/macos/screen-app.app`.
+app-build:
+    @echo "→ Cleaning stale wasm bundle…"
+    rm -rf crates/app-ui/dist
+    @echo "→ Building .app bundle (cargo tauri build --debug --bundles app)…"
+    cd crates/app && env -u NO_COLOR cargo tauri build --debug --bundles app
+    @echo "→ Bundle ready at target/debug/bundle/macos/screen-app.app"
+
+# Step 2 — re-sign the .app with the `com.screen.app` identifier.
+# Set SCREEN_CODESIGN_IDENTITY to a stable certificate identity for
+# normal Apple code signing. Without it, codesign falls back to
+# ad-hoc signing, but we still stamp a stable identifier-only
+# designated requirement so local TCC grants can match the next reopen.
+app-sign:
+    @identity="${SCREEN_CODESIGN_IDENTITY:--}"; \
+    if [ "$identity" = "-" ]; then \
+      echo "→ Re-signing with ad-hoc identity + stable com.screen.app designated requirement…"; \
+      echo "  WARNING: macOS Screen & System Audio Recording can still reject ad-hoc signatures."; \
+      echo "  For screen/system-audio smoke tests, set SCREEN_CODESIGN_IDENTITY to an Apple Development or Developer ID identity."; \
+      codesign --force --deep --sign - --identifier com.screen.app --requirements '=designated => identifier "com.screen.app"' target/debug/bundle/macos/screen-app.app; \
+    else \
+      echo "→ Re-signing with identity '$identity' --identifier com.screen.app…"; \
+      codesign --force --deep --sign "$identity" --identifier com.screen.app target/debug/bundle/macos/screen-app.app; \
+    fi; \
+    echo "→ Verifying signature:"; \
+    codesign -dv target/debug/bundle/macos/screen-app.app 2>&1 | sed -n '1,8p'; \
+    echo "→ Designated requirement:"; \
+    codesign -d -r- target/debug/bundle/macos/screen-app.app 2>&1 | sed -n '1,3p'
+
+# List installed identities that can be used for SCREEN_CODESIGN_IDENTITY.
+app-signing-identities:
+    security find-identity -v -p codesigning
+
+# Composed: build + sign, no open. Use when you want to bundle for
+# later launch (e.g. drop the .app into Applications, then double-
+# click) without immediately opening it from the terminal.
+app-bundle: app-build app-sign
+    @echo ""
+    @echo "→ Build + sign complete. .app at target/debug/bundle/macos/screen-app.app"
+    @echo "  Launch with: just app-open  (or open it from Finder)"
+
+# Step 3 — open the bundled .app. macOS launches it as a proper
+# LaunchServices-registered app; first device access fires TCC
+# prompts. Use after `just app-bundle` if you skipped the
+# combined `test-recorder-bundled` recipe.
+app-open:
+    @echo "→ Opening bundled .app — click the menubar circle to open the AppShell."
+    @echo "  First device access fires macOS TCC prompts; click Allow on each."
+    @echo "  After enabling Screen & System Audio Recording, quit the app and run 'just app-open' again."
+    open target/debug/bundle/macos/screen-app.app
+
+# Quit the bundled app. Useful after granting Screen & System Audio
+# Recording, because macOS does not apply that grant to the already-
+# running process.
+app-quit:
+    @echo "→ Quitting screen-app if it is running…"
+    -osascript -e 'tell application id "com.screen.app" to quit' 2>/dev/null
+    -pkill -x screen-app 2>/dev/null
+
+# Quit and reopen the existing bundle without rebuilding or resetting TCC.
+app-reopen: app-quit app-open
+
+# Top-level convenience: build + sign + open. The single command for
+# "I want to record + verify the recorder works end-to-end."
+# Depends on `app-bundle` (which depends on `app-build` + `app-sign`)
+# + adds the open step.
+test-recorder-bundled: app-bundle app-open
+
+# Nuke build artifacts related to the bundled .app so the next
+# `app-bundle` run is forced from scratch. This deliberately does
+# NOT reset TCC permissions; use `app-tcc-reset` when you explicitly
+# want macOS to forget grants and re-prompt.
+#
+# * `cargo clean -p screen-app -p app-ui` — forces both crates to
+#   recompile. Cheap: only these two crates rebuild; the wisp /
+#   media / dep tree caches survive. (`cargo clean` without `-p`
+#   would nuke 30+ GB of cached deps — DON'T do that.)
+# * `rm -rf crates/app-ui/dist` — forces trunk to rebuild the wasm
+#   bundle.
+# * `rm -rf target/debug/bundle` — forces Tauri's bundler to
+#   re-create the .app from scratch.
+# After this, `just app-bundle` / `just test-recorder-bundled` will
+# rebuild + re-sign + (optionally) re-open from a known clean
+# build state without destroying existing privacy grants.
+app-clean:
+    @echo "→ Cleaning build artifacts…"
+    cargo clean -p screen-app -p app-ui
+    rm -rf crates/app-ui/dist
+    rm -rf target/debug/bundle
+    @echo "→ Clean. Next bundle run starts from scratch; existing TCC grants were preserved."
+
+# Explicitly reset macOS privacy grants for the recorder. Use this only
+# when you want to re-test the first-run permission flow; after granting
+# Screen & System Audio Recording, quit and reopen the app.
+app-tcc-reset:
+    @echo "→ Resetting macOS TCC entries for com.screen.app (silent if not registered yet)…"
+    -tccutil reset Camera com.screen.app 2>/dev/null
+    -tccutil reset Microphone com.screen.app 2>/dev/null
+    -tccutil reset ScreenCapture com.screen.app 2>/dev/null
+    @echo "→ TCC reset complete. Next launch will prompt again."
+
+# Reset only Screen & System Audio Recording. Use this after changing the
+# code-signing requirement so macOS drops the stale ScreenCapture row
+# without forgetting Camera / Microphone grants.
+app-tcc-reset-screen:
+    @echo "→ Resetting Screen & System Audio Recording TCC entry for com.screen.app…"
+    -tccutil reset ScreenCapture com.screen.app 2>/dev/null
+    @echo "→ ScreenCapture TCC reset complete. Next launch will prompt for screen capture again."
+
+# One-shot: clean build artifacts + rebuild + sign + open. Keeps TCC
+# grants intact; use `just app-tcc-reset app-fresh` only when you
+# intentionally want to re-run first-launch prompts.
+#
+# Total time: ~5-10 min (full screen-app + app-ui recompile + Tauri
+# bundle pipeline).
+app-fresh: app-clean app-bundle app-open
 
 # ─── Local + remote book serving (DOCS-06 / AUT-160) ──────────────────────────
 #
@@ -517,15 +688,15 @@ storybook:
 
 # Run the UI storybook (Leptos) in the browser via Trunk.
 ui-storybook:
-    cd crates/ui-storybook && trunk serve --no-default-features --features csr --open
+    cd crates/ui-storybook && env -u NO_COLOR trunk serve --no-default-features --features csr --open
 
 # Build the recorder shell (Leptos CSR) — dev server with hot reload.
 app-ui:
-    cd crates/app-ui && trunk serve --open
+    cd crates/app-ui && env -u NO_COLOR trunk serve --open
 
 # Production-build the recorder shell into `crates/app-ui/dist/`.
 app-ui-build:
-    cd crates/app-ui && trunk build --release
+    cd crates/app-ui && env -u NO_COLOR trunk build --release
 
 # ─── Supply chain & dependency hygiene ────────────────────────────────────────
 

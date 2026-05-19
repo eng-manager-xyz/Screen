@@ -20,6 +20,7 @@ pub mod blend;
 pub mod color;
 pub mod filter;
 pub mod math;
+pub mod recording;
 pub mod render;
 pub mod scene;
 pub mod text;

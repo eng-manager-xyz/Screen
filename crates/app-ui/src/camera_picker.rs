@@ -39,24 +39,13 @@ pub fn CameraPicker() -> impl IntoView {
     let selected_id = RwSignal::new(Option::<String>::None);
     let permission = RwSignal::new(CameraPermission::Granted);
     let open = RwSignal::new(false);
+    // M-RECORD.3 — disable the trigger while a coordinated
+    // recording session is active so the user can't swap cameras
+    // mid-record (would invalidate the M-EXPORT encoder state).
+    let recording_lock = RwSignal::new(false);
+    crate::recording_ipc::install_recording_lock_listener(recording_lock);
 
-    // Initial mount: probe permission, then enumerate.
-    spawn_local(async move {
-        let perm = camera_ipc::camera_permission_status().await;
-        permission.set(perm);
-        let list = camera_ipc::list_cameras().await;
-        let default_id = resolve_default(&list);
-        if let Some(id) = &default_id {
-            // Auto-start the preview on first mount so the canvas
-            // gets frames the moment the wisp pipeline lands.
-            let id = id.clone();
-            spawn_local(async move {
-                camera_ipc::start_preview(id).await;
-            });
-        }
-        selected_id.set(default_id);
-        cameras.set(list);
-    });
+    refresh_cameras(cameras, selected_id, permission, true);
 
     let on_select = move |id: String| {
         // Persist + propagate.
@@ -75,7 +64,16 @@ pub fn CameraPicker() -> impl IntoView {
                 class="camera-picker-trigger"
                 aria-haspopup="listbox"
                 aria-expanded=move || open.get()
-                on:click=move |_| { open.update(|o| *o = !*o); }
+                prop:disabled=move || recording_lock.get()
+                title=move || if recording_lock.get() { "Recording in progress — stop the recording to change cameras" } else { "" }
+                on:click=move |_| {
+                    if recording_lock.get() { return; }
+                    let will_open = !open.get_untracked();
+                    open.set(will_open);
+                    if will_open {
+                        refresh_cameras(cameras, selected_id, permission, false);
+                    }
+                }
             >
                 <span class="camera-picker-label">
                     {move || selected_label(&cameras.get(), selected_id.get().as_ref())}
@@ -129,7 +127,29 @@ fn CameraPickerBody(
             <div class="camera-picker-state camera-picker-state--empty">
                 <p>{"No cameras detected."}</p>
                 <p class="camera-picker-state-help">
-                    {"Plug in or pair a camera, then re-open this picker."}
+                    {"On first launch the macOS permission prompts may not have fired yet. Click below to grant access to camera + microphone + screen recording in one go, then re-open this picker."}
+                </p>
+                <button
+                    type="button"
+                    class="camera-picker-state-button"
+                    on:click=move |_| {
+                        spawn_local(async move {
+                            let result = camera_ipc::request_all_permissions().await;
+                            log_to_console(&format!(
+                                "request_all_permissions returned: camera={:?}, mic={:?}, screen={:?}",
+                                result.camera, result.microphone, result.screen_recording
+                            ));
+                            // Re-enumerate after the user grants access.
+                            permission.set(result.camera);
+                            let list = camera_ipc::list_cameras().await;
+                            cameras.set(list);
+                        });
+                    }
+                >
+                    {"Grant access (camera, mic, screen recording)"}
+                </button>
+                <p class="camera-picker-state-help">
+                    {"If the prompts don't appear: System Settings → Privacy & Security → enable Screen under Camera, Microphone, and Screen Recording."}
                 </p>
             </div>
         }
@@ -145,6 +165,31 @@ fn CameraPickerBody(
         .into_any(),
     }
     }
+}
+
+fn refresh_cameras(
+    cameras: RwSignal<Vec<CameraView>>,
+    selected_id: RwSignal<Option<String>>,
+    permission: RwSignal<CameraPermission>,
+    autostart_preview: bool,
+) {
+    spawn_local(async move {
+        let perm = camera_ipc::camera_permission_status().await;
+        permission.set(perm);
+        let list = camera_ipc::list_cameras().await;
+        let default_id = selected_id
+            .get_untracked()
+            .filter(|id| list.iter().any(|cam| cam.id == *id))
+            .or_else(|| resolve_default(&list));
+        if autostart_preview && let Some(id) = &default_id {
+            let id = id.clone();
+            spawn_local(async move {
+                camera_ipc::start_preview(id).await;
+            });
+        }
+        selected_id.set(default_id);
+        cameras.set(list);
+    });
 }
 
 fn render_row(
@@ -239,6 +284,16 @@ fn write_last_used(_id: &str) {
     // Native: no-op. LocalStorage is only meaningful in the browser
     // CSR target.
 }
+
+/// Best-effort `console.log(msg)` so the user sees the
+/// permission-request result in the webview's devtools console.
+#[cfg(target_arch = "wasm32")]
+fn log_to_console(msg: &str) {
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(msg));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn log_to_console(_msg: &str) {}
 
 #[cfg(test)]
 mod tests {

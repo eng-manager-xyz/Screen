@@ -139,6 +139,17 @@ pub fn list_microphones() -> Vec<MicrophoneDevice> {
     }
 }
 
+/// Locate the [`MicrophoneDevice`] whose stable id matches `id` by
+/// re-probing the OS via [`list_microphones`]. Used by callers (the
+/// app crate's `start_mic_capture`) to resolve the picker's mic id
+/// back to its native gst device-uid on every session start (M-MIC.3
+/// / AUT-284). Returns `None` when the mic was unplugged between
+/// enumeration and start.
+#[must_use]
+pub fn find_by_id(id: &str) -> Option<MicrophoneDevice> {
+    list_microphones().into_iter().find(|m| m.id == id)
+}
+
 /// Pure-Rust parser for `gst-device-monitor-1.0 Audio/Source` text
 /// output. Split out from [`list_microphones`] so the parser is
 /// testable against captured fixtures without needing gst installed.
