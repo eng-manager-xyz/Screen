@@ -23,11 +23,11 @@ use ui_storybook::components::menus::{PopoverPlacement, PopoverSurface};
 use ui_storybook::components::primitives::{IconTile, IconTileKind};
 use ui_storybook::components::recorder::{
     AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, CaptureModeTabs,
-    CaptureSourceKind, CaptureSourceRow, CaptureSourceView, DeviceOptionView, DevicePickerMenu,
-    DevicePickerState, DeviceThumb, DisplayPreviewView, DisplaySourceCard, DisplaySourceView,
-    OnScreenOptionKind, OnScreenOptionView, OnScreenOptionsPopover, PreviewWindowChip,
-    RecordingControlsFooter, RecordingControlsView, StartRecordingState, SystemAudioAppList,
-    SystemAudioRow, SystemAudioView, format_auto_zoom_label, format_countdown_label,
+    CaptureSourceKind, CaptureSourceView, DeviceOptionView, DevicePickerState, DeviceThumb,
+    DisplayPreviewView, DisplaySourceCard, DisplaySourceView, OnScreenOptionKind,
+    OnScreenOptionView, PreviewWindowChip, RecordingControlsFooter, RecordingControlsView,
+    StartRecordingState, SystemAudioView, format_auto_zoom_label, format_countdown_label,
+    format_selection_count,
 };
 use ui_storybook::fixtures::recorder::CaptureMode;
 
@@ -210,13 +210,14 @@ pub fn RecorderPage() -> impl IntoView {
     };
 
     let controls_view = move || -> RecordingControlsView {
+        // Recording state — drive the page's CSS + footer button
+        // variant. While Running / Stopping we render a custom Stop
+        // button (see view! below); otherwise show the Ready button.
         let any_source = camera_enabled.get()
             || mic_enabled.get()
             || system_audio_enabled.get()
             || !displays.get().is_empty();
-        let state = if status.get().is_recording() {
-            StartRecordingState::Loading
-        } else if any_source {
+        let state = if any_source {
             StartRecordingState::Ready
         } else {
             StartRecordingState::Disabled
@@ -228,6 +229,13 @@ pub fn RecorderPage() -> impl IntoView {
             start_state: state,
         }
     };
+    let elapsed_label = move || {
+        let total = status.get().elapsed_ms / 1000;
+        let mm = total / 60;
+        let ss = total % 60;
+        format!("{mm:02}:{ss:02}")
+    };
+    let is_recording = move || status.get().is_recording();
 
     // -------- callbacks -----------------------------------------------
     let toggle_camera_picker = move || {
@@ -430,7 +438,20 @@ pub fn RecorderPage() -> impl IntoView {
 
     // -------- view ----------------------------------------------------
     view! {
-        <section class="recorder-page" data-mode=move || capture_mode_slug(capture_mode.get())>
+        <section
+            class="recorder-page"
+            data-mode=move || capture_mode_slug(capture_mode.get())
+            data-recording=move || if is_recording() { "true" } else { "false" }
+        >
+            <Show when=is_recording fallback=|| view! { <></> }>
+                <div class="recorder-page-recording-pill" role="status" aria-live="polite">
+                    <span class="recorder-page-recording-dot" aria-hidden="true"></span>
+                    <span class="recorder-page-recording-label">"RECORDING"</span>
+                    <span class="recorder-page-recording-elapsed">
+                        {move || elapsed_label()}
+                    </span>
+                </div>
+            </Show>
             <header class="recorder-page-header">
                 <button
                     class="recorder-page-workspace"
@@ -451,23 +472,23 @@ pub fn RecorderPage() -> impl IntoView {
                 </section>
 
                 <section class="recorder-page-sources">
-                    <SourceRowSlot
+                    <LiveSourceRow
                         view=Signal::derive(camera_view)
                         on_chevron_click=Callback::new(move |()| toggle_camera_picker())
                         on_toggle=Callback::new(move |()| on_camera_toggle(MouseEvent::new("click").unwrap()))
                     />
                     <Show when=move || open_picker.get() == OpenPicker::Camera fallback=|| view! { <></> }>
                         <div class="recorder-page-picker recorder-page-picker--camera">
-                            <DevicePickerMenu
+                            <LiveDevicePicker
                                 kind=CaptureSourceKind::Camera
-                                state=device_state_for(camera_permission.get(), cameras.get().is_empty())
-                                devices=camera_device_options(cameras.get(), camera_selected.get())
-                            />
-                            <div class="recorder-page-picker-overlay" on:click=move |_| on_camera_select(picked_id_dummy())></div>
-                            <CameraRowsHandlers
-                                cameras=cameras
-                                selected=camera_selected
+                                state=Signal::derive(move || device_state_for(camera_permission.get(), cameras.get().is_empty()))
+                                devices=Signal::derive(move || camera_device_options(cameras.get(), camera_selected.get()))
                                 on_select=Callback::new(on_camera_select)
+                                on_grant_permission=Callback::new(move |()| {
+                                    spawn_local(async move {
+                                        let _ = camera_ipc::request_all_permissions().await;
+                                    });
+                                })
                             />
                         </div>
                     </Show>
@@ -476,57 +497,44 @@ pub fn RecorderPage() -> impl IntoView {
                     // inside the recorder panel. on_camera_toggle
                     // shows / hides that window via bubble_ipc.
 
-                    <SourceRowSlot
+                    <LiveSourceRow
                         view=Signal::derive(mic_view)
                         on_chevron_click=Callback::new(move |()| toggle_mic_picker())
                         on_toggle=Callback::new(move |()| on_mic_toggle(MouseEvent::new("click").unwrap()))
                     />
                     <Show when=move || open_picker.get() == OpenPicker::Microphone fallback=|| view! { <></> }>
                         <div class="recorder-page-picker recorder-page-picker--mic">
-                            <DevicePickerMenu
+                            <LiveDevicePicker
                                 kind=CaptureSourceKind::Microphone
-                                state=device_state_for(mic_permission.get(), mics.get().is_empty())
-                                devices=mic_device_options(mics.get(), mic_selected.get())
-                            />
-                            <MicRowsHandlers
-                                mics=mics
-                                selected=mic_selected
+                                state=Signal::derive(move || device_state_for(mic_permission.get(), mics.get().is_empty()))
+                                devices=Signal::derive(move || mic_device_options(mics.get(), mic_selected.get()))
                                 on_select=Callback::new(on_mic_select)
+                                on_grant_permission=Callback::new(move |()| {
+                                    spawn_local(async move {
+                                        let _ = camera_ipc::request_all_permissions().await;
+                                    });
+                                })
                             />
                         </div>
                     </Show>
                 </section>
 
                 <section class="recorder-page-audio">
-                    <div class="recorder-page-audio-row">
-                        {move || view! { <SystemAudioRow view=system_audio_view() /> }}
-                        <div class="recorder-page-audio-overlay"
-                             role="presentation"
-                             on:click=move |_| toggle_audio_picker()></div>
-                        <div class="recorder-page-audio-toggle-overlay"
-                             role="presentation"
-                             on:click=move |evt: MouseEvent| {
-                                 evt.stop_propagation();
-                                 on_system_audio_toggle(evt);
-                             }></div>
-                    </div>
+                    <LiveSystemAudioRow
+                        view=Signal::derive(system_audio_view)
+                        on_chevron_click=Callback::new(move |()| toggle_audio_picker())
+                        on_toggle=Callback::new(move |()| on_system_audio_toggle(MouseEvent::new("click").unwrap()))
+                    />
                     <Show when=move || open_picker.get() == OpenPicker::SystemAudio fallback=|| view! { <></> }>
                         <div class="recorder-page-applist">
-                            {move || view! {
-                                <SystemAudioAppList
-                                    apps=audio_app_view_list(
-                                        audio_apps.get(),
-                                        audio_app_selected.get(),
-                                    )
-                                    active_filter=audio_filter.get()
-                                />
-                            }}
-                            <AudioFilterHandlers
+                            <LiveAudioAppList
+                                apps=Signal::derive(move || audio_app_view_list(
+                                    audio_apps.get(),
+                                    audio_app_selected.get(),
+                                ))
+                                active_filter=Signal::derive(move || audio_filter.get())
                                 on_filter=Callback::new(on_audio_filter)
-                            />
-                            <AudioAppHandlers
-                                apps=audio_apps
-                                on_toggle=Callback::new(on_audio_app_toggle)
+                                on_app_toggle=Callback::new(on_audio_app_toggle)
                             />
                             <Show when=move || audio_app_err.get().is_some() fallback=|| view! { <></> }>
                                 <p class="recorder-page-audio-error">
@@ -556,11 +564,8 @@ pub fn RecorderPage() -> impl IntoView {
                     </button>
                     <Show when=move || open_picker.get() == OpenPicker::OnScreen fallback=|| view! { <></> }>
                         <div class="recorder-page-on-screen-popover">
-                            {move || view! {
-                                <OnScreenOptionsPopover options=on_screen_opts.get() />
-                            }}
-                            <OnScreenHandlers
-                                opts=on_screen_opts
+                            <LiveOnScreenPopover
+                                opts=Signal::derive(move || on_screen_opts.get())
                                 on_toggle=Callback::new(on_screen_toggle)
                             />
                         </div>
@@ -572,12 +577,34 @@ pub fn RecorderPage() -> impl IntoView {
                 placement=PopoverPlacement::BottomLeft
                 width_px=380_u16
             >
-                {move || view! {
-                    <RecordingControlsFooter
-                        view=controls_view()
-                        on_start=on_start
-                    />
-                }}
+                <Show
+                    when=is_recording
+                    fallback=move || view! {
+                        <RecordingControlsFooter
+                            view=controls_view()
+                            on_start=on_start
+                        />
+                    }
+                >
+                    <div class="recording-controls-footer recording-controls-footer-stop" data-state="recording">
+                        <div class="recording-controls-selects">
+                            <span class="recorder-page-recording-elapsed">
+                                {move || elapsed_label()}
+                            </span>
+                        </div>
+                        <div class="recording-controls-action">
+                            <button
+                                type="button"
+                                class="start-recording-btn start-recording-stop"
+                                aria-label="Stop recording"
+                                on:click=move |_| on_start.run(())
+                            >
+                                <span class="start-recording-glyph" aria-hidden="true">"■"</span>
+                                <span class="start-recording-label">"Stop recording"</span>
+                            </button>
+                        </div>
+                    </div>
+                </Show>
             </PopoverSurface>
 
             <Show when=move || error_msg.get().is_some() fallback=|| view! { <></> }>
@@ -602,151 +629,438 @@ fn DisplayError(msg: RwSignal<Option<String>>) -> impl IntoView {
     }
 }
 
+/// Live, click-wired equivalent of `ui_storybook::components::recorder::CaptureSourceRow`.
+///
+/// Uses the same CSS class names as the storybook component so it
+/// renders identically; the difference is that every interactive
+/// surface (chevron button, toggle button) is a real `<button>` with
+/// its own `on:click` handler. The previous transparent-overlay
+/// approach didn't work because the overlays spanned the full row and
+/// the toggle's stopPropagation didn't beat sibling DOM order.
 #[component]
-fn SourceRowSlot(
+fn LiveSourceRow(
     view: Signal<CaptureSourceView>,
     on_chevron_click: Callback<()>,
     on_toggle: Callback<()>,
 ) -> impl IntoView {
     view! {
-        <div class="recorder-page-source-slot">
-            {move || view! { <CaptureSourceRow view=view.get() /> }}
-            <div class="recorder-page-source-chevron-overlay"
-                 role="presentation"
-                 on:click=move |_| on_chevron_click.run(())></div>
-            <div class="recorder-page-source-toggle-overlay"
-                 role="presentation"
-                 on:click=move |evt: MouseEvent| {
-                     evt.stop_propagation();
-                     on_toggle.run(());
-                 }></div>
-        </div>
+        {move || {
+            let v = view.get();
+            let mut class = String::from("capture-source-row");
+            if v.expanded {
+                class.push_str(" capture-source-row-expanded");
+            }
+            if !v.enabled {
+                class.push_str(" capture-source-row-off");
+            }
+            let chevron_class = if v.expanded {
+                "capture-source-chevron capture-source-chevron-open"
+            } else {
+                "capture-source-chevron"
+            };
+            let kind_attr = match v.kind {
+                CaptureSourceKind::Camera => "camera",
+                CaptureSourceKind::Microphone => "microphone",
+            };
+            let glyph = v.kind.glyph();
+            let title = v.title.clone();
+            let subtitle = v.subtitle.clone();
+            let toggle_class = if v.enabled {
+                "toggle-switch toggle-switch-checked"
+            } else {
+                "toggle-switch"
+            };
+            let toggle_aria = format!("Enable {}", v.kind.label());
+            view! {
+                <div class=class data-kind=kind_attr>
+                    <span class="capture-source-leading">
+                        <span class="icon-tile icon-tile-device" aria-hidden="true">{glyph}</span>
+                    </span>
+                    <span class="capture-source-text">
+                        <span class="capture-source-title">{title}</span>
+                        <span class="capture-source-subtitle">{subtitle}</span>
+                    </span>
+                    {v.kind == CaptureSourceKind::Microphone && v.level.is_some()}
+                    {v.level.filter(|_| v.kind == CaptureSourceKind::Microphone).map(|l| view! {
+                        <span class="capture-source-meter">
+                            <span class="meter" data-level=format!("{:.2}", l)>
+                                {(0_u8..10).map(|i| {
+                                    let on = f32::from(i) / 10.0 < l;
+                                    view! {
+                                        <span class=if on { "meter-bar meter-bar-on" } else { "meter-bar" }></span>
+                                    }
+                                }).collect_view()}
+                            </span>
+                        </span>
+                    })}
+                    <button
+                        type="button"
+                        class=toggle_class
+                        role="switch"
+                        aria-checked=v.enabled
+                        aria-label=toggle_aria
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_toggle.run(());
+                        }
+                    >
+                        <span class="toggle-switch-thumb" aria-hidden="true"></span>
+                    </button>
+                    <button
+                        type="button"
+                        class=chevron_class
+                        aria-label="Expand device picker"
+                        aria-expanded=v.expanded
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_chevron_click.run(());
+                        }
+                    >
+                        "▾"
+                    </button>
+                </div>
+            }
+        }}
     }
 }
 
+/// Live, click-wired system-audio row. Mirrors
+/// `SystemAudioRow`'s HTML for visual fidelity but routes the toggle
+/// + expand clicks to proper callbacks.
 #[component]
-fn CameraRowsHandlers(
-    cameras: RwSignal<Vec<CameraView>>,
-    selected: RwSignal<Option<String>>,
+fn LiveSystemAudioRow(
+    view: Signal<SystemAudioView>,
+    on_chevron_click: Callback<()>,
+    on_toggle: Callback<()>,
+) -> impl IntoView {
+    view! {
+        {move || {
+            let v = view.get();
+            let chevron_class = if v.expanded {
+                "system-audio-chevron system-audio-chevron-open"
+            } else {
+                "system-audio-chevron"
+            };
+            let count_label = format_selection_count(v.selected_count, v.total_count);
+            let icons = v.icon_stack.clone();
+            let visible = icons.iter().take(3).cloned().collect::<Vec<_>>();
+            let overflow = icons.len().saturating_sub(visible.len());
+            let toggle_class = if v.enabled {
+                "toggle-switch toggle-switch-checked"
+            } else {
+                "toggle-switch"
+            };
+            view! {
+                <div class="system-audio-row">
+                    <span class="system-audio-leading">
+                        <span class="system-audio-icon-stack">
+                            {visible.into_iter().map(|icon| {
+                                let style = format!("background:{}", icon.color);
+                                let monogram = icon.monogram.clone();
+                                view! {
+                                    <span class="system-audio-icon" style=style aria-hidden="true">{monogram}</span>
+                                }
+                            }).collect_view()}
+                            {(overflow > 0).then(|| {
+                                let label = format!("+{overflow}");
+                                view! { <span class="system-audio-icon-overflow">{label}</span> }
+                            })}
+                        </span>
+                    </span>
+                    <span class="system-audio-text">
+                        <span class="system-audio-title">"System audio"</span>
+                        <span class="system-audio-subtitle">{count_label}</span>
+                    </span>
+                    <button
+                        type="button"
+                        class=toggle_class
+                        role="switch"
+                        aria-checked=v.enabled
+                        aria-label="Enable system audio"
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_toggle.run(());
+                        }
+                    >
+                        <span class="toggle-switch-thumb" aria-hidden="true"></span>
+                    </button>
+                    <button
+                        type="button"
+                        class=chevron_class
+                        aria-label="Expand system audio app list"
+                        aria-expanded=v.expanded
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_chevron_click.run(());
+                        }
+                    >
+                        "▾"
+                    </button>
+                </div>
+            }
+        }}
+    }
+}
+
+/// Live, click-wired device-picker (camera + mic). Each row is a real
+/// `<button>` that fires `on_select(id)` when clicked.
+#[component]
+fn LiveDevicePicker(
+    kind: CaptureSourceKind,
+    state: Signal<DevicePickerState>,
+    devices: Signal<Vec<DeviceOptionView>>,
     on_select: Callback<String>,
-) -> impl IntoView {
-    // Pure side-effect: render an invisible list of buttons that the
-    // pointer-event overlay forwards to. The DevicePickerMenu above is
-    // visual-only; we re-bind the click targets here so the storybook
-    // component stays a passive presentation.
-    view! {
-        <ul class="recorder-page-row-hits" role="presentation">
-            {move || cameras.get().into_iter().map(|cam| {
-                let id = cam.id.clone();
-                let label = cam.label.clone();
-                let is_selected = selected.get().as_deref() == Some(cam.id.as_str());
-                view! {
-                    <li>
-                        <button
-                            type="button"
-                            class="recorder-page-row-hit"
-                            data-id=id.clone()
-                            data-selected=is_selected
-                            on:click=move |_| on_select.run(id.clone())
-                        >{label}</button>
-                    </li>
-                }
-            }).collect_view()}
-        </ul>
-    }
-}
-
-#[component]
-fn MicRowsHandlers(
-    mics: RwSignal<Vec<MicrophoneView>>,
-    selected: RwSignal<Option<String>>,
-    on_select: Callback<String>,
+    on_grant_permission: Callback<()>,
 ) -> impl IntoView {
     view! {
-        <ul class="recorder-page-row-hits" role="presentation">
-            {move || mics.get().into_iter().map(|m| {
-                let id = m.id.clone();
-                let label = m.label.clone();
-                let is_selected = selected.get().as_deref() == Some(m.id.as_str());
-                view! {
-                    <li>
+        {move || {
+            let body: AnyView = match state.get() {
+                DevicePickerState::PermissionNeeded => view! {
+                    <div class="device-picker-state">
+                        <div class="device-picker-state-glyph" aria-hidden="true">"⚠"</div>
+                        <div class="device-picker-state-title">
+                            {match kind {
+                                CaptureSourceKind::Camera => "Camera access required",
+                                CaptureSourceKind::Microphone => "Microphone access required",
+                            }}
+                        </div>
+                        <div class="device-picker-state-subtitle">
+                            "Grant access in System Settings → Privacy & Security, then re-open this menu."
+                        </div>
                         <button
                             type="button"
-                            class="recorder-page-row-hit"
-                            data-id=id.clone()
-                            data-selected=is_selected
-                            on:click=move |_| on_select.run(id.clone())
-                        >{label}</button>
-                    </li>
-                }
-            }).collect_view()}
-        </ul>
+                            class="btn btn-default btn-sm"
+                            style="margin-top:8px"
+                            on:click=move |_| on_grant_permission.run(())
+                        >"Grant access"</button>
+                    </div>
+                }.into_any(),
+                DevicePickerState::Empty => view! {
+                    <div class="device-picker-state">
+                        <div class="device-picker-state-glyph" aria-hidden="true">"⚠"</div>
+                        <div class="device-picker-state-title">"No devices detected"</div>
+                        <div class="device-picker-state-subtitle">
+                            "Plug in or pair a device, then re-open this menu."
+                        </div>
+                    </div>
+                }.into_any(),
+                DevicePickerState::Populated => view! {
+                    <ul class="device-picker-rows" role="menu">
+                        {devices.get().into_iter().map(|opt| {
+                            let mut class = String::from("device-picker-row");
+                            if opt.selected {
+                                class.push_str(" device-picker-row-selected");
+                            }
+                            let id = opt.id.clone();
+                            let id_for_aria = opt.id.clone();
+                            let level_view = opt.level.map(|l| view! {
+                                <span class="device-picker-row-meter">
+                                    <span class="meter">
+                                        {(0_u8..10).map(|i| {
+                                            let on = f32::from(i) / 10.0 < l;
+                                            view! {
+                                                <span class=if on { "meter-bar meter-bar-on" } else { "meter-bar" }></span>
+                                            }
+                                        }).collect_view()}
+                                    </span>
+                                </span>
+                            });
+                            let thumb_view = opt.thumbnail.as_ref().map(|t| {
+                                let style = format!("background:{}", t.background);
+                                let glyph = t.glyph.clone();
+                                view! {
+                                    <span class="device-picker-thumb" style=style aria-hidden="true">
+                                        <span class="device-picker-thumb-glyph">{glyph}</span>
+                                    </span>
+                                }
+                            });
+                            let badge_view = opt.badge.clone().map(|b| view! {
+                                <span class="badge badge-plan">{b}</span>
+                            });
+                            view! {
+                                <li class="device-picker-row-item" role="none">
+                                    <button
+                                        class=class
+                                        role="menuitem"
+                                        aria-pressed=opt.selected
+                                        data-id=id_for_aria
+                                        on:click=move |_| on_select.run(id.clone())
+                                    >
+                                        {thumb_view}
+                                        <span class="device-picker-row-text">
+                                            <span class="device-picker-row-name">{opt.name}</span>
+                                            <span class="device-picker-row-detail">{opt.detail}</span>
+                                        </span>
+                                        {badge_view}
+                                        {level_view}
+                                        {opt.selected.then(|| view! {
+                                            <span class="device-picker-row-check" aria-hidden="true">"✓"</span>
+                                        })}
+                                    </button>
+                                </li>
+                            }
+                        }).collect_view()}
+                    </ul>
+                }.into_any(),
+            };
+            view! {
+                <div class="popover-surface popover-surface-bottom-left device-picker">
+                    {body}
+                </div>
+            }
+        }}
     }
 }
 
+/// Live, click-wired system-audio app list. All / None / Suggested
+/// filter chips fire `on_filter`; clicking an app row fires
+/// `on_app_toggle(bundle_id)`.
 #[component]
-fn AudioFilterHandlers(on_filter: Callback<AudioFilter>) -> impl IntoView {
-    view! {
-        <div class="recorder-page-filter-hits" role="presentation">
-            <button type="button" data-filter="all"
-                on:click=move |_| on_filter.run(AudioFilter::All)>"All"</button>
-            <button type="button" data-filter="none"
-                on:click=move |_| on_filter.run(AudioFilter::None)>"None"</button>
-            <button type="button" data-filter="suggested"
-                on:click=move |_| on_filter.run(AudioFilter::Suggested)>"Suggested"</button>
-        </div>
-    }
-}
-
-#[component]
-fn AudioAppHandlers(
-    apps: RwSignal<Vec<IpcAudioAppView>>,
-    on_toggle: Callback<String>,
+fn LiveAudioAppList(
+    apps: Signal<Vec<StoryAudioAppView>>,
+    active_filter: Signal<AudioFilter>,
+    on_filter: Callback<AudioFilter>,
+    on_app_toggle: Callback<String>,
 ) -> impl IntoView {
     view! {
-        <ul class="recorder-page-app-hits" role="presentation">
-            {move || apps.get().into_iter().map(|a| {
-                let id = a.bundle_id.clone();
-                view! {
-                    <li>
+        {move || {
+            let filter = active_filter.get();
+            let chips: Vec<_> = [AudioFilter::All, AudioFilter::None, AudioFilter::Suggested]
+                .iter()
+                .map(|f| {
+                    let f = *f;
+                    let mut class = String::from("system-audio-filter");
+                    if f == filter {
+                        class.push_str(" system-audio-filter-active");
+                    }
+                    view! {
                         <button
                             type="button"
-                            class="recorder-page-app-hit"
-                            data-bundle=id.clone()
-                            on:click=move |_| on_toggle.run(id.clone())
-                        >{a.display_name}</button>
+                            class=class
+                            data-filter=f.slug()
+                            aria-pressed=f == filter
+                            on:click=move |_| on_filter.run(f)
+                        >{f.label()}</button>
+                    }
+                })
+                .collect();
+            let rows: Vec<_> = apps.get().into_iter().map(|app| {
+                let mut class = String::from("audio-app-row");
+                if app.selected {
+                    class.push_str(" audio-app-row-selected");
+                }
+                if app.live {
+                    class.push_str(" audio-app-row-live");
+                }
+                let icon_style = format!("background:{}", app.icon.color);
+                let monogram = app.icon.monogram.clone();
+                let bundle = app.id.clone();
+                let level_view = app.level.map(|l| view! {
+                    <span class="audio-app-meter">
+                        <span class="meter">
+                            {(0_u8..8).map(|i| {
+                                let on = f32::from(i) / 8.0 < l;
+                                view! {
+                                    <span class=if on { "meter-bar meter-bar-on" } else { "meter-bar" }></span>
+                                }
+                            }).collect_view()}
+                        </span>
+                    </span>
+                });
+                view! {
+                    <li
+                        class=class
+                        role="option"
+                        aria-selected=app.selected
+                        on:click=move |_| on_app_toggle.run(bundle.clone())
+                    >
+                        <span class=if app.selected { "audio-app-check audio-app-check-on" } else { "audio-app-check" } aria-hidden="true">
+                            {if app.selected { "✓" } else { "" }}
+                        </span>
+                        <span class="audio-app-icon" style=icon_style aria-hidden="true">{monogram}</span>
+                        <span class="audio-app-text">
+                            <span class="audio-app-name">{app.name}</span>
+                            <span class="audio-app-context">{app.context}</span>
+                        </span>
+                        {app.suggested.then(|| view! {
+                            <span class="badge badge-accent">"Suggested"</span>
+                        })}
+                        {app.live.then(|| view! {
+                            <span class="audio-app-live" aria-label="Live audio">
+                                <span class="audio-app-live-dot" aria-hidden="true"></span>
+                                "LIVE"
+                            </span>
+                        })}
+                        {level_view}
                     </li>
                 }
-            }).collect_view()}
-        </ul>
+            }).collect();
+            view! {
+                <div class="system-audio-applist">
+                    <div class="system-audio-filters" role="toolbar" aria-label="Filter audio apps">
+                        {chips}
+                    </div>
+                    <ul class="system-audio-rows" role="listbox" aria-label="Audio apps">
+                        {rows}
+                    </ul>
+                </div>
+            }
+        }}
     }
 }
 
+/// Live on-screen options popover with click-wired toggles. Mirrors
+/// the storybook `OnScreenOptionsPopover` HTML so CSS stays shared.
 #[component]
-fn OnScreenHandlers(
-    opts: RwSignal<Vec<OnScreenOptionView>>,
+fn LiveOnScreenPopover(
+    opts: Signal<Vec<OnScreenOptionView>>,
     on_toggle: Callback<OnScreenOptionKind>,
 ) -> impl IntoView {
     view! {
-        <ul class="recorder-page-on-screen-hits" role="presentation">
-            {move || opts.get().into_iter().map(|o| {
-                let kind = o.id;
-                view! {
-                    <li>
-                        <button
-                            type="button"
-                            class="recorder-page-on-screen-hit"
-                            data-kind=match kind {
-                                OnScreenOptionKind::CleanDesktop => "clean-desktop",
-                                OnScreenOptionKind::ShowKeys => "show-keys",
-                                OnScreenOptionKind::BlurSensitiveInfo => "blur-sensitive",
-                            }
-                            on:click=move |_| on_toggle.run(kind)
-                        >{o.title}</button>
-                    </li>
-                }
-            }).collect_view()}
-        </ul>
+        <div class="popover-surface popover-surface-bottom-left on-screen-options-popover">
+            <div class="popover-surface-header">
+                <div class="popover-surface-title">"On-screen"</div>
+                <div class="popover-surface-description">"Choose what shows during recording."</div>
+            </div>
+            <ul class="on-screen-options" role="group" aria-label="On-screen options">
+                {move || opts.get().into_iter().map(|o| {
+                    let kind = o.id;
+                    let mut class = String::from("on-screen-option-row");
+                    if o.disabled {
+                        class.push_str(" on-screen-option-row-disabled");
+                    }
+                    let toggle_class = if o.enabled {
+                        "toggle-switch toggle-switch-checked"
+                    } else {
+                        "toggle-switch"
+                    };
+                    view! {
+                        <li class=class data-option=match kind {
+                            OnScreenOptionKind::CleanDesktop => "clean-desktop",
+                            OnScreenOptionKind::ShowKeys => "show-keys",
+                            OnScreenOptionKind::BlurSensitiveInfo => "blur-sensitive-info",
+                        }>
+                            <span class="on-screen-option-toggle">
+                                <button
+                                    type="button"
+                                    class=toggle_class
+                                    role="switch"
+                                    aria-checked=o.enabled
+                                    disabled=o.disabled
+                                    on:click=move |_| on_toggle.run(kind)
+                                >
+                                    <span class="toggle-switch-thumb" aria-hidden="true"></span>
+                                </button>
+                            </span>
+                            <span class="on-screen-option-text">
+                                <span class="on-screen-option-title">{o.title}</span>
+                                <span class="on-screen-option-description">{o.description}</span>
+                            </span>
+                        </li>
+                    }
+                }).collect_view()}
+            </ul>
+        </div>
     }
 }
 
@@ -969,13 +1283,6 @@ fn is_suggested_app(bundle_id: &str) -> bool {
     )
 }
 
-// Side-channel hack: the source-row chevron/toggle overlays above
-// need an id to dispatch — for the camera-select we re-pull the
-// first id. Kept as a tiny helper so the call site stays readable.
-fn picked_id_dummy() -> String {
-    String::new()
-}
-
 // ---------------------------------------------------------------------
 // IPC refreshers (spawn_local, write into RwSignals)
 // ---------------------------------------------------------------------
@@ -1053,11 +1360,12 @@ fn refresh_audio_apps(apps: RwSignal<Vec<IpcAudioAppView>>, err: RwSignal<Option
 }
 
 fn install_status_listener(status: RwSignal<RecordingStatusViewIpc>) {
-    recording_ipc::install_recording_lock_listener(RwSignal::new(false));
-    // The recording-status push event is exposed via `recording_status()`
-    // polling in `recorder_controls.rs`; we let that component drive
-    // updates while it's mounted, and we re-fetch on demand here.
-    let _ = status;
+    // Subscribe to the Tauri-side `recording-status` push event so the
+    // page reactively reflects Running / Stopping / Idle. Without this
+    // the Start↔Stop cycle would never flip — the button would stay at
+    // "Start recording" and a second click would launch ANOTHER
+    // recording instead of stopping the first.
+    recording_ipc::install_recording_status_listener(status);
 }
 
 #[cfg(test)]

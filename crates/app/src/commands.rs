@@ -89,8 +89,8 @@ const BUBBLE_DEFAULT_INSET_PX: i32 = 16;
 /// Default bubble dimensions used when the live window can't be
 /// queried (shouldn't happen — `tauri.conf.json` declares 200×200 —
 /// but defensive so the show path never blocks on a query failure).
-const BUBBLE_FALLBACK_W: i32 = 200;
-const BUBBLE_FALLBACK_H: i32 = 200;
+const BUBBLE_FALLBACK_W: i32 = 260;
+const BUBBLE_FALLBACK_H: i32 = 320;
 
 /// Webcam-bubble toggle command (M-BUBBLE.0 / AUT-273).
 ///
@@ -282,19 +282,29 @@ fn load_bubble_position(app: &tauri::AppHandle) -> Option<BubblePosition> {
     decode_position(&raw)
 }
 
+/// Persistence file-format version prefix. Bumping this string causes
+/// `decode_position` to reject any file written by an earlier version,
+/// which falls through to `compute_default_position` and re-applies the
+/// current default-corner rule (M-BUBBLE.3 originally shipped
+/// bottom-right; the design pass moved the default to bottom-left, and
+/// stale `v1` files were keeping the bubble in the old corner).
+const BUBBLE_POSITION_FORMAT_VERSION: &str = "v2";
+
 /// Format helper extracted for unit testing.
 #[must_use]
 fn encode_position(pos: BubblePosition) -> String {
-    format!("{},{}\n", pos.x, pos.y)
+    format!("{}:{},{}\n", BUBBLE_POSITION_FORMAT_VERSION, pos.x, pos.y)
 }
 
-/// Parse helper extracted for unit testing. Tolerant of trailing
-/// whitespace + missing newline; strict about the comma separator
-/// and integer parsing (returns `None` on any malformed input).
+/// Parse helper extracted for unit testing. Requires the
+/// `BUBBLE_POSITION_FORMAT_VERSION` prefix so old-format files get
+/// rejected (returns `None`), letting the caller fall through to
+/// `compute_default_position` with the current default-corner rule.
 #[must_use]
 fn decode_position(raw: &str) -> Option<BubblePosition> {
     let trimmed = raw.trim();
-    let (x, y) = trimmed.split_once(',')?;
+    let body = trimmed.strip_prefix(&format!("{BUBBLE_POSITION_FORMAT_VERSION}:"))?;
+    let (x, y) = body.split_once(',')?;
     Some(BubblePosition {
         x: x.trim().parse().ok()?,
         y: y.trim().parse().ok()?,
@@ -2568,7 +2578,7 @@ mod tests {
     #[test]
     fn encode_position_uses_canonical_format() {
         let s = encode_position(BubblePosition { x: 100, y: 200 });
-        assert_eq!(s, "100,200\n");
+        assert_eq!(s, "v2:100,200\n");
     }
 
     #[test]
@@ -2576,7 +2586,7 @@ mod tests {
         // Multi-monitor layouts often have negative coords (secondary
         // monitor to the left of the primary).
         let s = encode_position(BubblePosition { x: -500, y: 0 });
-        assert_eq!(s, "-500,0\n");
+        assert_eq!(s, "v2:-500,0\n");
     }
 
     #[test]
@@ -2589,7 +2599,7 @@ mod tests {
     #[test]
     fn decode_position_tolerates_missing_trailing_newline() {
         assert_eq!(
-            decode_position("42,99"),
+            decode_position("v2:42,99"),
             Some(BubblePosition { x: 42, y: 99 })
         );
     }
@@ -2597,27 +2607,38 @@ mod tests {
     #[test]
     fn decode_position_tolerates_whitespace_around_values() {
         assert_eq!(
-            decode_position(" 7 , 11 \n"),
+            decode_position("v2: 7 , 11 \n"),
             Some(BubblePosition { x: 7, y: 11 })
         );
     }
 
     #[test]
     fn decode_position_rejects_missing_comma() {
-        assert_eq!(decode_position("123 456"), None);
+        assert_eq!(decode_position("v2:123 456"), None);
     }
 
     #[test]
     fn decode_position_rejects_non_integer() {
-        assert_eq!(decode_position("3.14,2.71"), None);
-        assert_eq!(decode_position("abc,def"), None);
-        assert_eq!(decode_position(",100"), None);
+        assert_eq!(decode_position("v2:3.14,2.71"), None);
+        assert_eq!(decode_position("v2:abc,def"), None);
+        assert_eq!(decode_position("v2:,100"), None);
     }
 
     #[test]
     fn decode_position_rejects_empty_input() {
         assert_eq!(decode_position(""), None);
         assert_eq!(decode_position("   \n"), None);
+    }
+
+    #[test]
+    fn decode_position_rejects_v1_legacy_format() {
+        // Pre-design-pass file format was bare `x,y\n`. Bumping the
+        // prefix to `v2:` lets us migrate users off the old default
+        // bottom-right corner without writing a per-user one-shot
+        // migration: stale files just fail to parse and fall through
+        // to `compute_default_position`.
+        assert_eq!(decode_position("100,200\n"), None);
+        assert_eq!(decode_position("-500,0"), None);
     }
 
     #[test]

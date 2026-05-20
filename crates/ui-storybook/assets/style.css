@@ -3145,3 +3145,72 @@ body:has(.bubble-root) {
   word-break: break-all;
   color: var(--text-secondary);
 }
+
+/* ───── Live RecorderPage — recording state ─────────────────────────
+ *
+ * The new app-ui live RecorderPage flips a `data-recording="true"`
+ * attribute on the root section while a session is active. While
+ * recording:
+ *   - source rows + on-screen options dim (still readable, but you
+ *     can't change selections mid-record — backend would reject)
+ *   - the start-recording footer is replaced with a Stop button
+ *   - a red pill at the top shows elapsed time + RECORDING label
+ */
+.recorder-page {
+  position: relative;
+}
+.recorder-page-recording-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--action-record, #ef4444);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35);
+  z-index: 5;
+}
+.recorder-page-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: recorder-page-pulse 1.2s ease-in-out infinite;
+}
+.recorder-page-recording-label {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.recorder-page-recording-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+@keyframes recorder-page-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.recorder-page[data-recording="true"] .recorder-page-sources,
+.recorder-page[data-recording="true"] .recorder-page-audio,
+.recorder-page[data-recording="true"] .recorder-page-on-screen,
+.recorder-page[data-recording="true"] .recorder-page-display {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.recording-controls-footer-stop {
+  /* Mirror the regular footer but signal that we're in the stop state. */
+}
+.start-recording-stop {
+  background: #fff !important;
+  color: var(--action-record, #ef4444) !important;
+  border: 2px solid var(--action-record, #ef4444);
+}
+.start-recording-stop:hover {
+  background: var(--action-record, #ef4444) !important;
+  color: #fff !important;
+}
