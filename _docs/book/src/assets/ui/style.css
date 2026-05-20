@@ -2843,3 +2843,149 @@ kbd {
   background: var(--surface-popover);
   min-height: 0;
 }
+
+/* ───── Webcam bubble overlay (M-BUBBLE.0 / AUT-273) ──────────────
+ *
+ * The `webcam-bubble` Tauri window is transparent + borderless.
+ * `.bubble-root` is the body's full-viewport child that draws the
+ * visible circular surface. For M-BUBBLE.0 this is a coloured
+ * placeholder so the empty window is findable; M-BUBBLE.2 (AUT-275)
+ * replaces the inner content with a `<canvas>` painted from the
+ * M-CAM.2 frame channel.
+ *
+ * IMPORTANT: do NOT change the bubble shape via `clip-path` or by
+ * pre-clipping the canvas. The mask is wisp's responsibility — once
+ * M-CAM.3's pipeline is real, the bubble canvas will receive
+ * already-masked pixels. CSS-rounding the same edge would visibly
+ * double-crop the circle (CLAUDE.md "Mask is wisp's, not CSS").
+ */
+.bubble-root {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #4338ca 0%, #1e1b4b 70%, transparent 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.bubble-root:active { cursor: grabbing; }
+.bubble-root-placeholder {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* The bubble window's body is transparent so the borderless window's
+ * corners are see-through. The dist/ HTML doesn't have a body class
+ * hook, so we lean on `.bubble-root` being the first child to neutralise
+ * the body's default rendering when present. */
+body:has(.bubble-root) {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* "Show webcam bubble" toggle in the Recorder surface. */
+.bubble-toggle {
+  appearance: none;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 16px;
+  align-self: flex-start;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.bubble-toggle:hover {
+  background: var(--surface-selected);
+  border-color: var(--line-strong);
+}
+.bubble-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Click-through-mode active state (M-BUBBLE.1 v0 / AUT-274). When the
+ * user has enabled passthrough, the toggle button stays "lit" so it's
+ * obvious the bubble is currently not interactive. */
+.bubble-toggle--clickthrough[data-active="true"] {
+  background: var(--action-record);
+  color: #fff;
+  border-color: var(--action-record-hover);
+}
+.bubble-toggle--clickthrough[data-active="true"]:hover {
+  background: var(--action-record-hover);
+}
+
+/* ───── Camera-pipeline diagnostics overlay (M-CAM.3 / AUT-257) ──
+ *
+ * Sits inside the Recorder surface. Polls preview_diagnostics every
+ * 500ms; renders a small monospace table so the frame counter +
+ * source dims / fps are easy to eyeball. Not a finalised UI — this
+ * is a developer-facing proof-of-life that ships with the M-CAM.3
+ * gst layer until the wisp render layer fills in the actual visible
+ * canvas. */
+.camera-diagnostics {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 480px;
+  align-self: flex-start;
+}
+.camera-diagnostics-header {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.camera-diagnostics-empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.camera-diagnostics-rows dt {
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+.camera-diagnostics-frames {
+  /* Frame counter ticks up at ~30 Hz — emphasise so the user can
+   * eyeball it visibly changing. */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.camera-diagnostics-dump {
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
