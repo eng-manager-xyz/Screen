@@ -32,7 +32,6 @@ use ui_storybook::components::recorder::{
 use ui_storybook::fixtures::recorder::CaptureMode;
 
 use crate::camera_ipc::{self, CameraPermission, CameraView};
-use crate::camera_preview::CameraPreview;
 use crate::mic_ipc::{self, MicrophoneView};
 use crate::recording_ipc::{
     self, RecordingConfigView, RecordingStatusViewIpc, SessionStreamsView, default_output_path,
@@ -286,6 +285,14 @@ pub fn RecorderPage() -> impl IntoView {
                 });
             }
         }
+        // Per the Screenplay-style design, the webcam preview lives in
+        // a separate borderless Tauri window (bottom-left of the
+        // primary monitor), not inside the recorder panel. Flipping
+        // the camera toggle shows / hides that window. `toggle_*`
+        // alternates Show ↔ Hide so we call it whenever the boolean
+        // changes — IPC handles the state-machine consistency
+        // (`BubbleState` on the Rust side).
+        crate::bubble_ipc::toggle_webcam_bubble();
     };
     let on_mic_toggle = move |_: MouseEvent| {
         let next = !mic_enabled.get();
@@ -464,11 +471,10 @@ pub fn RecorderPage() -> impl IntoView {
                             />
                         </div>
                     </Show>
-                    <Show when=move || camera_enabled.get() fallback=|| view! { <></> }>
-                        <div class="recorder-page-camera-preview">
-                            <CameraPreview />
-                        </div>
-                    </Show>
+                    // Per the design, the live webcam canvas lives in
+                    // the floating webcam-bubble window, not inline
+                    // inside the recorder panel. on_camera_toggle
+                    // shows / hides that window via bubble_ipc.
 
                     <SourceRowSlot
                         view=Signal::derive(mic_view)

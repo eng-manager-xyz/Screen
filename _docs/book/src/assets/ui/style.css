@@ -2884,6 +2884,162 @@ kbd {
   pointer-events: none;
 }
 
+/* ───── Webcam bubble — design pass ────────────────────────────────
+ *
+ * `.bubble-root--design` overrides the M-BUBBLE.0 placeholder root
+ * with the full Screenplay-style layout: a circular video surface in
+ * the middle (canvas painted by CameraPreview), a PREVIEW chip in the
+ * top-left of the circle, a small drag-handle + gear cluster
+ * top-right, three control pills at the bottom, and a device caption
+ * underneath. Sized for the 260×320 webcam-bubble window
+ * (tauri.conf.json).
+ */
+.bubble-root--design {
+  /* Override the radial fill from .bubble-root above — design uses a
+   * transparent surface with only the inner circle visible. */
+  background: transparent !important;
+  border-radius: 0 !important;
+  /* Stack: overlay (chips/handles) → circle canvas → controls →
+   * caption. Use a column flex so the caption sits below the circle. */
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 10px;
+  width: 100vw;
+  height: 100vh;
+  inset: 0;
+  position: fixed;
+  cursor: grab;
+}
+.bubble-root--design:active { cursor: grabbing; }
+
+/* Floating overlay sits over the circle's top edge — uses absolute
+ * positioning so it doesn't displace the canvas. */
+.bubble-overlay {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none; /* children re-enable */
+  z-index: 2;
+}
+.bubble-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.78);
+  color: rgba(255, 255, 255, 0.92);
+  font: 600 10px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  pointer-events: auto;
+}
+.bubble-preview-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.85);
+}
+.bubble-handle-cluster {
+  display: inline-flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+.bubble-handle {
+  appearance: none;
+  background: rgba(15, 15, 15, 0.78);
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font: 12px/1 var(--font-sans);
+}
+.bubble-handle:hover { background: rgba(15, 15, 15, 0.92); }
+.bubble-handle--drag { cursor: grab; }
+.bubble-handle-glyph { pointer-events: none; }
+
+/* The canvas wrap is the inner circle. Camera-preview renders its
+ * own <canvas> inside; we mask that wrap into a circle via clip-path.
+ * The mask here is acceptable because the canvas is not the final
+ * recorded frame — wisp owns the recorded composition's mask. */
+.bubble-canvas-wrap {
+  margin-top: 4px;
+  width: 240px;
+  height: 240px;
+  align-self: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #4a3b2a 0%, #2a1f15 70%, #1a1109 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+.bubble-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bubble-controls {
+  position: absolute;
+  /* Center the row at the bottom of the inner circle. The circle is
+   * 240px and the wrap is centered horizontally; the row sits a few
+   * pixels above the wrap's bottom edge. */
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.68);
+  z-index: 2;
+}
+.bubble-control {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 9px/1 var(--font-sans);
+  cursor: pointer;
+}
+.bubble-control:hover { background: rgba(255, 255, 255, 0.32); }
+.bubble-control--mute { background: rgba(0, 0, 0, 0.72); }
+.bubble-control-glyph { pointer-events: none; }
+
+.bubble-caption {
+  margin-top: 8px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1.2 var(--font-sans);
+  color: rgba(255, 255, 255, 0.78);
+}
+.bubble-caption-icon { font-size: 10px; }
+.bubble-caption-label { font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+.bubble-caption-sep { opacity: 0.6; }
+.bubble-caption-corner {
+  /* Wrap onto a second line if the window is narrow. */
+  white-space: nowrap;
+}
+
 /* The bubble window's body is transparent so the borderless window's
  * corners are see-through. The dist/ HTML doesn't have a body class
  * hook, so we lean on `.bubble-root` being the first child to neutralise
