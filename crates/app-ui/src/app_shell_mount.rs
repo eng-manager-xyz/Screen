@@ -71,16 +71,14 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
             fallback=move || view! { <NonRecorderSurfaces active=active /> }
         >
             <section class="app-surface app-surface--recorder">
-                <h1>"Recorder"</h1>
-                <crate::recorder_controls::RecorderControls />
-                <crate::camera_picker::CameraPicker />
-                <crate::mic_picker::MicPicker />
-                <crate::system_audio_picker::SystemAudioPicker />
-                <crate::screen_picker::ScreenPicker />
-                <crate::camera_preview::CameraPreview />
-                <crate::camera_diagnostics::CameraDiagnostics />
-                <BubbleToggleButton />
-                <BubbleClickthroughToggle />
+                <crate::recorder_page::RecorderPage />
+                <details class="app-surface-debug">
+                    <summary>"Debug · legacy controls"</summary>
+                    <crate::recorder_controls::RecorderControls />
+                    <crate::camera_diagnostics::CameraDiagnostics />
+                    <BubbleToggleButton />
+                    <BubbleClickthroughToggle />
+                </details>
             </section>
         </Show>
     }
