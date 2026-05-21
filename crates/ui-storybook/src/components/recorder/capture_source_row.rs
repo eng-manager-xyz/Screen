@@ -43,13 +43,13 @@ impl CaptureSourceKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaptureSourceView {
     /// Stable id matching the underlying device.
-    pub id: &'static str,
+    pub id: String,
     /// Camera vs microphone.
     pub kind: CaptureSourceKind,
     /// Primary title (`"FaceTime HD Camera"`).
-    pub title: &'static str,
+    pub title: String,
     /// Secondary line (`"MacBook · 1080p"`, `"Bluetooth · 86%"`).
-    pub subtitle: &'static str,
+    pub subtitle: String,
     /// `true` when the capture source is on.
     pub enabled: bool,
     /// `true` when the picker popover is open for this row.

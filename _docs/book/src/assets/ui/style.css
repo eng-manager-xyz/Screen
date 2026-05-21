@@ -2843,3 +2843,374 @@ kbd {
   background: var(--surface-popover);
   min-height: 0;
 }
+
+/* ───── Webcam bubble overlay (M-BUBBLE.0 / AUT-273) ──────────────
+ *
+ * The `webcam-bubble` Tauri window is transparent + borderless.
+ * `.bubble-root` is the body's full-viewport child that draws the
+ * visible circular surface. For M-BUBBLE.0 this is a coloured
+ * placeholder so the empty window is findable; M-BUBBLE.2 (AUT-275)
+ * replaces the inner content with a `<canvas>` painted from the
+ * M-CAM.2 frame channel.
+ *
+ * IMPORTANT: do NOT change the bubble shape via `clip-path` or by
+ * pre-clipping the canvas. The mask is wisp's responsibility — once
+ * M-CAM.3's pipeline is real, the bubble canvas will receive
+ * already-masked pixels. CSS-rounding the same edge would visibly
+ * double-crop the circle (CLAUDE.md "Mask is wisp's, not CSS").
+ */
+.bubble-root {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #4338ca 0%, #1e1b4b 70%, transparent 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.bubble-root:active { cursor: grabbing; }
+.bubble-root-placeholder {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* ───── Webcam bubble — design pass ────────────────────────────────
+ *
+ * `.bubble-root--design` overrides the M-BUBBLE.0 placeholder root
+ * with the full Screenplay-style layout: a circular video surface in
+ * the middle (canvas painted by CameraPreview), a PREVIEW chip in the
+ * top-left of the circle, a small drag-handle + gear cluster
+ * top-right, three control pills at the bottom, and a device caption
+ * underneath. Sized for the 260×320 webcam-bubble window
+ * (tauri.conf.json).
+ */
+.bubble-root--design {
+  /* Override the radial fill from .bubble-root above — design uses a
+   * transparent surface with only the inner circle visible. */
+  background: transparent !important;
+  border-radius: 0 !important;
+  /* Stack: overlay (chips/handles) → circle canvas → controls →
+   * caption. Use a column flex so the caption sits below the circle. */
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 10px;
+  width: 100vw;
+  height: 100vh;
+  inset: 0;
+  position: fixed;
+  cursor: grab;
+}
+.bubble-root--design:active { cursor: grabbing; }
+
+/* Floating overlay sits over the circle's top edge — uses absolute
+ * positioning so it doesn't displace the canvas. */
+.bubble-overlay {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none; /* children re-enable */
+  z-index: 2;
+}
+.bubble-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.78);
+  color: rgba(255, 255, 255, 0.92);
+  font: 600 10px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  pointer-events: auto;
+}
+.bubble-preview-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.85);
+}
+.bubble-handle-cluster {
+  display: inline-flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+.bubble-handle {
+  appearance: none;
+  background: rgba(15, 15, 15, 0.78);
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font: 12px/1 var(--font-sans);
+}
+.bubble-handle:hover { background: rgba(15, 15, 15, 0.92); }
+.bubble-handle--drag { cursor: grab; }
+.bubble-handle-glyph { pointer-events: none; }
+
+/* The canvas wrap is the inner circle. Camera-preview renders its
+ * own <canvas> inside; we mask that wrap into a circle via clip-path.
+ * The mask here is acceptable because the canvas is not the final
+ * recorded frame — wisp owns the recorded composition's mask. */
+.bubble-canvas-wrap {
+  margin-top: 4px;
+  width: 240px;
+  height: 240px;
+  align-self: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #4a3b2a 0%, #2a1f15 70%, #1a1109 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(0, 0, 0, 0.4);
+}
+.bubble-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bubble-controls {
+  position: absolute;
+  /* Center the row at the bottom of the inner circle. The circle is
+   * 240px and the wrap is centered horizontally; the row sits a few
+   * pixels above the wrap's bottom edge. */
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.68);
+  z-index: 2;
+}
+.bubble-control {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 9px/1 var(--font-sans);
+  cursor: pointer;
+}
+.bubble-control:hover { background: rgba(255, 255, 255, 0.32); }
+.bubble-control--mute { background: rgba(0, 0, 0, 0.72); }
+.bubble-control-glyph { pointer-events: none; }
+
+.bubble-caption {
+  margin-top: 8px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1.2 var(--font-sans);
+  color: rgba(255, 255, 255, 0.78);
+}
+.bubble-caption-icon { font-size: 10px; }
+.bubble-caption-label { font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+.bubble-caption-sep { opacity: 0.6; }
+.bubble-caption-corner {
+  /* Wrap onto a second line if the window is narrow. */
+  white-space: nowrap;
+}
+
+/* The bubble window's body is transparent so the borderless window's
+ * corners are see-through. The dist/ HTML doesn't have a body class
+ * hook, so we lean on `.bubble-root` being the first child to neutralise
+ * the body's default rendering when present. */
+body:has(.bubble-root) {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* "Show webcam bubble" toggle in the Recorder surface. */
+.bubble-toggle {
+  appearance: none;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 16px;
+  align-self: flex-start;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.bubble-toggle:hover {
+  background: var(--surface-selected);
+  border-color: var(--line-strong);
+}
+.bubble-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Click-through-mode active state (M-BUBBLE.1 v0 / AUT-274). When the
+ * user has enabled passthrough, the toggle button stays "lit" so it's
+ * obvious the bubble is currently not interactive. */
+.bubble-toggle--clickthrough[data-active="true"] {
+  background: var(--action-record);
+  color: #fff;
+  border-color: var(--action-record-hover);
+}
+.bubble-toggle--clickthrough[data-active="true"]:hover {
+  background: var(--action-record-hover);
+}
+
+/* ───── Camera-pipeline diagnostics overlay (M-CAM.3 / AUT-257) ──
+ *
+ * Sits inside the Recorder surface. Polls preview_diagnostics every
+ * 500ms; renders a small monospace table so the frame counter +
+ * source dims / fps are easy to eyeball. Not a finalised UI — this
+ * is a developer-facing proof-of-life that ships with the M-CAM.3
+ * gst layer until the wisp render layer fills in the actual visible
+ * canvas. */
+.camera-diagnostics {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 480px;
+  align-self: flex-start;
+}
+.camera-diagnostics-header {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.camera-diagnostics-empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+.camera-diagnostics-rows dt {
+  color: var(--text-tertiary);
+}
+.camera-diagnostics-rows dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+.camera-diagnostics-frames {
+  /* Frame counter ticks up at ~30 Hz — emphasise so the user can
+   * eyeball it visibly changing. */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.camera-diagnostics-dump {
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+/* ───── Live RecorderPage — recording state ─────────────────────────
+ *
+ * The new app-ui live RecorderPage flips a `data-recording="true"`
+ * attribute on the root section while a session is active. While
+ * recording:
+ *   - source rows + on-screen options dim (still readable, but you
+ *     can't change selections mid-record — backend would reject)
+ *   - the start-recording footer is replaced with a Stop button
+ *   - a red pill at the top shows elapsed time + RECORDING label
+ */
+.recorder-page {
+  position: relative;
+}
+.recorder-page-recording-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--action-record, #ef4444);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35);
+  z-index: 5;
+}
+.recorder-page-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: recorder-page-pulse 1.2s ease-in-out infinite;
+}
+.recorder-page-recording-label {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.recorder-page-recording-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+@keyframes recorder-page-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.recorder-page[data-recording="true"] .recorder-page-sources,
+.recorder-page[data-recording="true"] .recorder-page-audio,
+.recorder-page[data-recording="true"] .recorder-page-on-screen,
+.recorder-page[data-recording="true"] .recorder-page-display {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.recording-controls-footer-stop {
+  /* Mirror the regular footer but signal that we're in the stop state. */
+}
+.start-recording-stop {
+  background: #fff !important;
+  color: var(--action-record, #ef4444) !important;
+  border: 2px solid var(--action-record, #ef4444);
+}
+.start-recording-stop:hover {
+  background: var(--action-record, #ef4444) !important;
+  color: #fff !important;
+}

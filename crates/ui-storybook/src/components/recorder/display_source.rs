@@ -13,13 +13,13 @@ use leptos::prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct DisplaySourceView {
     /// Stable id.
-    pub id: &'static str,
+    pub id: String,
     /// Display name ("Built-in Retina display").
-    pub name: &'static str,
+    pub name: String,
     /// Compact size label ("14\"").
-    pub size_label: &'static str,
+    pub size_label: String,
     /// Resolution label ("3024 × 1964").
-    pub dimensions_label: &'static str,
+    pub dimensions_label: String,
     /// `true` to render the favourited star glyph.
     pub is_favorite: bool,
     /// `true` to outline the card in the action-record color.
@@ -36,7 +36,7 @@ pub struct DisplayPreviewView {
     pub aspect_ratio: (u16, u16),
     /// Optional overlay label drawn in the top-right corner ("Built-in
     /// 14\"").
-    pub overlay_label: Option<&'static str>,
+    pub overlay_label: Option<String>,
     /// Mock window chips drawn inside the preview to suggest "this is
     /// what would be captured".
     pub mock_windows: Vec<PreviewWindowChip>,
@@ -47,9 +47,9 @@ pub struct DisplayPreviewView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewWindowChip {
     /// Display label (truncates).
-    pub label: &'static str,
+    pub label: String,
     /// CSS background color string.
-    pub color: &'static str,
+    pub color: String,
     /// Left offset in `[0, 100]` percent.
     pub left_pct: u8,
     /// Top offset in `[0, 100]` percent.
@@ -83,8 +83,11 @@ pub fn DisplayPreviewFrame(view: DisplayPreviewView) -> impl IntoView {
                         </span>
                     }
                 }).collect_view()}
-                {view.overlay_label.map(|l| view! {
-                    <span class="display-preview-overlay">{l}</span>
+                {view.overlay_label.as_ref().map(|l| {
+                    let label = l.clone();
+                    view! {
+                        <span class="display-preview-overlay">{label}</span>
+                    }
                 })}
             </div>
         </div>

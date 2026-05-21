@@ -266,6 +266,68 @@ pub fn install_recording_lock_listener(lock: leptos::prelude::RwSignal<bool>) {
     callback.forget();
 }
 
+/// Subscribe to the `recording-status` event and update `status` to
+/// the full pushed snapshot. Companion to
+/// [`install_recording_lock_listener`] — used when a component needs
+/// the elapsed-ms / per-stream-health detail (e.g. the live
+/// `RecorderPage` Start↔Stop cycle) rather than just the locked-or-not
+/// boolean.
+///
+/// Also fires a one-shot synchronous poll via `recording_status` so
+/// a remounted component starts with the current value rather than
+/// the `RecordingStatusViewIpc::idle()` default.
+#[cfg(target_arch = "wasm32")]
+pub fn install_recording_status_listener(
+    status: leptos::prelude::RwSignal<RecordingStatusViewIpc>,
+) {
+    use js_sys::Reflect;
+    use leptos::prelude::*;
+    use leptos::task::spawn_local;
+
+    spawn_local(async move {
+        let view = recording_status().await;
+        status.set(view);
+    });
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tauri_obj) = Reflect::get(&window, &JsValue::from_str("__TAURI__")) else {
+        return;
+    };
+    let Ok(event_obj) = Reflect::get(&tauri_obj, &JsValue::from_str("event")) else {
+        return;
+    };
+    let Ok(listen_fn) = Reflect::get(&event_obj, &JsValue::from_str("listen")) else {
+        return;
+    };
+    if !listen_fn.is_function() {
+        return;
+    }
+    let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move |evt: JsValue| {
+        let Ok(payload) = Reflect::get(&evt, &JsValue::from_str("payload")) else {
+            return;
+        };
+        if let Ok(parsed) = serde_wasm_bindgen::from_value::<RecordingStatusViewIpc>(payload) {
+            status.set(parsed);
+        }
+    }) as Box<dyn FnMut(JsValue)>);
+    let listen_fn: js_sys::Function = wasm_bindgen::JsCast::unchecked_into(listen_fn);
+    let _ = listen_fn.call2(
+        event_obj.as_ref(),
+        &JsValue::from_str("recording-status"),
+        callback.as_ref().unchecked_ref(),
+    );
+    callback.forget();
+}
+
+/// Native (non-wasm) stub of [`install_recording_status_listener`].
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_recording_status_listener(
+    _status: leptos::prelude::RwSignal<RecordingStatusViewIpc>,
+) {
+}
+
 /// Native (non-wasm) stub of [`install_recording_lock_listener`].
 /// Unit tests + non-browser builds get a no-op so the `RwSignal`
 /// stays at its default `false`.

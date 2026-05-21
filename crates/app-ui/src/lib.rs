@@ -129,6 +129,7 @@ pub mod camera_preview;
 pub mod mic_ipc;
 pub mod mic_picker;
 pub mod recorder_controls;
+pub mod recorder_page;
 pub mod recording_ipc;
 pub mod routing;
 pub mod screen_ipc;

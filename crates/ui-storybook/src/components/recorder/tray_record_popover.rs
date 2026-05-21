@@ -264,7 +264,7 @@ pub fn format_on_screen_summary(options: &[OnScreenOptionView]) -> String {
     let enabled: Vec<&str> = options
         .iter()
         .filter(|o| o.enabled)
-        .map(|o| o.title)
+        .map(|o| o.title.as_str())
         .collect();
     if enabled.is_empty() {
         "All overlays off".to_owned()
@@ -305,14 +305,15 @@ mod tests {
     use crate::components::recorder::{OnScreenOptionKind, OnScreenOptionView};
 
     fn opt(id: OnScreenOptionKind, enabled: bool) -> OnScreenOptionView {
+        let title = match id {
+            OnScreenOptionKind::CleanDesktop => "Clean desktop",
+            OnScreenOptionKind::ShowKeys => "Show keys",
+            OnScreenOptionKind::BlurSensitiveInfo => "Blur sensitive",
+        };
         OnScreenOptionView {
             id,
-            title: match id {
-                OnScreenOptionKind::CleanDesktop => "Clean desktop",
-                OnScreenOptionKind::ShowKeys => "Show keys",
-                OnScreenOptionKind::BlurSensitiveInfo => "Blur sensitive",
-            },
-            description: "",
+            title: title.to_owned(),
+            description: String::new(),
             enabled,
             disabled: false,
         }

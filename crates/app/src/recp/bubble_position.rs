@@ -39,18 +39,21 @@ pub enum Corner {
     BottomRight,
 }
 
-/// Default first-open position: bottom-right of the supplied monitor,
+/// Default first-open position: bottom-LEFT of the supplied monitor,
 /// inset by `inset_px` from both edges so the bubble doesn't kiss the
-/// dock / taskbar.
+/// dock / taskbar. Matches the Screenplay-style design reference where
+/// the webcam bubble lives in the bottom-left corner of the screen by
+/// default (the user can drag it anywhere; the new position is
+/// persisted via `bubble-position.txt`).
 #[must_use]
 pub fn default_position(
-    window_width: i32,
+    _window_width_unused: i32,
     window_height: i32,
     monitor: MonitorBounds,
     inset_px: i32,
 ) -> BubblePosition {
     BubblePosition {
-        x: monitor.x + monitor.width - window_width - inset_px,
+        x: monitor.x + inset_px,
         y: monitor.y + monitor.height - window_height - inset_px,
     }
 }
@@ -187,11 +190,11 @@ mod tests {
     }
 
     #[test]
-    fn default_position_lands_bottom_right_with_inset() {
+    fn default_position_lands_bottom_left_with_inset() {
         let m = mon(0, 0, 1920, 1080);
-        // 200×200 window, 16px inset → top-left at (1920-200-16, 1080-200-16).
+        // 200×200 window, 16px inset → top-left at (16, 1080-200-16).
         let pos = default_position(200, 200, m, 16);
-        assert_eq!(pos, BubblePosition { x: 1704, y: 864 });
+        assert_eq!(pos, BubblePosition { x: 16, y: 864 });
     }
 
     #[test]
@@ -199,7 +202,7 @@ mod tests {
         // Secondary monitor at x=1920.
         let m = mon(1920, 0, 1920, 1080);
         let pos = default_position(200, 200, m, 16);
-        assert_eq!(pos.x, 1920 + 1920 - 200 - 16);
+        assert_eq!(pos.x, 1920 + 16);
         assert_eq!(pos.y, 864);
     }
 

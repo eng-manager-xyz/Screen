@@ -3,11 +3,11 @@
 
 use crate::components::recorder::{AppIconView, AudioAppView, SystemAudioView};
 
-fn app_icon(id: &'static str, monogram: &'static str, color: &'static str) -> AppIconView {
+fn app_icon(id: &str, monogram: &str, color: &str) -> AppIconView {
     AppIconView {
-        id,
-        monogram,
-        color,
+        id: id.to_owned(),
+        monogram: monogram.to_owned(),
+        color: color.to_owned(),
     }
 }
 
@@ -16,9 +16,9 @@ fn app_icon(id: &'static str, monogram: &'static str, color: &'static str) -> Ap
 pub fn sample_audio_apps() -> Vec<AudioAppView> {
     vec![
         AudioAppView {
-            id: "spotify",
-            name: "Spotify",
-            context: "Discover Weekly · 18 m left",
+            id: "spotify".to_owned(),
+            name: "Spotify".to_owned(),
+            context: "Discover Weekly · 18 m left".to_owned(),
             selected: true,
             suggested: true,
             live: true,
@@ -26,9 +26,9 @@ pub fn sample_audio_apps() -> Vec<AudioAppView> {
             icon: app_icon("spotify", "S", "#16a34a"),
         },
         AudioAppView {
-            id: "chrome-yt",
-            name: "Chrome — YouTube",
-            context: "Tab 3 · TWIR podcast ep 42",
+            id: "chrome-yt".to_owned(),
+            name: "Chrome — YouTube".to_owned(),
+            context: "Tab 3 · TWIR podcast ep 42".to_owned(),
             selected: true,
             suggested: true,
             live: false,
@@ -36,9 +36,9 @@ pub fn sample_audio_apps() -> Vec<AudioAppView> {
             icon: app_icon("chrome", "C", "#fbbf24"),
         },
         AudioAppView {
-            id: "discord",
-            name: "Discord",
-            context: "#engineering",
+            id: "discord".to_owned(),
+            name: "Discord".to_owned(),
+            context: "#engineering".to_owned(),
             selected: false,
             suggested: true,
             live: false,
@@ -46,9 +46,9 @@ pub fn sample_audio_apps() -> Vec<AudioAppView> {
             icon: app_icon("discord", "D", "#5865f2"),
         },
         AudioAppView {
-            id: "zoom",
-            name: "Zoom",
-            context: "Idle · last call 12m ago",
+            id: "zoom".to_owned(),
+            name: "Zoom".to_owned(),
+            context: "Idle · last call 12m ago".to_owned(),
             selected: false,
             suggested: false,
             live: false,
@@ -56,9 +56,9 @@ pub fn sample_audio_apps() -> Vec<AudioAppView> {
             icon: app_icon("zoom", "Z", "#0ea5e9"),
         },
         AudioAppView {
-            id: "messages",
-            name: "Messages",
-            context: "Notification sounds",
+            id: "messages".to_owned(),
+            name: "Messages".to_owned(),
+            context: "Notification sounds".to_owned(),
             selected: false,
             suggested: false,
             live: false,
