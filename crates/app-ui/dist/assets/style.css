@@ -1069,6 +1069,45 @@ kbd {
 .toggle-on .toggle-knob { background: #09090b; transform: translateX(14px); }
 .toggle-disabled { opacity: 0.45; }
 
+/* ───── ToggleSwitch — single-element pill toggle ───── */
+/* Used by the live RecorderPage rows (camera / mic / system-audio /
+ * on-screen options). Renders as a <button role="switch"> with a
+ * single <span class="toggle-switch-thumb"> child — no separate track
+ * element, so the button itself is the track. Visual treatment matches
+ * the two-element `.toggle` above but adapted to that flatter DOM.
+ */
+.toggle-switch {
+  appearance: none;
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  background: var(--secondary);
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 120ms ease;
+  flex-shrink: 0;
+}
+.toggle-switch:disabled { cursor: not-allowed; opacity: 0.45; }
+.toggle-switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.toggle-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transition: transform 160ms ease, background 120ms ease;
+}
+.toggle-switch-checked { background: var(--text-primary); }
+.toggle-switch-checked .toggle-switch-thumb {
+  background: var(--surface-base);
+  transform: translateX(14px);
+}
+
 /* ───── SegmentedControl ───── */
 .segmented {
   display: inline-flex;
@@ -3145,3 +3184,277 @@ body:has(.bubble-root) {
   word-break: break-all;
   color: var(--text-secondary);
 }
+
+/* ───── Live RecorderPage — recording state ─────────────────────────
+ *
+ * The new app-ui live RecorderPage flips a `data-recording="true"`
+ * attribute on the root section while a session is active. While
+ * recording:
+ *   - source rows + on-screen options dim (still readable, but you
+ *     can't change selections mid-record — backend would reject)
+ *   - the start-recording footer is replaced with a Stop button
+ *   - a red pill at the top shows elapsed time + RECORDING label
+ */
+.recorder-page {
+  position: relative;
+}
+.recorder-page-recording-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--action-record, #ef4444);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35);
+  z-index: 5;
+}
+.recorder-page-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: recorder-page-pulse 1.2s ease-in-out infinite;
+}
+.recorder-page-recording-label {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.recorder-page-recording-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+@keyframes recorder-page-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.recorder-page[data-recording="true"] .recorder-page-sources,
+.recorder-page[data-recording="true"] .recorder-page-audio,
+.recorder-page[data-recording="true"] .recorder-page-on-screen,
+.recorder-page[data-recording="true"] .recorder-page-display {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.recording-controls-footer-stop {
+  /* Mirror the regular footer but signal that we're in the stop state. */
+}
+.start-recording-stop {
+  background: #fff !important;
+  color: var(--action-record, #ef4444) !important;
+  border: 2px solid var(--action-record, #ef4444);
+}
+.start-recording-stop:hover {
+  background: var(--action-record, #ef4444) !important;
+  color: #fff !important;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────
+ * Recorder-page layout
+ * ─────────────────────────────────────────────────────────────────
+ * The Leptos `RecorderPage` (crates/app-ui/src/recorder_page.rs)
+ * composes Display card → source rows → audio row → on-screen row
+ * → control-pill row → footer into a single panel sized to fit
+ * inside the small tauri tray-popover window. All rules scoped
+ * under `.recorder-page` (or `.app-surface--recorder`) so the
+ * isolated storybook stories keep their canonical sizes.
+ */
+.recorder-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  width: 100%;
+  font-size: 11px;
+  /* Defense against horizontal scroll: anything inside that pushes
+   * past 100 % clips here too. The real scroll container is
+   * `.app-shell-main` (below); this is belt + suspenders. */
+  overflow-x: hidden;
+}
+.recorder-page *,
+.recorder-page *::before,
+.recorder-page *::after {
+  box-sizing: border-box;
+}
+
+/* AppShell wiring — pin the recorder flush to the rail, kill the
+ * shell-main's default padding + horizontal scroll for this surface
+ * only. The 16 px right gutter keeps content off the window edge.
+ * `:has()` is supported in every webview Tauri 2 ships against. */
+.app-surface--recorder {
+  padding: 0 16px 0 0;
+  margin: 0;
+}
+.app-shell-main:has(> .app-surface--recorder) {
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Header — capture-mode tabs. */
+.recorder-page-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.recorder-page .icon-tile {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+  border-radius: var(--radius-control);
+}
+
+/* Body stack + per-section gaps. */
+.recorder-page-body { display: flex; flex-direction: column; gap: 4px; }
+.recorder-page-sources,
+.recorder-page-audio { display: flex; flex-direction: column; gap: 4px; }
+.recorder-page-display { display: flex; flex-direction: column; gap: 4px; }
+.recorder-page-on-screen { display: flex; flex-direction: column; gap: 4px; }
+.recorder-page-picker,
+.recorder-page-applist { display: flex; flex-direction: column; }
+
+/* Component widths stretch to fit the panel rather than the 360 px
+ * isolated-story width. Display card included so it aligns with the
+ * rows beneath it. */
+.recorder-page-display .display-source-card,
+.recorder-page-sources .capture-source-row,
+.recorder-page-audio .system-audio-row {
+  width: 100%;
+}
+.recorder-page-picker .popover-surface,
+.recorder-page-applist .system-audio-applist {
+  width: 100%;
+}
+
+/* Display source card — compact padding + capped preview height so
+ * the card doesn't dominate the column. */
+.recorder-page-display .display-source-card {
+  padding: 7px 8px 8px;
+  gap: 6px;
+  border-width: 1px;
+}
+.recorder-page-display .display-source-name { font-size: 11px; }
+.recorder-page-display .display-source-size { font-size: 9px; }
+.recorder-page-display .display-source-dims {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+.recorder-page-display .display-source-chevron { font-size: 9px; }
+.recorder-page-display .display-preview { max-height: 220px; }
+
+/* Source rows (camera / mic). */
+.recorder-page-sources .capture-source-row {
+  padding: 5px 6px;
+  gap: 6px;
+  border-radius: var(--radius-control);
+  grid-template-columns: 22px 1fr auto auto;
+}
+.recorder-page-sources .capture-source-title { font-size: 11px; }
+.recorder-page-sources .capture-source-subtitle { font-size: 9px; }
+.recorder-page-sources .capture-source-chevron { font-size: 9px; padding: 2px; }
+.recorder-page-sources .capture-source-text .meter-bar { height: 7px; width: 2px; }
+
+/* System-audio row + the inline app-icon stack. */
+.recorder-page-audio .system-audio-row {
+  padding: 5px 6px;
+  gap: 6px;
+  border-radius: var(--radius-control);
+}
+.recorder-page-audio .system-audio-title { font-size: 11px; }
+.recorder-page-audio .system-audio-subtitle { font-size: 9px; }
+.recorder-page-audio .system-audio-icon,
+.recorder-page-audio .system-audio-icon-overflow {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  border-radius: 5px;
+  border-width: 1.5px;
+  margin-left: -6px;
+}
+.recorder-page-audio .system-audio-icon:first-child { margin-left: 0; }
+.recorder-page-audio .system-audio-chevron { font-size: 9px; padding: 2px; }
+
+/* On-screen row — styled to match the source rows above it. */
+.recorder-page-on-screen-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+}
+.recorder-page-on-screen-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.recorder-page-on-screen-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.recorder-page-on-screen-title { font-size: 11px; font-weight: 600; color: var(--text-primary); }
+.recorder-page-on-screen-summary {
+  font-size: 9px;
+  color: var(--text-secondary);
+  background: var(--surface-selected);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+}
+.recorder-page-chevron { color: var(--text-tertiary); font-size: 9px; }
+
+/* Auto-zoom + Countdown sit side-by-side as compact pill controls. */
+.recorder-page-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.recorder-page-controls > * { width: 100%; }
+.recorder-page-controls .select-pill {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 11px;
+  padding: 4px 8px 4px 6px;
+  gap: 4px;
+}
+.recorder-page-controls .select-pill-icon { font-size: 11px; }
+.recorder-page-controls .select-pill-chevron { font-size: 8px; }
+
+/* Toggle switches — compact 24 × 14 inside the recorder. */
+.recorder-page .toggle-switch { width: 24px; height: 14px; }
+.recorder-page .toggle-switch-thumb { width: 10px; height: 10px; }
+.recorder-page .toggle-switch-checked .toggle-switch-thumb {
+  transform: translateX(10px);
+}
+
+/* Footer — Start button is a full-width red pill with the keyboard
+ * shortcut chips pushed to the right edge. */
+.recorder-page .recording-controls-footer {
+  padding: 0;
+  background: transparent;
+  border-top: 0;
+  border-radius: 0;
+}
+.recorder-page .recording-controls-action { width: 100%; }
+.recorder-page .start-recording-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.recorder-page .start-recording-glyph { font-size: 10px; }
+.recorder-page .start-recording-label { font-size: 12px; }
+.recorder-page .start-recording-btn .shortcut-badges { margin-left: auto; }
+.recorder-page .shortcut-badge { font-size: 9px; padding: 1px 4px; min-width: 12px; }

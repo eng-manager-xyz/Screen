@@ -19,15 +19,13 @@ use leptos::ev::MouseEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use ui_storybook::components::menus::{PopoverPlacement, PopoverSurface};
 use ui_storybook::components::primitives::{IconTile, IconTileKind};
 use ui_storybook::components::recorder::{
-    AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, CaptureModeTabs,
-    CaptureSourceKind, CaptureSourceView, DeviceOptionView, DevicePickerState, DeviceThumb,
-    DisplayPreviewView, DisplaySourceCard, DisplaySourceView, OnScreenOptionKind,
-    OnScreenOptionView, PreviewWindowChip, RecordingControlsFooter, RecordingControlsView,
-    StartRecordingState, SystemAudioView, format_auto_zoom_label, format_countdown_label,
-    format_selection_count,
+    AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, AutoZoomSelect, CaptureModeTabs,
+    CaptureSourceKind, CaptureSourceView, CountdownSelect, DeviceOptionView, DevicePickerState,
+    DeviceThumb, DisplayPreviewView, DisplaySourceCard, DisplaySourceView, OnScreenOptionKind,
+    OnScreenOptionView, PreviewWindowChip, StartRecordingButton, StartRecordingState,
+    SystemAudioView, format_auto_zoom_label, format_countdown_label, format_selection_count,
 };
 use ui_storybook::fixtures::recorder::CaptureMode;
 
@@ -148,8 +146,20 @@ pub fn RecorderPage() -> impl IntoView {
         let chosen = list.iter().find(|d| Some(&d.id) == selected.as_ref());
         let primary = list.iter().find(|d| d.is_primary);
         let active = chosen.or(primary).or_else(|| list.first());
-        let name = active.map_or("No display detected".to_owned(), |d| d.label.clone());
-        let (w, h) = active.map_or((1920, 1080), |d| (d.width, d.height));
+        // The IPC reports display dimensions in points (logical
+        // pixels). Every modern Mac display is Retina (2× backing
+        // scale), so show the physical-pixel resolution in the card —
+        // matches Screen Studio / OpenScreen conventions and the
+        // target mock (e.g. 1512×982 points → 3024×1964 px). The
+        // capture pipeline itself still uses the OS-reported points;
+        // this is a label-only transform.
+        let (w_pt, h_pt) = active.map_or((1920, 1080), |d| (d.width, d.height));
+        let (w, h) = (w_pt * 2, h_pt * 2);
+        let name = if active.is_some() {
+            format!("Display {w}×{h}")
+        } else {
+            "No display detected".to_owned()
+        };
         DisplaySourceView {
             id: active.map_or("display-none".to_owned(), |d| d.id.clone()),
             name,
@@ -209,26 +219,25 @@ pub fn RecorderPage() -> impl IntoView {
         }
     };
 
-    let controls_view = move || -> RecordingControlsView {
-        // Recording state — drive the page's CSS + footer button
-        // variant. While Running / Stopping we render a custom Stop
-        // button (see view! below); otherwise show the Ready button.
+    // Per-piece accessors for the footer + the standalone auto-zoom /
+    // countdown control row above it. The footer no longer carries
+    // those selects (they moved up beneath the on-screen row per the
+    // recorder-surface redesign), so we render `StartRecordingButton`
+    // directly and skip the `RecordingControlsFooter` shell.
+    let start_state = move || {
         let any_source = camera_enabled.get()
             || mic_enabled.get()
             || system_audio_enabled.get()
             || !displays.get().is_empty();
-        let state = if any_source {
+        if any_source {
             StartRecordingState::Ready
         } else {
             StartRecordingState::Disabled
-        };
-        RecordingControlsView {
-            auto_zoom_label: format_auto_zoom_label(Some(auto_zoom.get())),
-            countdown_label: format_countdown_label(countdown_seconds.get()),
-            shortcuts: vec!["⌘".to_owned(), "⇧".to_owned(), "2".to_owned()],
-            start_state: state,
         }
     };
+    let shortcut_keys = || vec!["⌘".to_owned(), "⇧".to_owned(), "2".to_owned()];
+    let auto_zoom_label = move || format_auto_zoom_label(Some(auto_zoom.get()));
+    let countdown_label = move || format_countdown_label(countdown_seconds.get());
     let elapsed_label = move || {
         let total = status.get().elapsed_ms / 1000;
         let mm = total / 60;
@@ -453,13 +462,6 @@ pub fn RecorderPage() -> impl IntoView {
                 </div>
             </Show>
             <header class="recorder-page-header">
-                <button
-                    class="recorder-page-workspace"
-                    type="button"
-                    aria-label="Switch workspace"
-                >
-                    <IconTile kind=IconTileKind::Workspace>"N"</IconTile>
-                </button>
                 <CaptureModeTabs selected=capture_mode.get() />
             </header>
 
@@ -571,19 +573,28 @@ pub fn RecorderPage() -> impl IntoView {
                         </div>
                     </Show>
                 </section>
+
+                <section class="recorder-page-controls" aria-label="Recording options">
+                    {move || view! { <AutoZoomSelect label=auto_zoom_label() /> }}
+                    {move || view! { <CountdownSelect label=countdown_label() /> }}
+                </section>
             </div>
 
-            <PopoverSurface
-                placement=PopoverPlacement::BottomLeft
-                width_px=380_u16
-            >
+            <footer class="recorder-page-footer">
                 <Show
                     when=is_recording
                     fallback=move || view! {
-                        <RecordingControlsFooter
-                            view=controls_view()
-                            on_start=on_start
-                        />
+                        <div class="recording-controls-footer" data-state="ready">
+                            <div class="recording-controls-action">
+                                {move || view! {
+                                    <StartRecordingButton
+                                        state=start_state()
+                                        shortcuts=shortcut_keys()
+                                        on_start=on_start
+                                    />
+                                }}
+                            </div>
+                        </div>
                     }
                 >
                     <div class="recording-controls-footer recording-controls-footer-stop" data-state="recording">
@@ -605,7 +616,7 @@ pub fn RecorderPage() -> impl IntoView {
                         </div>
                     </div>
                 </Show>
-            </PopoverSurface>
+            </footer>
 
             <Show when=move || error_msg.get().is_some() fallback=|| view! { <></> }>
                 <div class="recorder-page-error" role="alert">
@@ -679,20 +690,19 @@ fn LiveSourceRow(
                     <span class="capture-source-text">
                         <span class="capture-source-title">{title}</span>
                         <span class="capture-source-subtitle">{subtitle}</span>
-                    </span>
-                    {v.kind == CaptureSourceKind::Microphone && v.level.is_some()}
-                    {v.level.filter(|_| v.kind == CaptureSourceKind::Microphone).map(|l| view! {
-                        <span class="capture-source-meter">
-                            <span class="meter" data-level=format!("{:.2}", l)>
-                                {(0_u8..10).map(|i| {
-                                    let on = f32::from(i) / 10.0 < l;
-                                    view! {
-                                        <span class=if on { "meter-bar meter-bar-on" } else { "meter-bar" }></span>
-                                    }
-                                }).collect_view()}
+                        {v.level.filter(|_| v.kind == CaptureSourceKind::Microphone).map(|l| view! {
+                            <span class="capture-source-meter">
+                                <span class="meter" data-level=format!("{:.2}", l)>
+                                    {(0_u8..10).map(|i| {
+                                        let on = f32::from(i) / 10.0 < l;
+                                        view! {
+                                            <span class=if on { "meter-bar meter-bar-on" } else { "meter-bar" }></span>
+                                        }
+                                    }).collect_view()}
+                                </span>
                             </span>
-                        </span>
-                    })}
+                        })}
+                    </span>
                     <button
                         type="button"
                         class=toggle_class
