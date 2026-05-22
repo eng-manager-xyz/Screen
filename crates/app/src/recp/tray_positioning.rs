@@ -51,32 +51,20 @@ pub fn pick_monitor(
         .or_else(|| monitors.first().copied())
 }
 
-/// Suggested top-left position for the popover — its **top-right
-/// corner** aligned with the tray click, clamped so the window stays
-/// inside the monitor. Matches the macOS menubar-dropdown convention:
-/// the icon lives near the top-right of the screen, the popover
-/// hangs down and to the left of it.
+/// Top-left position that anchors the popover's **top-right corner**
+/// to the monitor's top-right corner — flush against the screen edge,
+/// matching the macOS Control-Center / Notification-Center
+/// convention. The click position is only used by the caller to pick
+/// which monitor to anchor on; within that monitor the popover always
+/// lands top-right.
 ///
-/// Returns top-left `(x, y)` in screen coordinates.
+/// Returns top-left `(x, y)` in screen coordinates. macOS clamps the
+/// window's titlebar below the menubar automatically when `y` falls
+/// in the menubar region, so passing `monitor.y` directly is safe.
 #[must_use]
-pub fn position_window_below_click(
-    click_x: i32,
-    click_y: i32,
-    window_width: i32,
-    window_height: i32,
-    monitor: MonitorBounds,
-) -> (i32, i32) {
-    // Right-anchor: window's right edge sits at the click, so the
-    // left edge is `click_x - window_width`.
-    let raw_x = click_x - window_width;
-    let max_x = monitor.x + monitor.width - window_width;
-    let x = raw_x.clamp(monitor.x, max_x.max(monitor.x));
-
-    // Place below the menubar (assume ~24px on macOS, ~4px of breathing room).
-    let raw_y = click_y + 4;
-    let max_y = monitor.y + monitor.height - window_height;
-    let y = raw_y.clamp(monitor.y, max_y.max(monitor.y));
-
+pub fn position_window_top_right(window_width: i32, monitor: MonitorBounds) -> (i32, i32) {
+    let x = monitor.x + (monitor.width - window_width).max(0);
+    let y = monitor.y;
     (x, y)
 }
 
@@ -122,29 +110,31 @@ mod tests {
     }
 
     #[test]
-    fn position_window_top_right_aligns_window_right_edge_with_click() {
+    fn position_window_top_right_anchors_to_monitor_top_right() {
         let mon = mon(0, 0, 1920, 1080);
-        // Click near the right edge of the menubar — the popover's
-        // right edge should land on the click point.
-        let (x, _) = position_window_below_click(1820, 12, 800, 600, mon);
-        // 1820 - 800 = 1020 → window spans [1020..1820], right edge at click.
-        assert_eq!(x, 1020);
+        // Window's top-right should sit at monitor's top-right
+        // (1920, 0) → top-left at (1920 - 800, 0) = (1120, 0).
+        assert_eq!(position_window_top_right(800, mon), (1120, 0));
     }
 
     #[test]
-    fn position_window_clamps_right_when_click_past_monitor_right_edge() {
-        let mon = mon(0, 0, 1920, 1080);
-        // Off-by-a-pixel: click x = 2000 on a 1920-wide monitor.
-        // raw_x = 2000 - 800 = 1200; max_x = 1920 - 800 = 1120; clamp pulls to 1120.
-        let (x, _) = position_window_below_click(2000, 12, 800, 600, mon);
-        assert_eq!(x, 1120);
+    fn position_window_top_right_respects_offset_monitor_origin() {
+        // Secondary display sitting to the right of the primary.
+        let mon = mon(1920, 0, 2560, 1440);
+        // Top-right of monitor is at (1920 + 2560, 0) = (4480, 0).
+        // Window top-left = (4480 - 600, 0) = (3880, 0).
+        assert_eq!(position_window_top_right(600, mon), (3880, 0));
     }
 
     #[test]
-    fn position_window_clamps_left_when_click_is_near_origin() {
-        let mon = mon(0, 0, 1920, 1080);
-        // Click at x=10 → raw_x = 10 - 800 = -790, clamps to 0.
-        let (x, _) = position_window_below_click(10, 24, 800, 600, mon);
-        assert_eq!(x, 0);
+    fn position_window_top_right_clamps_when_window_wider_than_monitor() {
+        // Pathological: window is wider than the monitor. Don't push
+        // the left edge into negative territory inside the monitor —
+        // clamp left edge to monitor.x so the window starts at the
+        // monitor's left edge (and overflows on the right, but the
+        // user will see *some* of it instead of all of it being
+        // pushed off the left side).
+        let mon = mon(0, 0, 800, 600);
+        assert_eq!(position_window_top_right(1000, mon), (0, 0));
     }
 }
