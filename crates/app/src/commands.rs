@@ -122,15 +122,56 @@ pub fn toggle_webcam_bubble(app: tauri::AppHandle, state: State<'_, BubbleState>
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.on_click()
     };
+    apply_bubble_action(&app, &state, &window, action);
+}
+
+/// Explicit setter for the webcam bubble visibility. ISS-05 — the
+/// recorder's `camera_enabled` `RwSignal` defaults to `true` while
+/// `BubbleVisibility::default()` is `Hidden`, so the always-flip
+/// [`toggle_webcam_bubble`] path was one click out of phase from
+/// every page mount. The setter aligns the bubble to the caller's
+/// source of truth instead, and no-ops when already in the requested
+/// state — safe to spam from a reactive subscription.
+#[tauri::command]
+pub fn set_webcam_bubble_visibility(
+    visible: bool,
+    app: tauri::AppHandle,
+    state: State<'_, BubbleState>,
+) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; tauri.conf.json may be missing it");
+        return;
+    };
+    let action = {
+        let mut guard = state
+            .visibility
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.set(visible)
+    };
+    if let Some(action) = action {
+        apply_bubble_action(&app, &state, &window, action);
+    }
+}
+
+/// Execute a [`BubbleAction`] against the bubble window. Shared by
+/// the toggle + setter command paths so the position-cache + persist
+/// behaviour stays identical regardless of which command was called.
+fn apply_bubble_action(
+    app: &tauri::AppHandle,
+    state: &BubbleState,
+    window: &tauri::WebviewWindow,
+    action: BubbleAction,
+) {
     match action {
         BubbleAction::Show => {
-            restore_bubble_position(&app, &state, &window);
+            restore_bubble_position(app, state, window);
             if let Err(err) = window.show() {
                 tracing::warn!(?err, "failed to show webcam-bubble window");
             }
         }
         BubbleAction::Hide => {
-            snapshot_and_persist_bubble_position(&app, &state, &window);
+            snapshot_and_persist_bubble_position(app, state, window);
             if let Err(err) = window.hide() {
                 tracing::warn!(?err, "failed to hide webcam-bubble window");
             }

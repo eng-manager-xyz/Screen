@@ -6,6 +6,56 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Recorder surface redesign — visual refactor + Retina tray-position bug fix
+- **Date:** 2026-05-22
+- **Status:** ✅ done — UI redesign of the live `RecorderPage` to match the target mock (compact pill toggles, tight rows, mic level meter, system-audio app icons, full-width red Start button, lifted auto-zoom/countdown row). Tray-popover window resized to 500×540 (was 1200×720) and now anchors top-right of the clicked monitor. Storybook isolated stories unaffected (all changes scoped under `.recorder-page` / `.app-surface--recorder`).
+
+### Visual changes (`crates/app-ui/src/recorder_page.rs` + `crates/ui-storybook/assets/style.css`)
+
+- **Bug fix in `LiveSourceRow`** — an orphan boolean expression (`{v.kind == CaptureSourceKind::Microphone && v.level.is_some()}`) was being rendered as literal `"true"` / `"false"` text in the DOM by Leptos. Removed; the meter rendering that follows is the only conditional needed.
+- **Pill toggle CSS** — `.toggle-switch / -checked / -thumb` rules didn't exist before; rows were rendering with unstyled `<button>` elements. Added pill-style toggles using existing tokens (`--surface-selected`, `--text-primary`, `--radius-pill`).
+- **Recorder layout** — `.recorder-page-body / -header / -sources / -audio / -on-screen / -display` had no layout CSS at all (fell back to browser defaults, producing the loose spacing that triggered this work). Added a single scoped block with tight column-stack rhythm.
+- **Auto-zoom + Countdown lifted out of `RecordingControlsFooter`** into a dedicated `.recorder-page-controls` row above the footer. Footer now renders `<StartRecordingButton>` directly (full-width red pill with the keyboard-shortcut chips pushed to the right edge).
+- **Display source label** — `display_card_view` now doubles the OS-reported point dimensions for display (e.g. 1512×982 → 3024×1964). Label-only transform; the capture pipeline still uses points.
+- **"N" workspace badge removed** from the header. Was scaffolding-only; no functionality wired up. Header now contains only `<CaptureModeTabs />`.
+- **Compact sizing pass** — every text / control / icon / toggle inside `.recorder-page` shrunk ~30% via a scoped CSS block. Display preview capped at `max-height: 220px` so the card doesn't dominate the column.
+- **Horizontal-scroll fix** — added `overflow-x: hidden` to the actual scroll container (`.app-shell-main:has(> .app-surface--recorder)`, not just `.recorder-page`), plus a universal `box-sizing: border-box` reset scoped to `.recorder-page` descendants.
+
+### Tray-popover positioning (`crates/app/src/commands.rs` + `crates/app/src/recp/tray_positioning.rs`)
+
+- **`LogicalPosition` → `PhysicalPosition` bug fix.** The monitor bounds, window inner_size, and tray click position are all in physical pixels; the old `set_position(LogicalPosition::new(...))` was interpreting them as logical, so on a 2× Retina display the popover landed at 2× the intended position and went off-screen to the right. The bubble window at line 205 already used `PhysicalPosition` correctly — the tray code had drifted. One-line apply fix.
+- **Top-right anchor.** Replaced `position_window_below_click` (right edge at click X, with clamping) with `position_window_top_right` (flush against the monitor's top-right corner, always). Click position is still used to pick which monitor in multi-display setups; placement within that monitor is fixed. 3 new pure-Rust tests cover the basic anchor, an offset secondary-monitor origin, and the wider-than-monitor edge case.
+
+### Window dimensions (`crates/app/tauri.conf.json`)
+
+- `tray-popover` window: **1200×720 → 500×540** (`minWidth: 460`, `minHeight: 480`).
+- `main` window (1280×800) untouched — stays hidden per CLAUDE.md ("boots hidden and stays hidden — the recorder UX is tray-only").
+- `webcam-bubble` (260×320) untouched.
+
+### Camera-toggle drift fix (ISS-05)
+
+The pre-existing one-click drift between `camera_enabled` (defaults `true`) and `BubbleVisibility::default()` (= `Hidden`) — the toggle visual flips correctly but the bubble window ended up one phase off — was diagnosed and fixed in this same session:
+
+- `BubbleVisibility::set(visible: bool) -> Option<BubbleAction>` — idempotent setter that returns `Some(action)` only on a real transition (no spurious `show()`/`hide()` to the OS).
+- `#[tauri::command] set_webcam_bubble_visibility(visible, ...)` calls the setter + the shared `apply_bubble_action` helper. Registered in both `generate_handler!` arms.
+- `__screenSetBubbleVisibility(visible)` JS bridge + wasm extern + Rust wrapper in `crates/app-ui/src/bubble_ipc.rs`.
+- `on_camera_toggle` now calls `set_webcam_bubble_visibility(next)` instead of the always-flip `toggle_webcam_bubble()`.
+- Mount-time sync (`set_webcam_bubble_visibility(camera_enabled.get())` at the bottom of the IPC-refresh block) aligns the bubble on every page mount, including rail-surface navigation back into the recorder.
+- Three new state-machine tests cover the `set` transitions + the no-op case.
+
+`toggle_webcam_bubble` stays as-is for any caller that genuinely wants a flip (no current callers other than the legacy debug button, but harmless to keep).
+
+### Test totals (after this session)
+
+- `cargo test -p screen-app --lib` — **140/140** (3 new tray_positioning + 0 net change elsewhere)
+- `cargo test -p app-ui --lib` — **58/58**
+- `cargo test -p ui-storybook --test snapshots` — **2/2** (isolated storybook stories unchanged; visual refactor is scoped under `.recorder-page`)
+- `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — clean
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean
+- `cargo fmt --all --check` — clean
+
+---
+
 ## M-RECORD-EXPORT-REAL-PIXELS — phase 6 complete (8/8 chunks); real capture wired into encoder
 - **Date:** 2026-05-17
 - **Status:** ✅ done on the same `m-record-export` PR. M-EXPORT.3's test-pattern feed is now a fallback for the audio-only / no-channels case; recordings with any video channel enabled pump real captured pixels through wisp composition + wgpu readback into the encoder.

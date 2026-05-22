@@ -51,6 +51,28 @@ impl BubbleVisibility {
             }
         }
     }
+
+    /// Align the state to `visible`, returning the action the caller
+    /// should perform — or `None` when already in the requested state.
+    ///
+    /// Distinct from [`Self::on_click`] (which always flips). Used by
+    /// callers that own their own source of truth for the desired
+    /// visibility (e.g. the recorder's `camera_enabled` signal) and
+    /// need lockstep alignment without depending on the state
+    /// machine's prior position. ISS-05.
+    pub fn set(&mut self, visible: bool) -> Option<BubbleAction> {
+        match (*self, visible) {
+            (Self::Hidden, true) => {
+                *self = Self::Visible;
+                Some(BubbleAction::Show)
+            }
+            (Self::Visible, false) => {
+                *self = Self::Hidden;
+                Some(BubbleAction::Hide)
+            }
+            (Self::Hidden, false) | (Self::Visible, true) => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -92,5 +114,27 @@ mod tests {
             }
         }
         assert_eq!(s, BubbleVisibility::Hidden);
+    }
+
+    #[test]
+    fn set_true_from_hidden_yields_show() {
+        let mut s = BubbleVisibility::Hidden;
+        assert_eq!(s.set(true), Some(BubbleAction::Show));
+        assert_eq!(s, BubbleVisibility::Visible);
+    }
+
+    #[test]
+    fn set_false_from_visible_yields_hide() {
+        let mut s = BubbleVisibility::Visible;
+        assert_eq!(s.set(false), Some(BubbleAction::Hide));
+        assert_eq!(s, BubbleVisibility::Hidden);
+    }
+
+    #[test]
+    fn set_to_current_state_is_a_noop() {
+        let mut hidden = BubbleVisibility::Hidden;
+        assert_eq!(hidden.set(false), None);
+        let mut visible = BubbleVisibility::Visible;
+        assert_eq!(visible.set(true), None);
     }
 }

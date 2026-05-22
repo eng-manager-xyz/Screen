@@ -109,6 +109,14 @@ pub fn RecorderPage() -> impl IntoView {
     refresh_displays(displays, display_selected, display_err);
     refresh_audio_apps(audio_apps, audio_app_err);
 
+    // ISS-05 — bring the webcam-bubble window into sync with the
+    // page's `camera_enabled` default at mount. The Rust setter is a
+    // no-op when the bubble is already in the requested state, so
+    // this is safe regardless of how the user got here. Without it,
+    // the first click would flip the bubble in the opposite direction
+    // of `camera_enabled`.
+    crate::bubble_ipc::set_webcam_bubble_visibility(camera_enabled.get());
+
     // -------- view-models ---------------------------------------------
     let camera_view = move || -> CaptureSourceView {
         let label = selected_camera_label(&cameras.get(), camera_selected.get().as_deref());
@@ -302,14 +310,12 @@ pub fn RecorderPage() -> impl IntoView {
                 });
             }
         }
-        // Per the Screenplay-style design, the webcam preview lives in
-        // a separate borderless Tauri window (bottom-left of the
-        // primary monitor), not inside the recorder panel. Flipping
-        // the camera toggle shows / hides that window. `toggle_*`
-        // alternates Show ↔ Hide so we call it whenever the boolean
-        // changes — IPC handles the state-machine consistency
-        // (`BubbleState` on the Rust side).
-        crate::bubble_ipc::toggle_webcam_bubble();
+        // The webcam preview lives in a separate borderless Tauri
+        // window. Drive its visibility from `next` via the explicit
+        // setter so `camera_enabled` and the bubble stay in lockstep
+        // across mount + rail-surface navigation — the old toggle
+        // call assumed the two started in sync, but they don't (ISS-05).
+        crate::bubble_ipc::set_webcam_bubble_visibility(next);
     };
     let on_mic_toggle = move |_: MouseEvent| {
         let next = !mic_enabled.get();
