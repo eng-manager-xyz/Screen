@@ -24,6 +24,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use ui_storybook::components::primitives::ChevronDown;
 
 use crate::system_audio_ipc::{self, AudioAppFilterView, AudioAppView, ListAudioAppsResult};
 
@@ -314,7 +315,9 @@ pub fn SystemAudioPicker() -> impl IntoView {
                     <span class="system-audio-picker-summary">
                         {move || summary_label(selected_ids.get().len())}
                     </span>
-                    <span class="system-audio-picker-chevron" aria-hidden="true">"▾"</span>
+                    <span class="system-audio-picker-chevron" aria-hidden="true">
+                        <ChevronDown />
+                    </span>
                 </button>
             </div>
             <div class="audio-meter" aria-label="System audio output level">

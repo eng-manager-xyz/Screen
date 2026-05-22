@@ -20,6 +20,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use ui_storybook::components::primitives::ChevronDown;
 
 use crate::screen_ipc::{self, DisplaySourceView, ScreenSourcesResult, WindowSourceView};
 
@@ -94,7 +95,9 @@ pub fn ScreenPicker() -> impl IntoView {
                     on:click=on_toggle_expand
                 >
                     <span class="screen-picker-summary">"Sources"</span>
-                    <span class="screen-picker-chevron" aria-hidden="true">"▾"</span>
+                    <span class="screen-picker-chevron" aria-hidden="true">
+                        <ChevronDown />
+                    </span>
                 </button>
             </div>
             <Show when=move || expanded.get() fallback=|| view! { <></> }>

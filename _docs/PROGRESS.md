@@ -6,6 +6,45 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Recorder surface — pinned action bar, restyled sidebar, display selector + preview split
+- **Date:** 2026-05-22
+- **Status:** ✅ done — second visual pass on the live `RecorderPage` driven by the latest design mock. Panel is now a fixed-height column with header + action bar pinned and the middle scrollable; sidebar items are uniform rounded-square icon tiles with bright/outlined selected state and a second avatar anchored at the bottom; the display block splits into a top "Built-in Retina <size>" selector row plus the existing `DisplayPreviewFrame` wrapped with a red border + dim badge; capture-mode tabs gain a `…` overflow menu on the right.
+
+### Layout — column with scrollable middle (`shell.css` / `style.css` recorder block)
+- `.recorder-page` is now `height: 100%, display: flex, flex-direction: column`. Header (`.recorder-page-header`) + new pinned `.recorder-page-action-bar` are `flex-shrink: 0`; the middle `.recorder-page-body` is `flex: 1, min-height: 0, overflow-y: auto` with a slim webkit scrollbar.
+- `.app-shell-main:has(> .app-surface--recorder)` switched from `overflow-x: hidden` to `overflow: hidden` so the recorder owns the only scroll context; `.app-surface--recorder` itself becomes `height: 100%, display: flex, flex-direction: column`.
+- Vertical spacing tightened across body sections (6 / 4 px gaps).
+
+### Sidebar — uniform icon tiles + bottom avatar (`navigation_rail.rs` CSS + `app_shell_mount.rs`)
+- Every `.nav-rail-item .nav-rail-icon` is now a 44×44 rounded-square (10 px radius) with `--surface-elevated` background and a subtle border. Active state inverts to a white tile with dark glyph for the bright/outlined selected look.
+- `nav-rail-items` gap bumped (10 px) so tiles read as individual chips rather than a stacked column. Rail width 64 → 76 px.
+- Workspace badge stays at top; user avatar now passed (`sample_user_avatar()`) so the bottom-of-rail slot renders. Avatar restyled to a 32 px blue circle (`#2563eb`) with monogram fallback. Workspace badge chevron repositioned as a small bottom-right decoration on the tile (replacing the inline chevron next to it).
+
+### Display block — selector row + preview card
+- New `.recorder-display-selector` row on top: small colored swatch (`#ea580c`) + "Built-in Retina" label + size pill (`14"`) + star + chevron.
+- Underneath, the existing `DisplayPreviewFrame` from ui-storybook is reused (dark-window mockup with `Active window` chip). Wrapped in `.recorder-display-preview-wrap` to layer a red border + the "3024 × 1964" badge — without touching the presentational component (so the storybook SSR snapshots stay green).
+
+### Source / system-audio rows — reordered children
+- `LiveSourceRow` (camera + mic) and `LiveSystemAudioRow` now render: leading icon, text, star, chevron, toggle (toggle moved to the far right; chevron sits next to it). Star is `★` when favourited else `☆`.
+- System-audio row's inline app icons are now baked into the title row (small 14 px tiles inside a `--surface-selected` pill), not the leading position. The leading position is a single 🔊 glyph in a device-icon tile to match the camera/mic visual rhythm.
+
+### Bottom action bar
+- New `.recorder-page-action-bar` (pinned, `flex-shrink: 0`) groups `<AutoZoomSelect>` + `<CountdownSelect>` as two 1fr/1fr cards plus the full-width red `StartRecordingButton` underneath. Auto-zoom + countdown promoted from select-pills to taller card-style buttons (`8 / 10 px` padding, `--radius-control` corners).
+- Start button: keyboard chips bumped to ~11 px / 18 px min-width so `⌘ ⇧ 2` reads at a glance.
+
+### Header overflow menu
+- New `.recorder-page-overflow` button (`⋯`) appended after `<CaptureModeTabs>`. Visual-only placeholder (no popover wired yet); `aria-haspopup="menu"` for downstream a11y wiring.
+
+### Files touched
+- `crates/app-ui/src/recorder_page.rs` — layout, display split, row reordering, action-bar grouping, overflow button.
+- `crates/app-ui/src/app_shell_mount.rs` — pass `user` to `NavigationRail`.
+- `crates/ui-storybook/assets/style.css` — recorder-page block rewrite + nav-rail / workspace-badge / user-avatar CSS.
+
+### Tests + gate
+- `just gate` — green (1293 tests pass, 1 skipped). SSR snapshots unchanged (every storybook structural change avoided — adjustments are CSS-only or live-side only).
+
+---
+
 ## Recorder surface redesign — visual refactor + Retina tray-position bug fix
 - **Date:** 2026-05-22
 - **Status:** ✅ done — UI redesign of the live `RecorderPage` to match the target mock (compact pill toggles, tight rows, mic level meter, system-audio app icons, full-width red Start button, lifted auto-zoom/countdown row). Tray-popover window resized to 500×540 (was 1200×720) and now anchors top-right of the clicked monitor. Storybook isolated stories unaffected (all changes scoped under `.recorder-page` / `.app-surface--recorder`).

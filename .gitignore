@@ -8,6 +8,10 @@ crates/*/target/
 # rustfmt backup files (`cargo fmt --backup`).
 **/*.rs.bk
 
+# rustc internal-compiler-error crash dumps (`rustc-ice-<timestamp>-<pid>.txt`).
+# Emitted to the crate root when a nightly toolchain panics mid-compile.
+rustc-ice-*.txt
+
 # Cargo's per-user snapshot (kept out of VCS, regenerable).
 **/.cargo-ok
 

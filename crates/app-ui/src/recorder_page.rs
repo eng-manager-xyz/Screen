@@ -19,13 +19,13 @@ use leptos::ev::MouseEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use ui_storybook::components::primitives::{IconTile, IconTileKind};
+use ui_storybook::components::primitives::{ChevronDown, IconTile, IconTileKind};
 use ui_storybook::components::recorder::{
     AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, AutoZoomSelect, CaptureModeTabs,
     CaptureSourceKind, CaptureSourceView, CountdownSelect, DeviceOptionView, DevicePickerState,
-    DeviceThumb, DisplayPreviewView, DisplaySourceCard, DisplaySourceView, OnScreenOptionKind,
-    OnScreenOptionView, PreviewWindowChip, StartRecordingButton, StartRecordingState,
-    SystemAudioView, format_auto_zoom_label, format_countdown_label, format_selection_count,
+    DeviceThumb, DisplayPreviewFrame, DisplayPreviewView, OnScreenOptionKind, OnScreenOptionView,
+    PreviewWindowChip, StartRecordingButton, StartRecordingState, SystemAudioView,
+    format_auto_zoom_label, format_countdown_label, format_selection_count,
 };
 use ui_storybook::fixtures::recorder::CaptureMode;
 
@@ -39,6 +39,13 @@ use crate::screen_ipc::{self, DisplaySourceView as IpcDisplaySourceView, ScreenS
 use crate::system_audio_ipc::{
     self, AudioAppFilterView, AudioAppView as IpcAudioAppView, ListAudioAppsResult,
 };
+
+/// View-model for the display selector row.
+struct DisplaySummary {
+    name: String,
+    size_label: String,
+    dimensions_label: String,
+}
 
 /// Which expandable picker, if any, is currently open. Mutually
 /// exclusive so opening one closes the others.
@@ -109,12 +116,7 @@ pub fn RecorderPage() -> impl IntoView {
     refresh_displays(displays, display_selected, display_err);
     refresh_audio_apps(audio_apps, audio_app_err);
 
-    // ISS-05 — bring the webcam-bubble window into sync with the
-    // page's `camera_enabled` default at mount. The Rust setter is a
-    // no-op when the bubble is already in the requested state, so
-    // this is safe regardless of how the user got here. Without it,
-    // the first click would flip the bubble in the opposite direction
-    // of `camera_enabled`.
+    // ISS-05: align the bubble at mount, else first click flips opposite to camera_enabled.
     crate::bubble_ipc::set_webcam_bubble_visibility(camera_enabled.get());
 
     // -------- view-models ---------------------------------------------
@@ -148,45 +150,48 @@ pub fn RecorderPage() -> impl IntoView {
         }
     };
 
-    let display_card_view = move || -> DisplaySourceView {
+    let display_summary = move || -> DisplaySummary {
         let list = displays.get();
         let selected = display_selected.get();
         let chosen = list.iter().find(|d| Some(&d.id) == selected.as_ref());
         let primary = list.iter().find(|d| d.is_primary);
         let active = chosen.or(primary).or_else(|| list.first());
-        // The IPC reports display dimensions in points (logical
-        // pixels). Every modern Mac display is Retina (2× backing
-        // scale), so show the physical-pixel resolution in the card —
-        // matches Screen Studio / OpenScreen conventions and the
-        // target mock (e.g. 1512×982 points → 3024×1964 px). The
-        // capture pipeline itself still uses the OS-reported points;
-        // this is a label-only transform.
+        // ScreenCaptureKit reports points; double to physical pixels
+        // (every modern Mac display is 2× Retina) for the label.
         let (w_pt, h_pt) = active.map_or((1920, 1080), |d| (d.width, d.height));
         let (w, h) = (w_pt * 2, h_pt * 2);
         let name = if active.is_some() {
-            format!("Display {w}×{h}")
+            "Built-in Retina".to_owned()
         } else {
             "No display detected".to_owned()
         };
-        DisplaySourceView {
-            id: active.map_or("display-none".to_owned(), |d| d.id.clone()),
+        DisplaySummary {
             name,
             size_label: format_display_size(w, h),
             dimensions_label: format!("{w} × {h}"),
-            is_favorite: true,
-            is_selected: true,
-            preview: DisplayPreviewView {
-                aspect_ratio: aspect_ratio_for(w, h),
-                overlay_label: Some(format!("{w} × {h}")),
-                mock_windows: vec![PreviewWindowChip {
-                    label: "Active window".to_owned(),
-                    color: "rgba(200, 200, 200, 0.55)".to_owned(),
-                    left_pct: 12,
-                    top_pct: 14,
-                    width_pct: 72,
-                    height_pct: 60,
-                }],
-            },
+        }
+    };
+
+    let display_preview_view = move || -> DisplayPreviewView {
+        let list = displays.get();
+        let selected = display_selected.get();
+        let chosen = list.iter().find(|d| Some(&d.id) == selected.as_ref());
+        let primary = list.iter().find(|d| d.is_primary);
+        let active = chosen.or(primary).or_else(|| list.first());
+        let (w_pt, h_pt) = active.map_or((1920, 1080), |d| (d.width, d.height));
+        let (w, h) = (w_pt * 2, h_pt * 2);
+        DisplayPreviewView {
+            aspect_ratio: aspect_ratio_for(w, h),
+            // Suppressed; the dim badge is drawn by `.recorder-display-preview-badge`.
+            overlay_label: None,
+            mock_windows: vec![PreviewWindowChip {
+                label: "Active window".to_owned(),
+                color: "rgba(200, 200, 200, 0.55)".to_owned(),
+                left_pct: 12,
+                top_pct: 14,
+                width_pct: 72,
+                height_pct: 60,
+            }],
         }
     };
 
@@ -227,11 +232,6 @@ pub fn RecorderPage() -> impl IntoView {
         }
     };
 
-    // Per-piece accessors for the footer + the standalone auto-zoom /
-    // countdown control row above it. The footer no longer carries
-    // those selects (they moved up beneath the on-screen row per the
-    // recorder-surface redesign), so we render `StartRecordingButton`
-    // directly and skip the `RecordingControlsFooter` shell.
     let start_state = move || {
         let any_source = camera_enabled.get()
             || mic_enabled.get()
@@ -468,12 +468,51 @@ pub fn RecorderPage() -> impl IntoView {
                 </div>
             </Show>
             <header class="recorder-page-header">
-                <CaptureModeTabs selected=capture_mode.get() />
+                <div class="recorder-page-tabs">
+                    <CaptureModeTabs selected=capture_mode.get() />
+                </div>
+                <button
+                    type="button"
+                    class="recorder-page-overflow"
+                    aria-label="More options"
+                    aria-haspopup="menu"
+                >
+                    "⋯"
+                </button>
             </header>
 
             <div class="recorder-page-body">
                 <section class="recorder-page-display">
-                    {move || view! { <DisplaySourceCard view=display_card_view() /> }}
+                    {move || {
+                        let summary = display_summary();
+                        view! {
+                            <button
+                                type="button"
+                                class="recorder-display-selector"
+                                aria-label="Pick display"
+                                aria-haspopup="listbox"
+                            >
+                                <span class="recorder-display-selector-swatch" aria-hidden="true"></span>
+                                <span class="recorder-display-selector-label">
+                                    <span class="recorder-display-selector-name">{summary.name}</span>
+                                    <span class="recorder-display-selector-size">{summary.size_label}</span>
+                                    <span class="recorder-display-selector-star" aria-label="Favourite" title="Favourite">"☆"</span>
+                                </span>
+                                <span class="recorder-display-selector-chevron" aria-hidden="true">
+                                    <ChevronDown />
+                                </span>
+                            </button>
+                        }
+                    }}
+                    {move || {
+                        let dims = display_summary().dimensions_label;
+                        view! {
+                            <div class="recorder-display-preview-wrap" aria-label="Preview">
+                                <DisplayPreviewFrame view=display_preview_view() />
+                                <span class="recorder-display-preview-badge">{dims}</span>
+                            </div>
+                        }
+                    }}
                     <Show when=move || display_err.get().is_some() fallback=|| view! { <></> }>
                         <DisplayError msg=display_err />
                     </Show>
@@ -568,7 +607,13 @@ pub fn RecorderPage() -> impl IntoView {
                                 {move || on_screen_summary()}
                             </span>
                         </span>
-                        <span class="recorder-page-chevron" aria-hidden="true">"▸"</span>
+                        <span
+                            class="recorder-page-chevron"
+                            data-open=move || if open_picker.get() == OpenPicker::OnScreen { "true" } else { "false" }
+                            aria-hidden="true"
+                        >
+                            <ChevronDown />
+                        </span>
                     </button>
                     <Show when=move || open_picker.get() == OpenPicker::OnScreen fallback=|| view! { <></> }>
                         <div class="recorder-page-on-screen-popover">
@@ -580,13 +625,13 @@ pub fn RecorderPage() -> impl IntoView {
                     </Show>
                 </section>
 
-                <section class="recorder-page-controls" aria-label="Recording options">
-                    {move || view! { <AutoZoomSelect label=auto_zoom_label() /> }}
-                    {move || view! { <CountdownSelect label=countdown_label() /> }}
-                </section>
             </div>
 
-            <footer class="recorder-page-footer">
+            <footer class="recorder-page-action-bar">
+                <div class="recorder-page-controls" aria-label="Recording options">
+                    {move || view! { <AutoZoomSelect label=auto_zoom_label() /> }}
+                    {move || view! { <CountdownSelect label=countdown_label() /> }}
+                </div>
                 <Show
                     when=is_recording
                     fallback=move || view! {
@@ -694,7 +739,12 @@ fn LiveSourceRow(
                         <span class="icon-tile icon-tile-device" aria-hidden="true">{glyph}</span>
                     </span>
                     <span class="capture-source-text">
-                        <span class="capture-source-title">{title}</span>
+                        <span class="capture-source-title">
+                            <span class="capture-source-title-text">{title}</span>
+                            <span class="capture-source-star" aria-label="Favourite" title="Favourite">
+                                {if v.favorite { "★" } else { "☆" }}
+                            </span>
+                        </span>
                         <span class="capture-source-subtitle">{subtitle}</span>
                         {v.level.filter(|_| v.kind == CaptureSourceKind::Microphone).map(|l| view! {
                             <span class="capture-source-meter">
@@ -711,6 +761,18 @@ fn LiveSourceRow(
                     </span>
                     <button
                         type="button"
+                        class=chevron_class
+                        aria-label="Expand device picker"
+                        aria-expanded=v.expanded
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_chevron_click.run(());
+                        }
+                    >
+                        <ChevronDown />
+                    </button>
+                    <button
+                        type="button"
                         class=toggle_class
                         role="switch"
                         aria-checked=v.enabled
@@ -721,18 +783,6 @@ fn LiveSourceRow(
                         }
                     >
                         <span class="toggle-switch-thumb" aria-hidden="true"></span>
-                    </button>
-                    <button
-                        type="button"
-                        class=chevron_class
-                        aria-label="Expand device picker"
-                        aria-expanded=v.expanded
-                        on:click=move |evt: MouseEvent| {
-                            evt.stop_propagation();
-                            on_chevron_click.run(());
-                        }
-                    >
-                        "▾"
                     </button>
                 </div>
             }
@@ -769,24 +819,40 @@ fn LiveSystemAudioRow(
             view! {
                 <div class="system-audio-row">
                     <span class="system-audio-leading">
-                        <span class="system-audio-icon-stack">
-                            {visible.into_iter().map(|icon| {
-                                let style = format!("background:{}", icon.color);
-                                let monogram = icon.monogram.clone();
-                                view! {
-                                    <span class="system-audio-icon" style=style aria-hidden="true">{monogram}</span>
-                                }
-                            }).collect_view()}
-                            {(overflow > 0).then(|| {
-                                let label = format!("+{overflow}");
-                                view! { <span class="system-audio-icon-overflow">{label}</span> }
-                            })}
-                        </span>
+                        <span class="icon-tile icon-tile-device" aria-hidden="true">"🔊"</span>
                     </span>
                     <span class="system-audio-text">
-                        <span class="system-audio-title">"System audio"</span>
+                        <span class="system-audio-title">
+                            "System audio"
+                            <span class="system-audio-inline-icons" aria-hidden="true">
+                                {visible.into_iter().map(|icon| {
+                                    let style = format!("background:{}", icon.color);
+                                    let monogram = icon.monogram.clone();
+                                    view! {
+                                        <span class="system-audio-icon" style=style>{monogram}</span>
+                                    }
+                                }).collect_view()}
+                                {(overflow > 0).then(|| {
+                                    let label = format!("+{overflow}");
+                                    view! { <span class="system-audio-icon-overflow">{label}</span> }
+                                })}
+                            </span>
+                            <span class="capture-source-star" aria-label="Favourite" title="Favourite">"☆"</span>
+                        </span>
                         <span class="system-audio-subtitle">{count_label}</span>
                     </span>
+                    <button
+                        type="button"
+                        class=chevron_class
+                        aria-label="Expand system audio app list"
+                        aria-expanded=v.expanded
+                        on:click=move |evt: MouseEvent| {
+                            evt.stop_propagation();
+                            on_chevron_click.run(());
+                        }
+                    >
+                        <ChevronDown />
+                    </button>
                     <button
                         type="button"
                         class=toggle_class
@@ -799,18 +865,6 @@ fn LiveSystemAudioRow(
                         }
                     >
                         <span class="toggle-switch-thumb" aria-hidden="true"></span>
-                    </button>
-                    <button
-                        type="button"
-                        class=chevron_class
-                        aria-label="Expand system audio app list"
-                        aria-expanded=v.expanded
-                        on:click=move |evt: MouseEvent| {
-                            evt.stop_propagation();
-                            on_chevron_click.run(());
-                        }
-                    >
-                        "▾"
                     </button>
                 </div>
             }
