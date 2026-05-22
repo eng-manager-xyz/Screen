@@ -54,6 +54,8 @@ enum OpenPicker {
     /// Nothing expanded.
     #[default]
     None,
+    /// Display preview shown (Built-in Retina row clicked).
+    Display,
     /// Camera device picker open.
     Camera,
     /// Microphone device picker open.
@@ -98,7 +100,9 @@ pub fn RecorderPage() -> impl IntoView {
     let countdown_seconds = RwSignal::new(3_u8);
 
     let capture_mode = RwSignal::new(CaptureMode::Screen);
-    let open_picker = RwSignal::new(OpenPicker::None);
+    // Default to Display so the preview is visible on launch; the user
+    // can click the Built-in Retina row to collapse it.
+    let open_picker = RwSignal::new(OpenPicker::Display);
 
     let status = RwSignal::new(RecordingStatusViewIpc::idle());
     let error_msg = RwSignal::new(Option::<String>::None);
@@ -296,6 +300,14 @@ pub fn RecorderPage() -> impl IntoView {
         };
         open_picker.set(next);
     };
+    let toggle_display = move || {
+        let next = if open_picker.get() == OpenPicker::Display {
+            OpenPicker::None
+        } else {
+            OpenPicker::Display
+        };
+        open_picker.set(next);
+    };
 
     let on_camera_toggle = move |_: MouseEvent| {
         let next = !camera_enabled.get();
@@ -489,8 +501,9 @@ pub fn RecorderPage() -> impl IntoView {
                             <button
                                 type="button"
                                 class="recorder-display-selector"
-                                aria-label="Pick display"
-                                aria-haspopup="listbox"
+                                aria-label="Toggle display preview"
+                                aria-expanded=move || open_picker.get() == OpenPicker::Display
+                                on:click=move |_| toggle_display()
                             >
                                 <span class="recorder-display-selector-swatch" aria-hidden="true"></span>
                                 <span class="recorder-display-selector-label">
@@ -498,21 +511,27 @@ pub fn RecorderPage() -> impl IntoView {
                                     <span class="recorder-display-selector-size">{summary.size_label}</span>
                                     <span class="recorder-display-selector-star" aria-label="Favourite" title="Favourite">"☆"</span>
                                 </span>
-                                <span class="recorder-display-selector-chevron" aria-hidden="true">
+                                <span
+                                    class="recorder-display-selector-chevron"
+                                    data-open=move || if open_picker.get() == OpenPicker::Display { "true" } else { "false" }
+                                    aria-hidden="true"
+                                >
                                     <ChevronDown />
                                 </span>
                             </button>
                         }
                     }}
-                    {move || {
-                        let dims = display_summary().dimensions_label;
-                        view! {
-                            <div class="recorder-display-preview-wrap" aria-label="Preview">
-                                <DisplayPreviewFrame view=display_preview_view() />
-                                <span class="recorder-display-preview-badge">{dims}</span>
-                            </div>
-                        }
-                    }}
+                    <Show when=move || open_picker.get() == OpenPicker::Display fallback=|| view! { <></> }>
+                        {move || {
+                            let dims = display_summary().dimensions_label;
+                            view! {
+                                <div class="recorder-display-preview-wrap" aria-label="Preview">
+                                    <DisplayPreviewFrame view=display_preview_view() />
+                                    <span class="recorder-display-preview-badge">{dims}</span>
+                                </div>
+                            }
+                        }}
+                    </Show>
                     <Show when=move || display_err.get().is_some() fallback=|| view! { <></> }>
                         <DisplayError msg=display_err />
                     </Show>

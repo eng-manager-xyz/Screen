@@ -3521,6 +3521,11 @@ body:has(.bubble-root) {
   color: var(--text-secondary);
   margin-left: auto;
   flex-shrink: 0;
+  transition: transform 120ms;
+}
+.recorder-display-selector-chevron[data-open="true"] {
+  color: var(--text-primary);
+  transform: rotate(180deg);
 }
 
 /* Wraps the storybook DisplayPreviewFrame so we can layer a red
