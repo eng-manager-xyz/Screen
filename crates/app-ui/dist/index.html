@@ -7,8 +7,8 @@
 
     
 <script type="module">
-import init, * as bindings from '/app-ui-4b34a0871e7f53aa.js';
-const wasm = await init({ module_or_path: '/app-ui-4b34a0871e7f53aa_bg.wasm' });
+import init, * as bindings from '/app-ui-ebaa57366bdea787.js';
+const wasm = await init({ module_or_path: '/app-ui-ebaa57366bdea787_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -205,6 +205,15 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenToggleBubble = () =>
         window.__TAURI__?.core?.invoke("toggle_webcam_bubble") ?? Promise.resolve();
 
+      // ISS-05 fix — explicit setter shape for the bubble visibility.
+      // The recorder page calls this from `on_camera_toggle` with the
+      // new `camera_enabled` value so `camera_enabled` and the
+      // bubble's BubbleState stay in lockstep across mount + rail
+      // navigation. No-op on the Rust side when the bubble is already
+      // in the requested state.
+      window.__screenSetBubbleVisibility = (visible) =>
+        window.__TAURI__?.core?.invoke("set_webcam_bubble_visibility", { visible }) ?? Promise.resolve();
+
       // M-BUBBLE.1 v0 / AUT-274 — whole-window click-through toggle.
       // When `enabled = true`, the bubble window passes mouse events
       // to whatever's underneath (the bubble cannot be dragged or
@@ -213,7 +222,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenSetBubbleClickthrough = (enabled) =>
         window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
     </script>
-  <link rel="modulepreload" href="/app-ui-4b34a0871e7f53aa.js" crossorigin="anonymous"></head>
+  <link rel="modulepreload" href="/app-ui-ebaa57366bdea787.js" crossorigin="anonymous"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
       `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>

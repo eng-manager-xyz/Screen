@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use tauri::{LogicalPosition, Manager, PhysicalPosition, State};
+use tauri::{Manager, PhysicalPosition, State};
 
 use crate::audio::{MicCaptureHandle, MicCapturePipeline, MicCaptureState, MicError, MicLifecycle};
 use crate::player_session::{PlayerSession, PlayerStatus};
@@ -27,7 +27,7 @@ use crate::recording::{
 };
 use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
 use crate::recp::settings_deep_link::{SettingsPane, open_command};
-use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_below_click};
+use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_top_right};
 #[cfg(target_os = "macos")]
 use crate::screen_capture::ScreenCaptureState;
 #[cfg(target_os = "macos")]
@@ -122,15 +122,56 @@ pub fn toggle_webcam_bubble(app: tauri::AppHandle, state: State<'_, BubbleState>
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.on_click()
     };
+    apply_bubble_action(&app, &state, &window, action);
+}
+
+/// Explicit setter for the webcam bubble visibility. ISS-05 — the
+/// recorder's `camera_enabled` `RwSignal` defaults to `true` while
+/// `BubbleVisibility::default()` is `Hidden`, so the always-flip
+/// [`toggle_webcam_bubble`] path was one click out of phase from
+/// every page mount. The setter aligns the bubble to the caller's
+/// source of truth instead, and no-ops when already in the requested
+/// state — safe to spam from a reactive subscription.
+#[tauri::command]
+pub fn set_webcam_bubble_visibility(
+    visible: bool,
+    app: tauri::AppHandle,
+    state: State<'_, BubbleState>,
+) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; tauri.conf.json may be missing it");
+        return;
+    };
+    let action = {
+        let mut guard = state
+            .visibility
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.set(visible)
+    };
+    if let Some(action) = action {
+        apply_bubble_action(&app, &state, &window, action);
+    }
+}
+
+/// Execute a [`BubbleAction`] against the bubble window. Shared by
+/// the toggle + setter command paths so the position-cache + persist
+/// behaviour stays identical regardless of which command was called.
+fn apply_bubble_action(
+    app: &tauri::AppHandle,
+    state: &BubbleState,
+    window: &tauri::WebviewWindow,
+    action: BubbleAction,
+) {
     match action {
         BubbleAction::Show => {
-            restore_bubble_position(&app, &state, &window);
+            restore_bubble_position(app, state, window);
             if let Err(err) = window.show() {
                 tracing::warn!(?err, "failed to show webcam-bubble window");
             }
         }
         BubbleAction::Hide => {
-            snapshot_and_persist_bubble_position(&app, &state, &window);
+            snapshot_and_persist_bubble_position(app, state, window);
             if let Err(err) = window.hide() {
                 tracing::warn!(?err, "failed to hide webcam-bubble window");
             }
@@ -469,48 +510,49 @@ fn anchor_window_to_click(
             height: i32::try_from(m.size().height).unwrap_or(i32::MAX),
         })
         .collect();
-    // `inner_size()` gives the size of the webview content rect.
-    // Falling through on lookup failure uses the conf-declared size
-    // as a crude fallback so we still get a sensible anchor.
-    let (window_w, window_h) = window.inner_size().map_or((1200, 720), |size| {
-        (
-            i32::try_from(size.width).unwrap_or(1200),
-            i32::try_from(size.height).unwrap_or(720),
-        )
-    });
-    let Some((target_x, target_y)) =
-        compute_popover_anchor(click_x, click_y, window_w, window_h, &bounds)
+    // `inner_size()` gives the size of the webview content rect. We
+    // only need the width — the top-right anchor is independent of
+    // window height. Falling through on lookup failure uses the
+    // conf-declared width as a crude fallback so we still get a
+    // sensible anchor.
+    let window_w = window
+        .inner_size()
+        .map_or(1200, |size| i32::try_from(size.width).unwrap_or(1200));
+    let Some((target_x, target_y)) = compute_popover_anchor(click_x, click_y, window_w, &bounds)
     else {
         tracing::warn!("no monitors reported; popover stays at last position");
         return;
     };
-    if let Err(err) = window.set_position(LogicalPosition::new(
-        f64::from(target_x),
-        f64::from(target_y),
-    )) {
+    // Monitor bounds, window inner_size, and the tray click position
+    // are all in PHYSICAL pixels (`PhysicalPosition` / `PhysicalSize`
+    // from Tauri 2). The previous `LogicalPosition::new` here applied
+    // the value as logical pixels, so on a 2× Retina display the
+    // popover landed at twice the intended position and the right
+    // edge fell off the screen whenever the user clicked the tray
+    // icon near the menubar's right side. Match the coordinate space
+    // the geometry was computed in — same fix the bubble window's
+    // `apply_position` already uses.
+    if let Err(err) = window.set_position(PhysicalPosition::new(target_x, target_y)) {
         tracing::warn!(?err, "set_position on tray-popover failed");
     }
 }
 
 /// Pure compute step shared by [`anchor_window_to_click`] (runtime)
 /// and the unit tests (no Tauri). Returns the popover's target
-/// top-left position in screen coordinates, or `None` if the
-/// monitor list is empty.
+/// top-left position (anchored top-right of the picked monitor) in
+/// screen coordinates, or `None` if the monitor list is empty.
 ///
 /// Splitting this out exists so the click → monitor-pick →
-/// below-click clamp pipeline is verifiable without spinning up a
+/// top-right-anchor pipeline is verifiable without spinning up a
 /// Tauri mock app — see the unit tests below.
 fn compute_popover_anchor(
     click_x: i32,
     click_y: i32,
     window_w: i32,
-    window_h: i32,
     monitors: &[MonitorBounds],
 ) -> Option<(i32, i32)> {
     let monitor = pick_monitor(click_x, click_y, monitors)?;
-    Some(position_window_below_click(
-        click_x, click_y, window_w, window_h, monitor,
-    ))
+    Some(position_window_top_right(window_w, monitor))
 }
 
 /// Open a video file and start it paused at frame 0.
@@ -2539,38 +2581,30 @@ mod tests {
 
     #[test]
     fn anchor_returns_none_when_no_monitors() {
-        assert_eq!(compute_popover_anchor(500, 12, 800, 600, &[]), None);
+        assert_eq!(compute_popover_anchor(500, 12, 800, &[]), None);
     }
 
     #[test]
-    fn anchor_aligns_popover_right_edge_with_click() {
+    fn anchor_lands_at_monitor_top_right_regardless_of_click() {
         let monitors = vec![mon(0, 0, 1920, 1080)];
-        // Typical menubar click near the top-right of a 1920-wide screen.
-        let (x, y) = compute_popover_anchor(1820, 12, 800, 600, &monitors).expect("Some(_)");
-        // Right-anchored: window's right edge at click_x (1820), so
-        // top-left x = 1820 - 800 = 1020. Below the click by 4px: y = 16.
-        assert_eq!(x, 1020);
-        assert_eq!(y, 16);
+        // The click position influences monitor selection only; the
+        // popover always lands flush with the monitor's top-right.
+        // Click at the far right of the menubar:
+        let (x, y) = compute_popover_anchor(1820, 12, 800, &monitors).expect("Some(_)");
+        assert_eq!((x, y), (1120, 0));
+        // Click near the left edge of the menubar — same anchor.
+        let (x, y) = compute_popover_anchor(50, 12, 800, &monitors).expect("Some(_)");
+        assert_eq!((x, y), (1120, 0));
     }
 
     #[test]
     fn anchor_picks_secondary_monitor_for_a_click_on_it() {
         // Two side-by-side 1920×1080 monitors. A click at x=3820 lives
-        // in the second monitor's top-right; the popover anchors there.
+        // in the second monitor; the popover anchors top-right of it.
         let monitors = vec![mon(0, 0, 1920, 1080), mon(1920, 0, 1920, 1080)];
-        let (x, _) = compute_popover_anchor(3820, 12, 800, 600, &monitors).expect("Some(_)");
-        // raw_x = 3820 - 800 = 3020; monitor 2 spans [1920..3840];
-        // max_x = 3840 - 800 = 3040; 3020 is within [1920, 3040].
-        assert_eq!(x, 3020);
-    }
-
-    #[test]
-    fn anchor_clamps_left_when_click_is_near_origin() {
-        let monitors = vec![mon(0, 0, 1920, 1080)];
-        // Click near x=0 (e.g. dev menubar arrangement) — raw_x would
-        // be negative; clamp pulls left edge to monitor.x.
-        let (x, _) = compute_popover_anchor(50, 12, 800, 600, &monitors).expect("Some(_)");
-        assert_eq!(x, 0);
+        let (x, y) = compute_popover_anchor(3820, 12, 800, &monitors).expect("Some(_)");
+        // Monitor 2 right edge = 1920 + 1920 = 3840; x = 3840 - 800 = 3040.
+        assert_eq!((x, y), (3040, 0));
     }
 
     // ── M-BUBBLE.3 / AUT-276 — position persistence file format ──

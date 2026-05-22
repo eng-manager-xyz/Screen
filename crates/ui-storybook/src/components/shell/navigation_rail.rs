@@ -8,6 +8,7 @@ use leptos::prelude::*;
 
 use super::user_avatar::{UserAvatar, UserAvatarView};
 use super::workspace_badge::{WorkspaceBadge, WorkspaceBadgeView};
+use crate::components::primitives::{CircleDot, Folder, LayoutPanelTop, MousePointer2, Settings};
 
 /// Top-level app section the rail can route to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -45,9 +46,6 @@ pub struct NavItemView {
     pub section: AppSection,
     /// Visible label under the icon.
     pub label: &'static str,
-    /// Single-glyph icon (the rail uses simple Unicode glyphs in the
-    /// storybook; the production app can swap to an icon font).
-    pub icon: &'static str,
     /// Optional notification badge count (rendered when `Some` and
     /// `> 0`).
     pub count: Option<u32>,
@@ -128,6 +126,13 @@ fn render_item(
             cb.run(item_section);
         }
     };
+    let icon_view = match item.section {
+        AppSection::Record => view! { <CircleDot /> }.into_any(),
+        AppSection::Library => view! { <Folder /> }.into_any(),
+        AppSection::Editor => view! { <LayoutPanelTop /> }.into_any(),
+        AppSection::Cursor => view! { <MousePointer2 /> }.into_any(),
+        AppSection::Prefs => view! { <Settings /> }.into_any(),
+    };
     view! {
         <li>
             <button
@@ -139,7 +144,7 @@ fn render_item(
                 data-section=item.section.slug()
                 on:click=on_click
             >
-                <span class="nav-rail-icon" aria-hidden="true">{item.icon}</span>
+                <span class="nav-rail-icon" aria-hidden="true">{icon_view}</span>
                 <span class="nav-rail-label">{item.label}</span>
                 {count_view}
             </button>

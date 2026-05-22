@@ -32,6 +32,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use ui_storybook::components::primitives::ChevronDown;
 
 use crate::camera_ipc::CameraPermission;
 use crate::mic_ipc::{self, MicrophoneView};
@@ -98,7 +99,9 @@ pub fn MicPicker() -> impl IntoView {
                 <span class="mic-picker-label">
                     {move || selected_label(&mics.get(), selected_id.get().as_ref())}
                 </span>
-                <span class="mic-picker-chevron" aria-hidden="true">"▾"</span>
+                <span class="mic-picker-chevron" aria-hidden="true">
+                    <ChevronDown />
+                </span>
             </button>
             <div class="audio-meter" aria-label="Microphone input level">
                 <div

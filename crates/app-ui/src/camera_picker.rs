@@ -21,6 +21,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use ui_storybook::components::primitives::ChevronDown;
 
 use crate::camera_ipc::{self, CameraPermission, CameraView};
 
@@ -78,7 +79,9 @@ pub fn CameraPicker() -> impl IntoView {
                 <span class="camera-picker-label">
                     {move || selected_label(&cameras.get(), selected_id.get().as_ref())}
                 </span>
-                <span class="camera-picker-chevron" aria-hidden="true">"▾"</span>
+                <span class="camera-picker-chevron" aria-hidden="true">
+                    <ChevronDown />
+                </span>
             </button>
             <Show when=move || open.get() fallback=|| view! { <></> }>
                 <div class="camera-picker-menu" role="listbox">

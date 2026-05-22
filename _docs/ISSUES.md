@@ -25,6 +25,34 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-05: Camera toggle ↔ webcam-bubble visibility is one phase out of sync from page mount
+- **Filed:** 2026-05-22
+- **By:** user (caught during the recorder-redesign visual refactor — pre-existing bug, not introduced by the refactor)
+- **Severity:** bug
+- **Affects:** `screen-app` + `app-ui` (`crates/app-ui/src/recorder_page.rs::on_camera_toggle`, `crates/app/src/commands.rs::toggle_webcam_bubble`, `crates/app/src/tray/bubble_toggle.rs`)
+- **Status:** ✅ resolved 2026-05-22 — setter-shaped IPC landed in same session as the filing
+- **Description:**
+  `RecorderPage`'s `camera_enabled` `RwSignal` defaults to `true` but `BubbleVisibility::default()` is `Hidden`. The two start out of sync on every page mount. `on_camera_toggle` unconditionally calls `bubble_ipc::toggle_webcam_bubble()` (always-flip), so every click thereafter does the opposite of what the toggle pill implies:
+  - Mount: camera pill ON, bubble window HIDDEN
+  - 1st click → camera pill OFF, bubble SHOWS (Hidden→Visible)
+  - 2nd click → camera pill ON, bubble HIDES (Visible→Hidden)
+  
+  Visible only after the redesign because the new pill-toggle CSS makes the on/off state legible — before it rendered as an unstyled button + literal "true" / "false" text and the mismatch was invisible.
+
+  **Proposed fix (≈30 LOC, scope expanded beyond "UI only" so deferred):**
+  - Add `BubbleVisibility::set(&mut self, visible: bool) -> Option<BubbleAction>` — idempotent setter returning `Some(action)` only on state transition.
+  - Add `#[tauri::command] set_webcam_bubble_visibility(visible: bool, ...)` calling the setter + `apply_bubble_action` (factor out of `toggle_webcam_bubble`).
+  - Register in `main.rs` `generate_handler!` (both debug + release arms).
+  - Add `__screenSetBubbleVisibility(visible)` JS bridge in `crates/app-ui/index.html` + matching wasm extern + Rust wrapper in `crates/app-ui/src/bubble_ipc.rs`.
+  - In `on_camera_toggle`, replace `toggle_webcam_bubble()` with `set_webcam_bubble_visibility(next)`.
+  - Mount-time sync call so the page also aligns the bubble on first paint + on rail-surface navigation back into the recorder.
+  
+  Alternative narrower fix (CSS / state-only, no IPC change): flip the default of `camera_enabled` to `false`. Drift goes away on initial mount; still drifts on rail-surface navigation if the user enabled the bubble before navigating away.
+- **Resolution:** 2026-05-22 — implemented the proposed setter-shaped IPC.
+  `BubbleVisibility::set(visible)` returns `Option<BubbleAction>` (None when already in the requested state). New `set_webcam_bubble_visibility` Tauri command + JS bridge + wasm wrapper. `on_camera_toggle` now calls `set_webcam_bubble_visibility(next)` instead of the always-flip `toggle_webcam_bubble()`. Mount-time sync added so the bubble aligns with `camera_enabled` on every page mount (including rail-surface navigation back into the recorder). Three new state-machine unit tests cover the transitions + the no-op case.
+
+---
+
 ## ISS-04: `block` + `proc-macro-error2` future-incompat warnings (transitive)
 - **Filed:** 2026-05-13
 - **By:** user (post-CI investigation on `Gantt` branch)

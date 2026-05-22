@@ -6,6 +6,95 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Recorder surface — pinned action bar, restyled sidebar, display selector + preview split
+- **Date:** 2026-05-22
+- **Status:** ✅ done — second visual pass on the live `RecorderPage` driven by the latest design mock. Panel is now a fixed-height column with header + action bar pinned and the middle scrollable; sidebar items are uniform rounded-square icon tiles with bright/outlined selected state and a second avatar anchored at the bottom; the display block splits into a top "Built-in Retina <size>" selector row plus the existing `DisplayPreviewFrame` wrapped with a red border + dim badge; capture-mode tabs gain a `…` overflow menu on the right.
+
+### Layout — column with scrollable middle (`shell.css` / `style.css` recorder block)
+- `.recorder-page` is now `height: 100%, display: flex, flex-direction: column`. Header (`.recorder-page-header`) + new pinned `.recorder-page-action-bar` are `flex-shrink: 0`; the middle `.recorder-page-body` is `flex: 1, min-height: 0, overflow-y: auto` with a slim webkit scrollbar.
+- `.app-shell-main:has(> .app-surface--recorder)` switched from `overflow-x: hidden` to `overflow: hidden` so the recorder owns the only scroll context; `.app-surface--recorder` itself becomes `height: 100%, display: flex, flex-direction: column`.
+- Vertical spacing tightened across body sections (6 / 4 px gaps).
+
+### Sidebar — uniform icon tiles + bottom avatar (`navigation_rail.rs` CSS + `app_shell_mount.rs`)
+- Every `.nav-rail-item .nav-rail-icon` is now a 44×44 rounded-square (10 px radius) with `--surface-elevated` background and a subtle border. Active state inverts to a white tile with dark glyph for the bright/outlined selected look.
+- `nav-rail-items` gap bumped (10 px) so tiles read as individual chips rather than a stacked column. Rail width 64 → 76 px.
+- Workspace badge stays at top; user avatar now passed (`sample_user_avatar()`) so the bottom-of-rail slot renders. Avatar restyled to a 32 px blue circle (`#2563eb`) with monogram fallback. Workspace badge chevron repositioned as a small bottom-right decoration on the tile (replacing the inline chevron next to it).
+
+### Display block — selector row + preview card
+- New `.recorder-display-selector` row on top: small colored swatch (`#ea580c`) + "Built-in Retina" label + size pill (`14"`) + star + chevron.
+- Underneath, the existing `DisplayPreviewFrame` from ui-storybook is reused (dark-window mockup with `Active window` chip). Wrapped in `.recorder-display-preview-wrap` to layer a red border + the "3024 × 1964" badge — without touching the presentational component (so the storybook SSR snapshots stay green).
+
+### Source / system-audio rows — reordered children
+- `LiveSourceRow` (camera + mic) and `LiveSystemAudioRow` now render: leading icon, text, star, chevron, toggle (toggle moved to the far right; chevron sits next to it). Star is `★` when favourited else `☆`.
+- System-audio row's inline app icons are now baked into the title row (small 14 px tiles inside a `--surface-selected` pill), not the leading position. The leading position is a single 🔊 glyph in a device-icon tile to match the camera/mic visual rhythm.
+
+### Bottom action bar
+- New `.recorder-page-action-bar` (pinned, `flex-shrink: 0`) groups `<AutoZoomSelect>` + `<CountdownSelect>` as two 1fr/1fr cards plus the full-width red `StartRecordingButton` underneath. Auto-zoom + countdown promoted from select-pills to taller card-style buttons (`8 / 10 px` padding, `--radius-control` corners).
+- Start button: keyboard chips bumped to ~11 px / 18 px min-width so `⌘ ⇧ 2` reads at a glance.
+
+### Header overflow menu
+- New `.recorder-page-overflow` button (`⋯`) appended after `<CaptureModeTabs>`. Visual-only placeholder (no popover wired yet); `aria-haspopup="menu"` for downstream a11y wiring.
+
+### Files touched
+- `crates/app-ui/src/recorder_page.rs` — layout, display split, row reordering, action-bar grouping, overflow button.
+- `crates/app-ui/src/app_shell_mount.rs` — pass `user` to `NavigationRail`.
+- `crates/ui-storybook/assets/style.css` — recorder-page block rewrite + nav-rail / workspace-badge / user-avatar CSS.
+
+### Tests + gate
+- `just gate` — green (1293 tests pass, 1 skipped). SSR snapshots unchanged (every storybook structural change avoided — adjustments are CSS-only or live-side only).
+
+---
+
+## Recorder surface redesign — visual refactor + Retina tray-position bug fix
+- **Date:** 2026-05-22
+- **Status:** ✅ done — UI redesign of the live `RecorderPage` to match the target mock (compact pill toggles, tight rows, mic level meter, system-audio app icons, full-width red Start button, lifted auto-zoom/countdown row). Tray-popover window resized to 500×540 (was 1200×720) and now anchors top-right of the clicked monitor. Storybook isolated stories unaffected (all changes scoped under `.recorder-page` / `.app-surface--recorder`).
+
+### Visual changes (`crates/app-ui/src/recorder_page.rs` + `crates/ui-storybook/assets/style.css`)
+
+- **Bug fix in `LiveSourceRow`** — an orphan boolean expression (`{v.kind == CaptureSourceKind::Microphone && v.level.is_some()}`) was being rendered as literal `"true"` / `"false"` text in the DOM by Leptos. Removed; the meter rendering that follows is the only conditional needed.
+- **Pill toggle CSS** — `.toggle-switch / -checked / -thumb` rules didn't exist before; rows were rendering with unstyled `<button>` elements. Added pill-style toggles using existing tokens (`--surface-selected`, `--text-primary`, `--radius-pill`).
+- **Recorder layout** — `.recorder-page-body / -header / -sources / -audio / -on-screen / -display` had no layout CSS at all (fell back to browser defaults, producing the loose spacing that triggered this work). Added a single scoped block with tight column-stack rhythm.
+- **Auto-zoom + Countdown lifted out of `RecordingControlsFooter`** into a dedicated `.recorder-page-controls` row above the footer. Footer now renders `<StartRecordingButton>` directly (full-width red pill with the keyboard-shortcut chips pushed to the right edge).
+- **Display source label** — `display_card_view` now doubles the OS-reported point dimensions for display (e.g. 1512×982 → 3024×1964). Label-only transform; the capture pipeline still uses points.
+- **"N" workspace badge removed** from the header. Was scaffolding-only; no functionality wired up. Header now contains only `<CaptureModeTabs />`.
+- **Compact sizing pass** — every text / control / icon / toggle inside `.recorder-page` shrunk ~30% via a scoped CSS block. Display preview capped at `max-height: 220px` so the card doesn't dominate the column.
+- **Horizontal-scroll fix** — added `overflow-x: hidden` to the actual scroll container (`.app-shell-main:has(> .app-surface--recorder)`, not just `.recorder-page`), plus a universal `box-sizing: border-box` reset scoped to `.recorder-page` descendants.
+
+### Tray-popover positioning (`crates/app/src/commands.rs` + `crates/app/src/recp/tray_positioning.rs`)
+
+- **`LogicalPosition` → `PhysicalPosition` bug fix.** The monitor bounds, window inner_size, and tray click position are all in physical pixels; the old `set_position(LogicalPosition::new(...))` was interpreting them as logical, so on a 2× Retina display the popover landed at 2× the intended position and went off-screen to the right. The bubble window at line 205 already used `PhysicalPosition` correctly — the tray code had drifted. One-line apply fix.
+- **Top-right anchor.** Replaced `position_window_below_click` (right edge at click X, with clamping) with `position_window_top_right` (flush against the monitor's top-right corner, always). Click position is still used to pick which monitor in multi-display setups; placement within that monitor is fixed. 3 new pure-Rust tests cover the basic anchor, an offset secondary-monitor origin, and the wider-than-monitor edge case.
+
+### Window dimensions (`crates/app/tauri.conf.json`)
+
+- `tray-popover` window: **1200×720 → 500×540** (`minWidth: 460`, `minHeight: 480`).
+- `main` window (1280×800) untouched — stays hidden per CLAUDE.md ("boots hidden and stays hidden — the recorder UX is tray-only").
+- `webcam-bubble` (260×320) untouched.
+
+### Camera-toggle drift fix (ISS-05)
+
+The pre-existing one-click drift between `camera_enabled` (defaults `true`) and `BubbleVisibility::default()` (= `Hidden`) — the toggle visual flips correctly but the bubble window ended up one phase off — was diagnosed and fixed in this same session:
+
+- `BubbleVisibility::set(visible: bool) -> Option<BubbleAction>` — idempotent setter that returns `Some(action)` only on a real transition (no spurious `show()`/`hide()` to the OS).
+- `#[tauri::command] set_webcam_bubble_visibility(visible, ...)` calls the setter + the shared `apply_bubble_action` helper. Registered in both `generate_handler!` arms.
+- `__screenSetBubbleVisibility(visible)` JS bridge + wasm extern + Rust wrapper in `crates/app-ui/src/bubble_ipc.rs`.
+- `on_camera_toggle` now calls `set_webcam_bubble_visibility(next)` instead of the always-flip `toggle_webcam_bubble()`.
+- Mount-time sync (`set_webcam_bubble_visibility(camera_enabled.get())` at the bottom of the IPC-refresh block) aligns the bubble on every page mount, including rail-surface navigation back into the recorder.
+- Three new state-machine tests cover the `set` transitions + the no-op case.
+
+`toggle_webcam_bubble` stays as-is for any caller that genuinely wants a flip (no current callers other than the legacy debug button, but harmless to keep).
+
+### Test totals (after this session)
+
+- `cargo test -p screen-app --lib` — **140/140** (3 new tray_positioning + 0 net change elsewhere)
+- `cargo test -p app-ui --lib` — **58/58**
+- `cargo test -p ui-storybook --test snapshots` — **2/2** (isolated storybook stories unchanged; visual refactor is scoped under `.recorder-page`)
+- `cargo clippy -p app-ui --target wasm32-unknown-unknown --all-targets -- -D warnings` — clean
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean
+- `cargo fmt --all --check` — clean
+
+---
+
 ## M-RECORD-EXPORT-REAL-PIXELS — phase 6 complete (8/8 chunks); real capture wired into encoder
 - **Date:** 2026-05-17
 - **Status:** ✅ done on the same `m-record-export` PR. M-EXPORT.3's test-pattern feed is now a fallback for the audio-only / no-channels case; recordings with any video channel enabled pump real captured pixels through wisp composition + wgpu readback into the encoder.

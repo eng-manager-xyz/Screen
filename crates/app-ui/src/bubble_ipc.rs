@@ -19,6 +19,13 @@ extern "C" {
     #[wasm_bindgen(js_name = __screenToggleBubble, catch)]
     pub async fn toggle_webcam_bubble_js() -> Result<JsValue, JsValue>;
 
+    /// `__screenSetBubbleVisibility(visible)` in `index.html` —
+    /// returns `Promise<void>`. ISS-05 fix; explicit setter so the
+    /// recorder's `camera_enabled` signal can drive the bubble's
+    /// visibility without the toggle-drift the always-flip path had.
+    #[wasm_bindgen(js_name = __screenSetBubbleVisibility, catch)]
+    pub async fn set_webcam_bubble_visibility_js(visible: bool) -> Result<JsValue, JsValue>;
+
     /// `__screenSetBubbleClickthrough(enabled)` in `index.html` —
     /// returns `Promise<void>`. M-BUBBLE.1 v0 / AUT-274.
     #[wasm_bindgen(js_name = __screenSetBubbleClickthrough, catch)]
@@ -34,6 +41,22 @@ pub fn toggle_webcam_bubble() {
         if let Err(err) = toggle_webcam_bubble_js().await {
             web_sys::console::warn_2(
                 &JsValue::from_str("[bubble_ipc] toggle_webcam_bubble failed:"),
+                &err,
+            );
+        }
+    });
+}
+
+/// Fire-and-forget setter. Use when the UI owns the source of truth
+/// for the bubble's desired state (e.g. the recorder's
+/// `camera_enabled` signal). Idempotent on the Rust side, so safe to
+/// call on every toggle click + on page mount for initial alignment.
+/// ISS-05.
+pub fn set_webcam_bubble_visibility(visible: bool) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = set_webcam_bubble_visibility_js(visible).await {
+            web_sys::console::warn_2(
+                &JsValue::from_str("[bubble_ipc] set_webcam_bubble_visibility failed:"),
                 &err,
             );
         }

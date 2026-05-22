@@ -16,7 +16,7 @@ use leptos::prelude::*;
 use ui_storybook::components::shell::{
     AppSection, AppShell, NavigationRail, StatusBar, StatusKind,
 };
-use ui_storybook::fixtures::shell::{sample_nav_items, sample_workspace_badge};
+use ui_storybook::fixtures::shell::{sample_nav_items, sample_user_avatar, sample_workspace_badge};
 
 #[component]
 pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
@@ -32,6 +32,7 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
 
     let nav_items = sample_nav_items(false);
     let workspace = sample_workspace_badge();
+    let user = sample_user_avatar();
 
     view! {
         <AppShell
@@ -40,6 +41,7 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
                     items=nav_items.clone()
                     active=active.get()
                     workspace=workspace.clone()
+                    user=user.clone()
                     on_select=on_select
                 />
             })

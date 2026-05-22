@@ -6,6 +6,8 @@
 
 use leptos::prelude::*;
 
+use crate::components::primitives::ChevronDown;
+
 #[component]
 pub fn SelectPill(
     /// Optional leading glyph.
@@ -35,7 +37,9 @@ pub fn SelectPill(
         >
             {icon.map(|i| view! { <span class="select-pill-icon" aria-hidden="true">{i}</span> })}
             <span class="select-pill-label">{label}</span>
-            <span class="select-pill-chevron" aria-hidden="true">"▾"</span>
+            <span class="select-pill-chevron" aria-hidden="true">
+                <ChevronDown />
+            </span>
         </button>
     }
 }

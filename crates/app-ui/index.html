@@ -194,6 +194,15 @@
       window.__screenToggleBubble = () =>
         window.__TAURI__?.core?.invoke("toggle_webcam_bubble") ?? Promise.resolve();
 
+      // ISS-05 fix — explicit setter shape for the bubble visibility.
+      // The recorder page calls this from `on_camera_toggle` with the
+      // new `camera_enabled` value so `camera_enabled` and the
+      // bubble's BubbleState stay in lockstep across mount + rail
+      // navigation. No-op on the Rust side when the bubble is already
+      // in the requested state.
+      window.__screenSetBubbleVisibility = (visible) =>
+        window.__TAURI__?.core?.invoke("set_webcam_bubble_visibility", { visible }) ?? Promise.resolve();
+
       // M-BUBBLE.1 v0 / AUT-274 — whole-window click-through toggle.
       // When `enabled = true`, the bubble window passes mouse events
       // to whatever's underneath (the bubble cannot be dragged or

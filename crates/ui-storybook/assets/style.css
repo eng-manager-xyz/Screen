@@ -6,17 +6,22 @@
  */
 
 :root {
-  --bg: #09090b;            /* zinc-950 */
-  --bg-elev: #18181b;       /* zinc-900 */
-  --bg-row-alt: #1f1f23;
-  --fg: #fafafa;            /* zinc-50 */
+  /* Neutral-zinc palette. The recorder shell is intentionally hue-
+   * free — slight blue cast from the Tailwind `zinc` family was
+   * showing up as a subtle tint on the card surfaces, so the panel
+   * and card backgrounds use these exact values (matching
+   * neutral-950 / neutral-900) instead. */
+  --bg: #0a0a0b;
+  --bg-elev: #171719;
+  --bg-row-alt: #1f1f1f;
+  --fg: #ffffff;
   --fg-muted: #a1a1aa;      /* zinc-400 */
-  --border: #27272a;        /* zinc-800 */
-  --border-strong: #3f3f46; /* zinc-700 */
+  --border: #272727;        /* neutral edge */
+  --border-strong: #3f3f3f;
   --accent: #fafafa;
   --accent-fg: #09090b;
   --danger: #ef4444;        /* red-500 */
-  --secondary: #27272a;
+  --secondary: #1f1f1f;
   --kf-hold: #a1a1aa;
   --kf-linear: #38bdf8;     /* sky-400 */
   --kf-ease: #a78bfa;       /* violet-400 */
@@ -39,9 +44,9 @@
    */
   --surface-base: var(--bg);
   --surface-elevated: var(--bg-elev);
-  --surface-popover: #131316;
-  --surface-selected: #232329;
-  --surface-glass: rgba(24, 24, 27, 0.78);
+  --surface-popover: #131313;
+  --surface-selected: #232323;
+  --surface-glass: rgba(23, 23, 25, 0.78);
 
   --text-primary: var(--fg);
   --text-secondary: var(--fg-muted);
@@ -49,6 +54,11 @@
 
   --line-subtle: var(--border);
   --line-strong: var(--border-strong);
+  /* Visible white edge for the recorder card/row outlines. 12 %
+   * opacity reads as a clean hairline against the neutral panel
+   * without screaming for attention; consumers apply it as
+   * `border: 1.5px solid var(--line-card)`. */
+  --line-card: rgba(255, 255, 255, 0.12);
 
   --action-record: var(--danger);
   --action-record-hover: #dc2626;
@@ -178,6 +188,16 @@
   min-width: 18px;
 }
 
+/* ───── ChevronDown ─────
+ * Inline SVG that paints with `currentColor`, so the consuming
+ * container's `color` rule controls the tint. The SVG carries its
+ * own width/height, but `display:block` avoids the inline baseline
+ * gap when sitting alongside text. */
+.chevron-down {
+  display: block;
+  flex-shrink: 0;
+}
+
 /* ───── IconTile ───── */
 .icon-tile {
   display: inline-flex;
@@ -258,9 +278,9 @@
 }
 .app-shell-body { flex: 1; display: flex; min-height: 0; }
 .app-shell-rail {
-  width: 64px;
-  background: #0b0b0d;
-  border-right: 1px solid var(--line-subtle);
+  width: 76px;
+  background: var(--bg);
+  border-right: 1px solid var(--line-card);
   display: flex;
   flex-direction: column;
 }
@@ -293,29 +313,37 @@
   align-items: center;
   padding: 12px 0;
   height: 100%;
-  gap: 16px;
+  gap: 14px;
   color: var(--text-secondary);
 }
 .nav-rail-top { display: flex; align-items: center; justify-content: center; }
-.nav-rail-bottom { margin-top: auto; padding-bottom: 6px; }
+.nav-rail-bottom {
+  margin-top: auto;
+  padding-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .nav-rail-items {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
   width: 100%;
   align-items: center;
 }
+/* Each rail entry is a uniform rounded-square icon tile (label
+ * underneath). The base state is a flat surface-elevated tile; the
+ * selected state is a brighter outlined version. */
 .nav-rail-item {
   appearance: none;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  width: 48px;
-  height: 52px;
-  padding: 6px 0 4px;
+  border-radius: 10px;
+  width: 56px;
+  padding: 0;
   cursor: pointer;
   color: var(--text-secondary);
   display: flex;
@@ -324,19 +352,37 @@
   justify-content: center;
   gap: 4px;
   position: relative;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.nav-rail-item:hover { background: var(--surface-elevated); color: var(--text-primary); }
-.nav-rail-item-active {
+.nav-rail-item .nav-rail-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The icon child is an SVG that paints with `currentColor`, so
+   * `color` here drives the stroke tint of the Lucide glyph. */
+  color: rgba(255, 255, 255, 0.85);
+}
+.nav-rail-item:hover .nav-rail-icon {
   background: var(--surface-selected);
-  color: var(--text-primary);
+  color: #ffffff;
   border-color: var(--line-strong);
 }
+/* Active state brightens the label only; the tile itself stays
+ * unchanged until :hover. */
+.nav-rail-item-active {
+  color: var(--text-primary);
+}
 .nav-rail-item-disabled { opacity: 0.4; cursor: not-allowed; }
-.nav-rail-icon { font-size: 15px; line-height: 1; }
 .nav-rail-label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 500;
+  color: inherit;
+  letter-spacing: 0.01em;
 }
 .nav-rail-count {
   position: absolute;
@@ -359,31 +405,44 @@
   background: transparent;
   border: 0;
   padding: 0;
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   cursor: pointer;
   color: var(--text-secondary);
 }
 .workspace-badge-tile {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-control);
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   background: var(--action-record);
   color: #fff;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  letter-spacing: 0.02em;
 }
 .workspace-badge-chevron {
-  font-size: 10px;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-strong);
+  color: var(--text-secondary);
+  font-size: 8px;
   line-height: 1;
-  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.workspace-badge-open .workspace-badge-chevron { color: var(--text-primary); transform: rotate(180deg); }
+.workspace-badge-open .workspace-badge-chevron { color: var(--text-primary); }
 
 /* ───── UserAvatar ───── */
 .user-avatar {
@@ -394,7 +453,7 @@
   cursor: pointer;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
@@ -404,12 +463,12 @@
 .user-avatar-monogram {
   width: 100%;
   height: 100%;
-  background: var(--secondary);
+  background: #2563eb;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-primary);
-  font-size: 12px;
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1068,6 +1127,45 @@ kbd {
 .toggle-on .toggle-track { background: var(--text-primary); }
 .toggle-on .toggle-knob { background: #09090b; transform: translateX(14px); }
 .toggle-disabled { opacity: 0.45; }
+
+/* ───── ToggleSwitch — single-element pill toggle ───── */
+/* Used by the live RecorderPage rows (camera / mic / system-audio /
+ * on-screen options). Renders as a <button role="switch"> with a
+ * single <span class="toggle-switch-thumb"> child — no separate track
+ * element, so the button itself is the track. Visual treatment matches
+ * the two-element `.toggle` above but adapted to that flatter DOM.
+ */
+.toggle-switch {
+  appearance: none;
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  background: var(--secondary);
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 120ms ease;
+  flex-shrink: 0;
+}
+.toggle-switch:disabled { cursor: not-allowed; opacity: 0.45; }
+.toggle-switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.toggle-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transition: transform 160ms ease, background 120ms ease;
+}
+.toggle-switch-checked { background: var(--text-primary); }
+.toggle-switch-checked .toggle-switch-thumb {
+  background: var(--surface-base);
+  transform: translateX(14px);
+}
 
 /* ───── SegmentedControl ───── */
 .segmented {
@@ -3213,4 +3311,457 @@ body:has(.bubble-root) {
 .start-recording-stop:hover {
   background: var(--action-record, #ef4444) !important;
   color: #fff !important;
+}
+
+
+/* ───── RecorderPage layout (crates/app-ui/src/recorder_page.rs) ─────
+ * Header + action bar are flex-shrink:0; middle body scrolls.
+ * All rules scoped under `.recorder-page` / `.app-surface--recorder`
+ * so storybook isolated stories keep their canonical sizes. */
+.recorder-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 8px 12px 12px;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  font-size: 11px;
+  overflow-x: hidden;
+}
+.recorder-page,
+.recorder-page *,
+.recorder-page *::before,
+.recorder-page *::after {
+  box-sizing: border-box;
+}
+
+/* AppShell wiring — pin the recorder flush to the rail, kill the
+ * shell-main's default padding + scroll so the recorder owns its
+ * internal scroll. `:has()` is supported in every webview Tauri 2
+ * ships against. */
+.app-surface--recorder {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-surface--recorder > .recorder-page {
+  flex: 1;
+  min-height: 0;
+}
+.app-shell-main:has(> .app-surface--recorder) {
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Header — capture-mode tabs + overflow menu. Pinned to top. */
+.recorder-page-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.recorder-page-tabs {
+  flex: 1;
+  min-width: 0;
+}
+.recorder-page-tabs .segmented {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  background: var(--surface-elevated);
+  border: 1px solid var(--line-subtle);
+}
+.recorder-page-tabs .segment {
+  flex: 1;
+  justify-content: center;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+.recorder-page-tabs .segment-active {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.recorder-page-tabs .segment-icon { font-size: 11px; opacity: 0.85; }
+.recorder-page-overflow {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+.recorder-page-overflow:hover {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+.recorder-page .icon-tile {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  border-radius: var(--radius-control);
+}
+
+/* Body — scrollable middle. */
+.recorder-page-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Slim webkit scrollbar so the column doesn't reserve a wide gutter. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-selected) transparent;
+  /* Reserve the scrollbar slot even when content fits without it,
+   * so the right edge of body content sits at a stable x-coordinate
+   * (otherwise the right "margin" jumps by 6 px the moment scrolling
+   * starts). `scrollbar-gutter` is supported in every modern WebKit
+   * and Blink. */
+  scrollbar-gutter: stable;
+}
+.recorder-page-body::-webkit-scrollbar { width: 6px; }
+.recorder-page-body::-webkit-scrollbar-thumb {
+  background: var(--surface-selected);
+  border-radius: 3px;
+}
+.recorder-page-sources,
+.recorder-page-audio { display: flex; flex-direction: column; gap: 6px; }
+.recorder-page-display { display: flex; flex-direction: column; gap: 6px; }
+.recorder-page-on-screen { display: flex; flex-direction: column; gap: 4px; }
+.recorder-page-picker,
+.recorder-page-applist { display: flex; flex-direction: column; }
+
+.recorder-page-sources .capture-source-row,
+.recorder-page-audio .system-audio-row {
+  width: 100%;
+}
+.recorder-page-picker .popover-surface,
+.recorder-page-applist .system-audio-applist {
+  width: 100%;
+}
+
+/* ── Display selector row + stylized preview ─────────────────────
+ * The label group (name + size pill + star) sits inline on the left
+ * with natural width; the chevron is pushed to the right edge via
+ * `margin-left: auto` so the right side stays anchored regardless
+ * of label length. */
+.recorder-display-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1.5px solid var(--line-card);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  appearance: none;
+}
+.recorder-display-selector:hover { border-color: rgba(255, 255, 255, 0.22); }
+.recorder-display-selector-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #ea580c;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.recorder-display-selector-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.recorder-display-selector-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recorder-display-selector-size {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--surface-selected);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+.recorder-display-selector-star {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.recorder-display-selector-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-secondary);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 120ms;
+}
+.recorder-display-selector-chevron[data-open="true"] {
+  color: var(--text-primary);
+  transform: rotate(180deg);
+}
+
+/* Wraps the storybook DisplayPreviewFrame so we can layer a red
+ * border + a dim badge over it without modifying the component. */
+.recorder-display-preview-wrap {
+  position: relative;
+  border: 2px solid var(--action-record);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-base);
+}
+.recorder-display-preview-wrap .display-preview {
+  border: 0;
+  border-radius: 0;
+  max-height: 220px;
+}
+.recorder-display-preview-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--action-record);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+
+/* Source rows (camera / mic) — restyled grid + reordered children.
+ * Cards sit barely above the panel (`var(--surface-elevated)`,
+ * `#171719`) and are outlined by a clearly visible 1.5 px hairline
+ * — same treatment as the audio + on-screen + display-selector
+ * rows so the column reads as one outlined set. */
+.recorder-page-sources .capture-source-row {
+  padding: 7px 10px;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  /* leading icon | title + favourite (the star now lives inside
+   * `.capture-source-title`, not its own column) | chevron | toggle */
+  grid-template-columns: 26px 1fr auto auto;
+  background: var(--bg);
+  border-width: 1.5px;
+  border-color: var(--line-card);
+}
+.recorder-page-sources .capture-source-title { font-size: 12px; }
+.recorder-page-sources .capture-source-subtitle { font-size: 10px; }
+.recorder-page-sources .capture-source-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  color: var(--text-secondary);
+  min-width: 26px;
+  height: 26px;
+}
+.recorder-page-sources .capture-source-text .meter-bar { height: 7px; width: 2px; }
+
+/* System-audio row — same grid columns + favorite + chevron + toggle. */
+.recorder-page-audio .system-audio-row {
+  display: grid;
+  /* leading icon | title + app icons + favourite (now inline in
+   * `.system-audio-title`, not its own column) | chevron | toggle */
+  grid-template-columns: 26px 1fr auto auto;
+  padding: 7px 10px;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  align-items: center;
+  border: 1.5px solid var(--line-card);
+}
+.recorder-page-audio .system-audio-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.recorder-page-audio .system-audio-subtitle { font-size: 10px; }
+.recorder-page-audio .system-audio-inline-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 3px;
+  border-radius: 5px;
+  background: var(--surface-selected);
+}
+.recorder-page-audio .system-audio-inline-icons .system-audio-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  margin: 0;
+}
+.recorder-page-audio .system-audio-inline-icons .system-audio-icon-overflow {
+  font-size: 9px;
+  padding: 0 3px;
+}
+.recorder-page-audio .system-audio-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  color: var(--text-secondary);
+  min-width: 26px;
+  height: 26px;
+}
+
+/* On-screen row — styled to match the source rows above it. */
+.recorder-page-on-screen-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1.5px solid var(--line-card);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+}
+.recorder-page-on-screen-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.recorder-page-on-screen-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.recorder-page-on-screen-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.recorder-page-on-screen-summary {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--surface-selected);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+.recorder-page-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-secondary);
+  transition: transform 120ms;
+}
+.recorder-page-chevron[data-open="true"] {
+  color: var(--text-primary);
+  transform: rotate(180deg);
+}
+
+/* Toggle switches — compact 26 × 15 inside the recorder. */
+.recorder-page .toggle-switch { width: 26px; height: 15px; }
+.recorder-page .toggle-switch-thumb { width: 11px; height: 11px; }
+.recorder-page .toggle-switch-checked .toggle-switch-thumb {
+  transform: translateX(11px);
+}
+
+/* Star buttons inside rows — same neutral tone, slightly more visible. */
+.recorder-page .capture-source-star {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── Pinned action bar (auto-zoom + countdown + Start) ─────────── */
+.recorder-page-action-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.recorder-page-action-bar .recorder-page-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.recorder-page-action-bar .recorder-page-controls > * { width: 100%; }
+.recorder-page-action-bar .select-pill {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 12px;
+  padding: 8px 10px;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  border-width: 1.5px;
+  border-color: var(--line-card);
+}
+.recorder-page-action-bar .select-pill-icon { font-size: 13px; }
+.recorder-page-action-bar .select-pill-label {
+  flex: 1;
+  text-align: left;
+}
+.recorder-page-action-bar .select-pill-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-secondary);
+}
+
+/* Start button — full-width red pill with target glyph + shortcut chips. */
+.recorder-page-action-bar .recording-controls-footer {
+  padding: 0;
+  background: transparent;
+  border-top: 0;
+  border-radius: 0;
+}
+.recorder-page-action-bar .recording-controls-action { width: 100%; }
+.recorder-page-action-bar .start-recording-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 10px 14px;
+  font-size: 13px;
+  border-radius: var(--radius-control);
+}
+.recorder-page-action-bar .start-recording-glyph { font-size: 13px; }
+.recorder-page-action-bar .start-recording-label { font-size: 13px; font-weight: 600; }
+.recorder-page-action-bar .start-recording-btn .shortcut-badges { margin-left: auto; }
+.recorder-page-action-bar .shortcut-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  min-width: 18px;
+  border-radius: 4px;
 }
