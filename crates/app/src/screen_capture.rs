@@ -24,6 +24,56 @@ use std::sync::Mutex;
 
 use media::sck_video::{ScreenCaptureConfig, ScreenCaptureStream, ScreenError};
 
+/// Resolve the `webcam-bubble` Tauri window's `CGWindowID` so it can
+/// be passed to [`ScreenCaptureConfig::excluded_window_ids`].
+///
+/// Returns `None` if (a) the bubble window isn't registered (e.g. the
+/// tauri.conf.json label was renamed), (b) Tauri can't hand us the
+/// raw `NSWindow`, or (c) the `NSWindow` hasn't been assigned a
+/// number yet (returned `<= 0`, which happens before the window has
+/// ever been shown). All paths log via `tracing::debug!` so callers
+/// don't have to branch on the source of the miss — the screen
+/// capture falls back to an empty exclusion list (current behaviour,
+/// with the dup bubble).
+///
+/// Uses the `NSWindow` → `windowNumber` → `CGWindowID` equivalence
+/// documented at <https://developer.apple.com/documentation/appkit/nswindow/1419068-windownumber>.
+#[must_use]
+#[allow(
+    unsafe_code,
+    reason = "objc2 msg_send to NSWindow for windowNumber. The selector is no-arg, NSInteger return; sound to call on any non-null NSWindow*."
+)]
+pub fn bubble_window_cg_id(app: &tauri::AppHandle) -> Option<u32> {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use tauri::Manager;
+
+    let window = app.get_webview_window("webcam-bubble")?;
+    let ns_window_ptr = match window.ns_window() {
+        Ok(ptr) => ptr.cast::<AnyObject>(),
+        Err(err) => {
+            tracing::debug!(?err, "bubble_window_cg_id: ns_window() unavailable");
+            return None;
+        }
+    };
+    if ns_window_ptr.is_null() {
+        return None;
+    }
+    // SAFETY: `WebviewWindow::ns_window()` on macOS returns a
+    // non-null pointer to the underlying NSWindow when Ok. NSWindow
+    // implements `- (NSInteger)windowNumber` (no-arg, NSInteger
+    // return) — calling that selector is sound for any NSWindow*.
+    let window_number: isize = unsafe { msg_send![ns_window_ptr, windowNumber] };
+    if window_number <= 0 {
+        tracing::debug!(
+            window_number,
+            "bubble_window_cg_id: NSWindow hasn't been assigned a number yet (shown < once?)"
+        );
+        return None;
+    }
+    u32::try_from(window_number).ok()
+}
+
 /// Tauri-managed wrapper. The four `screen_*` Tauri commands
 /// (`list_screen_displays`, `start_screen_capture`,
 /// `stop_screen_capture`, `screen_capture_status`) read from /

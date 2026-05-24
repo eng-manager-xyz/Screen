@@ -55,15 +55,23 @@ pub struct CamLayout {
 }
 
 impl CamLayout {
-    /// Default: bottom-right corner with a 24 px-equivalent NDC
-    /// margin (~`0.05` in `[-1, 1]` space) and a radius of `0.18`
-    /// (~18% of viewport).
+    /// Bottom-right corner with a 24 px-equivalent NDC margin
+    /// (~`0.05` in `[-1, 1]` space) and a radius of `0.18` (~18% of
+    /// viewport).
     pub const BOTTOM_RIGHT: Self = Self {
         center: Vec2::new(0.74, -0.74),
         radius: 0.20,
     };
 
-    /// Top-left variant for left-handed presenters.
+    /// Bottom-left variant — the current default. Mirrors the
+    /// Screen Studio bottom-left cam placement convention; flip to
+    /// [`Self::BOTTOM_RIGHT`] for right-handed presenters.
+    pub const BOTTOM_LEFT: Self = Self {
+        center: Vec2::new(-0.74, -0.74),
+        radius: 0.20,
+    };
+
+    /// Top-left variant.
     pub const TOP_LEFT: Self = Self {
         center: Vec2::new(-0.74, 0.74),
         radius: 0.20,
@@ -72,7 +80,7 @@ impl CamLayout {
 
 impl Default for CamLayout {
     fn default() -> Self {
-        Self::BOTTOM_RIGHT
+        Self::BOTTOM_LEFT
     }
 }
 
@@ -100,6 +108,30 @@ impl StreamDimensions {
     pub fn byte_len(self) -> usize {
         (self.width as usize) * (self.height as usize) * 4
     }
+}
+
+/// Copy a packed BGRA buffer (`width * height * 4` bytes, no row
+/// padding) into a freshly-allocated `Vec<u8>` with rows reversed so
+/// the output is bottom-up.
+///
+/// wisp's `Sprite` vertex shader maps texture UV `(0, 0)` to the
+/// bottom-left of the rendered NDC quad (the same "+y flip" the
+/// sprite vs glyphon convention bullet in CLAUDE.md flags), so
+/// `VideoTexture::upload_bgra` of a standard top-down BGRA image
+/// renders upside-down. The `set_*_frame` methods on [`RecordingScene`]
+/// run this helper so callers can pass top-down BGRA (the universal
+/// `CoreVideo` / `GStreamer` / `Canvas2D` convention).
+fn flip_bgra_rows_top_down_to_bottom_up(src: &[u8], width: u32, height: u32) -> Vec<u8> {
+    // Caller (RecordingScene::set_*_frame) asserts src.len() == width * height * 4
+    // before calling, so the slice indexing below stays in bounds.
+    let row_bytes = (width as usize) * 4;
+    let h = height as usize;
+    let mut out = Vec::with_capacity(row_bytes * h);
+    for row in (0..h).rev() {
+        let start = row * row_bytes;
+        out.extend_from_slice(&src[start..start + row_bytes]);
+    }
+    out
 }
 
 /// Two-stream composition: fullscreen screen-capture + circular
@@ -223,25 +255,48 @@ impl RecordingScene {
         }
     }
 
-    /// Upload the latest screen-capture frame. `bgra.len()` must
-    /// equal `screen_dims().byte_len()`.
+    /// Upload the latest screen-capture frame. `bgra` is **top-down**
+    /// packed BGRA8 (the standard `CoreVideo` / `GStreamer`
+    /// convention) and `bgra.len()` must equal
+    /// `screen_dims().byte_len()`. The method flips rows internally
+    /// to match wisp's sprite convention before uploading — see
+    /// [`flip_bgra_rows_top_down_to_bottom_up`].
     ///
     /// # Panics
     ///
-    /// Panics on byte-length mismatch (delegated to
-    /// `VideoTexture::upload_bgra`).
+    /// Panics with `"VideoTexture::upload_bgra: byte length mismatch"`
+    /// if `bgra.len()` doesn't match the configured screen dimensions.
     pub fn set_screen_frame(&mut self, app: &Application, bgra: &[u8]) {
-        self.screen_video.upload_bgra(app, bgra);
+        assert_eq!(
+            bgra.len(),
+            self.screen_dims.byte_len(),
+            "VideoTexture::upload_bgra: byte length mismatch"
+        );
+        let flipped = flip_bgra_rows_top_down_to_bottom_up(
+            bgra,
+            self.screen_dims.width,
+            self.screen_dims.height,
+        );
+        self.screen_video.upload_bgra(app, &flipped);
     }
 
-    /// Upload the latest camera frame. `bgra.len()` must equal
-    /// `cam_dims().byte_len()`.
+    /// Upload the latest camera frame. `bgra` is **top-down** packed
+    /// BGRA8 (same convention as [`Self::set_screen_frame`]) and
+    /// `bgra.len()` must equal `cam_dims().byte_len()`.
     ///
     /// # Panics
     ///
-    /// Panics on byte-length mismatch.
+    /// Panics with `"VideoTexture::upload_bgra: byte length mismatch"`
+    /// if `bgra.len()` doesn't match the configured cam dimensions.
     pub fn set_camera_frame(&mut self, app: &Application, bgra: &[u8]) {
-        self.cam_video.upload_bgra(app, bgra);
+        assert_eq!(
+            bgra.len(),
+            self.cam_dims.byte_len(),
+            "VideoTexture::upload_bgra: byte length mismatch"
+        );
+        let flipped =
+            flip_bgra_rows_top_down_to_bottom_up(bgra, self.cam_dims.width, self.cam_dims.height);
+        self.cam_video.upload_bgra(app, &flipped);
     }
 
     /// Render the composed scene into `view`. Thin wrapper around
@@ -310,6 +365,25 @@ impl RecordingScene {
     pub fn cam_sprite_id(&self) -> NodeId {
         self.cam_sprite
     }
+
+    /// Toggle the camera bubble's visibility. Hiding the cam container
+    /// prevents the cam sprite from rendering at all — useful when the
+    /// recording session has the camera channel disabled (no upload
+    /// happens, so `VideoTexture` would sample whatever wgpu's
+    /// `create_texture` left in memory; not guaranteed to be zero).
+    pub fn set_camera_visible(&mut self, visible: bool) {
+        if let Some(node) = self.stage.get_mut(self.cam_container) {
+            node.container_mut().visible = visible;
+        }
+    }
+
+    /// Toggle the screen sprite's visibility. Same rationale as
+    /// [`Self::set_camera_visible`] for the screen channel.
+    pub fn set_screen_visible(&mut self, visible: bool) {
+        if let Some(node) = self.stage.get_mut(self.screen_sprite) {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -322,13 +396,17 @@ mod tests {
     }
 
     #[test]
-    fn cam_layout_default_is_bottom_right() {
-        assert_eq!(CamLayout::default(), CamLayout::BOTTOM_RIGHT);
+    fn cam_layout_default_is_bottom_left() {
+        assert_eq!(CamLayout::default(), CamLayout::BOTTOM_LEFT);
     }
 
     #[test]
     fn cam_layout_constants_are_in_ndc_range() {
-        for layout in [CamLayout::BOTTOM_RIGHT, CamLayout::TOP_LEFT] {
+        for layout in [
+            CamLayout::BOTTOM_RIGHT,
+            CamLayout::BOTTOM_LEFT,
+            CamLayout::TOP_LEFT,
+        ] {
             assert!(layout.center.x.abs() <= 1.0);
             assert!(layout.center.y.abs() <= 1.0);
             assert!(layout.radius > 0.0 && layout.radius <= 1.0);
@@ -449,6 +527,67 @@ mod tests {
             StreamDimensions::new(0, 16),
             CamLayout::default(),
         );
+    }
+
+    #[test]
+    fn flip_helper_reverses_row_order() {
+        // 4 pixels × 2 rows = 8 bytes/row × 2 = 16 bytes.
+        // Wait — BGRA = 4 bytes/pixel, so 4 × 4 = 16 bytes/row × 2 = 32 total.
+        let row_0 = [0xAAu8; 16];
+        let row_1 = [0xCCu8; 16];
+        let mut src = Vec::with_capacity(32);
+        src.extend_from_slice(&row_0);
+        src.extend_from_slice(&row_1);
+        let out = flip_bgra_rows_top_down_to_bottom_up(&src, 4, 2);
+        assert_eq!(out.len(), 32);
+        assert_eq!(
+            &out[0..16],
+            &row_1,
+            "row 1 (originally bottom) lands first in bottom-up output"
+        );
+        assert_eq!(&out[16..32], &row_0, "row 0 (originally top) lands last");
+    }
+
+    #[test]
+    fn flip_helper_is_identity_for_single_row() {
+        let row = [0x42u8; 16];
+        let out = flip_bgra_rows_top_down_to_bottom_up(&row, 4, 1);
+        assert_eq!(out, row);
+    }
+
+    #[test]
+    fn set_camera_visible_toggles_cam_container_visibility() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(32, 32),
+            StreamDimensions::new(16, 16),
+            CamLayout::default(),
+        );
+        // Default: visible.
+        let cam_id = scene.cam_container_id();
+        assert!(scene.stage().get(cam_id).unwrap().container().visible);
+
+        scene.set_camera_visible(false);
+        assert!(!scene.stage().get(cam_id).unwrap().container().visible);
+
+        scene.set_camera_visible(true);
+        assert!(scene.stage().get(cam_id).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_screen_visible_toggles_screen_sprite_visibility() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(32, 32),
+            StreamDimensions::new(16, 16),
+            CamLayout::default(),
+        );
+        let screen_id = scene.screen_sprite_id();
+        assert!(scene.stage().get(screen_id).unwrap().container().visible);
+        scene.set_screen_visible(false);
+        assert!(!scene.stage().get(screen_id).unwrap().container().visible);
     }
 
     #[test]

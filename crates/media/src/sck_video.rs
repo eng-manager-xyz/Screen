@@ -139,6 +139,15 @@ pub struct ScreenCaptureConfig {
     /// `Default::default()` value is [`ScreenCaptureSource::PrimaryDisplay`]
     /// so legacy callers keep the M-SCK.0 behaviour.
     pub source: ScreenCaptureSource,
+    /// `CGWindowID`s to exclude from the capture (display-source only;
+    /// ignored for [`ScreenCaptureSource::Window`] since that filter
+    /// targets a single specific window). Each ID is the integer
+    /// value returned by `NSWindow.windowNumber` for the window to
+    /// keep OUT of the captured frame — typically the caller's own
+    /// UI windows that the user is monitoring on screen but doesn't
+    /// want recorded. Unknown IDs (window no longer present) are
+    /// silently dropped at filter-build time.
+    pub excluded_window_ids: Vec<u32>,
 }
 
 impl Default for ScreenCaptureConfig {
@@ -149,6 +158,7 @@ impl Default for ScreenCaptureConfig {
             target_fps: DEFAULT_TARGET_FPS,
             shows_cursor: true,
             source: ScreenCaptureSource::PrimaryDisplay,
+            excluded_window_ids: Vec::new(),
         }
     }
 }
@@ -269,16 +279,22 @@ impl ScreenOutputHandler {
     }
 }
 
-/// Extract a freshly-allocated BGRA `Vec<u8>` from a `CVPixelBuffer`.
-/// Handles row-stride padding — many IOSurfaces have
-/// `bytes_per_row > width * 4` so the source rows have trailing
-/// padding bytes that must be stripped.
+/// Extract a freshly-allocated BGRA `Vec<u8>` from a `CVPixelBuffer`,
+/// in standard CoreVideo top-down row order. Many IOSurfaces have
+/// `bytes_per_row > width * 4` (per-row trailing padding); this
+/// helper strips that padding so the output is a tight
+/// `width * height * 4` byte buffer.
 ///
 /// Returns `None` when the pixel format isn't `32BGRA` (the
 /// `SCStreamConfiguration` pixelFormat is set to `32BGRA` in
 /// [`ScreenCaptureStream::new`], so this branch is defensive — if
 /// we somehow get a YUV / non-BGRA buffer, drop it rather than
 /// corrupting the encoder feed).
+///
+/// The recording pump pushes the resulting bytes through wisp's
+/// `RecordingScene::set_screen_frame`, which converts to wisp's
+/// internal sprite-Y convention; callers that don't go through
+/// `RecordingScene` get plain top-down bytes.
 pub(crate) fn extract_bgra_from_pixel_buffer(
     pixel_buffer: &objc2_core_video::CVPixelBuffer,
 ) -> Option<Vec<u8>> {
@@ -308,25 +324,55 @@ pub(crate) fn extract_bgra_from_pixel_buffer(
     let result = if base.is_null() || width == 0 || height == 0 {
         None
     } else {
-        let row_bytes_packed = width.saturating_mul(4);
-        let mut out: Vec<u8> = Vec::with_capacity(row_bytes_packed.saturating_mul(height));
-        // SAFETY: base + bytes_per_row * row stays inside the
-        // pixel-buffer allocation per Apple's docs (rows are
-        // contiguous; bytes_per_row is the stride). Lock guarantees
-        // the memory is live until Unlock.
-        unsafe {
-            for row in 0..height {
-                let src_row = base.cast::<u8>().add(row * bytes_per_row);
-                out.extend_from_slice(std::slice::from_raw_parts(src_row, row_bytes_packed));
-            }
-        }
-        Some(out)
+        // SAFETY: per Apple's docs the locked pixel-buffer memory
+        // spans `bytes_per_row * height` bytes contiguously from
+        // `base`. The lock keeps it live until the matching Unlock
+        // below. The slice borrows for the body of this branch only,
+        // which finishes before we Unlock.
+        let src_slice = unsafe {
+            std::slice::from_raw_parts(base.cast::<u8>(), bytes_per_row.saturating_mul(height))
+        };
+        Some(copy_bgra_rows_packed(
+            src_slice,
+            width,
+            height,
+            bytes_per_row,
+        ))
     };
     // SAFETY: matching unlock for the lock above.
     unsafe {
         let _ = CVPixelBufferUnlockBaseAddress(pixel_buffer, CVPixelBufferLockFlags::ReadOnly);
     }
     result
+}
+
+/// Copy `height` rows of BGRA from `src` — which may have per-row
+/// trailing padding (`bytes_per_row > width * 4`) — into a tightly
+/// packed `Vec<u8>` (`width * height * 4` bytes, no padding). Row
+/// order is preserved (top-down stays top-down).
+///
+/// The IOSurfaces backing SCK CVPixelBuffers commonly add stride
+/// padding for SIMD-friendly row alignment; downstream consumers
+/// (wisp `VideoTexture::upload_bgra`, the encoder feed thread) want
+/// a tight buffer with `bytes_per_row = width * 4`.
+fn copy_bgra_rows_packed(src: &[u8], width: usize, height: usize, bytes_per_row: usize) -> Vec<u8> {
+    let row_bytes_packed = width.saturating_mul(4);
+    debug_assert!(
+        bytes_per_row >= row_bytes_packed,
+        "bytes_per_row {bytes_per_row} < packed row width {row_bytes_packed}"
+    );
+    debug_assert!(
+        src.len() >= height.saturating_mul(bytes_per_row),
+        "src len {} < height*stride {}",
+        src.len(),
+        height.saturating_mul(bytes_per_row)
+    );
+    let mut out: Vec<u8> = Vec::with_capacity(row_bytes_packed.saturating_mul(height));
+    for row in 0..height {
+        let start = row * bytes_per_row;
+        out.extend_from_slice(&src[start..start + row_bytes_packed]);
+    }
+    out
 }
 
 /// Active SCK screen-capture session. Owns the `SCStream` + the
@@ -356,9 +402,16 @@ pub struct ScreenCaptureStream {
 /// Resolve [`ScreenCaptureSource`] to an `SCContentFilter`
 /// (M-SCK.0.1 / AUT-291). Extracted from `ScreenCaptureStream::new`
 /// so that function stays under the `clippy::too_many_lines` cap.
+///
+/// `excluded_window_ids` (display-source only) is the list of
+/// `CGWindowID`s to keep OUT of the captured frame — used to hide
+/// the recorder's own webcam-bubble window so it doesn't duplicate
+/// the wisp-composited cam. Unknown IDs (window has since closed)
+/// are dropped silently.
 fn build_content_filter(
     content: &SCShareableContent,
     source: &ScreenCaptureSource,
+    excluded_window_ids: &[u32],
 ) -> Result<Retained<SCContentFilter>, ScreenError> {
     match source {
         ScreenCaptureSource::PrimaryDisplay => {
@@ -366,12 +419,12 @@ fn build_content_filter(
             let Some(display) = displays.iter().next() else {
                 return Err(ScreenError::NoDisplays);
             };
-            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            let excluded = resolve_excluded_windows(content, excluded_window_ids);
             Ok(unsafe {
                 SCContentFilter::initWithDisplay_excludingWindows(
                     SCContentFilter::alloc(),
                     &display,
-                    &empty_windows,
+                    &excluded,
                 )
             })
         }
@@ -390,12 +443,12 @@ fn build_content_filter(
                         "display id `{id}` not present (was the display unplugged?)"
                     ))
                 })?;
-            let empty_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            let excluded = resolve_excluded_windows(content, excluded_window_ids);
             Ok(unsafe {
                 SCContentFilter::initWithDisplay_excludingWindows(
                     SCContentFilter::alloc(),
                     &matched,
-                    &empty_windows,
+                    &excluded,
                 )
             })
         }
@@ -414,6 +467,9 @@ fn build_content_filter(
                         "window id `{id}` not present (was it closed?)"
                     ))
                 })?;
+            // Window-source filter targets a single window; exclusion
+            // is N/A here. Silently ignore `excluded_window_ids` so
+            // callers don't have to branch.
             Ok(unsafe {
                 SCContentFilter::initWithDesktopIndependentWindow(
                     SCContentFilter::alloc(),
@@ -422,6 +478,31 @@ fn build_content_filter(
             })
         }
     }
+}
+
+/// Walk `content.windows()` and collect the `SCWindow` objects whose
+/// `windowID` matches one in `excluded_window_ids`. Returns an
+/// `NSArray<SCWindow>` suitable for SCContentFilter's
+/// `excludingWindows:` parameter.
+fn resolve_excluded_windows(
+    content: &SCShareableContent,
+    excluded_window_ids: &[u32],
+) -> Retained<NSArray<SCWindow>> {
+    if excluded_window_ids.is_empty() {
+        return NSArray::new();
+    }
+    let all_windows = unsafe { content.windows() };
+    let matched: Vec<Retained<SCWindow>> = all_windows
+        .iter()
+        .filter(|w| excluded_window_ids.contains(&unsafe { w.windowID() }))
+        .collect();
+    if matched.is_empty() {
+        tracing::debug!(
+            requested = ?excluded_window_ids,
+            "resolve_excluded_windows: no SCWindow matched the requested IDs (windows closed?)"
+        );
+    }
+    NSArray::from_retained_slice(&matched)
 }
 
 impl ScreenCaptureStream {
@@ -451,8 +532,11 @@ impl ScreenCaptureStream {
         // 1+2. Get shareable content + resolve `config.source` to the
         //      right SCContentFilter (M-SCK.0.1 / AUT-291). Three
         //      filter constructors → one helper to keep `new` short.
+        //      `excluded_window_ids` is forwarded so display-source
+        //      filters can keep specific windows out of the capture
+        //      (callers use this for their own overlay UI).
         let content = shareable_content_blocking()?;
-        let filter = build_content_filter(&content, &config.source)?;
+        let filter = build_content_filter(&content, &config.source, &config.excluded_window_ids)?;
 
         // 3. Build the SCStreamConfiguration. Width/height/fps
         //    fall back to defaults when caller passed 0 (so a
@@ -839,5 +923,59 @@ mod tests {
             let back: ScreenLifecycle = serde_json::from_str(&json).unwrap();
             assert_eq!(back, v);
         }
+    }
+
+    /// 4×2 BGRA, no row padding: row 0 is `0xAA…`, row 1 is `0xCC…`.
+    /// Row order is preserved (top-down stays top-down); the helper
+    /// only strips stride padding.
+    #[test]
+    fn copy_bgra_rows_packed_preserves_row_order() {
+        let row_0 = [0xAAu8; 4 * 4];
+        let row_1 = [0xCCu8; 4 * 4];
+        let mut src = Vec::with_capacity(32);
+        src.extend_from_slice(&row_0);
+        src.extend_from_slice(&row_1);
+
+        let out = copy_bgra_rows_packed(&src, 4, 2, 16);
+
+        assert_eq!(out.len(), 4 * 2 * 4);
+        assert_eq!(&out[0..16], &row_0, "row 0 (top) stays first");
+        assert_eq!(&out[16..32], &row_1, "row 1 (bottom) stays last");
+    }
+
+    /// IOSurface rows commonly have trailing padding so
+    /// `bytes_per_row > width * 4`. The padding bytes must be stripped
+    /// (NOT carried into the output) so the encoder sees a tight BGRA
+    /// buffer matching `width * height * 4`.
+    #[test]
+    fn copy_bgra_rows_packed_strips_row_padding() {
+        // 3 cols × 4 = 12 packed bytes per row; stride 16 = 4 bytes pad.
+        let row_0_packed = [
+            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
+        ];
+        let row_1_packed = [
+            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C,
+        ];
+        let pad = [0xFFu8; 4];
+
+        let mut src = Vec::with_capacity(32);
+        src.extend_from_slice(&row_0_packed);
+        src.extend_from_slice(&pad);
+        src.extend_from_slice(&row_1_packed);
+        src.extend_from_slice(&pad);
+
+        let out = copy_bgra_rows_packed(&src, 3, 2, 16);
+
+        assert_eq!(out.len(), 24, "packed output: width*height*4 = 3*2*4");
+        assert_eq!(&out[0..12], &row_0_packed, "row 0 first, padding stripped");
+        assert_eq!(&out[12..24], &row_1_packed, "row 1 last, padding stripped");
+        assert!(!out.contains(&0xFF), "no padding bytes should leak through");
+    }
+
+    #[test]
+    fn copy_bgra_rows_packed_handles_single_row() {
+        let row = [0x42u8; 8];
+        let out = copy_bgra_rows_packed(&row, 2, 1, 8);
+        assert_eq!(out, row, "1-row input is identical");
     }
 }
