@@ -1278,9 +1278,13 @@ pub fn start_mic_capture(
     tracing::info!(
         mic_id = %mic_id,
         native_id = %native_id,
-        "mic-capture Starting — spawning gst worker"
+        "mic-capture Starting — spawning gst worker (preview, mixer-detached)"
     );
-    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id)?;
+    // Preview path: `mixer = None`. The worker computes RMS for the
+    // level meter but does NOT forward samples to the shared
+    // AudioMixer — otherwise preview audio would accumulate during
+    // device picking and contaminate the next recording.
+    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id, None)?;
     pipeline_state.install(pipeline);
     Ok(())
 }
@@ -1815,9 +1819,14 @@ pub fn start_recording(
 
     // Microphone — re-uses the M-MIC.3 native_id resolution.
     if config.streams.microphone {
-        if let Err(err) =
-            start_mic_for_session(&app, &mic_state, &mic_handle, config.microphone_id.clone())
-        {
+        let mixer = crate::recording::SharedAudioMixer::clone(&recording_state.audio_mixer);
+        if let Err(err) = start_mic_for_session(
+            &app,
+            &mic_state,
+            &mic_handle,
+            config.microphone_id.clone(),
+            mixer,
+        ) {
             rollback_started(&app, &started);
             return Err(format!("microphone start failed: {err}"));
         }
@@ -2142,6 +2151,7 @@ fn start_mic_for_session(
     mic_state: &MicCaptureState,
     mic_handle: &MicCaptureHandle,
     mic_id: String,
+    mixer: crate::recording::SharedAudioMixer,
 ) -> Result<(), MicError> {
     let native_id = if mic_id.is_empty() {
         String::new()
@@ -2182,7 +2192,9 @@ fn start_mic_for_session(
         }
         *guard = new_state;
     }
-    let pipeline = MicCapturePipeline::spawn(app.clone(), mic_id, native_id)?;
+    // Recording path: pass `Some(mixer)` so the worker forwards samples
+    // into the shared AudioMixer for the encoder feed thread to pull.
+    let pipeline = MicCapturePipeline::spawn(app.clone(), mic_id, native_id, Some(mixer))?;
     mic_handle.install(pipeline);
     Ok(())
 }

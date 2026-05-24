@@ -6,6 +6,51 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Mic preview no longer contaminates the recording
+- **Date:** 2026-05-23
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User toggled the mic OFF in the picker, then hit Record (still no mic selected for the session), and the produced mp4 contained an initial burst of audio that sounded like mic input. "The mic isn't actually turning off."
+
+### Root cause
+
+The mic worker at `crates/app/src/audio/pipeline.rs:run_pipeline` unconditionally grabbed the shared `AudioMixer` from `try_state::<RecordingState>()` and pushed every chunk into it — regardless of whether it was a **preview** run (just powering the level meter for the picker) or a **recording** run.
+
+So when the user opened the picker, the meter-only preview pipeline started forwarding samples into the mixer's `mic_queue`. The queue accumulated continuously (memory grew during preview, capped only by the next encoder pull). When the user later clicked Record — even with mic toggled OFF in the config, so no fresh recording mic was spawned — the encoder feed thread on its very first tick drained the entire backlog of preview audio into the mp4.
+
+Same class of bug as the M-PIX.3 design but only on the mic side. The **SCK system-audio path already handles this correctly**: `SystemAudioCaptureState::start()` (preview / picker meter) passes `mixer = None` to `start_with_mixer`, so no `MixerSink` is wired into the SCK delegate during preview; `start_with_mixer(Some(...))` is reserved for the recording session.
+
+### Fix
+
+Bring the mic worker into line with the SCK pattern. `MicCapturePipeline::spawn` now takes an explicit `mixer: Option<SharedAudioMixer>`:
+
+- `start_mic_capture` IPC (preview / picker meter) → `spawn(..., None)`. Worker computes RMS for the meter but the `if let Some(mixer_arc) = mixer { push_mic(...) }` block is skipped, so the mixer stays empty.
+- `start_mic_for_session` (recording) → `spawn(..., Some(mixer))`. Worker pushes samples for the encoder feed thread to pull.
+
+The worker no longer reaches for `try_state` — the mixer (or its absence) is plumbed through explicitly at construction time, which makes the preview vs. recording distinction visible at the call sites.
+
+### Side effect — no more preview memory leak
+
+Previously, just having the recorder open with mic ON (which is the picker's default state when the user has any selected mic) would accumulate ~384 KB/s of mic samples in the mixer indefinitely. A 10-minute idle session would have ~230 MB queued. Now: 0 bytes during preview.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/src/audio/pipeline.rs` | Add `mixer: Option<SharedAudioMixer>` to `spawn` + `run_pipeline`; drop the `try_state` lookup. |
+| `crates/app/src/commands.rs` | `start_mic_capture` IPC passes `None`; `start_recording` clones the mixer and passes `Some(mixer)` to `start_mic_for_session`, which threads it through to `spawn`. |
+
+`just gate` — green.
+
+### Other audio-leak vectors to verify later
+
+- **System audio preview already correct** (passes `None`). Confirmed by re-reading `system_audio::start_with_mixer`.
+- **`AudioMixer` has no `clear()` method** — not needed under the new design, since preview never pushes. But if a future code path ever does push during non-recording (e.g. a new debug feature), the next recording would inherit it. Adding `clear()` + calling it from `start_recording` is a cheap defensive layer worth considering.
+
+---
+
 ## Audio recording — finally produces audio; meter actually moves; recorder rows visually unified
 - **Date:** 2026-05-23
 - **Status:** ✅ done — two gst-launch property-name bugs were silently killing audio in every recording, the level meter was stuck on one bar, and the recorder rows had drifting layouts. Single PR fixes all three plus picks up a Lucide icon swap and a row-layout audit.
