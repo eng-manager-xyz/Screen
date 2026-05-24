@@ -85,7 +85,6 @@
     reason = "ScreenCaptureKit, CMSampleBuffer, and AudioBufferList are all C / Objective-C interop; bridging to safe Rust requires raw pointer + unsafe Apple-method invocations. Each unsafe block has a safety justification immediately above it."
 )]
 
-use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::Duration;
@@ -407,40 +406,56 @@ enum ExtractError {
     UnalignedByteSize(u32),
 }
 
-/// Inline `AudioBufferList` storage capable of holding up to
-/// `MAX_AUDIO_BUFFERS` planar buffers. SCK normally emits a single
-/// interleaved buffer for our `channelCount` request, but allocating
-/// for the planar worst-case keeps the type sound under both
-/// layouts. 16 is well above realistic channel counts (5.1, 7.1
-/// fit; cinema-grade 24-ch audio would need a bump that's far
-/// outside this project's scope).
-const MAX_AUDIO_BUFFERS: usize = 16;
-
-#[repr(C)]
-struct AudioBufferListN {
-    m_number_buffers: u32,
-    m_buffers: [objc2_core_audio_types::AudioBuffer; MAX_AUDIO_BUFFERS],
-}
-
 /// Read one Float32 PCM blob out of a `CMSampleBuffer` audio
 /// `AudioBufferList`. Collapses planar buffers into interleaved
 /// output so the downstream channel always carries the same shape.
+///
+/// Uses Apple's two-call pattern (query size, then allocate and
+/// fill) rather than a fixed-size struct: some audio configurations
+/// (aggregate output devices, virtual audio routers) require an
+/// `AudioBufferList` larger than any fixed cap we could pick, and
+/// SCK returns `kCMSampleBufferError_ArrayTooSmall` (-12737) on
+/// every buffer when the storage is undersized.
 fn extract_pcm_from_sample_buffer(buf: &CMSampleBuffer) -> Result<Vec<f32>, ExtractError> {
-    let mut list_storage: MaybeUninit<AudioBufferListN> = MaybeUninit::uninit();
-    let mut block_buffer_out: *mut objc2_core_media::CMBlockBuffer = std::ptr::null_mut();
+    // Query the required AudioBufferList byte size.
     let mut needed: usize = 0;
-
-    // SAFETY: We pass a pointer to a stack-allocated AudioBufferListN
-    // that is at least as large as `AudioBufferList` for the worst
-    // case (MAX_AUDIO_BUFFERS planar). The SCK Float32 capture path
-    // realistically emits 1–2 buffers; the inline cap is a safety
-    // margin. `block_buffer_out` is pinned in-place; CFAllocator
-    // arguments are nil so the runtime uses the default (kCFAllocatorDefault).
-    let status = unsafe {
+    let mut bb_for_query: *mut objc2_core_media::CMBlockBuffer = std::ptr::null_mut();
+    // SAFETY: passing NULL `audioBufferListOut` with `bufferListSize = 0`
+    // is Apple's documented size-query mode — no allocation, no
+    // block-buffer retain, just writes the needed size to `needed`.
+    let query_status = unsafe {
         buf.audio_buffer_list_with_retained_block_buffer(
             &raw mut needed,
-            list_storage.as_mut_ptr().cast::<AudioBufferList>(),
-            size_of::<AudioBufferListN>(),
+            std::ptr::null_mut(),
+            0,
+            None,
+            None,
+            0,
+            &raw mut bb_for_query,
+        )
+    };
+    if query_status != 0 {
+        return Err(ExtractError::OsStatus(query_status));
+    }
+    if needed == 0 {
+        return Ok(Vec::new());
+    }
+
+    // `AudioBuffer` carries a `void*` (8-byte align on 64-bit); a
+    // `Vec<u64>` guarantees that alignment without relying on the
+    // global allocator's `Vec<u8>` behaviour.
+    let u64_count = needed.div_ceil(size_of::<u64>());
+    let mut storage: Vec<u64> = vec![0u64; u64_count];
+    let list_ptr = storage.as_mut_ptr().cast::<AudioBufferList>();
+    let mut block_buffer_out: *mut objc2_core_media::CMBlockBuffer = std::ptr::null_mut();
+
+    // SAFETY: `storage` holds at least `needed` bytes, 8-byte aligned.
+    // CFAllocator args are nil → kCFAllocatorDefault.
+    let status = unsafe {
+        buf.audio_buffer_list_with_retained_block_buffer(
+            std::ptr::null_mut(),
+            list_ptr,
+            needed,
             None,
             None,
             0,
@@ -451,28 +466,38 @@ fn extract_pcm_from_sample_buffer(buf: &CMSampleBuffer) -> Result<Vec<f32>, Extr
         return Err(ExtractError::OsStatus(status));
     }
 
-    // SAFETY: the SCK function returned 0 (success), which means the
-    // first `m_number_buffers + 1` u32-slot + N×AudioBuffer-slot are
-    // initialised. We read the count first, then iterate that many
-    // buffer slots — never beyond the storage we allocated.
-    let list = unsafe { list_storage.assume_init_ref() };
-    let buffer_count = (list.m_number_buffers as usize).min(MAX_AUDIO_BUFFERS);
+    // Take ownership of the +1 retain the "with retained" call added;
+    // dropping `_retained_bb` at end-of-scope releases it after we've
+    // copied out of `mData` (which points into block-buffer memory).
+    // SAFETY: `block_buffer_out` is non-null on success and carries a
+    // +1 retain we're transferring to Rust ownership.
+    let _retained_bb =
+        unsafe { Retained::<objc2_core_media::CMBlockBuffer>::from_raw(block_buffer_out) };
+
+    // SAFETY: success means the first `needed` bytes are a valid
+    // `AudioBufferList`. `mBuffers` uses C's flexible-array trick
+    // (`[AudioBuffer; 1]` in the binding); the real count is
+    // `mNumberBuffers`, with entries laid out contiguously starting
+    // at the address of `mBuffers`.
+    let list_ref: &AudioBufferList = unsafe { &*list_ptr };
+    let buffer_count = list_ref.mNumberBuffers as usize;
     if buffer_count == 0 {
         return Ok(Vec::new());
     }
+    let buffers_base = (&raw const list_ref.mBuffers).cast::<objc2_core_audio_types::AudioBuffer>();
+    // SAFETY: `buffer_count` entries fit inside the `needed` bytes SCK
+    // filled, starting at `buffers_base`.
+    let buffers: &[objc2_core_audio_types::AudioBuffer] =
+        unsafe { std::slice::from_raw_parts(buffers_base, buffer_count) };
 
-    // Single-buffer interleaved case (the common SCK path) — copy
-    // directly out of the AudioBuffer's mData.
     if buffer_count == 1 {
-        let ab = &list.m_buffers[0];
+        let ab = &buffers[0];
         return audio_buffer_to_interleaved_f32(ab.mData, ab.mDataByteSize);
     }
 
-    // Multi-buffer planar case — each buffer is one channel's
-    // worth of f32 samples. Interleave into a single flat Vec.
-    // All planar buffers must carry the same frame count; if SCK
-    // sends a mismatched set we conservatively use the minimum.
-    let buffers = &list.m_buffers[..buffer_count];
+    // Planar layout: one buffer per channel. Interleave into a single
+    // flat Vec; if SCK ever sends mismatched per-channel lengths,
+    // truncate to the shortest so the output stays aligned.
     let mut per_channel: Vec<&[f32]> = Vec::with_capacity(buffer_count);
     let mut min_frames = usize::MAX;
     for ab in buffers {
@@ -484,8 +509,7 @@ fn extract_pcm_from_sample_buffer(buf: &CMSampleBuffer) -> Result<Vec<f32>, Extr
         }
         let frame_count = ab.mDataByteSize as usize / size_of::<f32>();
         // SAFETY: SCK promises mData points at `mDataByteSize` bytes
-        // of valid Float32 PCM. `frame_count = byte_size / 4` is the
-        // exact slice length, computed from the same byte_size.
+        // of valid Float32 PCM.
         let slice = unsafe { std::slice::from_raw_parts(ab.mData.cast::<f32>(), frame_count) };
         if frame_count < min_frames {
             min_frames = frame_count;

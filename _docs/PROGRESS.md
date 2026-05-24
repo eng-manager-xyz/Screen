@@ -6,6 +6,51 @@ Use the template at the bottom for new entries.
 
 ---
 
+## System audio capture — SCK PCM extraction now works on multi-buffer audio configurations
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User played YouTube in Chrome, hit Record with System audio + Screen toggled on; the produced mp4 had video but no system audio. The picker's level meter for system audio was also dead.
+
+### Root cause
+
+`crates/media/src/sck_audio.rs::extract_pcm_from_sample_buffer` pre-allocated a stack-resident `AudioBufferListN` sized for 16 `AudioBuffer` entries (`MAX_AUDIO_BUFFERS = 16`). On this user's hardware (visible in the log: Microsoft Teams Loopback Driver with 9 audio channels, plus aggregate output devices) SCK requires an `AudioBufferList` larger than that, and returns `kCMSampleBufferError_ArrayTooSmall` (-12737) on every single sample buffer. The extraction function returned `Err(...)` on every buffer, so:
+
+- Every audio chunk was dropped at the delegate.
+- The level sink was never called (we early-return on extraction error before computing RMS) → meter dead.
+- The mixer sink was never called → `audio_chunks_pushed = 0` at the encoder feed-thread exit → encoder's `has_audio` gate skipped the audio leg.
+
+A pre-existing leak compounded the issue: `audio_buffer_list_with_retained_block_buffer` adds a +1 retain on the `CMBlockBuffer` it returns via the out-parameter, but we never released it. Per ~20 ms audio chunk; ~50/s; ~1 KB each → ~180 MB leaked per recording hour, even when the recording worked.
+
+### Fix
+
+Rewrote `extract_pcm_from_sample_buffer` to use Apple's documented two-call pattern: first call passes a NULL list pointer + 0 size to query the required size into `bufferListSizeNeededOut`; second call allocates exactly that size (as a `Vec<u64>` so the 8-byte pointer alignment AudioBuffer requires is guaranteed) and fills it. Works regardless of how many `AudioBuffer` entries the underlying audio configuration produces.
+
+Plugged the retain leak by wrapping the returned `*mut CMBlockBuffer` in `Retained::from_raw` so it drops (and `CFRelease`s) at end-of-scope, after the call site has finished reading `mData`.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/sck_audio.rs` | Rewrote `extract_pcm_from_sample_buffer` (two-call pattern, dynamic `Vec<u64>` allocation, plug `CMBlockBuffer` retain leak). Removed unused `MaybeUninit` import + the old `AudioBufferListN` fixed struct + `MAX_AUDIO_BUFFERS` constant. |
+
+### Verification
+
+`/tmp/screen-app.log` after the fix — session 1, system_audio only + screen, 9.4 s:
+
+```
+11:33:21 start_recording: ... system_audio=true
+11:33:30 feed_real_capture: feed thread exiting frames=222 audio_chunks_pushed=220
+```
+
+vs. session 0 (pre-fix, same config): `audio_chunks_pushed=0`. Zero `OsStatus(-12737)` warnings after the fix. User confirms the mp4 has audible system audio.
+
+`cargo check -p media` + `cargo clippy -p media --all-targets -D warnings` + `cargo nextest run -p media sck_audio` (10 tests passed). The 4 existing `audio_buffer_to_interleaved_*` tests still cover the per-buffer copy path that wasn't touched.
+
+---
+
 ## Mic preview no longer contaminates the recording
 - **Date:** 2026-05-23
 - **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
