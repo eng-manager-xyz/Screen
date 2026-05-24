@@ -3409,11 +3409,14 @@ body:has(.bubble-root) {
   color: var(--text-primary);
 }
 .recorder-page .icon-tile {
-  width: 22px;
-  height: 22px;
-  font-size: 11px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-control);
 }
+/* White Lucide icons at 20 px inside the device tile (overrides
+   the default muted zinc-400 color + the component's built-in size). */
+.recorder-page .icon-tile-device { color: var(--text-primary); }
+.recorder-page .icon-tile-device .lucide { width: 20px; height: 20px; }
 
 /* Body — scrollable middle. */
 .recorder-page-body {
@@ -3521,6 +3524,11 @@ body:has(.bubble-root) {
   color: var(--text-secondary);
   margin-left: auto;
   flex-shrink: 0;
+  transition: transform 120ms;
+}
+.recorder-display-selector-chevron[data-open="true"] {
+  color: var(--text-primary);
+  transform: rotate(180deg);
 }
 
 /* Wraps the storybook DisplayPreviewFrame so we can layer a red
@@ -3559,11 +3567,11 @@ body:has(.bubble-root) {
  * rows so the column reads as one outlined set. */
 .recorder-page-sources .capture-source-row {
   padding: 7px 10px;
-  gap: 8px;
+  /* `auto` first column tracks the IconTile size; gap is a real
+   * 12 px regardless of future tile-size changes. */
+  grid-template-columns: auto 1fr auto auto;
+  gap: 12px;
   border-radius: var(--radius-control);
-  /* leading icon | title + favourite (the star now lives inside
-   * `.capture-source-title`, not its own column) | chevron | toggle */
-  grid-template-columns: 26px 1fr auto auto;
   background: var(--bg);
   border-width: 1.5px;
   border-color: var(--line-card);
@@ -3584,11 +3592,9 @@ body:has(.bubble-root) {
 /* System-audio row — same grid columns + favorite + chevron + toggle. */
 .recorder-page-audio .system-audio-row {
   display: grid;
-  /* leading icon | title + app icons + favourite (now inline in
-   * `.system-audio-title`, not its own column) | chevron | toggle */
-  grid-template-columns: 26px 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   padding: 7px 10px;
-  gap: 8px;
+  gap: 12px;
   border-radius: var(--radius-control);
   background: var(--bg);
   align-items: center;
@@ -3638,9 +3644,9 @@ body:has(.bubble-root) {
 /* On-screen row — styled to match the source rows above it. */
 .recorder-page-on-screen-row {
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
   padding: 7px 10px;
   background: var(--bg);
@@ -3715,8 +3721,8 @@ body:has(.bubble-root) {
   width: 100%;
   justify-content: flex-start;
   font-size: 12px;
-  padding: 8px 10px;
-  gap: 8px;
+  padding: 7px 10px;
+  gap: 12px;
   border-radius: var(--radius-control);
   background: var(--bg);
   border-width: 1.5px;

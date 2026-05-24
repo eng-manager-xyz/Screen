@@ -1278,9 +1278,13 @@ pub fn start_mic_capture(
     tracing::info!(
         mic_id = %mic_id,
         native_id = %native_id,
-        "mic-capture Starting — spawning gst worker"
+        "mic-capture Starting — spawning gst worker (preview, mixer-detached)"
     );
-    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id)?;
+    // Preview path: `mixer = None`. The worker computes RMS for the
+    // level meter but does NOT forward samples to the shared
+    // AudioMixer — otherwise preview audio would accumulate during
+    // device picking and contaminate the next recording.
+    let pipeline = MicCapturePipeline::spawn(app, mic_id, native_id, None)?;
     pipeline_state.install(pipeline);
     Ok(())
 }
@@ -1815,9 +1819,14 @@ pub fn start_recording(
 
     // Microphone — re-uses the M-MIC.3 native_id resolution.
     if config.streams.microphone {
-        if let Err(err) =
-            start_mic_for_session(&app, &mic_state, &mic_handle, config.microphone_id.clone())
-        {
+        let mixer = crate::recording::SharedAudioMixer::clone(&recording_state.audio_mixer);
+        if let Err(err) = start_mic_for_session(
+            &app,
+            &mic_state,
+            &mic_handle,
+            config.microphone_id.clone(),
+            mixer,
+        ) {
             rollback_started(&app, &started);
             return Err(format!("microphone start failed: {err}"));
         }
@@ -2142,6 +2151,7 @@ fn start_mic_for_session(
     mic_state: &MicCaptureState,
     mic_handle: &MicCaptureHandle,
     mic_id: String,
+    mixer: crate::recording::SharedAudioMixer,
 ) -> Result<(), MicError> {
     let native_id = if mic_id.is_empty() {
         String::new()
@@ -2151,7 +2161,8 @@ fn start_mic_for_session(
         return Err(MicError::NotFound(mic_id));
     };
 
-    // Tear down any prior session held by an out-of-band caller.
+    // Tear down any prior session held by an out-of-band caller
+    // (e.g. the picker's preview pipeline driving the level meter).
     if mic_handle.is_active() {
         mic_handle.shutdown();
         let mut guard = mic_state
@@ -2165,13 +2176,25 @@ fn start_mic_for_session(
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prev_state = *guard;
         let new_state = guard.try_start();
         if new_state == *guard {
+            // State was already Starting/Running/Stopping — no new
+            // pipeline is spawned. The recording session won't see
+            // any mic samples until whatever owns the prior worker
+            // tears it down. Surfaces as a silent-audio recording,
+            // which is the bug class this warning exists to catch.
+            tracing::warn!(
+                ?prev_state,
+                "start_mic_for_session: state desynced from handle; no pipeline spawned"
+            );
             return Ok(());
         }
         *guard = new_state;
     }
-    let pipeline = MicCapturePipeline::spawn(app.clone(), mic_id, native_id)?;
+    // Recording path: pass `Some(mixer)` so the worker forwards samples
+    // into the shared AudioMixer for the encoder feed thread to pull.
+    let pipeline = MicCapturePipeline::spawn(app.clone(), mic_id, native_id, Some(mixer))?;
     mic_handle.install(pipeline);
     Ok(())
 }
@@ -2356,11 +2379,9 @@ fn build_stream_health_snapshot(
             StreamKind::Screen => ("Idle".into(), 0),
             #[cfg(target_os = "macos")]
             StreamKind::SystemAudio => {
-                let active = app.try_state::<SystemAudioCaptureState>().is_some_and(|s| {
-                    s.0.lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .is_some()
-                });
+                let active = app
+                    .try_state::<SystemAudioCaptureState>()
+                    .is_some_and(|s| s.is_active());
                 (
                     if active {
                         "Running".into()

@@ -482,7 +482,9 @@ pub fn build_pipeline_args(
         args.push(format!("location={}", audio_scratch.display()));
         args.push("!".to_string());
         args.push("rawaudioparse".to_string());
-        args.push("format=pcm-f32le".to_string());
+        // `format` is a 3-value enum (pcm / mulaw / alaw); the sample
+        // layout (F32LE) is selected via the separate `pcm-format`.
+        args.push("pcm-format=f32le".to_string());
         args.push(format!("sample-rate={}", config.sample_rate));
         args.push(format!("num-channels={}", config.channels));
         args.push("!".to_string());
@@ -797,6 +799,48 @@ mod tests {
         .expect("supported OS");
         assert!(args.iter().any(|a| a == "audioconvert"));
         assert!(args.iter().any(|a| a == "avenc_aac"));
+        // rawaudioparse takes `pcm-format=f32le` (sample-format enum),
+        // NOT `format=pcm-f32le` (which is a 3-value parsing-format
+        // enum — pcm / mulaw / alaw — and rejects `pcm-f32le`).
+        assert!(
+            args.iter().any(|a| a == "pcm-format=f32le"),
+            "expected `pcm-format=f32le` in args, got {args:?}"
+        );
+    }
+
+    /// Anti-regression: `format=pcm-f32le` is invalid on
+    /// `rawaudioparse` (the sample-format lives on `pcm-format`).
+    /// The wrong token makes gst-launch reject the pipeline and
+    /// drops every recording that includes audio.
+    #[test]
+    fn pipeline_args_never_use_legacy_pcm_f32le_token() {
+        if std::env::consts::OS != "macos"
+            && std::env::consts::OS != "windows"
+            && std::env::consts::OS != "linux"
+        {
+            return;
+        }
+        for format in [
+            OutputFormat::Mp4H264Aac,
+            OutputFormat::Mp4H265Aac,
+            OutputFormat::WebmVp9Opus,
+            OutputFormat::WebmAv1Opus,
+        ] {
+            let cfg = test_config(format);
+            let args = build_pipeline_args(
+                &cfg,
+                Path::new("/tmp/v.scratch"),
+                Path::new("/tmp/a.scratch"),
+                false,
+                true,
+            )
+            .expect("supported OS");
+            assert!(
+                !args.iter().any(|a| a == "format=pcm-f32le"),
+                "{format:?}: `format=pcm-f32le` is invalid for rawaudioparse; \
+                 the correct property is `pcm-format=f32le`. Got {args:?}"
+            );
+        }
     }
 
     #[test]

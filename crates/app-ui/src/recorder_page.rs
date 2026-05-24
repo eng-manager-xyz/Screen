@@ -19,7 +19,9 @@ use leptos::ev::MouseEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use ui_storybook::components::primitives::{ChevronDown, IconTile, IconTileKind};
+use ui_storybook::components::primitives::{
+    Camera, ChevronDown, IconTile, IconTileKind, Mic, Volume2,
+};
 use ui_storybook::components::recorder::{
     AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, AutoZoomSelect, CaptureModeTabs,
     CaptureSourceKind, CaptureSourceView, CountdownSelect, DeviceOptionView, DevicePickerState,
@@ -743,7 +745,6 @@ fn LiveSourceRow(
                 CaptureSourceKind::Camera => "camera",
                 CaptureSourceKind::Microphone => "microphone",
             };
-            let glyph = v.kind.glyph();
             let title = v.title.clone();
             let subtitle = v.subtitle.clone();
             let toggle_class = if v.enabled {
@@ -755,7 +756,12 @@ fn LiveSourceRow(
             view! {
                 <div class=class data-kind=kind_attr>
                     <span class="capture-source-leading">
-                        <span class="icon-tile icon-tile-device" aria-hidden="true">{glyph}</span>
+                        <span class="icon-tile icon-tile-device" aria-hidden="true">
+                            {match v.kind {
+                                CaptureSourceKind::Camera => view! { <Camera /> }.into_any(),
+                                CaptureSourceKind::Microphone => view! { <Mic /> }.into_any(),
+                            }}
+                        </span>
                     </span>
                     <span class="capture-source-text">
                         <span class="capture-source-title">
@@ -838,7 +844,9 @@ fn LiveSystemAudioRow(
             view! {
                 <div class="system-audio-row">
                     <span class="system-audio-leading">
-                        <span class="icon-tile icon-tile-device" aria-hidden="true">"🔊"</span>
+                        <span class="icon-tile icon-tile-device" aria-hidden="true">
+                            <Volume2 />
+                        </span>
                     </span>
                     <span class="system-audio-text">
                         <span class="system-audio-title">

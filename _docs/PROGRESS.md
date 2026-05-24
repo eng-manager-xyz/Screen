@@ -6,6 +6,221 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Per-app system-audio filter survives the picker → record session swap
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User unselected Chrome in the system-audio app picker, recorded, and Chrome's audio was still in the mp4. The picker's level meter respected the filter (was silent for Chrome-only audio) but the recording did not.
+
+### Root cause
+
+`SystemAudioCaptureState::start_with_mixer` drops the previous SCK stream and constructs a fresh one for every `start_recording` call. That fresh construction hardcoded `AudioAppFilter::AllAudio` (`crates/media/src/sck_audio.rs::new_with_sinks`), so whatever filter the picker session held via a previous `updateContentFilter` call was thrown away.
+
+The wrapper had nowhere to remember the filter: `SystemAudioCaptureState` was `(Mutex<Option<SystemAudioStream>>)` — just the stream, no companion state.
+
+### Fix
+
+1. `SystemAudioStream::new_with_sinks` takes an `&AudioAppFilter` as a 4th argument; `build_content_filter` is called on it instead of `AllAudio` so the SCK stream is born with the right filter (no `updateContentFilter` round-trip window where unfiltered audio could leak through).
+2. `SystemAudioCaptureState` becomes a named-field struct with `stream: Mutex<Option<SystemAudioStream>>` + `filter: Mutex<AudioAppFilter>`. `set_filter` always stores the filter, then pushes to the active stream if any. `start_with_mixer` reads the stored filter and hands it to the constructor.
+3. `set_filter`'s old contract (`Err(NoActiveSession)` when nothing was up) is dropped — the picker UI ignored the error anyway, and the picker → record flow has both orderings (set-then-start AND start-then-set).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/sck_audio.rs` | Add `filter: &AudioAppFilter` parameter to `new_with_sinks`; chain `new_with_level_sink` through with `&AudioAppFilter::AllAudio`. |
+| `crates/app/src/system_audio.rs` | `SystemAudioCaptureState` → named-fields with `stream` + `filter`; `set_filter` always stores + best-effort updates the active stream; `start_with_mixer` clones the stored filter (drops lock before SCK call) and passes it to the constructor. Updated tests. |
+| `crates/app/src/commands.rs` | One-line swap of `s.0.lock()…` → `s.is_active()` at the recording-status call site (the tuple-field access no longer exists). |
+
+### Verification
+
+`/tmp/screen-app.log` session 3 (post-fix, with filter set to `OnlyApps(["com.google.Chrome"])`):
+
+```
+11:35:28 system_audio: content filter updated filter=OnlyApps(["com.google.Chrome"])
+11:35:30 start_recording: ... system_audio=true
+11:35:30 system_audio: capture stopped
+11:35:30 system_audio: capture started …
+11:35:46 feed_real_capture: feed thread exiting frames=456 audio_chunks_pushed=454
+```
+
+The recording's mp4 contains only Chrome audio (the user confirmed).
+
+`just gate` not run — pure source changes, no Cargo.toml deltas. `cargo check --workspace` + `cargo clippy -p media -p screen-app --all-targets -D warnings` + `cargo nextest run -p media -p screen-app` (334 tests, 0 skipped) — all green.
+
+---
+
+## System audio capture — SCK PCM extraction now works on multi-buffer audio configurations
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User played YouTube in Chrome, hit Record with System audio + Screen toggled on; the produced mp4 had video but no system audio. The picker's level meter for system audio was also dead.
+
+### Root cause
+
+`crates/media/src/sck_audio.rs::extract_pcm_from_sample_buffer` pre-allocated a stack-resident `AudioBufferListN` sized for 16 `AudioBuffer` entries (`MAX_AUDIO_BUFFERS = 16`). On this user's hardware (visible in the log: Microsoft Teams Loopback Driver with 9 audio channels, plus aggregate output devices) SCK requires an `AudioBufferList` larger than that, and returns `kCMSampleBufferError_ArrayTooSmall` (-12737) on every single sample buffer. The extraction function returned `Err(...)` on every buffer, so:
+
+- Every audio chunk was dropped at the delegate.
+- The level sink was never called (we early-return on extraction error before computing RMS) → meter dead.
+- The mixer sink was never called → `audio_chunks_pushed = 0` at the encoder feed-thread exit → encoder's `has_audio` gate skipped the audio leg.
+
+A pre-existing leak compounded the issue: `audio_buffer_list_with_retained_block_buffer` adds a +1 retain on the `CMBlockBuffer` it returns via the out-parameter, but we never released it. Per ~20 ms audio chunk; ~50/s; ~1 KB each → ~180 MB leaked per recording hour, even when the recording worked.
+
+### Fix
+
+Rewrote `extract_pcm_from_sample_buffer` to use Apple's documented two-call pattern: first call passes a NULL list pointer + 0 size to query the required size into `bufferListSizeNeededOut`; second call allocates exactly that size (as a `Vec<u64>` so the 8-byte pointer alignment AudioBuffer requires is guaranteed) and fills it. Works regardless of how many `AudioBuffer` entries the underlying audio configuration produces.
+
+Plugged the retain leak by wrapping the returned `*mut CMBlockBuffer` in `Retained::from_raw` so it drops (and `CFRelease`s) at end-of-scope, after the call site has finished reading `mData`.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/sck_audio.rs` | Rewrote `extract_pcm_from_sample_buffer` (two-call pattern, dynamic `Vec<u64>` allocation, plug `CMBlockBuffer` retain leak). Removed unused `MaybeUninit` import + the old `AudioBufferListN` fixed struct + `MAX_AUDIO_BUFFERS` constant. |
+
+### Verification
+
+`/tmp/screen-app.log` after the fix — session 1, system_audio only + screen, 9.4 s:
+
+```
+11:33:21 start_recording: ... system_audio=true
+11:33:30 feed_real_capture: feed thread exiting frames=222 audio_chunks_pushed=220
+```
+
+vs. session 0 (pre-fix, same config): `audio_chunks_pushed=0`. Zero `OsStatus(-12737)` warnings after the fix. User confirms the mp4 has audible system audio.
+
+`cargo check -p media` + `cargo clippy -p media --all-targets -D warnings` + `cargo nextest run -p media sck_audio` (10 tests passed). The 4 existing `audio_buffer_to_interleaved_*` tests still cover the per-buffer copy path that wasn't touched.
+
+---
+
+## Mic preview no longer contaminates the recording
+- **Date:** 2026-05-23
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User toggled the mic OFF in the picker, then hit Record (still no mic selected for the session), and the produced mp4 contained an initial burst of audio that sounded like mic input. "The mic isn't actually turning off."
+
+### Root cause
+
+The mic worker at `crates/app/src/audio/pipeline.rs:run_pipeline` unconditionally grabbed the shared `AudioMixer` from `try_state::<RecordingState>()` and pushed every chunk into it — regardless of whether it was a **preview** run (just powering the level meter for the picker) or a **recording** run.
+
+So when the user opened the picker, the meter-only preview pipeline started forwarding samples into the mixer's `mic_queue`. The queue accumulated continuously (memory grew during preview, capped only by the next encoder pull). When the user later clicked Record — even with mic toggled OFF in the config, so no fresh recording mic was spawned — the encoder feed thread on its very first tick drained the entire backlog of preview audio into the mp4.
+
+Same class of bug as the M-PIX.3 design but only on the mic side. The **SCK system-audio path already handles this correctly**: `SystemAudioCaptureState::start()` (preview / picker meter) passes `mixer = None` to `start_with_mixer`, so no `MixerSink` is wired into the SCK delegate during preview; `start_with_mixer(Some(...))` is reserved for the recording session.
+
+### Fix
+
+Bring the mic worker into line with the SCK pattern. `MicCapturePipeline::spawn` now takes an explicit `mixer: Option<SharedAudioMixer>`:
+
+- `start_mic_capture` IPC (preview / picker meter) → `spawn(..., None)`. Worker computes RMS for the meter but the `if let Some(mixer_arc) = mixer { push_mic(...) }` block is skipped, so the mixer stays empty.
+- `start_mic_for_session` (recording) → `spawn(..., Some(mixer))`. Worker pushes samples for the encoder feed thread to pull.
+
+The worker no longer reaches for `try_state` — the mixer (or its absence) is plumbed through explicitly at construction time, which makes the preview vs. recording distinction visible at the call sites.
+
+### Side effect — no more preview memory leak
+
+Previously, just having the recorder open with mic ON (which is the picker's default state when the user has any selected mic) would accumulate ~384 KB/s of mic samples in the mixer indefinitely. A 10-minute idle session would have ~230 MB queued. Now: 0 bytes during preview.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/src/audio/pipeline.rs` | Add `mixer: Option<SharedAudioMixer>` to `spawn` + `run_pipeline`; drop the `try_state` lookup. |
+| `crates/app/src/commands.rs` | `start_mic_capture` IPC passes `None`; `start_recording` clones the mixer and passes `Some(mixer)` to `start_mic_for_session`, which threads it through to `spawn`. |
+
+`just gate` — green.
+
+### Other audio-leak vectors to verify later
+
+- **System audio preview already correct** (passes `None`). Confirmed by re-reading `system_audio::start_with_mixer`.
+- **`AudioMixer` has no `clear()` method** — not needed under the new design, since preview never pushes. But if a future code path ever does push during non-recording (e.g. a new debug feature), the next recording would inherit it. Adding `clear()` + calling it from `start_recording` is a cheap defensive layer worth considering.
+
+---
+
+## Audio recording — finally produces audio; meter actually moves; recorder rows visually unified
+- **Date:** 2026-05-23
+- **Status:** ✅ done — two gst-launch property-name bugs were silently killing audio in every recording, the level meter was stuck on one bar, and the recorder rows had drifting layouts. Single PR fixes all three plus picks up a Lucide icon swap and a row-layout audit.
+- **Branch:** `fix-audio-recording`
+
+### Bug 1 — `osxaudiosrc unique-id`, not `device-uid` (the blocker)
+
+`crates/media/src/gstreamer_audio.rs::resolve_mic_element` returned `("osxaudiosrc", "device-uid")` for macOS, but `osxaudiosrc` has no `device-uid` property — its string device-selection prop is `unique-id`. Every time a specific mic was selected, gst-launch was spawned with:
+
+```
+gst-launch-1.0 osxaudiosrc device-uid=BuiltInMicrophoneDevice ! audioconvert ! ...
+```
+
+`gst-launch-1.0` rejected the pipeline at parse time (`WARNING: erroneous pipeline: no property "device-uid" in element "osxaudiosrc"`) and exited producing zero bytes. The mic worker observed `EndOfStream { frames_read: 0 }` on its first `next_chunk` and exited — so neither the level meter (no RMS events) nor the recording (zero audio chunks reached the mixer) ever saw a sample. Result: every mp4 had `audio_chunks_pushed = 0` at finalize, so the encoder's `has_audio` gate skipped the audio leg entirely. **One-character fix:** `"device-uid"` → `"unique-id"`.
+
+### Bug 2 — `rawaudioparse pcm-format=f32le`, not `format=pcm-f32le`
+
+`crates/media/src/encode.rs::build_pipeline_args` set `rawaudioparse format=pcm-f32le ...`. The `format` property is a 3-value enum (`pcm` / `mulaw` / `alaw`); the actual sample-format lives on a separate `pcm-format` property. The wrong token would have made gst-launch reject the encoder pipeline at finalize ("could not set property `format` ... to `pcm-f32le`"). Bug 1 was hiding this — with no audio chunks pushed, the audio leg never got added at finalize, so we never saw the error. Both fixes are needed: bug 2 would bite immediately after bug 1.
+
+### Bug 3 — meter stuck on one bar
+
+Mic worker emitted **linear RMS** to the meter UI, which then renders 10 discrete bars by `i/10 < level`. Typical speech RMS sits around `0.03`, lighting only the first bar regardless of how loud the speaker actually is. **Fix:** new `media::audio::rms_to_meter_level(rms) -> f32` helper maps RMS → dBFS → `[0, 1]` (`0 dBFS → 1.0`, `-60 dBFS → 0.0`, linear in between). Mic worker + SCK system-audio delegate both apply the conversion before the EMA so smoothing happens in perceptual space. Conversational speech (RMS ≈ 0.03, −30 dBFS) now lands at ≈ 50 % of the meter; whispers ≈ 2 bars; shouts ≈ 8–9 bars.
+
+### Why none of this got caught by existing tests
+
+Every unit test in `encode.rs` + `gstreamer_audio.rs` was a string-shape assertion (does the argv contain `audioconvert`, etc.). None of them invoked gst-launch. Both bugs were property-name bugs that only surface when gst parses the argv.
+
+**Closed the gap** with `crates/media/tests/encode_integration.rs`: drives the full `GstreamerEncoder` lifecycle (push BGRA video + F32 audio chunks → finalize) and asserts the output mp4 has both an H.264 video stream and an AAC audio stream via `gst-discoverer-1.0`. Skip-guarded on `gst-launch-1.0` + `gst-discoverer-1.0` availability per the CLAUDE.md catalog.
+
+Plus a focused unit test in `gstreamer_audio.rs::tests::resolve_mic_element_macos_returns_unique_id_not_device_uid` that catches the property-name regression directly.
+
+### Diagnostic logging — permanent
+
+Adding `tracing-subscriber` + `init_tracing()` in `crates/app/src/main.rs` writes every event in the binary to `/tmp/screen-app.log`. Without it, the macOS `.app` bundle silently dropped every `tracing::info!` / `tracing::warn!` event (no default subscriber). The bug took multiple rebuilds to find because nothing was visible; a permanent file logger is a small ongoing maintenance win.
+
+One new `tracing::warn!` at `start_mic_for_session` for the "mic state desynced from handle; no pipeline spawned" edge case — a real silent-audio bug class worth catching in the future. One `audio_chunks_pushed` counter logged at the encoder feed thread's exit (single line per session) for diagnosing future audio-pipeline issues.
+
+### Side quest 1 — emoji glyphs → Lucide SVG icons
+
+The Camera / Microphone / System audio row leading icons were rendering as emoji (`📷` `🎙` `🔊`), which on macOS pulls Apple Color Emoji and reads as skeuomorphic against the rest of the cleaner Lucide-style UI. New `crates/ui-storybook/src/components/primitives/device_icons.rs` with `Camera` / `Mic` / `Volume2` Leptos components (Lucide path data verbatim, same shape as the existing `nav_icons.rs`). `LiveSourceRow` + `LiveSystemAudioRow` (live) and the storybook `CaptureSourceRow` all swap to the new components. Dropped the unused `CaptureSourceKind::glyph()` method + its test.
+
+CSS: `.recorder-page .icon-tile-device { color: var(--text-primary); }` overrides the default muted zinc-400 so the white Lucide icons read clearly against the dark tile. `.recorder-page .icon-tile-device .lucide { width/height: 20px }` resizes the icon inside the tile.
+
+### Side quest 2 — recorder row layout audit
+
+The on-screen row had `grid-template-columns: 22px 1fr auto` while the audio rows used `26px 1fr auto auto`. With the device tile at 30 px, the audio rows had 4 px tile-to-text spacing while the on-screen row had **0 px** — the tile butted directly against "On-screen". Unified all three row containers (`.capture-source-row`, `.system-audio-row`, `.recorder-page-on-screen-row`) to `grid-template-columns: auto 1fr auto[, auto]` + `gap: 12px`; the `auto` first column tracks whatever the tile is, so future tile-size changes can't re-introduce the bug. Also bumped `.recorder-page-action-bar .select-pill` (auto-zoom + countdown) to the matching `padding: 7px 10px` + `gap: 12px` so the action bar reads as the same family.
+
+### Files touched
+
+| File | Why |
+|---|---|
+| `crates/media/src/gstreamer_audio.rs` | `unique-id` fix + 2 anti-regression tests |
+| `crates/media/src/encode.rs` | `pcm-format=f32le` fix + 1 anti-regression test + 1 augmented test |
+| `crates/media/src/audio.rs` | `rms_to_meter_level` + 7 unit tests |
+| `crates/media/src/sck_audio.rs` | Apply meter conversion to SCK delegate |
+| `crates/media/tests/encode_integration.rs` | New e2e test — full encoder lifecycle → discoverer probe |
+| `crates/app/src/audio/pipeline.rs` | Apply meter conversion to mic worker |
+| `crates/app/src/commands.rs` | `tracing::warn!` for mic-state-desync bug class |
+| `crates/app/src/main.rs` | `init_tracing()` — file subscriber → `/tmp/screen-app.log` |
+| `crates/app/src/recording.rs` | `audio_chunks_pushed` counter at thread exit |
+| `crates/app/Cargo.toml` | `tracing-subscriber` dep |
+| `crates/ui-storybook/src/components/primitives/device_icons.rs` | New — Camera / Mic / Volume2 |
+| `crates/ui-storybook/src/components/primitives/mod.rs` | Re-export the new icons |
+| `crates/ui-storybook/src/components/recorder/capture_source_row.rs` | Swap glyph → Lucide; drop dead `glyph()` |
+| `crates/ui-storybook/assets/style.css` | Tile size + color + row-layout unification |
+| `crates/app-ui/src/recorder_page.rs` | Use the new icons in live rows |
+
+### Gate
+
+`just gate` — green. New gates added during cleanup loop: `cargo fmt`, `cargo clippy` (caught `float_cmp` + `cast_possible_truncation` in new tests; fixed via `approx_zero()` helper + `usize::try_from`). All 1300+ workspace tests pass; one new integration test added; 9 new unit tests in `media`.
+
+### Things deliberately left as follow-ups
+
+- **`AudioMixer::pull()` mixes `min(mic, sys)` when both queues are active** — if one stream goes idle while the other keeps producing, the producing side's queue grows unbounded. Not blocking for short recordings; file separately when relevant.
+- **Audio-only recording silently uses test-pattern silence** — when the user picks "mic only" (no screen / camera), `start_with_test_pattern` is taken and hard-codes silence. Mic data is captured into the mixer but never pulled. Niche case; the user reported the common screen + mic case which is now fixed.
+- **`stop_recording` returns `Some(output_path)` even on encoder finalize failure** — the path doesn't exist on disk. UI shows "saved to ..." but the file isn't there. UX issue separate from the actual fix.
+
+---
+
 ## Recorder surface — pinned action bar, restyled sidebar, display selector + preview split
 - **Date:** 2026-05-22
 - **Status:** ✅ done — second visual pass on the live `RecorderPage` driven by the latest design mock. Panel is now a fixed-height column with header + action bar pinned and the middle scrollable; sidebar items are uniform rounded-square icon tiles with bright/outlined selected state and a second avatar anchored at the bottom; the display block splits into a top "Built-in Retina <size>" selector row plus the existing `DisplayPreviewFrame` wrapped with a red border + dim badge; capture-mode tabs gain a `…` overflow menu on the right.

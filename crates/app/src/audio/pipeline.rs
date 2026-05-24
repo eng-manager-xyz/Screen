@@ -48,9 +48,9 @@ use std::thread::{self, JoinHandle};
 
 use media::audio::AudioFormat;
 use media::gstreamer_audio::GstreamerAudioCapture;
-use tauri::Manager;
 
 use super::{MicCaptureState, MicError};
+use crate::recording::SharedAudioMixer;
 
 /// Native sample rate the worker requests from gst. `audioresample`
 /// converts on the input side if the device doesn't natively support
@@ -110,6 +110,15 @@ impl MicCapturePipeline {
     /// `next_chunk()` first succeeds (after any macOS permission
     /// prompt resolves).
     ///
+    /// `mixer` controls whether the worker forwards samples into the
+    /// recorder's shared [`AudioMixer`]. Pass `None` for preview
+    /// (meter only — what the picker uses); pass `Some(mixer)` for
+    /// recording. Mirror of the SCK system-audio
+    /// [`start`](crate::system_audio::SystemAudioCaptureState::start)
+    /// vs. [`start_with_mixer`](crate::system_audio::SystemAudioCaptureState::start_with_mixer)
+    /// split. Without this distinction, preview samples accumulate
+    /// in the mixer and contaminate the next recording.
+    ///
     /// # Errors
     ///
     /// Returns `Err` only if the OS refuses to spawn a thread
@@ -121,13 +130,20 @@ impl MicCapturePipeline {
         app: tauri::AppHandle,
         mic_id: String,
         native_id: String,
+        mixer: Option<SharedAudioMixer>,
     ) -> Result<Self, MicError> {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
         let handle = thread::Builder::new()
             .name("mic-capture".to_owned())
             .spawn(move || {
-                run_pipeline(&app, &mic_id, &native_id, &cancel_for_thread);
+                run_pipeline(
+                    &app,
+                    &mic_id,
+                    &native_id,
+                    &cancel_for_thread,
+                    mixer.as_ref(),
+                );
             })
             .map_err(|err| MicError::GstFailed(format!("thread spawn failed: {err}")))?;
         Ok(Self {
@@ -151,7 +167,16 @@ impl Drop for MicCapturePipeline {
 /// The actual worker loop. `&` borrows let the public-facing
 /// `spawn` move cloned values onto the thread without keeping
 /// `Self` alive on the thread.
-fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &AtomicBool) {
+///
+/// `mixer` is `None` for preview (meter only) and `Some` for
+/// recording — see [`MicCapturePipeline::spawn`].
+fn run_pipeline(
+    app: &tauri::AppHandle,
+    mic_id: &str,
+    native_id: &str,
+    cancel: &AtomicBool,
+    mixer: Option<&SharedAudioMixer>,
+) {
     let format = AudioFormat::stereo_f32(MIC_SAMPLE_RATE);
     let mut capture = match GstreamerAudioCapture::from_microphone(mic_id, native_id, format) {
         Ok(cap) => cap,
@@ -166,6 +191,7 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
         native_id,
         sample_rate = MIC_SAMPLE_RATE,
         channels = MIC_CHANNELS,
+        forwards_to_mixer = mixer.is_some(),
         "mic-capture opened; awaiting first chunk"
     );
 
@@ -175,27 +201,22 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
     // (~20 Hz at MIC_CHUNK_FRAMES = 50 ms).
     let mut smoothed_level: f32 = 0.0;
 
-    // M-PIX.3 — forward chunks into the shared AudioMixer so the
-    // encoder feed thread (M-PIX.5/6) sees mic samples on its
-    // pull. Defensive Option — None preserves the legacy
-    // meter-only behaviour for tests + standalone preview.
-    let mixer = app
-        .try_state::<crate::recording::RecordingState>()
-        .map(|s| crate::recording::SharedAudioMixer::clone(&s.audio_mixer));
-
     while !cancel.load(Ordering::Relaxed) {
         match capture.next_chunk(MIC_CHUNK_FRAMES) {
             Ok(chunk) => {
                 advance_to_running(app);
-                let raw_rms = chunk.rms();
+                // Linear RMS is useless for a 10-bar meter — typical
+                // speech sits at ~0.03 RMS and would only light the
+                // first bar. `rms_to_meter_level` maps to dBFS so
+                // conversational speech lands near the middle.
+                let raw_level = media::audio::rms_to_meter_level(chunk.rms());
                 smoothed_level =
-                    MIC_LEVEL_EMA_ALPHA * raw_rms + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
+                    MIC_LEVEL_EMA_ALPHA * raw_level + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
                 emit_mic_level(app, smoothed_level);
                 // M-PIX.3 — feed the mixer. The mic worker emits
-                // stereo F32LE matching the mixer's default
-                // channel count; alignment is enforced by the
-                // mixer.
-                if let Some(ref mixer_arc) = mixer {
+                // stereo F32LE matching the mixer's default channel
+                // count; alignment is enforced by the mixer.
+                if let Some(mixer_arc) = mixer {
                     let mut mixer_guard = mixer_arc
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);

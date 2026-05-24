@@ -7,8 +7,8 @@
 
     
 <script type="module">
-import init, * as bindings from '/app-ui-ebaa57366bdea787.js';
-const wasm = await init({ module_or_path: '/app-ui-ebaa57366bdea787_bg.wasm' });
+import init, * as bindings from '/app-ui-ace9cba5897d888d.js';
+const wasm = await init({ module_or_path: '/app-ui-ace9cba5897d888d_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -222,7 +222,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenSetBubbleClickthrough = (enabled) =>
         window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
     </script>
-  <link rel="modulepreload" href="/app-ui-ebaa57366bdea787.js" crossorigin="anonymous"></head>
+  <link rel="modulepreload" href="/app-ui-ace9cba5897d888d.js" crossorigin="anonymous"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
       `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>

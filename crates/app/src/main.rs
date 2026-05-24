@@ -54,11 +54,37 @@ const TICK_INTERVAL: Duration = Duration::from_millis(33);
 /// every tick would emit, hammering the webview event bridge.
 const ELAPSED_EMIT_GRANULARITY_MS: u64 = 100;
 
+/// Install the `tracing` subscriber that writes every event to
+/// `/tmp/screen-app.log`. Without this, every `tracing::info!` /
+/// `tracing::warn!` call in the binary is silently dropped (no
+/// default subscriber is installed). Filter defaults to `info` and
+/// honours `RUST_LOG` for finer control.
+fn init_tracing() {
+    let path = "/tmp/screen-app.log";
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    else {
+        // Log target failed to open; let the rest of the app run
+        // without a subscriber rather than crashing on boot.
+        return;
+    };
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::sync::Mutex::new(file))
+        .with_ansi(false)
+        .try_init();
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "fn main() is a Tauri builder chain — the bulk is two cfg-gated generate_handler! arms listing every IPC command (now 30+). Splitting them into helpers doesn't reduce complexity; the lints fire on growth, not nesting."
 )]
 fn main() {
+    init_tracing();
     let builder = tauri::Builder::default()
         .manage(PlayerSession::new())
         .manage(TrayState::default())
