@@ -2379,11 +2379,9 @@ fn build_stream_health_snapshot(
             StreamKind::Screen => ("Idle".into(), 0),
             #[cfg(target_os = "macos")]
             StreamKind::SystemAudio => {
-                let active = app.try_state::<SystemAudioCaptureState>().is_some_and(|s| {
-                    s.0.lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .is_some()
-                });
+                let active = app
+                    .try_state::<SystemAudioCaptureState>()
+                    .is_some_and(|s| s.is_active());
                 (
                     if active {
                         "Running".into()

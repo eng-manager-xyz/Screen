@@ -6,6 +6,52 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Per-app system-audio filter survives the picker → record session swap
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-audio-recording` branch.
+
+### Symptom
+
+User unselected Chrome in the system-audio app picker, recorded, and Chrome's audio was still in the mp4. The picker's level meter respected the filter (was silent for Chrome-only audio) but the recording did not.
+
+### Root cause
+
+`SystemAudioCaptureState::start_with_mixer` drops the previous SCK stream and constructs a fresh one for every `start_recording` call. That fresh construction hardcoded `AudioAppFilter::AllAudio` (`crates/media/src/sck_audio.rs::new_with_sinks`), so whatever filter the picker session held via a previous `updateContentFilter` call was thrown away.
+
+The wrapper had nowhere to remember the filter: `SystemAudioCaptureState` was `(Mutex<Option<SystemAudioStream>>)` — just the stream, no companion state.
+
+### Fix
+
+1. `SystemAudioStream::new_with_sinks` takes an `&AudioAppFilter` as a 4th argument; `build_content_filter` is called on it instead of `AllAudio` so the SCK stream is born with the right filter (no `updateContentFilter` round-trip window where unfiltered audio could leak through).
+2. `SystemAudioCaptureState` becomes a named-field struct with `stream: Mutex<Option<SystemAudioStream>>` + `filter: Mutex<AudioAppFilter>`. `set_filter` always stores the filter, then pushes to the active stream if any. `start_with_mixer` reads the stored filter and hands it to the constructor.
+3. `set_filter`'s old contract (`Err(NoActiveSession)` when nothing was up) is dropped — the picker UI ignored the error anyway, and the picker → record flow has both orderings (set-then-start AND start-then-set).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/sck_audio.rs` | Add `filter: &AudioAppFilter` parameter to `new_with_sinks`; chain `new_with_level_sink` through with `&AudioAppFilter::AllAudio`. |
+| `crates/app/src/system_audio.rs` | `SystemAudioCaptureState` → named-fields with `stream` + `filter`; `set_filter` always stores + best-effort updates the active stream; `start_with_mixer` clones the stored filter (drops lock before SCK call) and passes it to the constructor. Updated tests. |
+| `crates/app/src/commands.rs` | One-line swap of `s.0.lock()…` → `s.is_active()` at the recording-status call site (the tuple-field access no longer exists). |
+
+### Verification
+
+`/tmp/screen-app.log` session 3 (post-fix, with filter set to `OnlyApps(["com.google.Chrome"])`):
+
+```
+11:35:28 system_audio: content filter updated filter=OnlyApps(["com.google.Chrome"])
+11:35:30 start_recording: ... system_audio=true
+11:35:30 system_audio: capture stopped
+11:35:30 system_audio: capture started …
+11:35:46 feed_real_capture: feed thread exiting frames=456 audio_chunks_pushed=454
+```
+
+The recording's mp4 contains only Chrome audio (the user confirmed).
+
+`just gate` not run — pure source changes, no Cargo.toml deltas. `cargo check --workspace` + `cargo clippy -p media -p screen-app --all-targets -D warnings` + `cargo nextest run -p media -p screen-app` (334 tests, 0 skipped) — all green.
+
+---
+
 ## System audio capture — SCK PCM extraction now works on multi-buffer audio configurations
 - **Date:** 2026-05-24
 - **Status:** ✅ done — fix on the same `fix-audio-recording` branch.

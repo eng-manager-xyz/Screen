@@ -635,16 +635,21 @@ impl SystemAudioStream {
         config: SystemAudioConfig,
         level_sink: Option<LevelSink>,
     ) -> Result<Self, SystemAudioError> {
-        Self::new_with_sinks(config, level_sink, None)
+        Self::new_with_sinks(config, level_sink, None, &AudioAppFilter::AllAudio)
     }
 
     /// Full-fat constructor accepting both the [`LevelSink`] (for the
     /// meter) and the M-PIX.4 [`MixerSink`] (for the recorder's
     /// shared `AudioMixer`). Both are optional and independent.
+    ///
+    /// `filter` is baked into the SCK stream at construction so the
+    /// first sample-buffer is already correctly filtered. Pass
+    /// [`AudioAppFilter::AllAudio`] for the unfiltered default.
     pub fn new_with_sinks(
         config: SystemAudioConfig,
         level_sink: Option<LevelSink>,
         mixer_sink: Option<MixerSink>,
+        filter: &AudioAppFilter,
     ) -> Result<Self, SystemAudioError> {
         let (sender, receiver) = channel();
         let delegate = AudioOutputHandler::new(sender, level_sink, mixer_sink);
@@ -654,11 +659,11 @@ impl SystemAudioStream {
         //    though we only care about audio.
         let content = shareable_content_blocking()?;
 
-        // 2. Build the SCContentFilter. Default is "every display,
-        //    no per-app filter" (M-AUDIO-SYS.0 shape). Callers can
-        //    later switch to a per-app filter via `set_app_filter`
-        //    (M-AUDIO-SYS.1).
-        let filter = build_content_filter(&content, &AudioAppFilter::AllAudio)?;
+        // 2. Build the SCContentFilter from the caller-supplied
+        //    AudioAppFilter — applied at construction so the first
+        //    sample-buffer is already filtered (no `updateContentFilter`
+        //    round-trip window).
+        let filter = build_content_filter(&content, filter)?;
 
         // 3. Build the SCStreamConfiguration.
         let stream_config = unsafe {
