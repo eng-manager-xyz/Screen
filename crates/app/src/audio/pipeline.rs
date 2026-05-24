@@ -187,14 +187,17 @@ fn run_pipeline(app: &tauri::AppHandle, mic_id: &str, native_id: &str, cancel: &
         match capture.next_chunk(MIC_CHUNK_FRAMES) {
             Ok(chunk) => {
                 advance_to_running(app);
-                let raw_rms = chunk.rms();
+                // Linear RMS is useless for a 10-bar meter — typical
+                // speech sits at ~0.03 RMS and would only light the
+                // first bar. `rms_to_meter_level` maps to dBFS so
+                // conversational speech lands near the middle.
+                let raw_level = media::audio::rms_to_meter_level(chunk.rms());
                 smoothed_level =
-                    MIC_LEVEL_EMA_ALPHA * raw_rms + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
+                    MIC_LEVEL_EMA_ALPHA * raw_level + (1.0 - MIC_LEVEL_EMA_ALPHA) * smoothed_level;
                 emit_mic_level(app, smoothed_level);
                 // M-PIX.3 — feed the mixer. The mic worker emits
-                // stereo F32LE matching the mixer's default
-                // channel count; alignment is enforced by the
-                // mixer.
+                // stereo F32LE matching the mixer's default channel
+                // count; alignment is enforced by the mixer.
                 if let Some(ref mixer_arc) = mixer {
                     let mut mixer_guard = mixer_arc
                         .lock()

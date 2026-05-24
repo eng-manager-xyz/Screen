@@ -6,6 +6,85 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Audio recording — finally produces audio; meter actually moves; recorder rows visually unified
+- **Date:** 2026-05-23
+- **Status:** ✅ done — two gst-launch property-name bugs were silently killing audio in every recording, the level meter was stuck on one bar, and the recorder rows had drifting layouts. Single PR fixes all three plus picks up a Lucide icon swap and a row-layout audit.
+- **Branch:** `fix-audio-recording`
+
+### Bug 1 — `osxaudiosrc unique-id`, not `device-uid` (the blocker)
+
+`crates/media/src/gstreamer_audio.rs::resolve_mic_element` returned `("osxaudiosrc", "device-uid")` for macOS, but `osxaudiosrc` has no `device-uid` property — its string device-selection prop is `unique-id`. Every time a specific mic was selected, gst-launch was spawned with:
+
+```
+gst-launch-1.0 osxaudiosrc device-uid=BuiltInMicrophoneDevice ! audioconvert ! ...
+```
+
+`gst-launch-1.0` rejected the pipeline at parse time (`WARNING: erroneous pipeline: no property "device-uid" in element "osxaudiosrc"`) and exited producing zero bytes. The mic worker observed `EndOfStream { frames_read: 0 }` on its first `next_chunk` and exited — so neither the level meter (no RMS events) nor the recording (zero audio chunks reached the mixer) ever saw a sample. Result: every mp4 had `audio_chunks_pushed = 0` at finalize, so the encoder's `has_audio` gate skipped the audio leg entirely. **One-character fix:** `"device-uid"` → `"unique-id"`.
+
+### Bug 2 — `rawaudioparse pcm-format=f32le`, not `format=pcm-f32le`
+
+`crates/media/src/encode.rs::build_pipeline_args` set `rawaudioparse format=pcm-f32le ...`. The `format` property is a 3-value enum (`pcm` / `mulaw` / `alaw`); the actual sample-format lives on a separate `pcm-format` property. The wrong token would have made gst-launch reject the encoder pipeline at finalize ("could not set property `format` ... to `pcm-f32le`"). Bug 1 was hiding this — with no audio chunks pushed, the audio leg never got added at finalize, so we never saw the error. Both fixes are needed: bug 2 would bite immediately after bug 1.
+
+### Bug 3 — meter stuck on one bar
+
+Mic worker emitted **linear RMS** to the meter UI, which then renders 10 discrete bars by `i/10 < level`. Typical speech RMS sits around `0.03`, lighting only the first bar regardless of how loud the speaker actually is. **Fix:** new `media::audio::rms_to_meter_level(rms) -> f32` helper maps RMS → dBFS → `[0, 1]` (`0 dBFS → 1.0`, `-60 dBFS → 0.0`, linear in between). Mic worker + SCK system-audio delegate both apply the conversion before the EMA so smoothing happens in perceptual space. Conversational speech (RMS ≈ 0.03, −30 dBFS) now lands at ≈ 50 % of the meter; whispers ≈ 2 bars; shouts ≈ 8–9 bars.
+
+### Why none of this got caught by existing tests
+
+Every unit test in `encode.rs` + `gstreamer_audio.rs` was a string-shape assertion (does the argv contain `audioconvert`, etc.). None of them invoked gst-launch. Both bugs were property-name bugs that only surface when gst parses the argv.
+
+**Closed the gap** with `crates/media/tests/encode_integration.rs`: drives the full `GstreamerEncoder` lifecycle (push BGRA video + F32 audio chunks → finalize) and asserts the output mp4 has both an H.264 video stream and an AAC audio stream via `gst-discoverer-1.0`. Skip-guarded on `gst-launch-1.0` + `gst-discoverer-1.0` availability per the CLAUDE.md catalog.
+
+Plus a focused unit test in `gstreamer_audio.rs::tests::resolve_mic_element_macos_returns_unique_id_not_device_uid` that catches the property-name regression directly.
+
+### Diagnostic logging — permanent
+
+Adding `tracing-subscriber` + `init_tracing()` in `crates/app/src/main.rs` writes every event in the binary to `/tmp/screen-app.log`. Without it, the macOS `.app` bundle silently dropped every `tracing::info!` / `tracing::warn!` event (no default subscriber). The bug took multiple rebuilds to find because nothing was visible; a permanent file logger is a small ongoing maintenance win.
+
+One new `tracing::warn!` at `start_mic_for_session` for the "mic state desynced from handle; no pipeline spawned" edge case — a real silent-audio bug class worth catching in the future. One `audio_chunks_pushed` counter logged at the encoder feed thread's exit (single line per session) for diagnosing future audio-pipeline issues.
+
+### Side quest 1 — emoji glyphs → Lucide SVG icons
+
+The Camera / Microphone / System audio row leading icons were rendering as emoji (`📷` `🎙` `🔊`), which on macOS pulls Apple Color Emoji and reads as skeuomorphic against the rest of the cleaner Lucide-style UI. New `crates/ui-storybook/src/components/primitives/device_icons.rs` with `Camera` / `Mic` / `Volume2` Leptos components (Lucide path data verbatim, same shape as the existing `nav_icons.rs`). `LiveSourceRow` + `LiveSystemAudioRow` (live) and the storybook `CaptureSourceRow` all swap to the new components. Dropped the unused `CaptureSourceKind::glyph()` method + its test.
+
+CSS: `.recorder-page .icon-tile-device { color: var(--text-primary); }` overrides the default muted zinc-400 so the white Lucide icons read clearly against the dark tile. `.recorder-page .icon-tile-device .lucide { width/height: 20px }` resizes the icon inside the tile.
+
+### Side quest 2 — recorder row layout audit
+
+The on-screen row had `grid-template-columns: 22px 1fr auto` while the audio rows used `26px 1fr auto auto`. With the device tile at 30 px, the audio rows had 4 px tile-to-text spacing while the on-screen row had **0 px** — the tile butted directly against "On-screen". Unified all three row containers (`.capture-source-row`, `.system-audio-row`, `.recorder-page-on-screen-row`) to `grid-template-columns: auto 1fr auto[, auto]` + `gap: 12px`; the `auto` first column tracks whatever the tile is, so future tile-size changes can't re-introduce the bug. Also bumped `.recorder-page-action-bar .select-pill` (auto-zoom + countdown) to the matching `padding: 7px 10px` + `gap: 12px` so the action bar reads as the same family.
+
+### Files touched
+
+| File | Why |
+|---|---|
+| `crates/media/src/gstreamer_audio.rs` | `unique-id` fix + 2 anti-regression tests |
+| `crates/media/src/encode.rs` | `pcm-format=f32le` fix + 1 anti-regression test + 1 augmented test |
+| `crates/media/src/audio.rs` | `rms_to_meter_level` + 7 unit tests |
+| `crates/media/src/sck_audio.rs` | Apply meter conversion to SCK delegate |
+| `crates/media/tests/encode_integration.rs` | New e2e test — full encoder lifecycle → discoverer probe |
+| `crates/app/src/audio/pipeline.rs` | Apply meter conversion to mic worker |
+| `crates/app/src/commands.rs` | `tracing::warn!` for mic-state-desync bug class |
+| `crates/app/src/main.rs` | `init_tracing()` — file subscriber → `/tmp/screen-app.log` |
+| `crates/app/src/recording.rs` | `audio_chunks_pushed` counter at thread exit |
+| `crates/app/Cargo.toml` | `tracing-subscriber` dep |
+| `crates/ui-storybook/src/components/primitives/device_icons.rs` | New — Camera / Mic / Volume2 |
+| `crates/ui-storybook/src/components/primitives/mod.rs` | Re-export the new icons |
+| `crates/ui-storybook/src/components/recorder/capture_source_row.rs` | Swap glyph → Lucide; drop dead `glyph()` |
+| `crates/ui-storybook/assets/style.css` | Tile size + color + row-layout unification |
+| `crates/app-ui/src/recorder_page.rs` | Use the new icons in live rows |
+
+### Gate
+
+`just gate` — green. New gates added during cleanup loop: `cargo fmt`, `cargo clippy` (caught `float_cmp` + `cast_possible_truncation` in new tests; fixed via `approx_zero()` helper + `usize::try_from`). All 1300+ workspace tests pass; one new integration test added; 9 new unit tests in `media`.
+
+### Things deliberately left as follow-ups
+
+- **`AudioMixer::pull()` mixes `min(mic, sys)` when both queues are active** — if one stream goes idle while the other keeps producing, the producing side's queue grows unbounded. Not blocking for short recordings; file separately when relevant.
+- **Audio-only recording silently uses test-pattern silence** — when the user picks "mic only" (no screen / camera), `start_with_test_pattern` is taken and hard-codes silence. Mic data is captured into the mixer but never pulled. Niche case; the user reported the common screen + mic case which is now fixed.
+- **`stop_recording` returns `Some(output_path)` even on encoder finalize failure** — the path doesn't exist on disk. UI shows "saved to ..." but the file isn't there. UX issue separate from the actual fix.
+
+---
+
 ## Recorder surface — pinned action bar, restyled sidebar, display selector + preview split
 - **Date:** 2026-05-22
 - **Status:** ✅ done — second visual pass on the live `RecorderPage` driven by the latest design mock. Panel is now a fixed-height column with header + action bar pinned and the middle scrollable; sidebar items are uniform rounded-square icon tiles with bright/outlined selected state and a second avatar anchored at the bottom; the display block splits into a top "Built-in Retina <size>" selector row plus the existing `DisplayPreviewFrame` wrapped with a red border + dim badge; capture-mode tabs gain a `…` overflow menu on the right.

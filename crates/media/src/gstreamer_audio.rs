@@ -164,7 +164,7 @@ impl GstreamerAudioCapture {
     /// Build a capture from a specific microphone via the
     /// per-OS gst element (M-MIC.1 / AUT-278 + M-MIC.3 / AUT-284).
     ///
-    /// - macOS: `osxaudiosrc device-uid=<native_id>`
+    /// - macOS: `osxaudiosrc unique-id=<native_id>`
     /// - Linux: `pulsesrc device=<native_id>`
     /// - Windows: `wasapisrc device=<native_id>`
     ///
@@ -344,13 +344,17 @@ fn caps_string(format: AudioFormat) -> String {
 /// one we know an element name for — callers fall back to
 /// `autoaudiosrc` in that case.
 ///
-/// Property names per platform:
-///
 /// | OS      | Element        | Property     |
 /// | ------- | -------------- | ------------ |
-/// | macOS   | `osxaudiosrc`  | `device-uid` |
+/// | macOS   | `osxaudiosrc`  | `unique-id`  |
 /// | Linux   | `pulsesrc`     | `device`     |
 /// | Windows | `wasapisrc`    | `device`     |
+///
+/// On macOS the string device-selection prop is `unique-id`, NOT
+/// `device-uid` — the latter is not a property of `osxaudiosrc` and
+/// makes `gst-launch-1.0` reject the pipeline with zero bytes of
+/// audio output, which the mic worker observes as `EndOfStream` on
+/// the first read.
 #[must_use]
 pub fn resolve_mic_element(native_id: &str) -> Option<(&'static str, &'static str)> {
     if native_id.is_empty() {
@@ -358,7 +362,7 @@ pub fn resolve_mic_element(native_id: &str) -> Option<(&'static str, &'static st
     }
     #[cfg(target_os = "macos")]
     {
-        Some(("osxaudiosrc", "device-uid"))
+        Some(("osxaudiosrc", "unique-id"))
     }
     #[cfg(target_os = "linux")]
     {
@@ -403,5 +407,24 @@ mod tests {
     fn capture_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<GstreamerAudioCapture>();
+    }
+
+    /// Anti-regression: `osxaudiosrc` has no `device-uid` property
+    /// (its string device-selection prop is `unique-id`). The wrong
+    /// name makes gst-launch reject the pipeline at parse time and
+    /// produces zero audio bytes — observed downstream as a silent
+    /// recording with no audio stream in the final `.mp4`.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn resolve_mic_element_macos_returns_unique_id_not_device_uid() {
+        let (element, prop) = resolve_mic_element("BuiltInMicrophoneDevice").expect("macOS arm");
+        assert_eq!(element, "osxaudiosrc");
+        assert_eq!(prop, "unique-id");
+        assert_ne!(prop, "device-uid");
+    }
+
+    #[test]
+    fn resolve_mic_element_empty_native_id_returns_none() {
+        assert!(resolve_mic_element("").is_none());
     }
 }

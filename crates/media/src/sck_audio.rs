@@ -321,13 +321,17 @@ define_class!(
                     // is the master-stream level; per-app meters are
                     // a separate ticket (M-AUDIO.METER.1).
                     if let Some(sink) = self.ivars().level_sink.as_ref() {
-                        let rms = rms_of(&samples);
+                        // Linear RMS is meaningless on a UI meter —
+                        // map to dBFS first so the level reads in
+                        // perceptual space and matches the mic-meter
+                        // mapping.
+                        let level = crate::audio::rms_to_meter_level(rms_of(&samples));
                         let mut state = self
                             .ivars()
                             .smoothed_level
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        *state = SYSTEM_AUDIO_LEVEL_EMA_ALPHA * rms
+                        *state = SYSTEM_AUDIO_LEVEL_EMA_ALPHA * level
                             + (1.0 - SYSTEM_AUDIO_LEVEL_EMA_ALPHA) * *state;
                         sink(*state);
                     }

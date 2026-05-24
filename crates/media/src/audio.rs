@@ -212,6 +212,48 @@ impl AudioChunk {
     }
 }
 
+/// Floor of the meter scale, in dBFS. Levels at or below this map to
+/// 0.0; full-scale (`rms = 1.0`, i.e. `0 dBFS`) maps to 1.0. -60 dBFS
+/// is a standard digital audio meter floor — anything below is barely
+/// audible.
+pub const METER_FLOOR_DBFS: f32 = -60.0;
+
+/// Convert a linear RMS value (`[0, 1]`) into a UI-meter level
+/// (`[0, 1]`) on a logarithmic dBFS scale, with `0 dBFS` mapping to
+/// `1.0` and [`METER_FLOOR_DBFS`] mapping to `0.0`.
+///
+/// Linear RMS is a useless meter input because human loudness
+/// perception (and microphone signal) is logarithmic — speech sits
+/// around `-30 dBFS` (RMS ≈ 0.03), while the linear scale would map
+/// the same speech to ~3 % of a 10-bar meter. The dBFS-mapped output
+/// puts conversational speech around 50 % of the bar, leaving
+/// headroom at both ends for whispers + shouts.
+///
+/// Indicative outputs (for the default `-60 dBFS` floor):
+///
+/// | Input RMS | dBFS    | Meter level |
+/// | --------- | ------- | ----------- |
+/// | 0.0       | -∞      | 0.00        |
+/// | 0.001     | -60     | 0.00        |
+/// | 0.003     | -50.5   | 0.16        |
+/// | 0.01      | -40     | 0.33        |
+/// | 0.03      | -30.5   | 0.49        |
+/// | 0.1       | -20     | 0.67        |
+/// | 0.3       | -10.5   | 0.83        |
+/// | 1.0       | 0       | 1.00        |
+#[must_use]
+pub fn rms_to_meter_level(rms: f32) -> f32 {
+    if !rms.is_finite() || rms <= 0.0 {
+        return 0.0;
+    }
+    let db = 20.0 * rms.log10();
+    if db <= METER_FLOOR_DBFS {
+        return 0.0;
+    }
+    let level = (db - METER_FLOOR_DBFS) / -METER_FLOOR_DBFS;
+    level.clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +370,72 @@ mod tests {
         assert_send_sync::<AudioFormat>();
         assert_send_sync::<AudioChunk>();
         assert_send_sync::<AudioChunkError>();
+    }
+
+    // ---- rms_to_meter_level ----
+
+    /// `assert!`-friendly "near zero" check that satisfies clippy's
+    /// `float_cmp` lint (which rejects `assert_eq!(x, 0.0)`).
+    fn approx_zero(x: f32) -> bool {
+        x.abs() < 1e-12
+    }
+
+    #[test]
+    fn meter_level_zero_rms_is_zero() {
+        assert!(approx_zero(rms_to_meter_level(0.0)));
+    }
+
+    #[test]
+    fn meter_level_full_scale_rms_is_one() {
+        // 0 dBFS → top of meter.
+        assert!((rms_to_meter_level(1.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn meter_level_below_floor_clamps_to_zero() {
+        // Anything quieter than -60 dBFS reads as 0 — far below
+        // audibility for a typical recording.
+        assert!(approx_zero(rms_to_meter_level(0.0001))); // -80 dBFS
+        assert!(approx_zero(rms_to_meter_level(0.0009))); // ~-61 dBFS
+    }
+
+    #[test]
+    fn meter_level_typical_speech_is_in_useful_mid_range() {
+        // Conversational speech RMS sits around 0.03 (-30 dBFS),
+        // which must land in the meaningful middle of the meter so
+        // the user sees it move.
+        let level = rms_to_meter_level(0.03);
+        assert!(
+            (0.4..=0.6).contains(&level),
+            "expected speech RMS to map into 0.4..=0.6, got {level}"
+        );
+    }
+
+    #[test]
+    fn meter_level_monotonically_increases_with_rms() {
+        let inputs = [0.0, 0.001, 0.005, 0.01, 0.05, 0.1, 0.3, 0.7, 1.0];
+        let mut prev = -1.0;
+        for r in inputs {
+            let l = rms_to_meter_level(r);
+            assert!(l >= prev, "non-monotonic at rms={r}: {l} < {prev}");
+            prev = l;
+        }
+    }
+
+    #[test]
+    fn meter_level_rejects_nan_and_negative() {
+        assert!(approx_zero(rms_to_meter_level(f32::NAN)));
+        assert!(approx_zero(rms_to_meter_level(-0.5)));
+        assert!(approx_zero(rms_to_meter_level(f32::NEG_INFINITY)));
+    }
+
+    #[test]
+    fn meter_level_clamps_above_full_scale() {
+        // Sustained-overdrive case: RMS theoretically capped at 1.0
+        // for samples in [-1, 1], but EMA / mixer math could in
+        // pathological cases give a slightly larger value. Verify
+        // we clamp at 1.0 rather than running off the top of the
+        // meter.
+        assert!((rms_to_meter_level(2.0) - 1.0).abs() < 1e-6);
     }
 }

@@ -7,9 +7,9 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::{IconTile, IconTileKind, Meter, ToggleSwitch};
+use crate::components::primitives::{Camera, IconTile, IconTileKind, Meter, Mic, ToggleSwitch};
 
-/// Kind of capture source — drives the leading icon glyph + the
+/// Kind of capture source — drives the leading icon + the
 /// `aria-label` text on the toggle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaptureSourceKind {
@@ -20,15 +20,6 @@ pub enum CaptureSourceKind {
 }
 
 impl CaptureSourceKind {
-    /// Single-glyph icon used in the leading tile.
-    #[must_use]
-    pub fn glyph(self) -> &'static str {
-        match self {
-            CaptureSourceKind::Camera => "📷",
-            CaptureSourceKind::Microphone => "🎙",
-        }
-    }
-
     /// Accessible label noun.
     #[must_use]
     pub fn label(self) -> &'static str {
@@ -75,7 +66,6 @@ pub fn CaptureSourceRow(view: CaptureSourceView) -> impl IntoView {
     } else {
         "capture-source-chevron"
     };
-    let kind_glyph = view.kind.glyph();
     let kind_label = view.kind.label();
     let toggle_label = format!("Enable {kind_label}");
     let meter_view = if view.kind == CaptureSourceKind::Microphone {
@@ -90,7 +80,12 @@ pub fn CaptureSourceRow(view: CaptureSourceView) -> impl IntoView {
             CaptureSourceKind::Microphone => "microphone",
         }>
             <span class="capture-source-leading">
-                <IconTile kind=IconTileKind::Device>{kind_glyph}</IconTile>
+                <IconTile kind=IconTileKind::Device>
+                    {match view.kind {
+                        CaptureSourceKind::Camera => view! { <Camera /> }.into_any(),
+                        CaptureSourceKind::Microphone => view! { <Mic /> }.into_any(),
+                    }}
+                </IconTile>
             </span>
             <span class="capture-source-text">
                 <span class="capture-source-title">
@@ -117,11 +112,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_kind_has_unique_glyph_and_label() {
-        assert_ne!(
-            CaptureSourceKind::Camera.glyph(),
-            CaptureSourceKind::Microphone.glyph(),
-        );
+    fn each_kind_has_a_unique_label() {
         assert_ne!(
             CaptureSourceKind::Camera.label(),
             CaptureSourceKind::Microphone.label(),

@@ -623,6 +623,7 @@ fn feed_real_capture(
     let started_at = Instant::now();
     let mut next_pts_frames: u64 = 0;
     let mut frames_pushed: u64 = 0;
+    let mut audio_chunks_pushed: u64 = 0;
 
     while !cancel.load(Ordering::Relaxed) {
         let pts =
@@ -654,13 +655,15 @@ fn feed_real_capture(
             let mut guard = encoder
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(ref mut enc) = *guard
-                && let Err(err) = enc.push_audio_chunk(&audio_samples, pts)
-            {
-                tracing::trace!(
-                    ?err,
-                    "feed_real_capture: push_audio_chunk failed (continuing)"
-                );
+            if let Some(ref mut enc) = *guard {
+                if let Err(err) = enc.push_audio_chunk(&audio_samples, pts) {
+                    tracing::warn!(
+                        ?err,
+                        "feed_real_capture: push_audio_chunk failed (continuing)"
+                    );
+                } else {
+                    audio_chunks_pushed = audio_chunks_pushed.saturating_add(1);
+                }
             }
         }
 
@@ -673,6 +676,7 @@ fn feed_real_capture(
     }
     tracing::info!(
         frames = frames_pushed,
+        audio_chunks_pushed,
         "feed_real_capture: feed thread exiting"
     );
 }

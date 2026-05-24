@@ -2151,7 +2151,8 @@ fn start_mic_for_session(
         return Err(MicError::NotFound(mic_id));
     };
 
-    // Tear down any prior session held by an out-of-band caller.
+    // Tear down any prior session held by an out-of-band caller
+    // (e.g. the picker's preview pipeline driving the level meter).
     if mic_handle.is_active() {
         mic_handle.shutdown();
         let mut guard = mic_state
@@ -2165,8 +2166,18 @@ fn start_mic_for_session(
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prev_state = *guard;
         let new_state = guard.try_start();
         if new_state == *guard {
+            // State was already Starting/Running/Stopping — no new
+            // pipeline is spawned. The recording session won't see
+            // any mic samples until whatever owns the prior worker
+            // tears it down. Surfaces as a silent-audio recording,
+            // which is the bug class this warning exists to catch.
+            tracing::warn!(
+                ?prev_state,
+                "start_mic_for_session: state desynced from handle; no pipeline spawned"
+            );
             return Ok(());
         }
         *guard = new_state;
