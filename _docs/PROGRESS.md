@@ -6,6 +6,51 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.0 — user-pickable output directory + settings persistence
+- **Date:** 2026-05-25
+- **Status:** ✅ done — first chunk of the `feat/export` branch (deferred multi-format export: pick the output directory + choose the format on export).
+
+### Context
+
+Goal: a place to choose which directory recordings save to, and a format dropdown (MP4 / WebM) on an "Export" action. The milestone-2 doc's M-EXPORT.4 had scoped this ("a future M-EXPORT.4.1 follow-up can add `tauri-plugin-dialog`") but never implemented the picker, and the recorder-surface redesign (#52/#53) dropped the legacy format dropdown — the live `recorder_page.rs` hardcodes `"mp4-h264"`. The agreed shape: scratch-path recording → post-stop Save panel with format dropdown + Export/Discard; persistent default folder in settings. This chunk is the persistence + folder-picker foundation.
+
+### What shipped
+
+- **`tauri-plugin-dialog` dep** (2.7.1) for the native folder picker. Used via the Rust-side `DialogExt` API inside our own `pick_output_dir` command rather than the JS guest bindings — the webview only ever invokes our command (never `plugin:dialog|*`), so **no extra capability grant is needed** in `capabilities/default.json`. Least-privilege: the webview can't pop arbitrary dialogs.
+- **`crate::recorder_settings`** — new module. `RecorderSettings { output_dir: Option<PathBuf>, last_format: Option<String> }` persisted as JSON at `<app-config-dir>/recorder-settings.json`. Uses `serde_json` (unlike the bubble-position hand-rolled text format) because a filesystem path can contain `:` / `,` / newlines that a naive `key:value` scheme would corrupt. `#[serde(default)]` + `Option` fields mean older/partial files deserialize gracefully — no version field needed. Pure `load_from`/`save_to(path)` split out from the `AppHandle`-aware `load`/`save` wrappers so the logic is unit-testable without a mock app.
+- **Three IPC commands** (`commands.rs`): `pick_output_dir` (opens the native dialog on the blocking pool via `spawn_blocking` — the dialog-plugin `blocking_*` variants must run off-main or they deadlock), `get_output_dir`, `set_output_dir`. Empty string to `set_output_dir` clears the override.
+- **`default_recording_output_path` now honors the chosen folder** — resolves the directory via `recorder_settings::resolved_output_dir(app)` (persisted override → per-OS default) instead of always `recording_paths::default_output_dir()`. The signature gained an `app: AppHandle` param; the JS-facing args are unchanged (Tauri auto-injects `app`).
+- **JS bridges** (`index.html`) + **wasm wrappers** (`app-ui/src/settings_ipc.rs`, new module) mirroring the established `recording_ipc` pattern.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/Cargo.toml` | `tauri-plugin-dialog = "2"` + `serde_json = "1"` moved dev→runtime dep. |
+| `crates/app/src/recorder_settings.rs` | **New.** Persistence module + 7 unit tests. |
+| `crates/app/src/lib.rs` | `pub mod recorder_settings;`. |
+| `crates/app/src/commands.rs` | 3 new commands; `default_recording_output_path` consults settings. |
+| `crates/app/src/main.rs` | `.plugin(tauri_plugin_dialog::init())`; 3 commands in both handler arms. |
+| `crates/app-ui/index.html` | 3 `__screen*` JS bridges. |
+| `crates/app-ui/src/settings_ipc.rs` | **New.** wasm IPC wrappers. |
+| `crates/app-ui/src/lib.rs` | `pub mod settings_ipc;`. |
+
+### Verification
+
+- `cargo nextest run -p screen-app` — 170 passed (incl. 7 new `recorder_settings` tests). 0 failures.
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean.
+- `cargo clippy -p app-ui -- -D warnings` (native) + `--target wasm32-unknown-unknown` — clean.
+- `cargo fmt --all --check` — clean.
+- `cargo deny` / `cargo machete` — run after dep change (see commit).
+- Manual macOS smoke deferred to M-SAVE.GATE (no UI surfaces the picker yet — that's M-SAVE.4).
+
+### Notes / non-obvious
+
+- No renderable feature in this chunk → no storybook story (per CLAUDE.md non-render exemption). The folder-picker UI lands in M-SAVE.4; the Save panel in M-SAVE.3.
+- The `last_format` field is wired into persistence here but not yet read/written by any command — it's consumed by the Save-panel dropdown (M-SAVE.3) which restores the last-used format.
+
+---
+
 ## Cam bubble default position moved BOTTOM_RIGHT → BOTTOM_LEFT
 - **Date:** 2026-05-24
 - **Status:** ✅ done — same `fix-screen-recording` branch.

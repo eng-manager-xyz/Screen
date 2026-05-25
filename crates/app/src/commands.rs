@@ -2503,9 +2503,14 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
 /// `format_slug` is one of `"mp4-h264"`, `"mp4-h265"`, `"webm-vp9"`,
 /// `"webm-av1"`. Unknown slugs fall back to the default
 /// (`mp4-h264`).
+///
+/// As of M-SAVE.0 the directory comes from
+/// [`recorder_settings::resolved_output_dir`](crate::recorder_settings::resolved_output_dir)
+/// — the user's persisted choice if set, else the per-OS default —
+/// so the chosen folder is honored everywhere this path is computed.
 #[tauri::command]
 #[must_use]
-pub fn default_recording_output_path(format_slug: Option<String>) -> String {
+pub fn default_recording_output_path(app: tauri::AppHandle, format_slug: Option<String>) -> String {
     use media::encode::OutputFormat;
     let format = format_slug
         .as_deref()
@@ -2514,9 +2519,80 @@ pub fn default_recording_output_path(format_slug: Option<String>) -> String {
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    crate::recording_paths::default_output_path(now_secs, format)
+    let dir = crate::recorder_settings::resolved_output_dir(&app);
+    dir.join(crate::recording_paths::default_filename(now_secs, format))
         .to_string_lossy()
         .into_owned()
+}
+
+// ---- M-SAVE.0 — output-directory picker + persistence --------------
+
+/// Open a native folder picker and return the chosen absolute path,
+/// or `None` if the user cancelled. Does **not** persist the choice —
+/// the caller decides whether the pick becomes the new default
+/// ([`set_output_dir`]) or a one-off Save-As target. The picker opens
+/// at the current configured directory when it exists.
+///
+/// Runs the (blocking) native dialog on the blocking thread pool via
+/// `spawn_blocking`: the dialog-plugin `blocking_*` variants dispatch
+/// the modal to the main thread and block the *calling* thread until
+/// the user responds, so they must run off-main (calling from the main
+/// thread deadlocks). An `async` command already runs off-main; the
+/// extra `spawn_blocking` keeps the potentially-many-seconds modal off
+/// an async-runtime worker.
+///
+/// # Errors
+///
+/// Returns an error string only if the dialog task itself fails to
+/// join. A user cancel is `Ok(None)`, not an error.
+#[tauri::command]
+pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let initial = crate::recorder_settings::resolved_output_dir(&app);
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        let builder = app.dialog().file();
+        let builder = if initial.is_dir() {
+            builder.set_directory(&initial)
+        } else {
+            builder
+        };
+        builder.blocking_pick_folder()
+    })
+    .await
+    .map_err(|err| format!("folder-picker task failed: {err}"))?;
+    Ok(chosen
+        .and_then(|fp| fp.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// Return the currently-configured output directory — the persisted
+/// override if the user set one, otherwise the per-OS default. Always
+/// returns an absolute path string (never empty).
+#[tauri::command]
+#[must_use]
+pub fn get_output_dir(app: tauri::AppHandle) -> String {
+    crate::recorder_settings::resolved_output_dir(&app)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Persist `dir` as the default output directory for future
+/// recordings. An empty / whitespace-only string clears the override,
+/// reverting to the per-OS default.
+///
+/// # Errors
+///
+/// Returns an error string when the settings file can't be written
+/// (app-config dir unavailable, read-only filesystem, …).
+#[tauri::command]
+pub fn set_output_dir(app: tauri::AppHandle, dir: String) -> Result<(), String> {
+    let mut settings = crate::recorder_settings::load(&app);
+    settings.output_dir = if dir.trim().is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(dir))
+    };
+    crate::recorder_settings::save(&app, &settings)
 }
 
 /// Return the latest BGRA frame from the camera capture slot
