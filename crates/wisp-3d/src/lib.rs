@@ -33,7 +33,9 @@
 pub use wisp::application::Application;
 
 pub mod camera;
+pub mod mesh;
 pub use camera::{Camera3D, ViewProj};
+pub use mesh::{Mesh3D, Vertex3D};
 
 // W3D.1+ modules land in the next commits on this branch. Keep the
 // module tree empty for W3D.0 so the gate has something concrete to
