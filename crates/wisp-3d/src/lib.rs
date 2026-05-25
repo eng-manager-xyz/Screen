@@ -32,6 +32,9 @@
 
 pub use wisp::application::Application;
 
+pub mod camera;
+pub use camera::{Camera3D, ViewProj};
+
 // W3D.1+ modules land in the next commits on this branch. Keep the
 // module tree empty for W3D.0 so the gate has something concrete to
 // check ("the crate compiles, links to wisp, and exposes the
