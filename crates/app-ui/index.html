@@ -171,6 +171,17 @@
       window.__screenSetOutputDir = (dir) =>
         window.__TAURI__?.core?.invoke("set_output_dir", { dir }) ?? Promise.resolve();
 
+      // M-SAVE.1 — deferred export. After stop the recording sits in
+      // scratch; recording_pending_export tells the Save panel to
+      // appear, export_recording moves/transcodes it into the chosen
+      // folder + format, discard_recording throws the scratch away.
+      window.__screenRecordingPendingExport = () =>
+        window.__TAURI__?.core?.invoke("recording_pending_export") ?? Promise.resolve(null);
+      window.__screenExportRecording = (format, outputDir) =>
+        window.__TAURI__?.core?.invoke("export_recording", { format: format ?? null, outputDir: outputDir ?? null }) ?? Promise.resolve("");
+      window.__screenDiscardRecording = () =>
+        window.__TAURI__?.core?.invoke("discard_recording") ?? Promise.resolve();
+
       // M-PIX.8 — live webcam preview poll. Returns raw BGRA bytes
       // as an ArrayBuffer via tauri::ipc::Response (zero JSON
       // overhead). Empty when no frame is available yet.

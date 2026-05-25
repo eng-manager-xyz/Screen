@@ -243,6 +243,11 @@ pub struct RecordingSession {
     /// M-EXPORT encoder is computed as `Instant::now() - started_at`.
     /// Captured ONCE here so all four streams share the same origin.
     pub started_at: Instant,
+    /// Wall-clock start time (Unix epoch seconds). Complements the
+    /// monotonic `started_at`; M-SAVE.1 carries it through to export
+    /// so the `Screen-YYYY-MM-DD-HHMMSS.<ext>` filename reflects when
+    /// the recording *started*, not when the user clicked Export.
+    pub started_at_unix_secs: u64,
     /// Master lifecycle.
     pub state: SessionState,
     /// Which channels are part of this session.
@@ -258,6 +263,9 @@ impl RecordingSession {
         Self {
             id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             started_at: Instant::now(),
+            started_at_unix_secs: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
             state: SessionState::Starting,
             streams,
         }
@@ -329,6 +337,14 @@ pub struct RecordingState {
     /// worker calls `push_mic`; SCK audio delegate calls
     /// `push_sys_audio`; encoder feed thread calls `pull()`.
     pub audio_mixer: SharedAudioMixer,
+    /// A finished recording sitting in scratch, awaiting the user's
+    /// format choice in the Save panel (M-SAVE.1). Set by
+    /// `stop_recording`; cleared by `export_recording` /
+    /// `discard_recording`. `Some` here is the "awaiting export"
+    /// signal the Save panel keys off — there is no `SessionState`
+    /// variant for it (keeps the state-machine matches + LED colour
+    /// map untouched).
+    pub pending_export: Mutex<Option<PendingExport>>,
 }
 
 impl Default for RecordingState {
@@ -339,6 +355,7 @@ impl Default for RecordingState {
             camera_frame_slot: new_frame_slot(),
             screen_frame_slot: new_frame_slot(),
             audio_mixer: new_audio_mixer(),
+            pending_export: Mutex::new(None),
         }
     }
 }
@@ -393,6 +410,47 @@ impl RecordingState {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
+    }
+
+    /// Stash a finished recording awaiting export (M-SAVE.1).
+    pub fn set_pending_export(&self, pending: PendingExport) {
+        let mut guard = self
+            .pending_export
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(pending);
+    }
+
+    /// Take the pending export out (for `export_recording` /
+    /// `discard_recording`). Returns `None` when nothing is awaiting.
+    #[must_use]
+    pub fn take_pending_export(&self) -> Option<PendingExport> {
+        self.pending_export
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    /// `true` while a finished recording is awaiting export. Used by
+    /// `start_recording` to refuse starting a new session on top of
+    /// an un-exported one (which would orphan its scratch file).
+    #[must_use]
+    pub fn has_pending_export(&self) -> bool {
+        self.pending_export
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
+    }
+
+    /// IPC snapshot of the pending export, if any (M-SAVE.1). Cloned
+    /// so the caller doesn't hold the mutex.
+    #[must_use]
+    pub fn pending_export_view(&self) -> Option<PendingExportView> {
+        self.pending_export
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(PendingExport::view)
     }
 }
 
@@ -830,9 +888,58 @@ pub struct RecordingSummary {
     pub elapsed_ms: u64,
     /// Final per-stream tally.
     pub streams: Vec<StreamHealth>,
-    /// Path the encoded file landed at. M-EXPORT.4 populates this;
-    /// M-RECORD.1 (no encoder yet) leaves it `None`.
+    /// Path the encoded file landed at. M-EXPORT.4 populated this on
+    /// the old "save-on-stop" path; as of M-SAVE.1 stop no longer
+    /// writes the final file (export is deferred to the Save panel),
+    /// so this stays `None` and `pending_export` carries the handoff.
     pub output_path: Option<String>,
+    /// Set when the stopped recording is sitting in scratch awaiting
+    /// the user's format choice (M-SAVE.1). The Save panel keys off
+    /// this to appear; `None` only on the legacy/no-encoder path.
+    #[serde(default)]
+    pub pending_export: Option<PendingExportView>,
+}
+
+/// A finished recording sitting in the scratch directory, awaiting
+/// the user's format choice in the Save panel (M-SAVE.1). Held in
+/// [`RecordingState::pending_export`] between `stop_recording` and
+/// `export_recording` / `discard_recording`. **Pure Rust** — no
+/// Tauri / serde; the IPC-facing mirror is [`PendingExportView`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingExport {
+    /// Absolute path to the finalized scratch file. Always MP4 / H.264
+    /// — the canonical intermediate; the Save panel's format choice
+    /// decides whether export moves it (MP4) or transcodes it (`WebM`).
+    pub scratch_path: std::path::PathBuf,
+    /// Recording duration in ms, frozen at stop.
+    pub duration_ms: u64,
+    /// Wall-clock start time (Unix seconds) — drives the exported
+    /// `Screen-YYYY-MM-DD-HHMMSS.<ext>` filename.
+    pub started_at_unix_secs: u64,
+}
+
+impl PendingExport {
+    /// Project to the IPC mirror — duration + the suggested base
+    /// filename (no extension), dropping the internal scratch path.
+    #[must_use]
+    pub fn view(&self) -> PendingExportView {
+        PendingExportView {
+            duration_ms: self.duration_ms,
+            suggested_basename: crate::recording_paths::default_basename(self.started_at_unix_secs),
+        }
+    }
+}
+
+/// IPC mirror of [`PendingExport`]. Carries only what the Save panel
+/// needs — never the internal scratch path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingExportView {
+    /// Recording duration in ms.
+    pub duration_ms: u64,
+    /// Suggested base filename (no extension), e.g.
+    /// `"Screen-2026-05-25-123700"`. The panel appends the extension
+    /// matching the chosen format.
+    pub suggested_basename: String,
 }
 
 #[cfg(test)]
@@ -1190,10 +1297,66 @@ mod tests {
             elapsed_ms: 10_000,
             streams: vec![],
             output_path: Some("/tmp/screen.mp4".into()),
+            pending_export: None,
         };
         let json = serde_json::to_string(&summary).unwrap();
         let back: RecordingSummary = serde_json::from_str(&json).unwrap();
         assert_eq!(back, summary);
+    }
+
+    // ---- M-SAVE.1 pending-export state ----
+
+    fn sample_pending() -> PendingExport {
+        PendingExport {
+            scratch_path: std::path::PathBuf::from("/tmp/scratch-7.mp4"),
+            duration_ms: 8_000,
+            started_at_unix_secs: 1_763_402_400,
+        }
+    }
+
+    #[test]
+    fn pending_export_set_take_round_trip() {
+        let state = RecordingState::default();
+        assert!(!state.has_pending_export());
+        assert!(state.take_pending_export().is_none());
+
+        state.set_pending_export(sample_pending());
+        assert!(state.has_pending_export());
+
+        let taken = state.take_pending_export().expect("pending present");
+        assert_eq!(taken, sample_pending());
+        // take() clears it — a second take yields None.
+        assert!(!state.has_pending_export());
+        assert!(state.take_pending_export().is_none());
+    }
+
+    #[test]
+    fn pending_export_view_drops_scratch_path_and_strips_extension() {
+        let view = sample_pending().view();
+        assert_eq!(view.duration_ms, 8_000);
+        assert_eq!(view.suggested_basename, "Screen-2025-11-17-180000");
+        // The view exposes no scratch path; the basename has no ext.
+        assert!(
+            std::path::Path::new(&view.suggested_basename)
+                .extension()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn pending_export_view_matches_state_accessor() {
+        let state = RecordingState::default();
+        assert!(state.pending_export_view().is_none());
+        state.set_pending_export(sample_pending());
+        assert_eq!(state.pending_export_view(), Some(sample_pending().view()));
+    }
+
+    #[test]
+    fn pending_export_view_serde_round_trip() {
+        let view = sample_pending().view();
+        let json = serde_json::to_string(&view).unwrap();
+        let back: PendingExportView = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, view);
     }
 
     #[test]

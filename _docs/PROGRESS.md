@@ -6,6 +6,55 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.1 — scratch-path recording + deferred export (AwaitingExport + export/discard, MP4 move path)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — second chunk of `feat/export`. (M-SAVE.0 manual smoke passed: native folder picker opens + returns the chosen path; persisted dir flows into the recording path. Verified via webview devtools.)
+
+### What changed — the deferred-save flow
+
+Before: `stop_recording` finalized the encoder straight to the user's final path + generated the AVIF poster there. Now recording defers the save so the Save panel (M-SAVE.3) can choose format + folder *after* stop:
+
+1. **`start_recording` records to a scratch MP4/H.264** under `<app-cache-dir>/recordings-scratch/scratch-<session-id>.mp4` — the canonical intermediate. `config.output_path` / `config.format` are no longer consulted at record time.
+2. **`stop_recording` finalizes the scratch, then stashes a `PendingExport`** (scratch path + duration + wall-clock start secs) instead of writing the final file. Returns `RecordingSummary { output_path: None, pending_export: Some(view) }`. AVIF poster is deferred to export time (M-SAVE.2).
+3. **`export_recording(format, output_dir?)`** computes `{dir}/Screen-<ts>.<ext>` (dir = override or `recorder_settings::resolved_output_dir`; ts from the recording's start). **MP4/H.264 = a move** (`recording_paths::move_file`, atomic rename with cross-device copy fallback) since the scratch already *is* MP4/H.264. H.265 / WebM / AV1 return a "not yet wired (M-SAVE.2)" error and **restore** the pending export so the user can retry. On success persists `last_format`.
+4. **`discard_recording()`** deletes the scratch + clears the pending state.
+5. **`recording_pending_export()`** lets the Save panel discover an awaiting export on mount.
+
+### Design decision — no `AwaitingExport` enum variant
+
+"Awaiting export" is represented by `RecordingState.pending_export: Mutex<Option<PendingExport>>` being `Some`, **not** a new `SessionState` variant. Rationale: a variant would ripple through every `match` on `SessionState` + the M-RECORD.2 LED colour map for zero benefit. The data-driven slot is cleaner and the UI keys off `pending_export` (via the dedicated command / the summary field). `start_recording` refuses to start while a pending export exists (guards against orphaning the scratch).
+
+### Scratch lifecycle / v0 limitation
+
+Scratch lives in the app **cache** dir (app-scoped, home volume → fast rename into `~/Movies/Screen`). `main.rs` calls `clean_scratch_dir` at startup, so any scratch left by a crash or an un-exported session from a previous run is abandoned — **v0 has no cross-launch export recovery** (acceptable; the in-memory `pending_export` is also not persisted, so the two are consistent).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/src/recording.rs` | `RecordingSession.started_at_unix_secs`; `PendingExport` + `PendingExportView` + `PendingExport::view()`; `RecordingState.pending_export` slot + `set/take/has/view` accessors; `RecordingSummary.pending_export` field. +4 tests. |
+| `crates/app/src/recording_paths.rs` | `default_basename` (factored out of `default_filename`); `move_file` (rename + cross-device copy fallback). +3 tests. |
+| `crates/app/src/commands.rs` | scratch encoder config in `start_recording` + pending-export guard; `stop_recording` → pending handoff; new `export_recording` / `discard_recording` / `recording_pending_export`; `scratch_dir` / `scratch_file_path` / `clean_scratch_dir` helpers; removed `build_encoder_config_for_session`. |
+| `crates/app/src/main.rs` | register 3 new commands (both arms); `clean_scratch_dir` at startup. |
+| `crates/app-ui/src/recording_ipc.rs` | `PendingExportView` mirror; `RecordingSummaryView.pending_export`; `recording_pending_export` / `export_recording` / `discard_recording` wrappers. |
+| `crates/app-ui/index.html` | 3 `__screen*` JS bridges. |
+
+### Verification
+
+- `cargo nextest run -p screen-app` — 177 passed (was 170; +7 new). 0 failures.
+- `cargo check -p screen-app` + `-p app-ui` — clean.
+- `cargo clippy -p screen-app --all-targets` + `-p app-ui` (native + wasm32) — clean (`-D warnings`).
+- `cargo fmt --all --check` — clean.
+- `just gate` — green.
+- No `Cargo.toml` change → no deny/machete re-run needed (ISS-06 pre-existing failures unaffected).
+
+### Deferred to later chunks
+
+- **WebM transcode + AVIF poster relocation** — M-SAVE.2 (export currently errors for non-MP4 and restores the pending state).
+- **Save panel UI** — M-SAVE.3 (the `pending_export` field + `recording_pending_export` command are the contract it consumes; the live `recorder_page.rs` still hardcodes the old start config + treats stop as "done").
+
+---
+
 ## M-SAVE.0 — user-pickable output directory + settings persistence
 - **Date:** 2026-05-25
 - **Status:** ✅ done — first chunk of the `feat/export` branch (deferred multi-format export: pick the output directory + choose the format on export).

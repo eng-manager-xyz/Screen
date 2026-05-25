@@ -157,6 +157,9 @@ fn main() {
                     commands::pick_output_dir,
                     commands::get_output_dir,
                     commands::set_output_dir,
+                    commands::recording_pending_export,
+                    commands::export_recording,
+                    commands::discard_recording,
                     commands::latest_camera_frame_bgra,
                     commands::request_all_permissions,
                     commands::__test_drop_file,
@@ -210,6 +213,9 @@ fn main() {
                     commands::pick_output_dir,
                     commands::get_output_dir,
                     commands::set_output_dir,
+                    commands::recording_pending_export,
+                    commands::export_recording,
+                    commands::discard_recording,
                     commands::latest_camera_frame_bgra,
                     commands::request_all_permissions,
                 ]
@@ -219,6 +225,10 @@ fn main() {
         .setup(|app| {
             spawn_tick_thread(app.handle().clone());
             register_tray_icon(app)?;
+            // M-SAVE.1 — abandon any scratch recording left by a crash
+            // or an un-exported session from a previous run (v0 has no
+            // cross-launch export recovery).
+            commands::clean_scratch_dir(app.handle());
             // The legacy `main` window stays declared in tauri.conf.json
             // because the M1 player IPC commands target it by label, but
             // it boots hidden (`"visible": false`) and stays hidden — the
