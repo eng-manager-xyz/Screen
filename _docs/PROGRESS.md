@@ -6,6 +6,43 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.2 — WebM transcode + AVIF poster relocation (export decodes scratch → VP9/Opus)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — third chunk of `feat/export`. WebM transcode validated **headlessly** by two new media integration tests (real `gst-launch` round-trip, no GUI needed).
+
+### What changed
+
+`export_recording` now handles the **WebM** format (M-SAVE.1 left it a stub) and generates the AVIF poster next to the *exported* file:
+
+- **`media::encode::transcode_to_webm(input, output)`** — one-shot `gst-launch` pipeline `filesrc ! decodebin name=d  webmmux name=mux ! filesink  d. ! queue ! videoconvert ! vp9enc ! mux.  [+ audio leg]`. Mirrors the `generate_poster` spawn pattern (probe-then-spawn, structured `EncodeError`s). VP9 is software (`vp9enc`) — no Apple HW path — so a short clip takes a couple seconds; the recorder runs it off-thread.
+- **`media::encode::scratch_has_audio(input)`** — probes via `gst-discoverer-1.0` and includes the Opus leg **only** when an audio track exists. Critical: a screen-only scratch has no audio track (the encoder gates the audio leg on `audio_chunks_pushed > 0`), and wiring an audio branch to a `decodebin` pad that never appears would hang `webmmux` waiting for EOS. The probe errs toward "no audio" (false on any uncertainty) so a false-positive hang can't happen.
+- **`media::encode::build_webm_transcode_args`** — pure argv builder (split out for unit tests).
+- **`export_recording` is now `async`** — the move (MP4) / transcode (WebM) + poster all run on `spawn_blocking` so the webview stays responsive during a multi-second transcode. Dropped the `State<RecordingState>` param in favor of `app.state::<RecordingState>()` (resolved before/after the await, never held across it). MP4 still = move; **WebM = transcode then delete scratch**; H.265 / AV1 return "not supported" (not in the UI dropdown). On any failure the pending export is restored.
+- **AVIF poster** now generated next to the exported file inside the `spawn_blocking` job (M-SAVE.1 had deferred it; pre-M-SAVE.1 it landed next to the save-on-stop file). Best-effort — silently skipped when `avifenc` is missing.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/encode.rs` | `transcode_to_webm` + `build_webm_transcode_args` + `scratch_has_audio`. +3 unit tests (argv shape ×2, missing-input). |
+| `crates/media/tests/encode_integration.rs` | `encode_test_mp4` helper + 2 transcode round-trip tests (video-only → VP9; with-audio → VP9+Opus), gated by `is_available()` + `gst_discoverer_available()`. |
+| `crates/app/src/commands.rs` | `export_recording` → async; WebM transcode arm; poster generation at export; `app.state()` instead of `State` param. |
+
+### Verification
+
+- `cargo nextest run -p media --test encode_integration` — **3 passed** incl. the 2 new real-transcode round-trips (VP9 + VP9/Opus confirmed via `gst-discoverer`).
+- `cargo nextest run -p media -p screen-app` — 355 passed.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`). (`media` allows `doc_markdown`; `screen-app` enforces it — backticked the one flagged `WebM`.)
+- `cargo fmt --all --check` — clean. `just gate` — green.
+- No `Cargo.toml` change → ISS-06 deny/machete pre-existing failures unaffected.
+
+### Deferred
+
+- **Save panel UI** — M-SAVE.3 (both MP4 + WebM export now work end-to-end via IPC; the panel wires the dropdown to `export_recording`).
+- A `webm-vp9` slug from the UI maps to a transcode; H.265/AV1 remain backend-unsupported (and aren't offered — the dropdown is MP4 / WebM only by design).
+
+---
+
 ## M-SAVE.1 — scratch-path recording + deferred export (AwaitingExport + export/discard, MP4 move path)
 - **Date:** 2026-05-25
 - **Status:** ✅ done — second chunk of `feat/export`. (M-SAVE.0 manual smoke passed: native folder picker opens + returns the chosen path; persisted dir flows into the recording path. Verified via webview devtools.)

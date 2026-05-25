@@ -2161,34 +2161,39 @@ pub fn recording_pending_export(
 }
 
 /// Export the pending recording to `output_dir` in `format`, then
-/// return the final absolute path (M-SAVE.1).
+/// return the final absolute path (M-SAVE.1 / .2).
 ///
-/// - `format` — slug (`"mp4-h264"` / `"webm-vp9"` / …); `None` →
-///   default (`mp4-h264`). The scratch is MP4/H.264, so an MP4/H.264
-///   export is a fast move; every other format needs a transcode,
-///   which lands in M-SAVE.2 (returns an error for now).
+/// - `format` — slug (`"mp4-h264"` / `"webm-vp9"`); `None` → default
+///   (`mp4-h264`). The scratch is MP4/H.264: an **MP4** export is a
+///   fast move; a **WebM** export re-encodes the scratch to VP9 + Opus
+///   (M-SAVE.2). H.265 / AV1 aren't exposed in the UI and return an
+///   "unsupported" error.
 /// - `output_dir` — override folder; `None` / empty → the persisted
 ///   default ([`recorder_settings::resolved_output_dir`](crate::recorder_settings::resolved_output_dir)).
 ///
-/// On success the chosen format is persisted as the Save-panel
-/// default for next time. On failure the pending export is restored
-/// so the user can retry (e.g. pick MP4, or retry after M-SAVE.2).
+/// Runs the move / transcode + the AVIF poster on the blocking thread
+/// pool (`spawn_blocking`) so the webview stays responsive during a
+/// multi-second `WebM` transcode. On success the chosen format is
+/// persisted as the Save-panel default; on failure the pending export
+/// is restored so the user can retry.
 ///
 /// # Errors
 ///
 /// - `"no recording is awaiting export"` — nothing pending.
-/// - move failure (permissions, disk full) — surfaced verbatim.
-/// - `"export to … not yet wired …"` — non-MP4 format pre-M-SAVE.2.
+/// - move / transcode failure (permissions, disk full, gst error) —
+///   surfaced verbatim.
+/// - `"export to … is not supported"` — H.265 / AV1.
 #[tauri::command]
-pub fn export_recording(
+pub async fn export_recording(
     app: tauri::AppHandle,
-    recording_state: State<'_, RecordingState>,
     format: Option<String>,
     output_dir: Option<String>,
 ) -> Result<String, String> {
     use media::encode::OutputFormat;
 
-    let pending = recording_state
+    // Take the pending export — the guard is released before any await.
+    let pending = app
+        .state::<RecordingState>()
         .take_pending_export()
         .ok_or("no recording is awaiting export")?;
     let format = format
@@ -2204,26 +2209,49 @@ pub fn export_recording(
         format,
     ));
 
-    let result = match format {
-        // Scratch IS MP4/H.264 — promote it with a move, no re-encode.
-        OutputFormat::Mp4H264Aac => {
-            crate::recording_paths::move_file(&pending.scratch_path, &final_path).map_err(|err| {
-                format!(
-                    "failed to move recording to {}: {err}",
-                    final_path.display()
-                )
-            })
+    // Move (MP4) / transcode (WebM) + poster generation all spawn gst
+    // subprocesses or touch disk; run them off the main thread.
+    let scratch = pending.scratch_path.clone();
+    let final_for_job = final_path.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        crate::recording_paths::ensure_parent_dir(&final_for_job)
+            .map_err(|err| format!("failed to create output dir: {err}"))?;
+        match format {
+            // Scratch IS MP4/H.264 — promote it with a move, no re-encode.
+            OutputFormat::Mp4H264Aac => {
+                crate::recording_paths::move_file(&scratch, &final_for_job).map_err(|err| {
+                    format!(
+                        "failed to move recording to {}: {err}",
+                        final_for_job.display()
+                    )
+                })?;
+            }
+            // Re-encode the scratch into VP9 + Opus WebM, then drop it.
+            OutputFormat::WebmVp9Opus => {
+                media::encode::transcode_to_webm(&scratch, &final_for_job)
+                    .map_err(|err| format!("WebM transcode failed: {err}"))?;
+                let _ = std::fs::remove_file(&scratch);
+            }
+            // Not exposed in the UI dropdown (MP4 / WebM only).
+            OutputFormat::Mp4H265Aac | OutputFormat::WebmAv1Opus => {
+                return Err(format!("export to {} is not supported", format.slug()));
+            }
         }
-        // H.265 / WebM / AV1 need a transcode — M-SAVE.2.
-        OutputFormat::Mp4H265Aac | OutputFormat::WebmVp9Opus | OutputFormat::WebmAv1Opus => {
-            Err(format!(
-                "export to {} not yet wired (transcode lands in M-SAVE.2)",
-                format.slug()
-            ))
+        // Best-effort AVIF poster next to the *exported* file (skipped
+        // silently when avifenc isn't installed).
+        match media::encode::generate_poster(&final_for_job) {
+            Ok(Some(poster)) => {
+                tracing::info!(poster = %poster.display(), "export_recording: poster written");
+            }
+            Ok(None) => tracing::debug!("export_recording: poster skipped (avifenc missing)"),
+            Err(err) => tracing::warn!(?err, "export_recording: poster generation failed"),
         }
-    };
+        Ok(())
+    })
+    .await
+    .map_err(|err| format!("export task failed to join: {err}"))?;
 
-    match result {
+    match job {
         Ok(()) => {
             // Remember the chosen format as the Save-panel default.
             let mut settings = crate::recorder_settings::load(&app);
@@ -2236,8 +2264,10 @@ pub fn export_recording(
         }
         Err(err) => {
             // Restore so the user can retry with a different format /
-            // folder (the move/transcode didn't consume the scratch).
-            recording_state.set_pending_export(pending);
+            // folder. The MP4 move and a failed WebM transcode both
+            // leave the scratch in place (only a *successful* WebM
+            // export removes it), so the restored path is still valid.
+            app.state::<RecordingState>().set_pending_export(pending);
             Err(err)
         }
     }
