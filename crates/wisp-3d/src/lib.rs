@@ -37,11 +37,13 @@ pub mod edges;
 pub mod material;
 pub mod mesh;
 pub mod render;
+pub mod sprite;
 pub use camera::{Camera3D, ViewProj};
 pub use edges::{Edge3D, EdgesMesh, LineColor, WireframePipeline};
 pub use material::{Material3D, MaterialRenderer, PaletteRampMaterial, PaletteUniform};
 pub use mesh::{Mesh3D, Vertex3D};
 pub use render::{DEPTH_FORMAT, ModelUniform, Render3DPass};
+pub use sprite::{Sprite3D, SpritePipeline};
 
 // W3D.1+ modules land in the next commits on this branch. Keep the
 // module tree empty for W3D.0 so the gate has something concrete to
