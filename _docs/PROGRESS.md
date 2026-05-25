@@ -6,6 +6,45 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.3 — post-record Save panel (folder + format dropdown + Export/Discard)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — fourth chunk of `feat/export`. The first user-visible piece: after Stop, a Save panel replaces the record footer.
+
+### What shipped
+
+The deferred-export backend (M-SAVE.0/.1/.2) now has its UI. In `crates/app-ui/src/recorder_page.rs`:
+
+- **Trigger:** the `on_start` stop handler captures `summary.pending_export` from `stop_recording()` into a `pending_export: RwSignal<Option<PendingExportView>>`. When set, the Save panel replaces the record/stop footer (a finished recording also blocks starting a new one, so hiding Record is correct).
+- **Panel (choosing state):** a **Folder** row (configured dir via `get_output_dir`, truncated tail-visible, + a **Change…** button → `pick_output_dir` → `set_output_dir`), a **Format** dropdown (**MP4** = `mp4-h264` / **WebM** = `webm-vp9`, via the 0.8 `on:change:target` modifier), and **Discard** / **Export** actions.
+- **Export:** `export_recording(format, None)` on the configured folder. `export_busy` disables the controls + flips the button to "Exporting…" during the (multi-second, software) WebM transcode. On success → `saved_path` set, `pending_export` cleared. On failure the backend restores the pending export and the panel stays up for a retry (error shown in the existing error row).
+- **Success state:** "Saved to `<path>`" + **Reveal in Finder** (`reveal_in_file_manager`) + **Done** (clears `saved_path`, returns to the normal recorder).
+- **Discard:** `discard_recording()` deletes the scratch + clears the panel.
+- **Mount:** polls `recording_pending_export()` (re-shows the panel if the surface remounts mid-await) + `get_output_dir()`.
+- Builds on the vendored recorder-stop latch (`5be49a2` / PR #56): the panel's visibility is gated through a pure `save_panel_visible(has_pending, has_saved)` helper, and the latch still prevents a trailing `Stopping` event from flickering the RECORDING pill over the panel.
+
+CSS in `crates/ui-storybook/assets/style.css` (`.recorder-save-*`), matching the flat-on-black + 1.5 px/12 % white-border recorder convention.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app-ui/src/recorder_page.rs` | Panel state signals; stop handler → `pending_export`; export/discard/change-folder/reveal/dismiss callbacks; the Save-panel view (Show-wrapped over the footer); `save_panel_visible` pure helper + test. |
+| `crates/ui-storybook/assets/style.css` | `.recorder-save-*` styles. |
+
+### Verification
+
+- `cargo nextest run -p app-ui` — 60 passed (+1 new `save_panel_visibility_rule`).
+- `cargo clippy -p app-ui --all-targets` (native) + `--target wasm32-unknown-unknown` — clean (`-D warnings`).
+- `cargo fmt --all --check` — clean. `just gate` — green.
+- Manual macOS smoke pending (user): record → Stop → panel appears → MP4 export lands in folder + WebM export transcodes + Reveal opens Finder + Discard removes scratch.
+
+### Deferred (to M-SAVE.GATE)
+
+- **Presentational extraction + storybook story.** The panel is currently inline in `RecorderPage` (consistent with the recording-pill / footer, which are also inline). Extracting a stateless `ui-storybook` `SavePanel` component + a story (ready / exporting / saved states) + SSR snapshot is batched into M-SAVE.GATE.
+- **Restoring the persisted `last_format`** as the dropdown default (currently always MP4). `export_recording` writes `last_format`; a `get` command + mount-poll would restore it.
+
+---
+
 ## M-SAVE.2 — WebM transcode + AVIF poster relocation (export decodes scratch → VP9/Opus)
 - **Date:** 2026-05-25
 - **Status:** ✅ done — third chunk of `feat/export`. WebM transcode validated **headlessly** by two new media integration tests (real `gst-launch` round-trip, no GUI needed).

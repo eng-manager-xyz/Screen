@@ -3711,6 +3711,111 @@ body:has(.bubble-root) {
   gap: 8px;
   padding-top: 4px;
 }
+
+/* M-SAVE.3 — post-record Save panel (folder + format + Export/Discard). */
+.recorder-save-panel {
+  gap: 10px;
+}
+.recorder-save-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recorder-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+}
+.recorder-save-key {
+  flex-shrink: 0;
+  width: 52px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim, #8a8f98);
+}
+.recorder-save-folder {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text, #e6e6e6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* keep the filename (tail) visible when truncating */
+  text-align: left;
+}
+.recorder-save-change {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--accent, #4fc3f7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-change:hover:not(:disabled) {
+  border-color: var(--accent, #4fc3f7);
+}
+.recorder-save-format {
+  flex: 1 1 auto;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text, #e6e6e6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+}
+.recorder-save-discard,
+.recorder-save-export {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-discard {
+  background: transparent;
+  color: var(--text-dim, #8a8f98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.recorder-save-discard:hover:not(:disabled) {
+  color: var(--text, #e6e6e6);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.recorder-save-export {
+  background: var(--accent, #4fc3f7);
+  color: var(--bg, #0f1115);
+  border: 1px solid var(--accent, #4fc3f7);
+}
+.recorder-save-export:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.recorder-save-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.recorder-save-saved {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+}
 .recorder-page-action-bar .recorder-page-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
