@@ -33,10 +33,12 @@
 pub use wisp::application::Application;
 
 pub mod camera;
+pub mod edges;
 pub mod material;
 pub mod mesh;
 pub mod render;
 pub use camera::{Camera3D, ViewProj};
+pub use edges::{Edge3D, EdgesMesh, LineColor, WireframePipeline};
 pub use material::{Material3D, MaterialRenderer, PaletteRampMaterial, PaletteUniform};
 pub use mesh::{Mesh3D, Vertex3D};
 pub use render::{DEPTH_FORMAT, ModelUniform, Render3DPass};
