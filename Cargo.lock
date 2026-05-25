@@ -9359,6 +9359,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wisp-3d"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "pollster",
+ "screen-wisp",
+ "wgpu",
+]
+
+[[package]]
 name = "wisp-animation"
 version = "0.1.0"
 dependencies = [
