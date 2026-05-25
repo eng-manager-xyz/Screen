@@ -36,6 +36,7 @@ pub mod camera;
 pub mod edges;
 pub mod material;
 pub mod mesh;
+pub mod reduced_motion;
 pub mod render;
 pub mod sprite;
 pub use camera::{Camera3D, ViewProj};

@@ -9366,6 +9366,7 @@ dependencies = [
  "glam",
  "pollster",
  "screen-wisp",
+ "web-sys",
  "wgpu",
 ]
 

@@ -29,3 +29,10 @@ bytemuck = { version = "1", features = ["derive"] }
 [dev-dependencies]
 # Drive the async `wisp::Application::new` from inside `#[test]` fns.
 pollster = "0.4"
+
+# Browser-only deps for the wasm32 reduced-motion detector. Scoped
+# to `cfg(target_arch = "wasm32")` so native `cargo check` doesn't
+# pull web-sys into its build graph (matches the wisp-chart-web
+# pattern).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["MediaQueryList", "Window"] }
