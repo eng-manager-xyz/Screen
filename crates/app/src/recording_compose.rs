@@ -125,6 +125,10 @@ impl RecordingCompose {
         if let Some(bytes) = cam {
             let expected = self.scene.cam_dims().byte_len();
             if bytes.len() == expected {
+                // `set_camera_frame` accepts top-down BGRA (the
+                // GStreamer / Canvas2D convention the cam slot
+                // stores) and handles the wisp-side Y convention
+                // internally.
                 self.scene.set_camera_frame(&self.app, &bytes);
                 self.has_camera_frame = true;
             } else {
@@ -152,6 +156,19 @@ impl RecordingCompose {
         if !self.has_camera_frame && !self.has_screen_frame {
             return None;
         }
+
+        // Hide the cam / screen container when the channel has never
+        // uploaded a frame this session. Without this, a screen-only
+        // recording (camera toggle off) would render the cam sprite
+        // against an unwritten `VideoTexture` — wgpu's `create_texture`
+        // doesn't guarantee zero-initialised memory, and even when it
+        // does, a residual frame from a *previous* session that was
+        // still sitting in the long-lived `RecordingState` slot would
+        // leak through. Pair with the orchestrator handing a fresh
+        // empty `FrameSlot` for disabled channels (see `commands.rs`
+        // `start_recording`'s real-capture branch).
+        self.scene.set_camera_visible(self.has_camera_frame);
+        self.scene.set_screen_visible(self.has_screen_frame);
 
         let _stats = self.renderer.render_stage(
             &self.app,
@@ -222,6 +239,46 @@ mod tests {
         let cam_slot: FrameSlot = Arc::new(Mutex::new(Some(vec![0u8; 99])));
         let screen_slot: FrameSlot = Arc::new(Mutex::new(None));
         assert!(compose.compose_frame(&cam_slot, &screen_slot).is_none());
+    }
+
+    #[test]
+    fn compose_frame_hides_cam_when_only_screen_uploads() {
+        // Regression: with the camera channel disabled the orchestrator
+        // hands a fresh empty FrameSlot. compose_frame must keep the
+        // cam container hidden so the cam sprite doesn't render against
+        // an unwritten `VideoTexture` (or a stale frame leaking from
+        // the long-lived slot).
+        let (screen, cam) = test_dims();
+        let mut compose = RecordingCompose::new(64, 64, screen, cam).expect("init");
+        let cam_slot: FrameSlot = Arc::new(Mutex::new(None));
+        let screen_slot: FrameSlot = Arc::new(Mutex::new(Some(vec![128u8; 64 * 64 * 4])));
+
+        let _ = compose
+            .compose_frame(&cam_slot, &screen_slot)
+            .expect("frame produced");
+
+        let cam_id = compose.scene.cam_container_id();
+        assert!(
+            !compose
+                .scene
+                .stage()
+                .get(cam_id)
+                .unwrap()
+                .container()
+                .visible,
+            "cam container must be hidden when no cam frame was uploaded"
+        );
+        let screen_id = compose.scene.screen_sprite_id();
+        assert!(
+            compose
+                .scene
+                .stage()
+                .get(screen_id)
+                .unwrap()
+                .container()
+                .visible,
+            "screen sprite must be visible after a screen-frame upload"
+        );
     }
 
     #[test]

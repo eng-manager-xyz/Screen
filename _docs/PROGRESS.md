@@ -6,6 +6,189 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Cam bubble default position moved BOTTOM_RIGHT → BOTTOM_LEFT
+- **Date:** 2026-05-24
+- **Status:** ✅ done — same `fix-screen-recording` branch.
+
+User-requested UX tweak. `CamLayout::default()` was `BOTTOM_RIGHT`; switched to `BOTTOM_LEFT` (new constant added at `(-0.74, -0.74)` NDC, mirroring `BOTTOM_RIGHT`'s offsets). Updated the `cam_layout_default_is_*` and `cam_layout_constants_are_in_ndc_range` tests; the other call-site test that explicitly passes `BOTTOM_RIGHT` is unchanged. Recordings produced after this change place the wisp-composited cam bubble in the bottom-left of the framebuffer.
+
+---
+
+## Camera bubble no longer rendered upside-down in the recording
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-screen-recording` branch.
+
+### Symptom
+
+After the bubble-dedup fix landed (so the recording now has only the wisp-composited cam bubble), the user toggled cam ON and recorded. The single remaining cam bubble in the bottom-right was VERTICALLY FLIPPED — the face was upside-down. The screen content underneath was still right-side up, so the asymmetry was specifically in the cam-sprite render.
+
+### Root cause
+
+Same root cause as the original SCK screen-Y-flip we hit at the top of this session: wisp's `Sprite` UV maps `(0, 0)` to NDC bottom-left ("+y flip" in CLAUDE.md), so wisp expects bottom-up uploads. Both producers (SCK extract, GStreamer camera) deliver standard top-down BGRA per CoreVideo / GStreamer conventions. Once the bubble-dedup fix removed the upright SCK-captured OS bubble, only the wisp-composited (top-down → flipped) cam bubble remained — making the latent flip obvious in a way it hadn't been when face-symmetry hid it earlier.
+
+The original screen-flip fix (extract-side row reversal in `sck_video.rs`) had treated the symptom asymmetrically: it pre-flipped SCK bytes but left the camera path alone, on the (false) assumption that GStreamer was delivering bottom-up. Two producers, two conventions, one consumer with a third convention — the recipe for "fix one corner, surface a new one".
+
+### Fix
+
+Push the flip down into wisp's `RecordingScene::set_screen_frame` and `set_camera_frame`. Both methods now accept top-down BGRA (the universal CoreVideo / GStreamer / Canvas2D convention) and flip rows internally before calling `VideoTexture::upload_bgra`. The flip is a single private helper, `flip_bgra_rows_top_down_to_bottom_up`, alongside the scene type.
+
+Net effect:
+- Both producer slots store top-down bytes — matches the `<CameraPreview />` Leptos consumer's Canvas2D `putImageData` convention; future screen-preview consumers can read the slot without any orientation gymnastics.
+- The wisp-internal flip is the single, well-documented place that knows about the sprite's "+y" convention.
+- The SCK-extract row-reversal added earlier was reverted to a plain stride-stripping copy (`copy_bgra_rows_packed`). The stride-padding tests stay — they still cover the IOSurface-padding behaviour, just without the row-reversal assertion.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/wisp/src/recording.rs` | New private helper `flip_bgra_rows_top_down_to_bottom_up`. `set_screen_frame` and `set_camera_frame` now treat their `bgra` arg as top-down and flip internally. Two new tests for the helper. |
+| `crates/media/src/sck_video.rs` | `extract_bgra_from_pixel_buffer` reverts to top-down output. The helper renamed `copy_bgra_rows_bottom_up` → `copy_bgra_rows_packed` (it now only strips stride padding, no row reversal). Three tests updated to match. |
+| `crates/app/src/recording_compose.rs` | Earlier compose-time flip helper + 2 tests removed — wisp handles it now. `compose_frame`'s cam-upload site simplified back to `self.scene.set_camera_frame(&self.app, &bytes)` with a comment pointing at wisp. |
+
+### Verification
+
+- `cargo nextest run -p screen-wisp -p screen-app -p media` — full pass, including the 2 new wisp flip-helper tests.
+- `cargo clippy --all-targets -- -D warnings` on the three crates — clean.
+- Manual macOS recording (pending): rebuild + record with cam toggle ON, confirm the single cam bubble in bottom-left shows the user right-side up.
+
+---
+
+## Recording no longer duplicates the cam bubble (SCK now excludes the webcam-bubble window)
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-screen-recording` branch.
+
+### Symptom
+
+With the previous two fixes applied, the user toggled camera ON and recorded screen + cam + audio. The resulting mp4 contained TWO cam bubbles: one in the bottom-LEFT (the OS-level `webcam-bubble` Tauri window, captured as part of the screen content by SCK) and one in the bottom-RIGHT (the wisp-composited cam from `RecordingScene` at `CamLayout::BOTTOM_RIGHT`). Both rendered the same camera feed.
+
+### Root cause
+
+SCK's content filter was built with an empty `excludingWindows: NSArray` for display-source captures (`crates/media/src/sck_video.rs::build_content_filter`). The recorder's own webcam-bubble window — visible on the user's screen for self-monitoring — was therefore included in the captured pixels alongside the rest of the desktop, alongside the wisp composite layered on top. Standard screen-recorder convention (Screen Studio / Loom / OBS) is for the app's own preview overlay to be excluded from the capture so it stays visible to the user without doubling up in the output.
+
+### Fix
+
+Plumb a `CGWindowID` exclusion list from the recorder orchestrator through the SCK content filter:
+
+1. `ScreenCaptureConfig` gains a `excluded_window_ids: Vec<u32>` field — the IDs returned by `NSWindow.windowNumber` for windows to keep OUT of display-source captures. Window-source captures (`SCContentFilter::initWithDesktopIndependentWindow`) ignore the field since they target a single specific window.
+2. `build_content_filter` resolves the IDs to `Retained<SCWindow>` via `SCShareableContent.windows()` and passes the resulting `NSArray` to `SCContentFilter::initWithDisplay_excludingWindows`. Unknown IDs (window since closed) are silently dropped with a `tracing::debug!`.
+3. New `crates/app/src/screen_capture.rs::bubble_window_cg_id(app)` — gets the `webcam-bubble` Tauri window, drops to its raw `NSWindow` via `WebviewWindow::ns_window()`, sends the `windowNumber` selector via `objc2::msg_send!`, returns `Option<u32>`. All failure modes (window not registered, NSWindow unavailable, `windowNumber <= 0` pre-first-show) log + return None; the capture falls back to the empty exclusion list (= current behaviour, dup bubble) rather than failing the recording.
+4. `start_screen_for_session` in `commands.rs` calls `bubble_window_cg_id` and threads the result into `ScreenCaptureConfig::excluded_window_ids` before handing the config to `ScreenCaptureState::start_with_frame_slot`.
+
+The picker-time `start_screen_capture` IPC (preview-only, no frame slot wired) is intentionally NOT updated — its capture is never composited, so the bubble's presence is invisible.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/sck_video.rs` | `ScreenCaptureConfig::excluded_window_ids` field (default empty Vec). `build_content_filter` accepts `excluded_window_ids: &[u32]` and resolves to `NSArray<SCWindow>` via new private helper `resolve_excluded_windows`. The two display-source branches pass the resolved array to `initWithDisplay_excludingWindows`; the window-source branch ignores the list. |
+| `crates/app/src/screen_capture.rs` | New public `bubble_window_cg_id(app)` helper. macOS-only; uses `objc2::msg_send!` to call `NSWindow.windowNumber`. Documented `#[allow(unsafe_code, reason = "...")]` matches the existing AVFoundation-FFI pattern at `commands.rs:945`. |
+| `crates/app/src/commands.rs` | `start_screen_for_session` resolves the bubble's `CGWindowID` and writes it into `ScreenCaptureConfig::excluded_window_ids` before starting the stream. |
+
+### Verification
+
+- `cargo nextest run -p screen-wisp -p screen-app -p media` — full pass.
+- `cargo clippy -p screen-app -p media --all-targets -- -D warnings` — clean.
+- Manual macOS recording (pending): record with cam toggle ON + bubble visible on screen, confirm only ONE cam bubble in the mp4 (the wisp composite, bottom-right). Bubble remains visible on the user's screen during recording so self-monitoring still works.
+
+### Notes
+
+The `bubble_window_cg_id` helper uses raw `objc2::msg_send!` rather than adding `objc2-app-kit` as a dep — only one no-arg selector (`windowNumber`) is needed and the typed-binding crate isn't already in the workspace. If we end up needing more NSWindow methods downstream, switch to the typed binding.
+
+CLAUDE.md anti-pattern note updated under "Recording pipeline — shared frame / mixer slots" so future screen-recorder UX additions remember to exclude their own overlay windows from SCK capture.
+
+---
+
+## Recording no longer composites a cam bubble when the camera channel is off
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on the same `fix-screen-recording` branch.
+
+### Symptom
+
+After the SCK Y-flip was fixed earlier in this session, the user toggled the camera OFF in the recorder, started a recording with screen + system-audio enabled, and the resulting mp4 still showed the user's face in a circular bubble in the bottom-right corner. The OS-level webcam bubble window was NOT visible on the user's screen (the ISS-05 setter-shaped IPC correctly hid it on toggle-off), so the cam in the recording had to be wisp-composited rather than SCK-captured.
+
+### Root cause
+
+Two compounding gaps allowed the wisp pipeline to render a cam sprite even when the recording config said `camera: false`:
+
+1. **Orchestrator never gated the camera slot.** `start_recording` in `crates/app/src/commands.rs` unconditionally cloned the long-lived `recording_state.camera_frame_slot` and handed it to `EncoderHandle::start_with_real_capture`. The compose feed-thread pulled from it every tick — and the slot could be populated by either (a) the picker-time camera preview pipeline, which keeps running on the page even after the camera toggle goes off (the `on_camera_toggle` handler at `crates/app-ui/src/recorder_page.rs:314` doesn't call `camera_ipc::stop_preview()`, unlike `on_mic_toggle` which does the symmetric `stop_mic_capture()`), or (b) a stale frame left over from a previous session where the camera was on.
+
+2. **`RecordingScene` always adds the cam sprite + circular-clip container.** Even with `has_camera_frame = false`, `Renderer::render_stage` still walks the cam sprite and samples its `VideoTexture`. wgpu's `create_texture` doesn't guarantee zero-initialised memory; in practice Metal zero-inits on M-series, so an unwritten `VideoTexture` reads as transparent — but that's an unspecified-behaviour guarantee we shouldn't lean on.
+
+So in the user's case: the picker had previously selected a camera + started preview; preview kept writing BGRA into the shared slot after the user toggled camera off; orchestrator handed that populated slot to the compose feed; the cam sprite rendered with live frames.
+
+### Fix
+
+Three layered changes, smallest-blast-radius each:
+
+1. `RecordingScene::set_camera_visible(bool)` + `set_screen_visible(bool)` — new methods on the wisp scene that toggle the cam container / screen sprite's `Container::visible` flag. Pure scene-graph mutation; no shader change. Two unit tests cover the round-trip.
+2. `RecordingCompose::compose_frame` — drive both visibilities from `has_camera_frame` / `has_screen_frame` right before `render_stage`. While `has_*_frame` is false (no upload has happened this session) the corresponding sprite is hidden, so the renderer never samples the unwritten `VideoTexture`. One regression test asserts `cam_container.visible == false` after a screen-only compose tick.
+3. `start_recording` (orchestrator) — for a disabled video channel, build a `new_frame_slot()` (fresh empty `Arc<Mutex<Option<Vec<u8>>>>`) instead of cloning the long-lived shared slot. Even if the picker-side preview pipeline keeps writing to the shared slot, the compose pump is now reading from an isolated empty slot — no stale or in-flight frame can leak through.
+
+Layered defense rather than a single edit because the bug had two independent contributing causes (orchestrator + scene), and either path could regress on its own (e.g., a future "always-on preview" feature could re-introduce slot contamination if only the orchestrator was fixed).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/wisp/src/recording.rs` | Two new methods on `RecordingScene`: `set_camera_visible(bool)` + `set_screen_visible(bool)`. Two unit tests for the visibility round-trip. |
+| `crates/app/src/recording_compose.rs` | `compose_frame` calls `set_camera_visible(has_camera_frame)` + `set_screen_visible(has_screen_frame)` before `render_stage`. New test `compose_frame_hides_cam_when_only_screen_uploads`. |
+| `crates/app/src/commands.rs` | `start_recording`'s real-capture branch: per-channel `if config.streams.X { clone shared slot } else { new_frame_slot() }`. |
+
+### Verification
+
+- `cargo nextest run -p screen-wisp -p screen-app -p media` — all green including the 2 new wisp tests + 1 new compose test.
+- `cargo clippy --all-targets -- -D warnings` on the same three crates — clean.
+- Manual macOS recording (pending): record with camera toggle OFF + screen + audio, confirm mp4 contains no cam bubble; record with camera ON + screen, confirm cam bubble still composites in the bottom-right.
+
+### Honest deferral
+
+The picker-side camera preview pipeline still runs after the cam toggle is set to off — wasting CPU + camera-warm cycles even though the bubble window is hidden and nothing consumes the slot. The minimal, correct fix for the recording was layered defense; the symmetric "stop preview on toggle off" treatment that mic got in PR #54 is a UX cleanup that should land next, gated by a quick check that re-toggling on cleanly restarts preview (the picker-side flow currently auto-starts preview only when no camera was previously selected, so a re-toggle-on path would need explicit `start_preview(camera_selected.get().unwrap_or(first))`).
+
+---
+
+## Screen capture — recorded mp4 no longer shows the screen upside-down
+- **Date:** 2026-05-24
+- **Status:** ✅ done — fix on a new `fix-screen-recording` branch (post-PR-#54 `fix-audio-recording` merge).
+
+### Symptom
+
+User recorded with screen + cam + mic + system-audio toggled on, opened the resulting mp4, and the screen content was vertically flipped: dock at the TOP, menu bar at the BOTTOM, VS Code title bar at the BOTTOM, text upside-down. The camera bubble in the bottom-right was unaffected — face up, keyboard below, correctly oriented.
+
+Both the screen and the camera frames go through identical wisp paths (`VideoTexture::upload_bgra` → `Sprite::from_texture` → `Renderer::render_stage` → `RenderTexture::read_pixels`), so the asymmetry had to be in the upstream byte order.
+
+### Root cause
+
+wisp's `Sprite` vertex shader maps texture UV `(0, 0)` to the BOTTOM-LEFT of the rendered NDC quad — confirmed via the `video-frame-handoff` story's rendered PNG (`_docs/book/src/assets/media/video-frame-handoff.png`): the synthetic source's row 0 (where green channel = 0, black) appears at the BOTTOM of the rendered output, row H-1 (bright green) at the TOP. This is the same "+y flip" CLAUDE.md flagged for the sprite vs glyphon asymmetry.
+
+So wisp's sprite expects **bottom-up** byte uploads to render right-side up — but every standard video API (CoreVideo / GStreamer / Canvas2D) hands out top-down bytes. `extract_bgra_from_pixel_buffer` in `crates/media/src/sck_video.rs` was copying CoreVideo's top-down rows straight to the encoder; the GStreamer camera path was doing the same; wisp interpreted both as bottom-up and rendered them flipped. The screen-side flip was the obvious one because the screen is full-frame and the menu-bar-at-bottom symptom is unmistakable; the cam-side flip was hidden by the small bubble size + face symmetry until the subsequent dedup fix surfaced it (see the "Camera bubble no longer rendered upside-down" entry above).
+
+This has been the case since M-PIX.2 shipped (2026-05-17). Existing `sck_video` unit tests cover lifecycle / config / parsing / counters but never asserted byte orientation; the storybook `s_recording_scene_default` story listed in the milestone doc was never actually authored, so there was no visual canary either.
+
+### Fix
+
+Push the flip into wisp at the `RecordingScene::set_screen_frame` / `set_camera_frame` boundary — both methods accept top-down BGRA (the universal video convention) and a private `flip_bgra_rows_top_down_to_bottom_up` helper rewrites rows before `VideoTexture::upload_bgra`. Single flip location; producer-side bytes stay in the standard convention so `<CameraPreview />` and any future preview consumer can read the slot directly.
+
+`extract_bgra_from_pixel_buffer` is otherwise unchanged from its M-PIX.2 shape — its helper, renamed `copy_bgra_rows_packed`, only handles IOSurface stride padding (no row reversal). The padding tests stay; the row-reversal claim is now wisp's responsibility.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/wisp/src/recording.rs` | New private helper `flip_bgra_rows_top_down_to_bottom_up`. `set_screen_frame` + `set_camera_frame` docstrings document the top-down convention; both flip internally. Two new tests for the helper. |
+| `crates/media/src/sck_video.rs` | New private helper `copy_bgra_rows_packed` (strips IOSurface stride padding). `extract_bgra_from_pixel_buffer` constructs a slice over the locked pixel-buffer range and delegates. Three tests cover the stride-stripping. |
+| `CLAUDE.md` | New anti-pattern entry under "Coordinate / pixel-readback" — wisp's sprite samples bottom-up; the `RecordingScene::set_*_frame` methods own the conversion at the wisp boundary. |
+| `_docs/PROGRESS.md` | This entry. |
+
+### Verification
+
+- `cargo nextest run -p screen-wisp -p screen-app -p media` — all green (including new orientation tests).
+- `cargo clippy --all-targets -- -D warnings` on all three crates — clean.
+- Manual macOS recording: user re-runs `cargo tauri dev`, records ~5 s with screen + cam, opens the mp4, confirms screen renders right-side up (dock at bottom, menu bar at top) AND cam bubble renders right-side up.
+
+`just gate` not run — pure source change, no Cargo.toml deltas (per `[[feedback-gate-tiers]]`).
+
+---
+
 ## Per-app system-audio filter survives the picker → record session swap
 - **Date:** 2026-05-24
 - **Status:** ✅ done — fix on the same `fix-audio-recording` branch.

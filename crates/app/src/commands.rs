@@ -1889,8 +1889,26 @@ pub fn start_recording(
             crate::preview::pipeline::PREVIEW_WIDTH,
             crate::preview::pipeline::PREVIEW_HEIGHT,
         );
-        let camera_slot = crate::recording::FrameSlot::clone(&recording_state.camera_frame_slot);
-        let screen_slot = crate::recording::FrameSlot::clone(&recording_state.screen_frame_slot);
+        // For disabled channels, hand the compose pipeline a fresh
+        // empty `FrameSlot` instead of the long-lived shared one — the
+        // shared slot may still hold a frame written by an in-flight
+        // preview pipeline (cam: picker preview / bubble window;
+        // screen: future preview), or a stale frame from a previous
+        // session. Reading from a fresh slot guarantees the compose
+        // pipeline never sees a frame for a channel the user toggled
+        // off, so `has_camera_frame` / `has_screen_frame` stay false
+        // and the matching sprite is hidden (see
+        // `recording_compose.rs::compose_frame`).
+        let camera_slot = if config.streams.camera {
+            crate::recording::FrameSlot::clone(&recording_state.camera_frame_slot)
+        } else {
+            crate::recording::new_frame_slot()
+        };
+        let screen_slot = if config.streams.screen {
+            crate::recording::FrameSlot::clone(&recording_state.screen_frame_slot)
+        } else {
+            crate::recording::new_frame_slot()
+        };
         let mixer = crate::recording::SharedAudioMixer::clone(&recording_state.audio_mixer);
         crate::recording::EncoderHandle::start_with_real_capture(
             encoder_config,
@@ -2235,8 +2253,17 @@ fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> 
     let frame_slot = app
         .try_state::<RecordingState>()
         .map(|s| crate::recording::FrameSlot::clone(&s.screen_frame_slot));
+    // Exclude the recorder's own webcam-bubble window from the
+    // capture so it doesn't dup with the wisp-composited cam bubble
+    // (only relevant for display sources; window-source filter
+    // targets a single window and ignores the exclusion list).
+    let excluded_window_ids = crate::screen_capture::bubble_window_cg_id(app)
+        .map(|id| vec![id])
+        .unwrap_or_default();
+    let mut config = ScreenCaptureConfig::for_source(source);
+    config.excluded_window_ids = excluded_window_ids;
     state
-        .start_with_frame_slot(ScreenCaptureConfig::for_source(source), frame_slot)
+        .start_with_frame_slot(config, frame_slot)
         .map_err(|e| e.to_string())
 }
 
