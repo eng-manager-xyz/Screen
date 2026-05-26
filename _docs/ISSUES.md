@@ -25,6 +25,21 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-08: NEXT-UP — increase camera + screen recording quality
+- **Filed:** 2026-05-26
+- **By:** user (next feature after `feat/export` / PR #58)
+- **Severity:** deferral (planned next feature, not a bug)
+- **Affects:** the capture + encode path — `crates/media` (GStreamer encode pipeline) + `crates/app` (ScreenCaptureKit / camera-worker config); **not** the UI layer. Start a fresh session + a new branch off `main` (after #58 lands).
+- **Description:**
+  Goal: raise the quality of recorded camera + screen output. Before any edits, the new session should read `PROGRESS.md` + the capture/encode milestone docs and map where the quality knobs actually live. Three independent axes — decide the target first, since they touch different parts of the pipeline:
+  1. **Encoder settings** — bitrate, H.264/H.265 profile + level, keyframe interval, rate-control mode. Lives in the GStreamer encode element config (HW encoders: `vtenc_h264_hw` macOS).
+  2. **Resolution + framerate** — capture at native Retina (no downscale) and/or higher fps; the scratch is currently fixed MP4/H.264 (see M-SAVE.1) — confirm the capture caps + any scaling step.
+  3. **Color** — HDR / wide-gamut / 10-bit, if in scope (biggest pipeline change; likely a later pass).
+  Open question to pin down at kickoff: which axis is the actual target for v1?
+- **Resolution:** (open) Placeholder to carry the intent across sessions — no work started.
+
+---
+
 ## ISS-07: stale rustdoc deep-links in existing `ui/chunks/*.md` chapters
 - **Filed:** 2026-05-25
 - **By:** M-SAVE.GATE (verified rustdoc paths while authoring `save-panel.md`)
