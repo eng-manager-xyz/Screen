@@ -841,6 +841,22 @@ fine on lavapipe — **don't guard them**.
 - **Drop-kill the child.** Implementing `Drop` for the stream struct with
   `child.kill()` + `child.wait()` matters: `gst-launch-1.0` will keep
   decoding into a dropped pipe and burn CPU otherwise.
+- **`EndOfStream { frames_read: 0 }` from a camera = the device is
+  busy / held by another app — NOT a pipeline or code bug.** The
+  built-in macOS camera is single-claimant: if FaceTime / Teams / Zoom
+  / a browser tab / Photo Booth has it open, `avfvideosrc` opens then
+  immediately EOFs with zero frames, and the preview hangs at
+  "Starting camera…". A *different* camera (e.g. an iPhone Continuity
+  Camera) will work simultaneously, which is the tell. **Before
+  suspecting your own change, check device-busy first** (quit other
+  camera apps; check the green camera light). This cost a multi-rebuild
+  revert spiral on M-QUAL.3 — the "regression" was FaceTime holding the
+  built-in cam the whole time; the code was fine. The camera worker
+  silences gst's stderr (`Stdio::null()`), so the real error is hidden
+  — consult `/tmp/screen-app.log` for the worker's view
+  (`camera-pipeline opened…` then `next_frame errored… EndOfStream`),
+  and consider surfacing gst stderr on failure so "device busy" isn't
+  invisible.
 - **Tests that spawn external CLIs MUST have a runtime skip guard.**
   Pattern in `crates/decode/tests/gstreamer_integration.rs` —
   `gstreamer_available()` does a `--version` spawn check and returns
