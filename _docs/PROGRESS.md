@@ -6,6 +6,33 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.GATE — extract the Save panel into a presentational `SavePanel` component
+- **Date:** 2026-05-25
+- **Status:** ✅ done — sixth (gate) chunk of `feat/export`. Closes the M-SAVE.3 "Deferred (to M-SAVE.GATE)" item: the post-record Save panel was inline in `RecorderPage`; it's now a stateless `ui-storybook` component with stories + an SSR snapshot + an mdBook chapter.
+
+### What shipped
+
+- **`crates/ui-storybook/src/components/recorder/save_panel.rs`** — new presentational `SavePanel` (props-in/callbacks-out, no state/IPC). Two view-model states via `SavePanelView`: `Choosing { output_dir, format, busy }` (folder row + format dropdown + Discard/Export; `busy` dims the controls + flips Export → "Exporting…") and `Saved { path }` (Saved-to + Reveal/Done). A small `SaveFormat` enum (`Mp4H264` / `WebmVp9`) carries the `slug()`/`label()`/`from_slug()` mapping to the IPC format slug so the controlled `<select>` never holds format state. The two state bodies are split into `choosing_body` / `saved_body` helpers so neither trips the function-length lint. +4 unit tests (slug uniqueness, `from_slug` round-trip, default = MP4, distinct labels). Re-exported through `recorder/mod.rs` + `components/mod.rs`.
+- **`crates/ui-storybook/src/fixtures/recorder.rs`** — `sample_save_panel_choosing` / `_exporting` / `_saved` builders.
+- **`crates/ui-storybook/src/stories/save_panel.rs`** — 3 stories (choosing / exporting / saved) registered in `stories/mod.rs`; SSR snapshot regenerated + accepted.
+- **`crates/app-ui/src/recorder_page.rs`** — replaced the inline Save-panel `view!` block with `<SavePanel …>` wrapped in a reactive closure that maps the live signals (`saved_path` / `output_dir` / `export_format` / `export_busy`) into the view-model. New `on_format_change` callback stashes the chosen `SaveFormat` slug back into `export_format`. The outer `save_panel_visible` `<Show>` gate + every IPC callback (`on_export` / `on_discard` / `on_change_folder` / `on_reveal` / `on_dismiss_saved`) are unchanged — pure render-layer extraction.
+- **`_docs/book/src/ui/chunks/save-panel.md`** + `SUMMARY.md` — chapter with the three state assets, a `stateDiagram-v2` of the export lifecycle, the API snippet, and rustdoc deep-links (verified against the generated `target/doc` paths — the older recorder chapters' `components/<name>/` links are stale; these use the correct `components/recorder/save_panel/` path).
+
+### Verification
+
+- `just gate` — **green** (exit 0). fmt / check / lint / nextest / doctest / docs / snapshots-check / mermaid-check / shared-check / required-files-check / pages-url-check all pass. No warnings introduced by the new code (the 7 app-ui doc warnings are pre-existing in `system_audio_picker.rs`).
+- `cargo nextest run -p ui-storybook` — 94 passed (+the 4 new `SaveFormat` tests; snapshot covers the 3 new stories). `cargo nextest run -p app-ui` — 60 passed.
+- `cargo clippy -p ui-storybook -p app-ui --all-targets` (native) + `cargo clippy --target wasm32-unknown-unknown -p app-ui -- -D warnings` — clean.
+- `just snapshots-ui` regenerated the 3 `save-panel-*.html` assets (135 stories total); `snapshots-check` confirms every referenced asset is present.
+- No `Cargo.toml` change → ISS-06 deny/machete pre-existing failures unaffected.
+
+### Deferred
+
+- **Visual `just site` render** — `mdbook` isn't installed in this environment (`cargo install mdbook mdbook-admonish mdbook-cmdrun` to enable). The gate's `snapshots-check` (assets exist) + `mermaid-check` (diagram valid) cover the chapter's structural integrity; the browser render is a user-side visual check.
+- **Restoring the persisted `last_format`** as the dropdown default (still the other open M-SAVE.3 deferral — the panel defaults to MP4; a `get_last_format` command + mount-poll would restore it).
+
+---
+
 ## M-SAVE.4 — output-folder setting in the ⋯ menu
 - **Date:** 2026-05-25
 - **Status:** ✅ done — fifth chunk of `feat/export`. The recorder's `⋯` "More options" button was inert; it now opens a small menu so the output folder can be set **without** recording first (previously Change… only appeared in the post-record Save panel).

@@ -26,8 +26,9 @@ use ui_storybook::components::recorder::{
     AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, AutoZoomSelect, CaptureModeTabs,
     CaptureSourceKind, CaptureSourceView, CountdownSelect, DeviceOptionView, DevicePickerState,
     DeviceThumb, DisplayPreviewFrame, DisplayPreviewView, OnScreenOptionKind, OnScreenOptionView,
-    PreviewWindowChip, StartRecordingButton, StartRecordingState, SystemAudioView,
-    format_auto_zoom_label, format_countdown_label, format_selection_count,
+    PreviewWindowChip, SaveFormat, SavePanel, SavePanelView, StartRecordingButton,
+    StartRecordingState, SystemAudioView, format_auto_zoom_label, format_countdown_label,
+    format_selection_count,
 };
 use ui_storybook::fixtures::recorder::CaptureMode;
 
@@ -536,6 +537,12 @@ pub fn RecorderPage() -> impl IntoView {
         });
     });
 
+    // The Save panel's format dropdown is a controlled `<select>` —
+    // it fires `SaveFormat`; we stash the slug back into the signal the
+    // export handler reads.
+    let on_format_change =
+        Callback::new(move |fmt: SaveFormat| export_format.set(fmt.slug().to_owned()));
+
     let on_change_folder = Callback::new(move |()| {
         spawn_local(async move {
             if let Some(dir) = settings_ipc::pick_output_dir().await {
@@ -813,74 +820,34 @@ pub fn RecorderPage() -> impl IntoView {
                     </footer>
                 }
             >
-                <footer class="recorder-page-action-bar recorder-save-panel" aria-label="Save recording">
-                    <Show
-                        when=move || saved_path.get().is_some()
-                        fallback=move || view! {
-                            <div class="recorder-save-fields">
-                                <div class="recorder-save-row">
-                                    <span class="recorder-save-key">"Folder"</span>
-                                    <span class="recorder-save-folder" title=move || output_dir.get()>
-                                        {move || output_dir.get()}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        class="recorder-save-change"
-                                        on:click=move |_| on_change_folder.run(())
-                                        disabled=move || export_busy.get()
-                                    >"Change…"</button>
-                                </div>
-                                <div class="recorder-save-row">
-                                    <span class="recorder-save-key">"Format"</span>
-                                    <select
-                                        class="recorder-save-format"
-                                        aria-label="Export format"
-                                        on:change:target=move |ev| export_format.set(ev.target().value())
-                                        disabled=move || export_busy.get()
-                                    >
-                                        <option value="mp4-h264" selected=move || export_format.get() == "mp4-h264">"MP4"</option>
-                                        <option value="webm-vp9" selected=move || export_format.get() == "webm-vp9">"WebM"</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="recorder-save-actions">
-                                <button
-                                    type="button"
-                                    class="recorder-save-discard"
-                                    on:click=move |_| on_discard.run(())
-                                    disabled=move || export_busy.get()
-                                >"Discard"</button>
-                                <button
-                                    type="button"
-                                    class="recorder-save-export"
-                                    on:click=move |_| on_export.run(())
-                                    disabled=move || export_busy.get()
-                                >
-                                    {move || if export_busy.get() { "Exporting…" } else { "Export" }}
-                                </button>
-                            </div>
+                // Presentational `SavePanel` (ui-storybook) wrapped in a
+                // reactive closure so it re-renders as `saved_path` /
+                // `export_format` / `export_busy` / `output_dir` change.
+                // A `Some(saved_path)` takes precedence (the post-export
+                // confirmation, dismissed via "Done"); otherwise it's
+                // the choosing/exporting state.
+                {move || {
+                    let panel_view = if let Some(path) = saved_path.get() {
+                        SavePanelView::Saved { path }
+                    } else {
+                        SavePanelView::Choosing {
+                            output_dir: output_dir.get(),
+                            format: SaveFormat::from_slug(&export_format.get()).unwrap_or_default(),
+                            busy: export_busy.get(),
                         }
-                    >
-                        <div class="recorder-save-saved" role="status" aria-live="polite">
-                            <span class="recorder-save-key">"Saved to"</span>
-                            <span class="recorder-save-folder" title=move || saved_path.get().unwrap_or_default()>
-                                {move || saved_path.get().unwrap_or_default()}
-                            </span>
-                        </div>
-                        <div class="recorder-save-actions">
-                            <button
-                                type="button"
-                                class="recorder-save-discard"
-                                on:click=move |_| on_dismiss_saved.run(())
-                            >"Done"</button>
-                            <button
-                                type="button"
-                                class="recorder-save-export"
-                                on:click=move |_| on_reveal.run(())
-                            >"Reveal in Finder"</button>
-                        </div>
-                    </Show>
-                </footer>
+                    };
+                    view! {
+                        <SavePanel
+                            view=panel_view
+                            on_change_folder=on_change_folder
+                            on_format_change=on_format_change
+                            on_discard=on_discard
+                            on_export=on_export
+                            on_reveal=on_reveal
+                            on_done=on_dismiss_saved
+                        />
+                    }
+                }}
             </Show>
 
             <Show when=move || error_msg.get().is_some() fallback=|| view! { <></> }>

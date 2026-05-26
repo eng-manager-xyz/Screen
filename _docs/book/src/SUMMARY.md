@@ -88,6 +88,7 @@
   - [System audio picker](./ui/chunks/system-audio-picker.md)
   - [On-screen options](./ui/chunks/on-screen-options.md)
   - [Recording controls footer](./ui/chunks/recording-controls-footer.md)
+  - [Save panel](./ui/chunks/save-panel.md)
   - [Tray record popover](./ui/chunks/tray-record-popover.md)
   - [Recording status button](./ui/chunks/recording-status-button.md)
   - [Library sidebar](./ui/chunks/library-sidebar.md)
