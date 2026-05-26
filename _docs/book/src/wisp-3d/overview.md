@@ -31,6 +31,10 @@ flowchart LR
 
 The engmanager.xyz 404 page renders a spinning Catppuccin-palette pyramid via THREE.js (loaded from a jsDelivr CDN). `wisp-3d` + `wisp-3d-web` replace that with a same-origin wasm bundle, dropping the third-party JS dep.
 
+![Pyramid rendered by wisp-3d's integration test — 5-stop palette ramp + off-white wireframe overlay, port-for-port match of the 404 page's THREE composition](../assets/wisp-3d/pyramid.png)
+
+The screenshot above is the committed output of `cargo nextest run -p wisp-3d --test render_pyramid` — the test color-picks pixels to assert the pyramid actually drew (centre is NOT the background, corners ARE), so the PNG is verified PR-side proof that the integration works on every gate run.
+
 ## Crate layout
 
 | Module | Purpose | Chapter |
