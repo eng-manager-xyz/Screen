@@ -2,10 +2,9 @@
 //! plumbing for M-EXPORT.4 (M-RECORD-EXPORT).
 //!
 //! Pure-Rust path math + a `std::process::Command` wrapper for the
-//! per-OS file-manager reveal. No Tauri-plugin-dialog dep — the
-//! recorder's v0 UX is "auto-pick a sensible default location"
-//! rather than "always show a save dialog." A future M-EXPORT.4.1
-//! follow-up can add `tauri-plugin-dialog` for explicit Save-As.
+//! per-OS file-manager reveal. The user-pickable output directory
+//! (M-SAVE.0) layers on top via
+//! [`recorder_settings`](crate::recorder_settings).
 
 #![allow(
     clippy::cast_possible_wrap,

@@ -730,16 +730,10 @@ pub fn build_webm_transcode_args(input: &Path, output: &Path, has_audio: bool) -
 }
 
 /// Probe `input` for an audio track via `gst-discoverer-1.0`. Returns
-/// `true` only when the discoverer runs successfully AND reports an
-/// audio stream; any failure (binary missing, probe error, no audio)
-/// returns `false` so the transcode falls back to a video-only
-/// pipeline rather than risking a hang on a missing audio pad.
-///
-/// The heuristic errs toward `false`: the discoverer's topology dump
-/// prints an `audio:` stream line only when an audio track exists, so
-/// a false positive (claiming audio that isn't there — the hang case)
-/// is very unlikely, while a false negative at worst drops an audio
-/// track from the WebM (no hang).
+/// `true` only when an audio stream is reported; any failure (binary
+/// missing, probe error, no audio) returns `false`, so the transcode
+/// falls back to a video-only pipeline rather than hang on a
+/// `decodebin` audio pad that never fires.
 #[must_use]
 pub fn scratch_has_audio(input: &Path) -> bool {
     let Ok(output) = Command::new("gst-discoverer-1.0").arg(input).output() else {
@@ -748,8 +742,10 @@ pub fn scratch_has_audio(input: &Path) -> bool {
     if !output.status.success() {
         return false;
     }
+    // gst-discoverer prints `Audio #0: …` per stream + an `audio:` line
+    // in the topology — either marks an audio track.
     let lower = String::from_utf8_lossy(&output.stdout).to_lowercase();
-    lower.contains("audio:") || lower.contains("audio #") || lower.contains("audio stream")
+    lower.contains("audio #") || lower.contains("audio:")
 }
 
 fn mux_to_parser(format: OutputFormat) -> &'static str {

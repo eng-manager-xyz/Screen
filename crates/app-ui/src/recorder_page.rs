@@ -119,23 +119,17 @@ pub fn RecorderPage() -> impl IntoView {
     // it's cleared when the next session starts. See `show_as_recording`.
     let stop_requested = RwSignal::new(false);
 
-    // -------- M-SAVE.3 — post-record Save panel state -----------------
-    // After Stop the backend parks the recording in scratch awaiting
-    // export (M-SAVE.1); `pending_export` Some drives the Save panel.
+    // -------- M-SAVE.3/.4 — Save panel + ⋯ menu state -----------------
+    // The stop handler sets `pending_export` from the stop summary;
+    // `Some` swaps the record footer for the Save panel. `export_busy`
+    // gates the controls during the (software-VP9) WebM transcode;
+    // `saved_path` drives the post-export "Saved → Reveal" state.
     let pending_export = RwSignal::new(Option::<PendingExportView>::None);
-    // Format dropdown: MP4 (= scratch, instant move) / WebM (= VP9
-    // transcode). Default MP4 — the universal-compat choice.
     let export_format = RwSignal::new("mp4-h264".to_string());
-    // True while `export_recording` runs (esp. the multi-second WebM
-    // transcode) so the panel shows a busy state + disables buttons.
     let export_busy = RwSignal::new(false);
-    // Set on a successful export → the panel shows the "Saved → Reveal"
-    // success state. Cleared on Discard / next recording.
     let saved_path = RwSignal::new(Option::<String>::None);
-    // The configured output directory, shown in the panel + the ⋯ menu.
     let output_dir = RwSignal::new(String::new());
-    // M-SAVE.4 — the ⋯ "More options" menu (output-folder setting),
-    // so the folder can be set without recording first.
+    // ⋯ "More options" menu — set the output folder without recording.
     let overflow_open = RwSignal::new(false);
 
     // -------- subscriptions -------------------------------------------

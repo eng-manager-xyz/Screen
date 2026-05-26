@@ -360,18 +360,7 @@ impl Default for RecordingState {
     }
 }
 
-/// Backwards-compatible field-tuple access — the M-RECORD.1 commands
-/// were written when `RecordingState` was a `Mutex<Option<...>>`
-/// tuple struct. This helper preserves the `state.0.lock()` call
-/// shape used in those sites.
 impl RecordingState {
-    /// `&self.session` — sugar for the call sites that still
-    /// reach for `state.0.lock()`.
-    #[allow(dead_code, reason = "compat shim for the M-RECORD.1 call sites")]
-    pub fn legacy_lock(&self) -> &Mutex<Option<RecordingSession>> {
-        &self.session
-    }
-
     /// `true` if a session is currently held.
     #[must_use]
     pub fn is_active(&self) -> bool {
@@ -888,10 +877,8 @@ pub struct RecordingSummary {
     pub elapsed_ms: u64,
     /// Final per-stream tally.
     pub streams: Vec<StreamHealth>,
-    /// Path the encoded file landed at. M-EXPORT.4 populated this on
-    /// the old "save-on-stop" path; as of M-SAVE.1 stop no longer
-    /// writes the final file (export is deferred to the Save panel),
-    /// so this stays `None` and `pending_export` carries the handoff.
+    /// Always `None` since M-SAVE.1 — stop defers the save, so
+    /// `pending_export` carries the handoff instead.
     pub output_path: Option<String>,
     /// Set when the stopped recording is sitting in scratch awaiting
     /// the user's format choice (M-SAVE.1). The Save panel keys off

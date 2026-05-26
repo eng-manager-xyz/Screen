@@ -2191,7 +2191,8 @@ pub async fn export_recording(
 ) -> Result<String, String> {
     use media::encode::OutputFormat;
 
-    // Take the pending export — the guard is released before any await.
+    // An async command can't hold a `State<'_>` borrow across `.await`,
+    // so resolve `RecordingState` via `app.state()` at each touch point.
     let pending = app
         .state::<RecordingState>()
         .take_pending_export()
@@ -2216,8 +2217,9 @@ pub async fn export_recording(
     let job = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         crate::recording_paths::ensure_parent_dir(&final_for_job)
             .map_err(|err| format!("failed to create output dir: {err}"))?;
+        // The scratch is MP4/H.264: MP4 export is a move, WebM a
+        // transcode. H.265 / AV1 aren't offered in the UI.
         match format {
-            // Scratch IS MP4/H.264 — promote it with a move, no re-encode.
             OutputFormat::Mp4H264Aac => {
                 crate::recording_paths::move_file(&scratch, &final_for_job).map_err(|err| {
                     format!(
@@ -2226,19 +2228,16 @@ pub async fn export_recording(
                     )
                 })?;
             }
-            // Re-encode the scratch into VP9 + Opus WebM, then drop it.
             OutputFormat::WebmVp9Opus => {
                 media::encode::transcode_to_webm(&scratch, &final_for_job)
                     .map_err(|err| format!("WebM transcode failed: {err}"))?;
                 let _ = std::fs::remove_file(&scratch);
             }
-            // Not exposed in the UI dropdown (MP4 / WebM only).
             OutputFormat::Mp4H265Aac | OutputFormat::WebmAv1Opus => {
                 return Err(format!("export to {} is not supported", format.slug()));
             }
         }
-        // Best-effort AVIF poster next to the *exported* file (skipped
-        // silently when avifenc isn't installed).
+        // Best-effort AVIF poster next to the exported file.
         match media::encode::generate_poster(&final_for_job) {
             Ok(Some(poster)) => {
                 tracing::info!(poster = %poster.display(), "export_recording: poster written");
@@ -2253,7 +2252,7 @@ pub async fn export_recording(
 
     match job {
         Ok(()) => {
-            // Remember the chosen format as the Save-panel default.
+            // Persist the chosen format as the Save-panel default.
             let mut settings = crate::recorder_settings::load(&app);
             settings.last_format = Some(format.slug().to_owned());
             if let Err(err) = crate::recorder_settings::save(&app, &settings) {
@@ -2274,19 +2273,13 @@ pub async fn export_recording(
 }
 
 /// Discard the pending recording — delete its scratch file and clear
-/// the awaiting-export state (M-SAVE.1). No-op when nothing is
-/// pending. Always `Ok`: a missing/unremovable scratch is logged, not
-/// surfaced (the user's intent — "throw it away" — is satisfied
-/// either way).
-///
-/// # Errors
-///
-/// Never returns `Err` today; the `Result` keeps the IPC signature
-/// stable for a future "couldn't free the file" surfacing.
+/// the awaiting-export state (M-SAVE.1). No-op when nothing is pending;
+/// a missing / unremovable scratch is logged, not surfaced. Returns
+/// `Result` (always `Ok` today) to keep the IPC signature stable.
 #[tauri::command]
 #[allow(
     clippy::unnecessary_wraps,
-    reason = "IPC signature stability — a future revision may surface a hard delete failure; callers already handle Result."
+    reason = "IPC signature stability — a delete failure may be surfaced in future."
 )]
 pub fn discard_recording(recording_state: State<'_, RecordingState>) -> Result<(), String> {
     if let Some(pending) = recording_state.take_pending_export() {
@@ -2714,22 +2707,17 @@ pub fn default_recording_output_path(app: tauri::AppHandle, format_slug: Option<
 
 /// Open a native folder picker and return the chosen absolute path,
 /// or `None` if the user cancelled. Does **not** persist the choice —
-/// the caller decides whether the pick becomes the new default
-/// ([`set_output_dir`]) or a one-off Save-As target. The picker opens
-/// at the current configured directory when it exists.
+/// the caller ([`set_output_dir`]) does. Opens at the current
+/// configured directory when it exists.
 ///
-/// Runs the (blocking) native dialog on the blocking thread pool via
-/// `spawn_blocking`: the dialog-plugin `blocking_*` variants dispatch
-/// the modal to the main thread and block the *calling* thread until
-/// the user responds, so they must run off-main (calling from the main
-/// thread deadlocks). An `async` command already runs off-main; the
-/// extra `spawn_blocking` keeps the potentially-many-seconds modal off
-/// an async-runtime worker.
+/// Runs on the blocking thread pool via `spawn_blocking`: the
+/// dialog-plugin `blocking_*` variants block the calling thread until
+/// the user responds, and deadlock if that's the main thread.
 ///
 /// # Errors
 ///
-/// Returns an error string only if the dialog task itself fails to
-/// join. A user cancel is `Ok(None)`, not an error.
+/// Errors only if the dialog task fails to join; a user cancel is
+/// `Ok(None)`.
 #[tauri::command]
 pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;

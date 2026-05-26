@@ -1,24 +1,14 @@
-//! Persistent recorder preferences (M-SAVE.0).
-//!
-//! Two pieces of cross-session state the recorder remembers:
+//! Persistent recorder preferences (M-SAVE.0) — JSON at
+//! `<app-config-dir>/recorder-settings.json`.
 //!
 //! - **`output_dir`** — the directory new recordings export into.
-//!   `None` means "use the per-OS default"
+//!   `None` → the per-OS default
 //!   ([`recording_paths::default_output_dir`](crate::recording_paths::default_output_dir)).
-//! - **`last_format`** — the export format slug the user last chose in
-//!   the Save panel (`"mp4-h264"` / `"webm-vp9"` / …). `None` means
-//!   "use the default format". Restored as the dropdown's initial
-//!   value so the user doesn't re-pick every recording.
+//! - **`last_format`** — the export format slug last chosen in the Save
+//!   panel (`"mp4-h264"` / `"webm-vp9"`). `None` → the default format.
 //!
-//! Stored as JSON at `<app-config-dir>/recorder-settings.json`. We use
-//! `serde_json` here (unlike the bubble-position file, which hand-rolls
-//! a two-integer text format) because a filesystem path can contain
-//! the `:` / `,` / newline characters that an ad-hoc `key:value` format
-//! would choke on — JSON escapes them correctly. Both fields are
-//! `#[serde(default)]` + `Option`, so an older or partially-written
-//! file still deserializes (missing keys fall back to `None`); unknown
-//! keys from a future version are ignored. No format-version field is
-//! needed.
+//! Both fields are `#[serde(default)]` + `Option`, so partial / older
+//! files still load (missing keys → `None`).
 
 use std::path::{Path, PathBuf};
 
@@ -40,11 +30,9 @@ pub struct RecorderSettings {
     pub last_format: Option<String>,
 }
 
-/// Parse settings from the JSON at `path`. Returns
-/// [`RecorderSettings::default`] (no overrides) on any failure —
-/// missing file (first launch), unreadable file, or malformed JSON.
-/// A corrupt settings file degrades to defaults rather than blocking
-/// the recorder.
+/// Parse settings from the JSON at `path`, falling back to
+/// [`RecorderSettings::default`] on any failure (missing / unreadable
+/// / malformed) — a corrupt file degrades to defaults, never blocks.
 #[must_use]
 pub fn load_from(path: &Path) -> RecorderSettings {
     let Ok(raw) = std::fs::read_to_string(path) else {
@@ -54,14 +42,12 @@ pub fn load_from(path: &Path) -> RecorderSettings {
 }
 
 /// Serialize `settings` to the JSON at `path`, creating the parent
-/// directory if it doesn't exist yet (first-ever save).
+/// directory if needed.
 ///
 /// # Errors
 ///
-/// Returns the underlying [`std::io::Error`] when the directory can't
-/// be created or the file can't be written. JSON serialization of two
-/// `Option` fields can't realistically fail, but a serialize error is
-/// also surfaced as an `io::Error` of kind `InvalidData`.
+/// [`std::io::Error`] if the parent dir can't be created or the write
+/// fails (a serialize error is surfaced as `InvalidData`).
 pub fn save_to(path: &Path, settings: &RecorderSettings) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
