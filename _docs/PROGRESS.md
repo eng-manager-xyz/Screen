@@ -6,6 +6,38 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Cleanup — remove dead batch `GstreamerEncoder` (code review)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. A code-review pass over the M-QUAL work. The batch `GstreamerEncoder` (raw-BGRA-to-scratch + single `gst-launch` at finalize) was the original M-EXPORT.1 impl; M-QUAL.1's `LiveGstreamerEncoder` superseded it for all production paths (recording streams compressed video to encode-pipeline stdin). The batch impl had no remaining callers outside its own tests — dead code carrying a parallel pipeline-builder. Removed it so there's a single `VideoEncoder` impl.
+
+### What shipped
+
+- **`crates/media/src/encode.rs`** — deleted the `GstreamerEncoder` struct, its `VideoEncoder` impl, `build_pipeline_args`, and its 10 unit tests. The shared per-(format, OS) element pickers (`encoder_and_mux_elements` / `audio_encoder_element` / `mux_element_for` / `demux_for`) stay — `LiveGstreamerEncoder` + the remux path use them. Module/struct/trait docs rewritten to describe the single streaming impl. Added `encoder_and_mux_elements_maps_each_format` to retain the per-format encoder/mux/audio coverage the removed batch tests had.
+- **`crates/media/tests/encode_integration.rs`** — dropped the batch `full_lifecycle_with_audio_…` round-trip (the live `live_encoder_video_and_audio_…` test already asserts the same both-streams / H.264 / AAC result). The transcode-fixture helper `encode_test_mp4` now produces its MP4 via `LiveGstreamerEncoder`.
+- **`crates/app/src/commands.rs`** — `stop_recording`'s two unused `State` params removed (see M-QUAL.6 below).
+- **`crates/ui-storybook/assets/style.css`** (+ synced book copy) — replaced the stale `.bubble-card` design comment (described the removed card layout) with the current overlay-on-circle description; dropped a redundant `min-height:0` on `.bubble-stage`.
+- **`crates/app/capabilities/default.json`** — `core:window:allow-start-dragging` (makes the borderless bubble's `data-tauri-drag-region` move the window; not in `core:default`).
+
+### Verification
+
+- `just gate` — **green**. `media` + `screen-app` type-check clean; the format-coverage unit test + the two live integration tests (skip-guarded on `gst-launch-1.0` / `gst-discoverer-1.0`) exercise the surviving pipeline.
+
+---
+
+## M-QUAL.6 — camera preview no longer freezes after a recording
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. After record → stop, the webcam preview (bubble) froze on its last frame until the next record. Cause: `stop_recording` tore down the camera worker (`stop_camera_for_session`) alongside the recording-only captures — but that worker backs the **live preview**, owned by `start_preview`/`stop_preview`; recording only *borrows* its frames via the shared `CameraFrameSlot`. Killing it on stop starved the preview; the next `start_recording` re-spawned it (the "unfreezes when I click record" symptom).
+
+### What shipped
+
+- **`crates/app/src/commands.rs`** — `stop_recording` no longer stops the camera. Screen / mic / sys-audio (recording-only captures) are still torn down in reverse order; the camera worker is left running so the bubble stays live, and is stopped by `stop_preview` (camera toggle off / recorder closed) as before. The two now-unused `State` params (`PreviewState`, `CameraPipelineHandle`) were dropped from the command signature (Tauri-injected, so no frontend change) rather than kept as `_`-prefixed dead params.
+
+### Verification
+
+- `just gate` — **green**. No test asserted camera-teardown-on-stop (the camera worker lifecycle lives in the Tauri command path, which isn't unit-tested without a mock + a live gst worker — scaffolding-level per `_docs/TESTING.md`). Verified manually (user): record → export → done leaves the preview live (no freeze).
+
+---
+
 ## M-QUAL.5 — recorded camera bubble is a true circle (aspect compensation)
 - **Date:** 2026-05-26
 - **Status:** ✅ done — `feat/recording-quality`. The recorded-output camera bubble rendered as a horizontal ellipse (stretched face) on the native-res canvas. Root cause: the clip was a `MaskShape::Circle` in **NDC**, and NDC `[-1,1]²` maps onto the full non-square video canvas → an ellipse in pixels. (Pre-existing; native-res just made it obvious — it was worse at 16:9.)

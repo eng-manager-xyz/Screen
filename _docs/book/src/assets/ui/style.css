@@ -2982,14 +2982,14 @@ kbd {
   pointer-events: none;
 }
 
-/* ───── Webcam bubble — card redesign (M-QUAL.4) ───────────────────
+/* ───── Webcam bubble — overlay-on-circle (M-QUAL.4) ───────────────
  *
- * `.bubble-root--design` is a transparent, drag-enabled window-filler
- * that centers a single `.bubble-card`. The card is the only visible
- * surface: a tight dark panel reading header → circle → controls →
- * caption as one unit. Sized for the 336×416 webcam-bubble window
- * (tauri.conf.json) — the transparent margin around the card holds the
- * drop shadow.
+ * No card: the circle IS the widget. `.bubble-root--design` is a
+ * transparent, drag-enabled window-filler that centers the
+ * `.bubble-stage` (the circle) with a floating device caption below
+ * it. The overlays (PREVIEW pill, icon cluster, control pill) are
+ * painted on top of the circle as siblings of the clipped feed.
+ * Sized for the 260×300 webcam-bubble window (tauri.conf.json).
  */
 .bubble-root--design {
   background: transparent !important;
@@ -3014,14 +3014,15 @@ kbd {
  * visible so the top-right icon cluster can hover at the circle edge. */
 .bubble-stage {
   position: relative;
-  /* Explicit square + no flex-shrink GUARANTEES a perfect circle: a
-   * vertical flex column would otherwise squash the stage's height if
-   * the window were short / the label wrapped, turning the
-   * border-radius:50% into an ellipse. aspect-ratio is kept as a
-   * belt-and-suspenders backup. */
+  /* A hard 240×240 square → border-radius:50% is a perfect circle.
+   * `flex-shrink:0` stops the vertical flex column from squashing the
+   * height (which would make it an ellipse). NO `aspect-ratio` here:
+   * with explicit width+height it's redundant, and `aspect-ratio` on a
+   * flex item has WebKit sizing quirks that can yield a non-square box
+   * (the crooked-preview bug). */
+  box-sizing: border-box;
   width: 240px;
   height: 240px;
-  aspect-ratio: 1 / 1;
   flex-shrink: 0;
 }
 
@@ -3042,6 +3043,11 @@ kbd {
   width: 100%;
   height: 100%;
   display: block;
+  /* Let clicks fall THROUGH the camera feed to `.bubble-canvas-wrap`
+   * (a drag region) — Tauri starts a window drag only when the click
+   * *target* is itself a drag-region element, and the canvas covers
+   * the whole circle. Without this the bubble isn't draggable. */
+  pointer-events: none;
 }
 
 /* PREVIEW pill — overlaid near the top of the circle, centered. */

@@ -243,8 +243,10 @@ Deferred to later passes: encoder bitrate / keyframe / profile tuning
   respects the project's CLI-pipe convention and keeps the Windows
   build green.
 - Swapped into both `EncoderHandle::start_with_real_capture` and
-  `start_with_test_pattern`; batch `GstreamerEncoder` retained for the
-  export round-trip tests.
+  `start_with_test_pattern`. The live encoder is the sole `VideoEncoder`
+  impl — the earlier batch `GstreamerEncoder` was removed in M-QUAL.6
+  once the live path was field-proven (the transcode round-trip tests
+  now generate their fixture MP4s via the live encoder).
 - **Done when:** macOS integration test pushes synthetic BGRA + audio
   through the live encoder, finalizes, and `gst-discoverer-1.0`
   confirms an H.264 + AAC MP4 of the right dims; a video-only run

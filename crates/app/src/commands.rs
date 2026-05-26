@@ -2047,8 +2047,10 @@ pub fn clean_scratch_dir(app: &tauri::AppHandle) {
 pub fn stop_recording(
     app: tauri::AppHandle,
     recording_state: State<'_, RecordingState>,
-    preview_state: State<'_, PreviewState>,
-    camera_handle: State<'_, CameraPipelineHandle>,
+    // No PreviewState / CameraPipelineHandle here: the camera worker
+    // backs the live preview and is owned by start_preview /
+    // stop_preview, so recording stop does NOT touch it (see the camera
+    // note in the teardown below).
     mic_state: State<'_, MicCaptureState>,
     mic_handle: State<'_, MicCaptureHandle>,
 ) -> Result<RecordingSummary, String> {
@@ -2078,9 +2080,14 @@ pub fn stop_recording(
     if session.streams.microphone {
         stop_mic_for_session(&mic_state, &mic_handle);
     }
-    if session.streams.camera {
-        stop_camera_for_session(&preview_state, &camera_handle);
-    }
+    // Camera is intentionally NOT stopped here (M-QUAL.6). Unlike the
+    // screen/mic/sys-audio captures (recording-only), the camera worker
+    // backs the *live preview* (the webcam bubble) and is owned by
+    // start_preview / stop_preview. Recording only borrows its frames
+    // via the shared CameraFrameSlot. Tearing it down on stop froze the
+    // preview on its last frame until the next record; leaving it
+    // running keeps the bubble live. It stops when the user disables the
+    // camera or closes the recorder (stop_preview).
 
     session.finish_stop();
     let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);

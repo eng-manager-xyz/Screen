@@ -2,26 +2,19 @@
 //! pipeline builders (M-EXPORT.1 of M-RECORD-EXPORT; live variant
 //! M-QUAL.1).
 //!
-//! Two [`VideoEncoder`] impls share the trait surface:
+//! [`LiveGstreamerEncoder`] (M-QUAL.1) is the [`VideoEncoder`] impl —
+//! **streaming**: it spawns the encode pipeline up front and streams
+//! BGRA frames into its stdin, so only *compressed* video lands on
+//! disk during capture. Bounding the on-disk footprint to the encoded
+//! bitrate (raw BGRA is `w × h × 4 × fps` — >1 GB/s at Retina) is the
+//! prerequisite for native-resolution capture.
 //!
-//! - [`LiveGstreamerEncoder`] (M-QUAL.1) — **streaming**. Spawns the
-//!   encode pipeline up front and streams BGRA frames into its stdin,
-//!   so only *compressed* video lands on disk during capture. This is
-//!   what recording uses; bounding the on-disk footprint to the
-//!   encoded bitrate is the prerequisite for native-resolution
-//!   capture (raw BGRA is `w × h × 4 × fps` — >1 GB/s at Retina).
-//! - [`GstreamerEncoder`] — **batch**. Writes raw BGRA + F32 samples
-//!   to scratch files during capture and runs a single
-//!   `gst-launch-1.0` over them at `finalize()`. Retained for the
-//!   export round-trip tests + as the simpler reference impl.
-//!
-//! ```admonish important title="Both impls use the gst-launch CLI"
-//! Neither impl links `gstreamer-rs` — the live variant streams over
-//! the child's stdin (`fdsrc fd=0`) rather than via `appsrc`, keeping
-//! the project's "CLI-pipe over Rust bindings" convention (no
-//! compile-time libgstreamer dep, no Windows-build breakage). A
-//! programmatic `appsrc` pipeline remains a possible future swap
-//! behind the same trait.
+//! ```admonish important title="CLI-pipe, not gstreamer-rs"
+//! The encoder doesn't link `gstreamer-rs` — it streams over the
+//! child's stdin (`fdsrc fd=0`) rather than via `appsrc`, keeping the
+//! project's "CLI-pipe over Rust bindings" convention (no compile-time
+//! libgstreamer dep, no Windows-build breakage). A programmatic
+//! `appsrc` pipeline remains a possible future swap behind the trait.
 //! ```
 //!
 //! ## Per-OS encoder coverage
@@ -32,9 +25,9 @@
 //! | Windows  | `mfh264enc`        | `mfhevcenc`        | `mfvp9enc`         | `qsvav1enc`                          |
 //! | Linux    | `vaapih264enc`     | `vaapih265enc`     | `vaapivp9enc`      | `vaapiav1enc`                        |
 //!
-//! macOS is the hot path for M-RECORD-EXPORT; Win/Linux pipeline
-//! strings are present so cross-OS clippy + the pipeline-string
-//! unit tests pass, but the runtime spawn returns
+//! macOS is the hot path for M-RECORD-EXPORT; Win/Linux encoder
+//! strings are present so the cross-OS build + the arg-builder unit
+//! tests pass, but the runtime spawn returns
 //! `EncodeError::Unsupported` outside macOS until those ports land.
 
 use std::fs::File;
@@ -150,7 +143,7 @@ impl EncoderConfig {
     }
 }
 
-/// Failure modes for the batch encoder.
+/// Failure modes for the encoder.
 #[derive(Debug, thiserror::Error)]
 pub enum EncodeError {
     /// `gst-launch-1.0` could not be spawned (missing from PATH).
@@ -194,8 +187,8 @@ pub enum EncodeError {
 
 /// Encoder trait — the seam M-EXPORT.3 hooks the per-channel
 /// capture callbacks into. Pure-sync interface; the
-/// `GstreamerEncoder` impl writes to scratch files on each push and
-/// runs the actual encode pipeline at `finalize`.
+/// [`LiveGstreamerEncoder`] impl streams each pushed frame into a
+/// `gst-launch-1.0` child and remuxes in the audio at `finalize`.
 pub trait VideoEncoder: Send + Sync {
     /// Push one BGRA frame at the given monotonic PTS (measured from
     /// session start). `bgra.len()` must equal `width * height * 4`.
@@ -233,281 +226,14 @@ pub trait VideoEncoder: Send + Sync {
     fn finalize(self: Box<Self>) -> Result<PathBuf, EncodeError>;
 }
 
-/// Concrete batch encoder. Writes BGRA + F32 samples to scratch
-/// files on each push; runs `gst-launch-1.0` on finalize.
-pub struct GstreamerEncoder {
-    config: EncoderConfig,
-    video_scratch_path: PathBuf,
-    audio_scratch_path: PathBuf,
-    video_writer: BufWriter<File>,
-    audio_writer: BufWriter<File>,
-    expected_video_bytes_per_frame: usize,
-    frames_pushed: u64,
-    audio_chunks_pushed: u64,
-}
-
-impl std::fmt::Debug for GstreamerEncoder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GstreamerEncoder")
-            .field("config", &self.config)
-            .field("video_scratch_path", &self.video_scratch_path)
-            .field("audio_scratch_path", &self.audio_scratch_path)
-            .field("frames_pushed", &self.frames_pushed)
-            .field("audio_chunks_pushed", &self.audio_chunks_pushed)
-            .finish_non_exhaustive()
-    }
-}
-
-impl GstreamerEncoder {
-    /// Construct + open the scratch files. The video scratch sits
-    /// next to the output (same parent dir) with a `.bgra.scratch`
-    /// suffix; same shape for audio with `.f32.scratch`. Both are
-    /// deleted on successful finalize.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`EncodeError::InvalidConfig`] if width/height/framerate
-    /// is zero, or [`EncodeError::Io`] if the scratch files can't be
-    /// opened (parent dir doesn't exist, permission denied).
-    pub fn new(config: EncoderConfig) -> Result<Self, EncodeError> {
-        if config.width == 0 || config.height == 0 || config.framerate == 0 {
-            return Err(EncodeError::InvalidConfig(format!(
-                "width={}, height={}, framerate={} — none may be zero",
-                config.width, config.height, config.framerate
-            )));
-        }
-        if config.channels == 0 || config.sample_rate == 0 {
-            return Err(EncodeError::InvalidConfig(format!(
-                "channels={}, sample_rate={} — neither may be zero",
-                config.channels, config.sample_rate
-            )));
-        }
-
-        let video_scratch_path = scratch_path(&config.output_path, ".bgra.scratch");
-        let audio_scratch_path = scratch_path(&config.output_path, ".f32.scratch");
-
-        let video_file = File::create(&video_scratch_path)?;
-        let audio_file = File::create(&audio_scratch_path)?;
-
-        let expected_video_bytes_per_frame = (config.width as usize) * (config.height as usize) * 4;
-
-        Ok(Self {
-            config,
-            video_scratch_path,
-            audio_scratch_path,
-            video_writer: BufWriter::new(video_file),
-            audio_writer: BufWriter::new(audio_file),
-            expected_video_bytes_per_frame,
-            frames_pushed: 0,
-            audio_chunks_pushed: 0,
-        })
-    }
-
-    /// Frame count pushed so far.
-    #[must_use]
-    pub fn frames_pushed(&self) -> u64 {
-        self.frames_pushed
-    }
-
-    /// Audio chunks pushed so far.
-    #[must_use]
-    pub fn audio_chunks_pushed(&self) -> u64 {
-        self.audio_chunks_pushed
-    }
-
-    /// Borrow the resolved encoder config (mostly useful for tests
-    /// asserting `EncoderConfig::for_output` defaults).
-    #[must_use]
-    pub fn config(&self) -> &EncoderConfig {
-        &self.config
-    }
-}
-
-impl VideoEncoder for GstreamerEncoder {
-    fn push_video_frame(
-        &mut self,
-        bgra: &[u8],
-        _pts: std::time::Duration,
-    ) -> Result<(), EncodeError> {
-        if bgra.len() != self.expected_video_bytes_per_frame {
-            return Err(EncodeError::InvalidConfig(format!(
-                "frame byte length mismatch: got {}, expected {}",
-                bgra.len(),
-                self.expected_video_bytes_per_frame
-            )));
-        }
-        self.video_writer.write_all(bgra)?;
-        self.frames_pushed = self.frames_pushed.saturating_add(1);
-        Ok(())
-    }
-
-    fn push_audio_chunk(
-        &mut self,
-        samples: &[f32],
-        _pts: std::time::Duration,
-    ) -> Result<(), EncodeError> {
-        // Write as little-endian F32 (matches gst caps S=F32LE).
-        for sample in samples {
-            self.audio_writer.write_all(&sample.to_le_bytes())?;
-        }
-        self.audio_chunks_pushed = self.audio_chunks_pushed.saturating_add(1);
-        Ok(())
-    }
-
-    fn finalize(mut self: Box<Self>) -> Result<PathBuf, EncodeError> {
-        // Flush + close the scratch files before invoking gst.
-        self.video_writer.flush()?;
-        drop(self.video_writer);
-        self.audio_writer.flush()?;
-        drop(self.audio_writer);
-
-        let pipeline = build_pipeline_args(
-            &self.config,
-            &self.video_scratch_path,
-            &self.audio_scratch_path,
-            self.frames_pushed > 0,
-            self.audio_chunks_pushed > 0,
-        )?;
-
-        tracing::info!(
-            output = %self.config.output_path.display(),
-            format = ?self.config.format,
-            video_frames = self.frames_pushed,
-            audio_chunks = self.audio_chunks_pushed,
-            pipeline_args = ?pipeline,
-            "GstreamerEncoder::finalize spawning gst-launch-1.0"
-        );
-
-        let output = Command::new("gst-launch-1.0")
-            .args(&pipeline)
-            .output()
-            .map_err(|err| EncodeError::Spawn {
-                source: err,
-                path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
-            })?;
-
-        if !output.status.success() {
-            return Err(EncodeError::PipelineFailed {
-                exit: output.status.code(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            });
-        }
-
-        // Clean up scratch files. Failure is non-fatal (the encoded
-        // output already exists).
-        let _ = std::fs::remove_file(&self.video_scratch_path);
-        let _ = std::fs::remove_file(&self.audio_scratch_path);
-
-        Ok(self.config.output_path)
-    }
-}
-
-/// Build the gst-launch-1.0 argv for the configured (format, OS)
-/// combo. Public so M-EXPORT.1's pipeline-string snapshot tests can
-/// exercise every combination without spawning gst.
-///
-/// `has_video` / `has_audio` gate the per-stream legs — a video-only
-/// recording skips the audio mixer entirely; an audio-only recording
-/// (unusual but valid) skips the video leg.
-///
-/// # Errors
-///
-/// Returns [`EncodeError::Unsupported`] if the format/OS combo isn't
-/// yet wired (Win/Linux scaffold path).
-#[allow(
-    clippy::too_many_lines,
-    reason = "Each (format × OS) branch carries its own per-encoder element list; flattening the match would replace this with three layers of helpers that obscure the actual pipeline shape."
-)]
-pub fn build_pipeline_args(
-    config: &EncoderConfig,
-    video_scratch: &Path,
-    audio_scratch: &Path,
-    has_video: bool,
-    has_audio: bool,
-) -> Result<Vec<String>, EncodeError> {
-    let mut args: Vec<String> = vec!["-q".to_string(), "-e".to_string()];
-
-    let video_caps = format!(
-        "video/x-raw,format=BGRA,width={},height={},framerate={}/1",
-        config.width, config.height, config.framerate,
-    );
-    let audio_caps = format!(
-        "audio/x-raw,format=F32LE,rate={},channels={},layout=interleaved",
-        config.sample_rate, config.channels,
-    );
-
-    let (video_encoder_elements, mux_element) =
-        encoder_and_mux_elements(config.format, std::env::consts::OS)?;
-    let audio_encoder_element = audio_encoder_element(config.format);
-
-    // Video leg.
-    if has_video {
-        args.push("filesrc".to_string());
-        args.push(format!("location={}", video_scratch.display()));
-        args.push("!".to_string());
-        args.push("rawvideoparse".to_string());
-        args.push("format=bgra".to_string());
-        args.push(format!("width={}", config.width));
-        args.push(format!("height={}", config.height));
-        args.push(format!("framerate={}/1", config.framerate));
-        args.push("!".to_string());
-        args.push("videoconvert".to_string());
-        args.push("!".to_string());
-        for elem in &video_encoder_elements {
-            args.push((*elem).to_string());
-            args.push("!".to_string());
-        }
-        args.push(mux_to_parser(config.format).to_string());
-        args.push("!".to_string());
-        args.push("mux.".to_string());
-    }
-
-    // Audio leg.
-    if has_audio {
-        args.push("filesrc".to_string());
-        args.push(format!("location={}", audio_scratch.display()));
-        args.push("!".to_string());
-        args.push("rawaudioparse".to_string());
-        // `format` is a 3-value enum (pcm / mulaw / alaw); the sample
-        // layout (F32LE) is selected via the separate `pcm-format`.
-        args.push("pcm-format=f32le".to_string());
-        args.push(format!("sample-rate={}", config.sample_rate));
-        args.push(format!("num-channels={}", config.channels));
-        args.push("!".to_string());
-        args.push(audio_caps.clone());
-        args.push("!".to_string());
-        args.push("audioconvert".to_string());
-        args.push("!".to_string());
-        args.push("audioresample".to_string());
-        args.push("!".to_string());
-        args.push(audio_encoder_element.to_string());
-        args.push("!".to_string());
-        args.push("mux.".to_string());
-    }
-
-    // Muxer + sink.
-    args.push(mux_element.to_string());
-    args.push("name=mux".to_string());
-    args.push("!".to_string());
-    args.push("filesink".to_string());
-    args.push(format!("location={}", config.output_path.display()));
-
-    // Drop dead variables so the compiler doesn't warn unused.
-    let _ = (video_caps, audio_encoder_element);
-
-    Ok(args)
-}
-
 // ---- M-QUAL.1 — live (streaming) video encoder ----------------------
 
-/// Live video encoder. Unlike [`GstreamerEncoder`] — which writes
-/// **raw** BGRA to a scratch file and batch-encodes once at finalize —
-/// this spawns the encode pipeline up front and streams frames into
-/// its stdin, so the only video on disk during capture is *already
-/// compressed*. That bounds the scratch footprint to the encoded
-/// bitrate instead of the raw firehose (`width × height × 4 × fps` ≈
-/// 250 MB/s at 1080p, >1 GB/s at Retina) — the prerequisite for
-/// capturing at native resolution.
+/// Live (streaming) video encoder. Spawns the encode pipeline up front
+/// and streams BGRA frames into its stdin, so the only video on disk
+/// during capture is *already compressed*. That bounds the scratch
+/// footprint to the encoded bitrate instead of the raw firehose
+/// (`width × height × 4 × fps` ≈ 250 MB/s at 1080p, >1 GB/s at Retina)
+/// — the prerequisite for capturing at native resolution.
 ///
 /// Audio is still buffered to a small raw `.f32.scratch` (≈0.4 MB/s)
 /// and muxed in at [`finalize`](VideoEncoder::finalize) via
@@ -813,9 +539,8 @@ pub fn build_live_video_args(
 /// re-encode) and the raw F32LE `audio_scratch` is encoded to the
 /// container's audio codec, both muxed into `config.output_path`.
 ///
-/// `has_video` / `has_audio` gate the legs the same way
-/// [`build_pipeline_args`] does. In the normal recording case both
-/// are true; a video-only recording skips this entirely (the
+/// `has_video` / `has_audio` gate the legs. In the normal recording
+/// case both are true; a video-only recording skips this entirely (the
 /// intermediate is moved into place by `finalize`), so the
 /// `!has_video` arm only exists for the (unusual) audio-only case.
 ///
@@ -1110,9 +835,9 @@ pub fn scratch_has_audio(input: &Path) -> bool {
     lower.contains("audio #") || lower.contains("audio:")
 }
 
-/// Per-(format, OS) video encoder element(s) + muxer element. Shared
-/// by [`build_pipeline_args`] (batch) and [`build_live_video_args`]
-/// (live) so the encoder coverage table lives in one place.
+/// Per-(format, OS) video encoder element(s) + muxer element, used by
+/// [`build_live_video_args`] so the encoder coverage table lives in
+/// one place.
 ///
 /// # Errors
 ///
@@ -1264,235 +989,10 @@ mod tests {
         assert_eq!(cfg.channels, 2);
     }
 
-    // ---- build_pipeline_args ----
+    // ---- shared arg-builder test config ----
 
     fn test_config(format: OutputFormat) -> EncoderConfig {
         EncoderConfig::for_output(PathBuf::from("/tmp/test.x"), format)
-    }
-
-    #[test]
-    fn pipeline_args_for_current_os_video_only_contains_format_caps() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        let cfg = test_config(OutputFormat::Mp4H264Aac);
-        let args = build_pipeline_args(
-            &cfg,
-            Path::new("/tmp/v.scratch"),
-            Path::new("/tmp/a.scratch"),
-            true,
-            false,
-        )
-        .expect("supported OS");
-        // Caps reflect width/height/framerate.
-        assert!(args.iter().any(|a| a == "format=bgra"));
-        assert!(args.iter().any(|a| a.starts_with("width=1920")));
-        assert!(args.iter().any(|a| a.starts_with("height=1080")));
-        assert!(args.iter().any(|a| a.starts_with("framerate=30/1")));
-        // mp4mux is the muxer.
-        assert!(args.iter().any(|a| a == "mp4mux"));
-        // filesink targets the configured output.
-        assert!(args.iter().any(|a| a.starts_with("location=/tmp/test.x")));
-    }
-
-    #[test]
-    fn pipeline_args_for_webm_uses_webmmux() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        let cfg = test_config(OutputFormat::WebmVp9Opus);
-        let args = build_pipeline_args(
-            &cfg,
-            Path::new("/tmp/v.scratch"),
-            Path::new("/tmp/a.scratch"),
-            true,
-            false,
-        )
-        .expect("supported OS");
-        assert!(args.iter().any(|a| a == "webmmux"));
-        assert!(!args.iter().any(|a| a == "mp4mux"));
-    }
-
-    #[test]
-    fn pipeline_args_skip_audio_leg_when_no_audio() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        let cfg = test_config(OutputFormat::Mp4H264Aac);
-        let args = build_pipeline_args(
-            &cfg,
-            Path::new("/tmp/v.scratch"),
-            Path::new("/tmp/a.scratch"),
-            true,
-            false,
-        )
-        .expect("supported OS");
-        // audioconvert is the audio-leg signature.
-        assert!(!args.iter().any(|a| a == "audioconvert"));
-    }
-
-    #[test]
-    fn pipeline_args_include_audio_when_has_audio_true() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        let cfg = test_config(OutputFormat::Mp4H264Aac);
-        let args = build_pipeline_args(
-            &cfg,
-            Path::new("/tmp/v.scratch"),
-            Path::new("/tmp/a.scratch"),
-            true,
-            true,
-        )
-        .expect("supported OS");
-        assert!(args.iter().any(|a| a == "audioconvert"));
-        assert!(args.iter().any(|a| a == "avenc_aac"));
-        // rawaudioparse takes `pcm-format=f32le` (sample-format enum),
-        // NOT `format=pcm-f32le` (which is a 3-value parsing-format
-        // enum — pcm / mulaw / alaw — and rejects `pcm-f32le`).
-        assert!(
-            args.iter().any(|a| a == "pcm-format=f32le"),
-            "expected `pcm-format=f32le` in args, got {args:?}"
-        );
-    }
-
-    /// Anti-regression: `format=pcm-f32le` is invalid on
-    /// `rawaudioparse` (the sample-format lives on `pcm-format`).
-    /// The wrong token makes gst-launch reject the pipeline and
-    /// drops every recording that includes audio.
-    #[test]
-    fn pipeline_args_never_use_legacy_pcm_f32le_token() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        for format in [
-            OutputFormat::Mp4H264Aac,
-            OutputFormat::Mp4H265Aac,
-            OutputFormat::WebmVp9Opus,
-            OutputFormat::WebmAv1Opus,
-        ] {
-            let cfg = test_config(format);
-            let args = build_pipeline_args(
-                &cfg,
-                Path::new("/tmp/v.scratch"),
-                Path::new("/tmp/a.scratch"),
-                false,
-                true,
-            )
-            .expect("supported OS");
-            assert!(
-                !args.iter().any(|a| a == "format=pcm-f32le"),
-                "{format:?}: `format=pcm-f32le` is invalid for rawaudioparse; \
-                 the correct property is `pcm-format=f32le`. Got {args:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn pipeline_args_webm_uses_opusenc_for_audio() {
-        if std::env::consts::OS != "macos"
-            && std::env::consts::OS != "windows"
-            && std::env::consts::OS != "linux"
-        {
-            return;
-        }
-        let cfg = test_config(OutputFormat::WebmVp9Opus);
-        let args = build_pipeline_args(
-            &cfg,
-            Path::new("/tmp/v.scratch"),
-            Path::new("/tmp/a.scratch"),
-            false,
-            true,
-        )
-        .expect("supported OS");
-        assert!(args.iter().any(|a| a == "opusenc"));
-        assert!(!args.iter().any(|a| a == "avenc_aac"));
-    }
-
-    // ---- GstreamerEncoder construction ----
-
-    #[test]
-    fn new_rejects_zero_dimensions() {
-        let mut cfg =
-            EncoderConfig::for_output(PathBuf::from("/tmp/x.mp4"), OutputFormat::Mp4H264Aac);
-        cfg.width = 0;
-        let err = GstreamerEncoder::new(cfg);
-        assert!(matches!(err, Err(EncodeError::InvalidConfig(_))));
-    }
-
-    #[test]
-    fn new_rejects_zero_channels() {
-        let mut cfg =
-            EncoderConfig::for_output(PathBuf::from("/tmp/x.mp4"), OutputFormat::Mp4H264Aac);
-        cfg.channels = 0;
-        let err = GstreamerEncoder::new(cfg);
-        assert!(matches!(err, Err(EncodeError::InvalidConfig(_))));
-    }
-
-    #[test]
-    fn push_video_frame_rejects_wrong_byte_count() {
-        // Use a path inside /tmp that's writable on every CI runner
-        // (including Windows — where `/tmp` doesn't exist, this test
-        // is skipped via the early return).
-        if !Path::new("/tmp").exists() {
-            return;
-        }
-        let cfg = EncoderConfig {
-            output_path: PathBuf::from("/tmp/m-export-test-byte-mismatch.mp4"),
-            width: 32,
-            height: 32,
-            framerate: 30,
-            sample_rate: 48_000,
-            channels: 2,
-            format: OutputFormat::Mp4H264Aac,
-        };
-        let mut encoder = GstreamerEncoder::new(cfg).expect("construct");
-        let err = encoder.push_video_frame(&[0u8; 100], std::time::Duration::from_millis(0));
-        assert!(matches!(err, Err(EncodeError::InvalidConfig(_))));
-        // Clean up the scratch files the constructor created.
-        let _ = std::fs::remove_file("/tmp/m-export-test-byte-mismatch.mp4.bgra.scratch");
-        let _ = std::fs::remove_file("/tmp/m-export-test-byte-mismatch.mp4.f32.scratch");
-    }
-
-    #[test]
-    fn push_video_frame_increments_counter() {
-        if !Path::new("/tmp").exists() {
-            return;
-        }
-        let cfg = EncoderConfig {
-            output_path: PathBuf::from("/tmp/m-export-test-frame-count.mp4"),
-            width: 4,
-            height: 4,
-            framerate: 30,
-            sample_rate: 48_000,
-            channels: 2,
-            format: OutputFormat::Mp4H264Aac,
-        };
-        let mut encoder = GstreamerEncoder::new(cfg).expect("construct");
-        let frame = vec![128u8; 4 * 4 * 4];
-        for _ in 0..5 {
-            encoder
-                .push_video_frame(&frame, std::time::Duration::from_millis(0))
-                .expect("push");
-        }
-        assert_eq!(encoder.frames_pushed(), 5);
-        let _ = std::fs::remove_file("/tmp/m-export-test-frame-count.mp4.bgra.scratch");
-        let _ = std::fs::remove_file("/tmp/m-export-test-frame-count.mp4.f32.scratch");
     }
 
     // ---- scratch_path ----
@@ -1678,6 +1178,32 @@ mod tests {
     fn encoder_and_mux_elements_rejects_unknown_os() {
         let result = encoder_and_mux_elements(OutputFormat::Mp4H264Aac, "plan9");
         assert!(matches!(result, Err(EncodeError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn encoder_and_mux_elements_maps_each_format() {
+        // Per-format encoder/mux/audio selection on the current OS
+        // (retains the coverage the removed batch pipeline_args tests
+        // had). Other OSes' match arms are checked at compile time.
+        let os = std::env::consts::OS;
+        if os != "macos" && os != "windows" && os != "linux" {
+            return;
+        }
+        for (fmt, want_mux, want_audio) in [
+            (OutputFormat::Mp4H264Aac, "mp4mux", "avenc_aac"),
+            (OutputFormat::Mp4H265Aac, "mp4mux", "avenc_aac"),
+            (OutputFormat::WebmVp9Opus, "webmmux", "opusenc"),
+            (OutputFormat::WebmAv1Opus, "webmmux", "opusenc"),
+        ] {
+            let (encoders, mux) = encoder_and_mux_elements(fmt, os).expect("supported OS");
+            assert!(!encoders.is_empty(), "{fmt:?}: needs an encoder element");
+            assert_eq!(mux, want_mux, "{fmt:?}: muxer");
+            assert_eq!(
+                audio_encoder_element(fmt),
+                want_audio,
+                "{fmt:?}: audio encoder"
+            );
+        }
     }
 
     #[test]

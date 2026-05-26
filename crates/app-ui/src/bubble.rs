@@ -39,7 +39,11 @@ pub fn BubbleRoot() -> impl IntoView {
             aria-label="Webcam bubble overlay"
         >
             <div class="bubble-stage" data-tauri-drag-region="true">
-                <div class="bubble-canvas-wrap" aria-hidden="true">
+                <div
+                    class="bubble-canvas-wrap"
+                    data-tauri-drag-region="true"
+                    aria-hidden="true"
+                >
                     <CameraPreview />
                 </div>
 
