@@ -108,6 +108,14 @@ pub fn RecorderPage() -> impl IntoView {
 
     let status = RwSignal::new(RecordingStatusViewIpc::idle());
     let error_msg = RwSignal::new(Option::<String>::None);
+    // UI-local latch set the instant the user requests a stop. The
+    // 500 ms backend `recording-status` pump can emit a trailing
+    // `Stopping` event mid-teardown that lands *after* the stop
+    // handler reset the UI, re-arming the controls and leaving the
+    // recorder permanently stuck on "Stop recording". This latch
+    // gates `is_recording` so such a trailing event can't re-arm us;
+    // it's cleared when the next session starts. See `show_as_recording`.
+    let stop_requested = RwSignal::new(false);
 
     // -------- subscriptions -------------------------------------------
     mic_ipc::subscribe_mic_level(move |lvl| mic_level.set(lvl));
@@ -258,7 +266,7 @@ pub fn RecorderPage() -> impl IntoView {
         let ss = total % 60;
         format!("{mm:02}:{ss:02}")
     };
-    let is_recording = move || status.get().is_recording();
+    let is_recording = move || show_as_recording(stop_requested.get(), status.get().is_recording());
 
     // -------- callbacks -----------------------------------------------
     let toggle_camera_picker = move || {
@@ -425,18 +433,26 @@ pub fn RecorderPage() -> impl IntoView {
     };
 
     let on_start = Callback::new(move |()| {
-        if status.get().is_recording() {
+        if is_recording() {
+            // Latch immediately so any trailing `Stopping` status
+            // event can't re-arm the controls while the async stop is
+            // in flight (the post-stop "stuck" bug).
+            stop_requested.set(true);
             spawn_local(async move {
-                match stop_recording().await {
-                    Ok(_) => {
-                        error_msg.set(None);
-                        status.set(RecordingStatusViewIpc::idle());
-                    }
-                    Err(err) => error_msg.set(Some(err)),
-                }
+                // `stop_recording`'s only error is "no recording
+                // session is active" — i.e. the session is already
+                // gone. Either outcome means the recorder is idle, so
+                // reset the UI unconditionally rather than leaving the
+                // pill + Stop button stranded on the error path.
+                let _ = stop_recording().await;
+                error_msg.set(None);
+                status.set(RecordingStatusViewIpc::idle());
             });
             return;
         }
+        // Clear the stop latch so the next session's `Running` event
+        // can re-arm the controls.
+        stop_requested.set(false);
         let cam = camera_enabled.get();
         let mic = mic_enabled.get();
         let sys = system_audio_enabled.get();
@@ -1165,6 +1181,22 @@ fn LiveOnScreenPopover(
 // pure helpers (unit-testable, no Leptos)
 // ---------------------------------------------------------------------
 
+/// Whether the recorder controls should render the "recording" state
+/// (the RECORDING pill + Stop button). True only when the backend
+/// reports an active session (`backend_recording`) **and** the user
+/// hasn't just requested a stop (`stop_requested`).
+///
+/// The latch is what fixes the post-stop "stuck" bug: the 500 ms
+/// backend status pump can emit a trailing `Stopping` event during
+/// teardown that arrives after the stop handler reset the UI. Without
+/// the latch that event flips `is_recording` back to true, and since
+/// the backend session is then gone every further Stop click returns
+/// "no recording session is active" without ever resetting — the
+/// recorder is stuck until relaunch.
+const fn show_as_recording(stop_requested: bool, backend_recording: bool) -> bool {
+    backend_recording && !stop_requested
+}
+
 fn capture_mode_slug(m: CaptureMode) -> &'static str {
     match m {
         CaptureMode::Screen => "screen",
@@ -1468,6 +1500,19 @@ fn install_status_listener(status: RwSignal<RecordingStatusViewIpc>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_latch_suppresses_trailing_recording_state() {
+        // Normal recording: backend says recording, no stop pending.
+        assert!(show_as_recording(false, true));
+        // The stuck-bug guard: the user requested stop, but a trailing
+        // `Stopping` event still reports recording — the controls must
+        // read as idle so the pill + Stop button clear.
+        assert!(!show_as_recording(true, true));
+        // An idle backend is always idle, latch or not.
+        assert!(!show_as_recording(false, false));
+        assert!(!show_as_recording(true, false));
+    }
 
     #[test]
     fn monogram_initials() {
