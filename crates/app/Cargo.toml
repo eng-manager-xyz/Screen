@@ -40,6 +40,16 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 pollster = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+# M-SAVE.0 — native folder picker for the user-chosen output
+# directory. Part of the Tauri 2 plugin family; we use the Rust-side
+# `DialogExt` API from inside our own `pick_output_dir` command rather
+# than the JS guest bindings, so no extra capability grant is needed
+# (the webview only ever invokes our command, never `plugin:dialog|*`).
+tauri-plugin-dialog = "2"
+# M-SAVE.0 — recorder-settings persistence (output dir + last-used
+# format) as JSON at `<app-config-dir>/recorder-settings.json`. Was
+# dev-only before; the settings module needs it at runtime now.
+serde_json = "1"
 
 # M-RECP.7 / AUT-285 — `AVCaptureDevice.authorizationStatus(for:)`
 # for the real macOS camera + microphone permission probes. macOS-
@@ -69,7 +79,6 @@ block2 = "0.6"
 # features, so the release binary also gets the test module compiled in
 # (a known cargo wart). The footprint is small enough to accept.
 tauri = { version = "2", features = ["test", "protocol-asset"] }
-serde_json = "1"
 
 [package.metadata.cargo-machete]
 # `tauri::generate_context!()` uses the dep at macro-expansion time;

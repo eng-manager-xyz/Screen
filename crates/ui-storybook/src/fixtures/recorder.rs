@@ -174,6 +174,43 @@ pub fn sample_recording_controls_compact() -> crate::components::recorder::Recor
     }
 }
 
+/// Sample Save-panel view in the *choosing* state (M-SAVE.GATE) — a
+/// recording is parked awaiting export, the user is picking folder +
+/// format. `busy` is false (controls live).
+#[must_use]
+pub fn sample_save_panel_choosing() -> crate::components::recorder::SavePanelView {
+    use crate::components::recorder::{SaveFormat, SavePanelView};
+    SavePanelView::Choosing {
+        output_dir: "/Users/you/Movies/Screen".to_owned(),
+        format: SaveFormat::Mp4H264,
+        busy: false,
+    }
+}
+
+/// Variant mid-export — `busy` true so the controls are dimmed and the
+/// Export button reads "Exporting…". Used by the `save-panel-exporting`
+/// story.
+#[must_use]
+pub fn sample_save_panel_exporting() -> crate::components::recorder::SavePanelView {
+    use crate::components::recorder::{SaveFormat, SavePanelView};
+    SavePanelView::Choosing {
+        output_dir: "/Users/you/Movies/Screen".to_owned(),
+        format: SaveFormat::WebmVp9,
+        busy: true,
+    }
+}
+
+/// Save-panel view in the *saved* state — the export landed; the panel
+/// offers Reveal-in-Finder / Done. Used by the `save-panel-saved`
+/// story.
+#[must_use]
+pub fn sample_save_panel_saved() -> crate::components::recorder::SavePanelView {
+    use crate::components::recorder::SavePanelView;
+    SavePanelView::Saved {
+        path: "/Users/you/Movies/Screen/Screen-2026-05-25-143012.mp4".to_owned(),
+    }
+}
+
 /// Sample tray-record-popover view (UI-12 / AUT-132).
 #[must_use]
 pub fn sample_tray_record_popover(

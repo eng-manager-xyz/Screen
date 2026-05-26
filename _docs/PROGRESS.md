@@ -6,6 +6,226 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.GATE — extract the Save panel into a presentational `SavePanel` component
+- **Date:** 2026-05-25
+- **Status:** ✅ done — sixth (gate) chunk of `feat/export`. Closes the M-SAVE.3 "Deferred (to M-SAVE.GATE)" item: the post-record Save panel was inline in `RecorderPage`; it's now a stateless `ui-storybook` component with stories + an SSR snapshot + an mdBook chapter.
+
+### What shipped
+
+- **`crates/ui-storybook/src/components/recorder/save_panel.rs`** — new presentational `SavePanel` (props-in/callbacks-out, no state/IPC). Two view-model states via `SavePanelView`: `Choosing { output_dir, format, busy }` (folder row + format dropdown + Discard/Export; `busy` dims the controls + flips Export → "Exporting…") and `Saved { path }` (Saved-to + Reveal/Done). A small `SaveFormat` enum (`Mp4H264` / `WebmVp9`) carries the `slug()`/`label()`/`from_slug()` mapping to the IPC format slug so the controlled `<select>` never holds format state. The two state bodies are split into `choosing_body` / `saved_body` helpers so neither trips the function-length lint. +4 unit tests (slug uniqueness, `from_slug` round-trip, default = MP4, distinct labels). Re-exported through `recorder/mod.rs` + `components/mod.rs`.
+- **`crates/ui-storybook/src/fixtures/recorder.rs`** — `sample_save_panel_choosing` / `_exporting` / `_saved` builders.
+- **`crates/ui-storybook/src/stories/save_panel.rs`** — 3 stories (choosing / exporting / saved) registered in `stories/mod.rs`; SSR snapshot regenerated + accepted.
+- **`crates/app-ui/src/recorder_page.rs`** — replaced the inline Save-panel `view!` block with `<SavePanel …>` wrapped in a reactive closure that maps the live signals (`saved_path` / `output_dir` / `export_format` / `export_busy`) into the view-model. New `on_format_change` callback stashes the chosen `SaveFormat` slug back into `export_format`. The outer `save_panel_visible` `<Show>` gate + every IPC callback (`on_export` / `on_discard` / `on_change_folder` / `on_reveal` / `on_dismiss_saved`) are unchanged — pure render-layer extraction.
+- **`_docs/book/src/ui/chunks/save-panel.md`** + `SUMMARY.md` — chapter with the three state assets, a `stateDiagram-v2` of the export lifecycle, the API snippet, and rustdoc deep-links (verified against the generated `target/doc` paths — the older recorder chapters' `components/<name>/` links are stale; these use the correct `components/recorder/save_panel/` path).
+
+### Verification
+
+- `just gate` — **green** (exit 0). fmt / check / lint / nextest / doctest / docs / snapshots-check / mermaid-check / shared-check / required-files-check / pages-url-check all pass. No warnings introduced by the new code (the 7 app-ui doc warnings are pre-existing in `system_audio_picker.rs`).
+- `cargo nextest run -p ui-storybook` — 94 passed (+the 4 new `SaveFormat` tests; snapshot covers the 3 new stories). `cargo nextest run -p app-ui` — 60 passed.
+- `cargo clippy -p ui-storybook -p app-ui --all-targets` (native) + `cargo clippy --target wasm32-unknown-unknown -p app-ui -- -D warnings` — clean.
+- `just snapshots-ui` regenerated the 3 `save-panel-*.html` assets (135 stories total); `snapshots-check` confirms every referenced asset is present.
+- No `Cargo.toml` change → ISS-06 deny/machete pre-existing failures unaffected.
+
+### Deferred
+
+- **Visual `just site` render** — `mdbook` isn't installed in this environment (`cargo install mdbook mdbook-admonish mdbook-cmdrun` to enable). The gate's `snapshots-check` (assets exist) + `mermaid-check` (diagram valid) cover the chapter's structural integrity; the browser render is a user-side visual check.
+- **Restoring the persisted `last_format`** as the dropdown default (still the other open M-SAVE.3 deferral — the panel defaults to MP4; a `get_last_format` command + mount-poll would restore it).
+
+---
+
+## M-SAVE.4 — output-folder setting in the ⋯ menu
+- **Date:** 2026-05-25
+- **Status:** ✅ done — fifth chunk of `feat/export`. The recorder's `⋯` "More options" button was inert; it now opens a small menu so the output folder can be set **without** recording first (previously Change… only appeared in the post-record Save panel).
+
+### What shipped (`crates/app-ui/src/recorder_page.rs`)
+
+- New `overflow_open: RwSignal<bool>`; the `⋯` button toggles it (`aria-expanded` wired).
+- A `<Show>`-gated dropdown menu (`role="menu"`) with a **Recording folder** label, the current folder (`output_dir`, truncated tail-visible), and a **Change folder…** item that reuses the M-SAVE.3 `on_change_folder` callback (`pick_output_dir` → `set_output_dir` → updates `output_dir`) and closes the menu.
+- CSS in `crates/ui-storybook/assets/style.css` (`.recorder-overflow-*`) — absolute popover anchored bottom-right of the button, same flat-on-black + 12 %-border palette.
+
+No new pure logic (view wiring + reuse of the tested `on_change_folder` / settings IPC), so no new unit test — scaffolding-level per `_docs/TESTING.md`. The configured folder now feeds three places off one `output_dir` signal: the Save panel, the ⋯ menu, and `default_recording_output_path`.
+
+### Verification
+
+- `cargo nextest run -p app-ui` — 60 passed. clippy native + wasm32 + fmt clean. `just gate` green.
+- Manual (user): open ⋯ → see the folder + Change… → pick a new folder → it updates everywhere.
+
+### Deferred
+
+- Click-outside-to-dismiss the menu (currently re-clicking ⋯ toggles it; clicking Change… closes it). A global click-away listener is a small polish item — not blocking.
+
+---
+
+## M-SAVE.3 — post-record Save panel (folder + format dropdown + Export/Discard)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — fourth chunk of `feat/export`. The first user-visible piece: after Stop, a Save panel replaces the record footer.
+
+### What shipped
+
+The deferred-export backend (M-SAVE.0/.1/.2) now has its UI. In `crates/app-ui/src/recorder_page.rs`:
+
+- **Trigger:** the `on_start` stop handler captures `summary.pending_export` from `stop_recording()` into a `pending_export: RwSignal<Option<PendingExportView>>`. When set, the Save panel replaces the record/stop footer (a finished recording also blocks starting a new one, so hiding Record is correct).
+- **Panel (choosing state):** a **Folder** row (configured dir via `get_output_dir`, truncated tail-visible, + a **Change…** button → `pick_output_dir` → `set_output_dir`), a **Format** dropdown (**MP4** = `mp4-h264` / **WebM** = `webm-vp9`, via the 0.8 `on:change:target` modifier), and **Discard** / **Export** actions.
+- **Export:** `export_recording(format, None)` on the configured folder. `export_busy` disables the controls + flips the button to "Exporting…" during the (multi-second, software) WebM transcode. On success → `saved_path` set, `pending_export` cleared. On failure the backend restores the pending export and the panel stays up for a retry (error shown in the existing error row).
+- **Success state:** "Saved to `<path>`" + **Reveal in Finder** (`reveal_in_file_manager`) + **Done** (clears `saved_path`, returns to the normal recorder).
+- **Discard:** `discard_recording()` deletes the scratch + clears the panel.
+- **Mount:** polls `recording_pending_export()` (re-shows the panel if the surface remounts mid-await) + `get_output_dir()`.
+- Builds on the vendored recorder-stop latch (`5be49a2` / PR #56): the panel's visibility is gated through a pure `save_panel_visible(has_pending, has_saved)` helper, and the latch still prevents a trailing `Stopping` event from flickering the RECORDING pill over the panel.
+
+CSS in `crates/ui-storybook/assets/style.css` (`.recorder-save-*`), matching the flat-on-black + 1.5 px/12 % white-border recorder convention.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app-ui/src/recorder_page.rs` | Panel state signals; stop handler → `pending_export`; export/discard/change-folder/reveal/dismiss callbacks; the Save-panel view (Show-wrapped over the footer); `save_panel_visible` pure helper + test. |
+| `crates/ui-storybook/assets/style.css` | `.recorder-save-*` styles. |
+
+### Verification
+
+- `cargo nextest run -p app-ui` — 60 passed (+1 new `save_panel_visibility_rule`).
+- `cargo clippy -p app-ui --all-targets` (native) + `--target wasm32-unknown-unknown` — clean (`-D warnings`).
+- `cargo fmt --all --check` — clean. `just gate` — green.
+- Manual macOS smoke pending (user): record → Stop → panel appears → MP4 export lands in folder + WebM export transcodes + Reveal opens Finder + Discard removes scratch.
+
+### Deferred (to M-SAVE.GATE)
+
+- **Presentational extraction + storybook story.** The panel is currently inline in `RecorderPage` (consistent with the recording-pill / footer, which are also inline). Extracting a stateless `ui-storybook` `SavePanel` component + a story (ready / exporting / saved states) + SSR snapshot is batched into M-SAVE.GATE.
+- **Restoring the persisted `last_format`** as the dropdown default (currently always MP4). `export_recording` writes `last_format`; a `get` command + mount-poll would restore it.
+
+---
+
+## M-SAVE.2 — WebM transcode + AVIF poster relocation (export decodes scratch → VP9/Opus)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — third chunk of `feat/export`. WebM transcode validated **headlessly** by two new media integration tests (real `gst-launch` round-trip, no GUI needed).
+
+### What changed
+
+`export_recording` now handles the **WebM** format (M-SAVE.1 left it a stub) and generates the AVIF poster next to the *exported* file:
+
+- **`media::encode::transcode_to_webm(input, output)`** — one-shot `gst-launch` pipeline `filesrc ! decodebin name=d  webmmux name=mux ! filesink  d. ! queue ! videoconvert ! vp9enc ! mux.  [+ audio leg]`. Mirrors the `generate_poster` spawn pattern (probe-then-spawn, structured `EncodeError`s). VP9 is software (`vp9enc`) — no Apple HW path — so a short clip takes a couple seconds; the recorder runs it off-thread.
+- **`media::encode::scratch_has_audio(input)`** — probes via `gst-discoverer-1.0` and includes the Opus leg **only** when an audio track exists. Critical: a screen-only scratch has no audio track (the encoder gates the audio leg on `audio_chunks_pushed > 0`), and wiring an audio branch to a `decodebin` pad that never appears would hang `webmmux` waiting for EOS. The probe errs toward "no audio" (false on any uncertainty) so a false-positive hang can't happen.
+- **`media::encode::build_webm_transcode_args`** — pure argv builder (split out for unit tests).
+- **`export_recording` is now `async`** — the move (MP4) / transcode (WebM) + poster all run on `spawn_blocking` so the webview stays responsive during a multi-second transcode. Dropped the `State<RecordingState>` param in favor of `app.state::<RecordingState>()` (resolved before/after the await, never held across it). MP4 still = move; **WebM = transcode then delete scratch**; H.265 / AV1 return "not supported" (not in the UI dropdown). On any failure the pending export is restored.
+- **AVIF poster** now generated next to the exported file inside the `spawn_blocking` job (M-SAVE.1 had deferred it; pre-M-SAVE.1 it landed next to the save-on-stop file). Best-effort — silently skipped when `avifenc` is missing.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/media/src/encode.rs` | `transcode_to_webm` + `build_webm_transcode_args` + `scratch_has_audio`. +3 unit tests (argv shape ×2, missing-input). |
+| `crates/media/tests/encode_integration.rs` | `encode_test_mp4` helper + 2 transcode round-trip tests (video-only → VP9; with-audio → VP9+Opus), gated by `is_available()` + `gst_discoverer_available()`. |
+| `crates/app/src/commands.rs` | `export_recording` → async; WebM transcode arm; poster generation at export; `app.state()` instead of `State` param. |
+
+### Verification
+
+- `cargo nextest run -p media --test encode_integration` — **3 passed** incl. the 2 new real-transcode round-trips (VP9 + VP9/Opus confirmed via `gst-discoverer`).
+- `cargo nextest run -p media -p screen-app` — 355 passed.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`). (`media` allows `doc_markdown`; `screen-app` enforces it — backticked the one flagged `WebM`.)
+- `cargo fmt --all --check` — clean. `just gate` — green.
+- No `Cargo.toml` change → ISS-06 deny/machete pre-existing failures unaffected.
+
+### Deferred
+
+- **Save panel UI** — M-SAVE.3 (both MP4 + WebM export now work end-to-end via IPC; the panel wires the dropdown to `export_recording`).
+- A `webm-vp9` slug from the UI maps to a transcode; H.265/AV1 remain backend-unsupported (and aren't offered — the dropdown is MP4 / WebM only by design).
+
+---
+
+## M-SAVE.1 — scratch-path recording + deferred export (AwaitingExport + export/discard, MP4 move path)
+- **Date:** 2026-05-25
+- **Status:** ✅ done — second chunk of `feat/export`. (M-SAVE.0 manual smoke passed: native folder picker opens + returns the chosen path; persisted dir flows into the recording path. Verified via webview devtools.)
+
+### What changed — the deferred-save flow
+
+Before: `stop_recording` finalized the encoder straight to the user's final path + generated the AVIF poster there. Now recording defers the save so the Save panel (M-SAVE.3) can choose format + folder *after* stop:
+
+1. **`start_recording` records to a scratch MP4/H.264** under `<app-cache-dir>/recordings-scratch/scratch-<session-id>.mp4` — the canonical intermediate. `config.output_path` / `config.format` are no longer consulted at record time.
+2. **`stop_recording` finalizes the scratch, then stashes a `PendingExport`** (scratch path + duration + wall-clock start secs) instead of writing the final file. Returns `RecordingSummary { output_path: None, pending_export: Some(view) }`. AVIF poster is deferred to export time (M-SAVE.2).
+3. **`export_recording(format, output_dir?)`** computes `{dir}/Screen-<ts>.<ext>` (dir = override or `recorder_settings::resolved_output_dir`; ts from the recording's start). **MP4/H.264 = a move** (`recording_paths::move_file`, atomic rename with cross-device copy fallback) since the scratch already *is* MP4/H.264. H.265 / WebM / AV1 return a "not yet wired (M-SAVE.2)" error and **restore** the pending export so the user can retry. On success persists `last_format`.
+4. **`discard_recording()`** deletes the scratch + clears the pending state.
+5. **`recording_pending_export()`** lets the Save panel discover an awaiting export on mount.
+
+### Design decision — no `AwaitingExport` enum variant
+
+"Awaiting export" is represented by `RecordingState.pending_export: Mutex<Option<PendingExport>>` being `Some`, **not** a new `SessionState` variant. Rationale: a variant would ripple through every `match` on `SessionState` + the M-RECORD.2 LED colour map for zero benefit. The data-driven slot is cleaner and the UI keys off `pending_export` (via the dedicated command / the summary field). `start_recording` refuses to start while a pending export exists (guards against orphaning the scratch).
+
+### Scratch lifecycle / v0 limitation
+
+Scratch lives in the app **cache** dir (app-scoped, home volume → fast rename into `~/Movies/Screen`). `main.rs` calls `clean_scratch_dir` at startup, so any scratch left by a crash or an un-exported session from a previous run is abandoned — **v0 has no cross-launch export recovery** (acceptable; the in-memory `pending_export` is also not persisted, so the two are consistent).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/src/recording.rs` | `RecordingSession.started_at_unix_secs`; `PendingExport` + `PendingExportView` + `PendingExport::view()`; `RecordingState.pending_export` slot + `set/take/has/view` accessors; `RecordingSummary.pending_export` field. +4 tests. |
+| `crates/app/src/recording_paths.rs` | `default_basename` (factored out of `default_filename`); `move_file` (rename + cross-device copy fallback). +3 tests. |
+| `crates/app/src/commands.rs` | scratch encoder config in `start_recording` + pending-export guard; `stop_recording` → pending handoff; new `export_recording` / `discard_recording` / `recording_pending_export`; `scratch_dir` / `scratch_file_path` / `clean_scratch_dir` helpers; removed `build_encoder_config_for_session`. |
+| `crates/app/src/main.rs` | register 3 new commands (both arms); `clean_scratch_dir` at startup. |
+| `crates/app-ui/src/recording_ipc.rs` | `PendingExportView` mirror; `RecordingSummaryView.pending_export`; `recording_pending_export` / `export_recording` / `discard_recording` wrappers. |
+| `crates/app-ui/index.html` | 3 `__screen*` JS bridges. |
+
+### Verification
+
+- `cargo nextest run -p screen-app` — 177 passed (was 170; +7 new). 0 failures.
+- `cargo check -p screen-app` + `-p app-ui` — clean.
+- `cargo clippy -p screen-app --all-targets` + `-p app-ui` (native + wasm32) — clean (`-D warnings`).
+- `cargo fmt --all --check` — clean.
+- `just gate` — green.
+- No `Cargo.toml` change → no deny/machete re-run needed (ISS-06 pre-existing failures unaffected).
+
+### Deferred to later chunks
+
+- **WebM transcode + AVIF poster relocation** — M-SAVE.2 (export currently errors for non-MP4 and restores the pending state).
+- **Save panel UI** — M-SAVE.3 (the `pending_export` field + `recording_pending_export` command are the contract it consumes; the live `recorder_page.rs` still hardcodes the old start config + treats stop as "done").
+
+---
+
+## M-SAVE.0 — user-pickable output directory + settings persistence
+- **Date:** 2026-05-25
+- **Status:** ✅ done — first chunk of the `feat/export` branch (deferred multi-format export: pick the output directory + choose the format on export).
+
+### Context
+
+Goal: a place to choose which directory recordings save to, and a format dropdown (MP4 / WebM) on an "Export" action. The milestone-2 doc's M-EXPORT.4 had scoped this ("a future M-EXPORT.4.1 follow-up can add `tauri-plugin-dialog`") but never implemented the picker, and the recorder-surface redesign (#52/#53) dropped the legacy format dropdown — the live `recorder_page.rs` hardcodes `"mp4-h264"`. The agreed shape: scratch-path recording → post-stop Save panel with format dropdown + Export/Discard; persistent default folder in settings. This chunk is the persistence + folder-picker foundation.
+
+### What shipped
+
+- **`tauri-plugin-dialog` dep** (2.7.1) for the native folder picker. Used via the Rust-side `DialogExt` API inside our own `pick_output_dir` command rather than the JS guest bindings — the webview only ever invokes our command (never `plugin:dialog|*`), so **no extra capability grant is needed** in `capabilities/default.json`. Least-privilege: the webview can't pop arbitrary dialogs.
+- **`crate::recorder_settings`** — new module. `RecorderSettings { output_dir: Option<PathBuf>, last_format: Option<String> }` persisted as JSON at `<app-config-dir>/recorder-settings.json`. Uses `serde_json` (unlike the bubble-position hand-rolled text format) because a filesystem path can contain `:` / `,` / newlines that a naive `key:value` scheme would corrupt. `#[serde(default)]` + `Option` fields mean older/partial files deserialize gracefully — no version field needed. Pure `load_from`/`save_to(path)` split out from the `AppHandle`-aware `load`/`save` wrappers so the logic is unit-testable without a mock app.
+- **Three IPC commands** (`commands.rs`): `pick_output_dir` (opens the native dialog on the blocking pool via `spawn_blocking` — the dialog-plugin `blocking_*` variants must run off-main or they deadlock), `get_output_dir`, `set_output_dir`. Empty string to `set_output_dir` clears the override.
+- **`default_recording_output_path` now honors the chosen folder** — resolves the directory via `recorder_settings::resolved_output_dir(app)` (persisted override → per-OS default) instead of always `recording_paths::default_output_dir()`. The signature gained an `app: AppHandle` param; the JS-facing args are unchanged (Tauri auto-injects `app`).
+- **JS bridges** (`index.html`) + **wasm wrappers** (`app-ui/src/settings_ipc.rs`, new module) mirroring the established `recording_ipc` pattern.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `crates/app/Cargo.toml` | `tauri-plugin-dialog = "2"` + `serde_json = "1"` moved dev→runtime dep. |
+| `crates/app/src/recorder_settings.rs` | **New.** Persistence module + 7 unit tests. |
+| `crates/app/src/lib.rs` | `pub mod recorder_settings;`. |
+| `crates/app/src/commands.rs` | 3 new commands; `default_recording_output_path` consults settings. |
+| `crates/app/src/main.rs` | `.plugin(tauri_plugin_dialog::init())`; 3 commands in both handler arms. |
+| `crates/app-ui/index.html` | 3 `__screen*` JS bridges. |
+| `crates/app-ui/src/settings_ipc.rs` | **New.** wasm IPC wrappers. |
+| `crates/app-ui/src/lib.rs` | `pub mod settings_ipc;`. |
+
+### Verification
+
+- `cargo nextest run -p screen-app` — 170 passed (incl. 7 new `recorder_settings` tests). 0 failures.
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean.
+- `cargo clippy -p app-ui -- -D warnings` (native) + `--target wasm32-unknown-unknown` — clean.
+- `cargo fmt --all --check` — clean.
+- `cargo deny` / `cargo machete` — run after dep change (see commit).
+- Manual macOS smoke deferred to M-SAVE.GATE (no UI surfaces the picker yet — that's M-SAVE.4).
+
+### Notes / non-obvious
+
+- No renderable feature in this chunk → no storybook story (per CLAUDE.md non-render exemption). The folder-picker UI lands in M-SAVE.4; the Save panel in M-SAVE.3.
+- The `last_format` field is wired into persistence here but not yet read/written by any command — it's consumed by the Save-panel dropdown (M-SAVE.3) which restores the last-used format.
+
+---
+
 ## Recorder no longer gets stuck on "Stop recording"
 - **Date:** 2026-05-25
 - **Status:** ✅ done — standalone frontend bugfix on `fix/recorder-stop-latch` (branched clean off `main`), PR'd separately ahead of the in-flight export (`feat/export`) work so the two don't conflict in `recorder_page.rs`.

@@ -25,6 +25,36 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-07: stale rustdoc deep-links in existing `ui/chunks/*.md` chapters
+- **Filed:** 2026-05-25
+- **By:** M-SAVE.GATE (verified rustdoc paths while authoring `save-panel.md`)
+- **Severity:** bug (docs only)
+- **Affects:** `_docs/book/src/ui/chunks/*.md` — at least `status-bar-*.md`, `button-sizes.md`, `card-basic.md`, `card-with-dope-sheet.md`, `drop-zone-idle.md`, `recording-toolbar-recording.md`, `dope-sheet-basic.md`, `player-controls-near-end.md`
+- **Status:** open (not in the `just gate` CI path — markdown `[](…)` hrefs aren't intra-doc links, so `cargo doc` doesn't validate them; only the deploy-time smoke in `docs.yml` would, and it only spot-checks a few well-known files)
+- **Description:**
+  These chapters link into the published rustdoc with a path that omits the component subgroup, e.g. `[`StatusBar`](../../api/ui_storybook/components/status_bar/fn.StatusBar.html)`. The real generated path includes the subgroup: `components/shell/status_bar/fn.StatusBar.html` (confirmed via `cargo doc -p ui-storybook --no-deps` → `target/doc/ui_storybook/components/shell/status_bar/fn.StatusBar.html`). Same class of error for `button` (→ `components/primitives/button/`), `card` (→ `primitives/card/`), `dope_sheet` (→ `editor/dope_sheet/`), `recording_toolbar` (→ `recorder/recording_toolbar/`), `drop_zone` (→ `shell/drop_zone/`). Every one of these deep-links 404s on the deployed site. The new `save-panel.md` uses the correct `components/recorder/save_panel/…` path, so it's not affected.
+- **Resolution:** (open) Mechanical fix — for each chapter, re-point the `api/` href to the subgroup-qualified path (grep `target/doc/ui_storybook` for the real location of each item). Worth a dedicated `docs: fix stale rustdoc deep-links in ui chapters` pass; consider a `doc-gates` check that resolves every `api/…` href in the book against `target/doc` so this can't regress.
+
+---
+
+## ISS-06: `cargo deny` / `cargo machete` fail on pre-existing repo state with current tool versions
+- **Filed:** 2026-05-25
+- **By:** M-SAVE.0 (ran deny/machete after adding `tauri-plugin-dialog`)
+- **Severity:** tech-debt
+- **Affects:** workspace-wide (`deny.toml`, `crates/app-ui/Cargo.toml`, `crates/app-e2e/Cargo.toml`, `tools/doc-gates/Cargo.toml`, `crates/playback/Cargo.toml`) — tooling only, not the build
+- **Status:** open (not in the `just gate` CI path; surfaces only on manual `just deny` / `just unused-deps`)
+- **Description:**
+  Installing the latest `cargo-deny` (0.19.7) + `cargo-machete` and running `cargo deny check` / `cargo machete` against the workspace produces failures that are **all pre-existing** (reproduce on `main`, unrelated to the M-SAVE.0 dep addition — `tauri-plugin-dialog`/`tauri-plugin-fs`/`rfd` introduced no rejected license and no new ban):
+
+  - **`bans FAILED` — wildcard path deps.** `deny.toml` sets `[bans] wildcards = "deny"`, and cargo-deny 0.19.x flags workspace-internal path deps that omit a `version` field (`ui-storybook = { path = "../ui-storybook", ... }` in `app-ui`; `screen-app = { path = "../app" }` in `app-e2e`). Older cargo-deny defaulted `allow-wildcard-paths` on for path deps. **Fix:** add `allow-wildcard-paths = true` under `[bans]` in `deny.toml`.
+  - **`licenses FAILED` — `doc-gates` unlicensed.** `tools/doc-gates/Cargo.toml` has no `license` field, so cargo-deny rejects it. It's a workspace-internal tool (`publish = false`). **Fix:** add `license = "MIT"` to its `Cargo.toml` (or configure `[licenses] private = { ignore = true }` in deny.toml to skip non-published crates).
+  - **`cargo machete` — `playback → tracing`.** Flagged as unused; likely a false positive (macro-only usage that machete's static pass misses — it suggests `--with-metadata`). Needs a one-line check: either remove the dep if truly unused, or add `[package.metadata.cargo-machete] ignored = ["tracing"]`.
+
+  Why it doesn't block CI today: the gate workflow (`gate.yml`) runs `just gate`, and `just gate` is the 7-step fmt→check→lint→nextest→doctest→docs→snapshots-check — `cargo deny` is **not** in it (it's a separate `just deny` / `just security` recipe). So `main` is green despite these.
+- **Resolution:** (open) Three small, independent fixes above. Deferred out of M-SAVE.0 to avoid scope creep (the chunk is the output-dir picker; none of these crates are touched by it). Worth a dedicated `chore: modernize cargo-deny config` pass.
+
+---
+
 ## ISS-05: Camera toggle ↔ webcam-bubble visibility is one phase out of sync from page mount
 - **Filed:** 2026-05-22
 - **By:** user (caught during the recorder-redesign visual refactor — pre-existing bug, not introduced by the refactor)

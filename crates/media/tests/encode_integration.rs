@@ -121,6 +121,129 @@ fn full_lifecycle_with_audio_produces_mp4_with_both_streams() {
     cleanup_artifacts(&output_path);
 }
 
+// ---- M-SAVE.2 — MP4 → WebM transcode round-trip ----
+
+/// Encode a short test MP4 at `path` — 0.5 s of solid red, optionally
+/// with a 440 Hz sine audio track. Shared by the transcode tests so
+/// they exercise a real (encoder-produced) MP4 rather than a fixture.
+fn encode_test_mp4(path: &Path, with_audio: bool) {
+    let mut encoder = GstreamerEncoder::new(EncoderConfig {
+        output_path: path.to_path_buf(),
+        width: WIDTH,
+        height: HEIGHT,
+        framerate: FRAMERATE,
+        sample_rate: SAMPLE_RATE,
+        channels: CHANNELS,
+        format: OutputFormat::Mp4H264Aac,
+    })
+    .expect("encoder constructs");
+
+    let mut frame = vec![0u8; (WIDTH as usize) * (HEIGHT as usize) * 4];
+    for px in frame.chunks_exact_mut(4) {
+        px.copy_from_slice(&[0, 0, 255, 255]); // B, G, R, A
+    }
+    let interval = Duration::from_micros(1_000_000 / u64::from(FRAMERATE));
+    for i in 0..(FRAMERATE / 2) {
+        encoder
+            .push_video_frame(&frame, interval * i)
+            .expect("push video frame");
+    }
+    if with_audio {
+        let chunk_frames = SAMPLE_RATE as usize / 10;
+        for chunk_idx in 0..5_u64 {
+            encoder
+                .push_audio_chunk(
+                    &sine_chunk_stereo(chunk_idx, chunk_frames),
+                    Duration::from_millis(chunk_idx * 100),
+                )
+                .expect("push audio chunk");
+        }
+    }
+    Box::new(encoder).finalize().expect("finalize mp4");
+}
+
+#[test]
+fn transcode_video_only_mp4_to_webm_produces_vp9() {
+    if !is_available() {
+        eprintln!("gst-launch-1.0 not on PATH — skipping");
+        return;
+    }
+    if !gst_discoverer_available() {
+        eprintln!("gst-discoverer-1.0 not on PATH — skipping");
+        return;
+    }
+    let mp4 = std::env::temp_dir().join(format!("transcode_vid_{}.mp4", std::process::id()));
+    let webm = std::env::temp_dir().join(format!("transcode_vid_{}.webm", std::process::id()));
+    cleanup_artifacts(&mp4);
+    let _ = std::fs::remove_file(&webm);
+
+    encode_test_mp4(&mp4, false);
+    // A video-only scratch must probe as no-audio so the transcode
+    // takes the video-only pipeline (no dangling decodebin audio pad).
+    assert!(
+        !media::encode::scratch_has_audio(&mp4),
+        "video-only mp4 should report no audio track"
+    );
+
+    media::encode::transcode_to_webm(&mp4, &webm).expect("transcode to webm");
+    assert!(webm.exists(), "webm should exist after transcode");
+
+    let probe = Command::new("gst-discoverer-1.0")
+        .arg(&webm)
+        .output()
+        .expect("spawn gst-discoverer-1.0");
+    let stdout = String::from_utf8_lossy(&probe.stdout);
+    assert!(stdout.contains("video #"), "no video stream:\n{stdout}");
+    assert!(
+        stdout.to_lowercase().contains("vp9"),
+        "expected VP9 video:\n{stdout}"
+    );
+
+    cleanup_artifacts(&mp4);
+    let _ = std::fs::remove_file(&webm);
+}
+
+#[test]
+fn transcode_mp4_with_audio_to_webm_has_vp9_and_opus() {
+    if !is_available() {
+        eprintln!("gst-launch-1.0 not on PATH — skipping");
+        return;
+    }
+    if !gst_discoverer_available() {
+        eprintln!("gst-discoverer-1.0 not on PATH — skipping");
+        return;
+    }
+    let mp4 = std::env::temp_dir().join(format!("transcode_av_{}.mp4", std::process::id()));
+    let webm = std::env::temp_dir().join(format!("transcode_av_{}.webm", std::process::id()));
+    cleanup_artifacts(&mp4);
+    let _ = std::fs::remove_file(&webm);
+
+    encode_test_mp4(&mp4, true);
+    assert!(
+        media::encode::scratch_has_audio(&mp4),
+        "audio mp4 should probe as having an audio track"
+    );
+
+    media::encode::transcode_to_webm(&mp4, &webm).expect("transcode to webm");
+
+    let probe = Command::new("gst-discoverer-1.0")
+        .arg(&webm)
+        .output()
+        .expect("spawn gst-discoverer-1.0");
+    let stdout = String::from_utf8_lossy(&probe.stdout);
+    assert!(
+        stdout.to_lowercase().contains("vp9"),
+        "expected VP9 video:\n{stdout}"
+    );
+    assert!(
+        stdout.to_lowercase().contains("opus"),
+        "expected Opus audio (audio-leg regression):\n{stdout}"
+    );
+
+    cleanup_artifacts(&mp4);
+    let _ = std::fs::remove_file(&webm);
+}
+
 #[allow(
     clippy::cast_precision_loss,
     reason = "sample index < 48 000 fits f32 precision for a one-second buffer"

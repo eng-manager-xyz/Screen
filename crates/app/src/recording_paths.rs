@@ -2,10 +2,9 @@
 //! plumbing for M-EXPORT.4 (M-RECORD-EXPORT).
 //!
 //! Pure-Rust path math + a `std::process::Command` wrapper for the
-//! per-OS file-manager reveal. No Tauri-plugin-dialog dep — the
-//! recorder's v0 UX is "auto-pick a sensible default location"
-//! rather than "always show a save dialog." A future M-EXPORT.4.1
-//! follow-up can add `tauri-plugin-dialog` for explicit Save-As.
+//! per-OS file-manager reveal. The user-pickable output directory
+//! (M-SAVE.0) layers on top via
+//! [`recorder_settings`](crate::recorder_settings).
 
 #![allow(
     clippy::cast_possible_wrap,
@@ -37,15 +36,25 @@ pub fn default_output_dir() -> PathBuf {
     }
 }
 
+/// Compose the extension-less base filename for a session that
+/// started at `started_at` (Unix epoch seconds). Format
+/// `Screen-YYYY-MM-DD-HHMMSS` — sortable, unambiguous, file-system-
+/// safe on every OS. M-SAVE.1's Save panel appends the extension
+/// matching the chosen export format.
+#[must_use]
+pub fn default_basename(started_at_unix_secs: u64) -> String {
+    let (year, month, day, hour, minute, second) = unix_to_ymdhms(started_at_unix_secs);
+    format!("Screen-{year:04}-{month:02}-{day:02}-{hour:02}{minute:02}{second:02}")
+}
+
 /// Compose a default output filename for a session that started at
-/// `started_at` (Unix epoch seconds). Format
-/// `Screen-YYYY-MM-DD-HHMMSS.<ext>` — sortable, unambiguous, file-
-/// system-safe on every OS.
+/// `started_at` (Unix epoch seconds). [`default_basename`] + the
+/// format's extension (e.g. `Screen-2026-05-25-123700.mp4`).
 #[must_use]
 pub fn default_filename(started_at_unix_secs: u64, format: OutputFormat) -> String {
-    let (year, month, day, hour, minute, second) = unix_to_ymdhms(started_at_unix_secs);
     format!(
-        "Screen-{year:04}-{month:02}-{day:02}-{hour:02}{minute:02}{second:02}.{ext}",
+        "{}.{ext}",
+        default_basename(started_at_unix_secs),
         ext = format.extension(),
     )
 }
@@ -70,6 +79,33 @@ pub fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+/// Move `src` to `dst`, creating `dst`'s parent directory first.
+/// Used by M-SAVE.1's MP4 export path to promote the finalized
+/// scratch file into the user's chosen folder.
+///
+/// Tries an atomic [`std::fs::rename`] first — fast and the common
+/// case, since the scratch dir and the default output dir are
+/// normally on the same (home) volume. Rename fails across volumes
+/// (`EXDEV`) — e.g. exporting to an external drive — so on *any*
+/// rename error it falls back to copy-then-remove, which works
+/// across devices.
+///
+/// # Errors
+///
+/// Returns the underlying [`std::io::Error`] when the parent dir
+/// can't be created, or when the copy fallback itself fails (source
+/// missing, destination not writable, disk full).
+pub fn move_file(src: &Path, dst: &Path) -> std::io::Result<()> {
+    ensure_parent_dir(dst)?;
+    if std::fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    // Cross-device (or other rename failure): copy then remove the
+    // source. The copy error, if any, is the meaningful one to surface.
+    std::fs::copy(src, dst)?;
+    std::fs::remove_file(src)
 }
 
 /// Spawn the per-OS file-manager "reveal this file" command.
@@ -252,6 +288,45 @@ mod tests {
         ensure_parent_dir(&target).expect("first call");
         ensure_parent_dir(&target).expect("second call");
         let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn default_basename_has_no_extension() {
+        let base = default_basename(1_763_402_400);
+        assert_eq!(base, "Screen-2025-11-17-180000");
+        assert!(std::path::Path::new(&base).extension().is_none());
+        // default_filename is the basename + the format extension.
+        assert_eq!(
+            default_filename(1_763_402_400, OutputFormat::Mp4H264Aac),
+            format!("{base}.mp4")
+        );
+    }
+
+    #[test]
+    fn move_file_same_dir_moves_contents_and_removes_source() {
+        let dir = std::env::temp_dir().join("m-save-move-same-dir");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let src = dir.join("scratch.mp4");
+        let dst = dir.join("Screen-final.mp4");
+        std::fs::write(&src, b"fake-mp4-bytes").expect("write src");
+        move_file(&src, &dst).expect("move");
+        assert!(!src.exists(), "source should be gone after move");
+        assert_eq!(std::fs::read(&dst).expect("read dst"), b"fake-mp4-bytes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_file_creates_destination_parent_dir() {
+        let dir = std::env::temp_dir().join("m-save-move-mkparent");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let src = dir.join("scratch.mp4");
+        let dst = dir.join("nested").join("deeper").join("out.mp4");
+        std::fs::write(&src, b"x").expect("write src");
+        move_file(&src, &dst).expect("move into nonexistent parent");
+        assert!(dst.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

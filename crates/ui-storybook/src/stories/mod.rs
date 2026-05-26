@@ -26,6 +26,7 @@ pub mod recorder_display;
 pub mod recorder_footer;
 pub mod recorder_on_screen;
 pub mod recording_status;
+pub mod save_panel;
 pub mod shell;
 pub mod tray_record_popover;
 pub mod workspace_menu;
@@ -102,6 +103,7 @@ pub fn all_stories() -> Vec<Story> {
     out.extend(recorder_audio::stories());
     out.extend(recorder_on_screen::stories());
     out.extend(recorder_footer::stories());
+    out.extend(save_panel::stories());
     out.extend(tray_record_popover::stories());
     out.extend(recording_status::stories());
     out.extend(fixtures_gallery::stories());

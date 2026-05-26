@@ -1774,6 +1774,13 @@ pub fn start_recording(
     if recording_state.is_active() {
         return Err("a recording session is already active".into());
     }
+    // M-SAVE.1 — refuse to start on top of an un-exported recording.
+    // The Save panel keeps the Record button disabled while this is
+    // true, but guard here too so a desynced UI can't orphan the
+    // previous scratch file.
+    if recording_state.has_pending_export() {
+        return Err("a finished recording is awaiting export — export or discard it first".into());
+    }
     if !config.streams.any_enabled() {
         return Err("no streams enabled — pick at least one input".into());
     }
@@ -1863,10 +1870,17 @@ pub fn start_recording(
     //   fall back to the M-EXPORT.3 test-pattern feed so the
     //   encoder still produces a valid container.
     //
-    // Output path + format come from the caller (M-EXPORT.4
-    // defaults applied UI-side); failure here rolls back per-
-    // channel streams too.
-    let encoder_config = build_encoder_config_for_session(&config)?;
+    // M-SAVE.1 — always encode to a scratch MP4/H.264 (the canonical
+    // intermediate). The export *format* is chosen later in the Save
+    // panel: an MP4 export moves this file as-is; a WebM export
+    // transcodes it. `config.output_path` / `config.format` are no
+    // longer consulted at record time. Failure here rolls back the
+    // per-channel streams too.
+    let scratch_path = scratch_file_path(&app, session_id)?;
+    let encoder_config = media::encode::EncoderConfig::for_output(
+        scratch_path,
+        media::encode::OutputFormat::Mp4H264Aac,
+    );
     let session_id_for_palette = session.id;
     let has_video = config.streams.camera || config.streams.screen;
     let handle_result = if has_video {
@@ -1951,37 +1965,48 @@ pub fn start_recording(
     Ok(session_id)
 }
 
-/// Map a [`RecordingConfig`] (M-RECORD.1 IPC) to an
-/// [`EncoderConfig`] (M-EXPORT.1). Resolves the format slug and the
-/// output path; falls back to defaults for missing fields. Returns
-/// `Result` for forward-compat (M-EXPORT.3.1 will add path-extension
-/// validation that can fail).
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "Forward-compat: M-EXPORT.3.1 adds validation that returns Err on extension mismatch; keeping Result now avoids a churn-only signature change later."
-)]
-fn build_encoder_config_for_session(
-    config: &RecordingConfig,
-) -> Result<media::encode::EncoderConfig, String> {
-    use media::encode::OutputFormat;
-    let format = config
-        .format
-        .as_deref()
-        .and_then(OutputFormat::from_slug)
-        .unwrap_or_default();
-    let output_path = config.output_path.clone().map_or_else(
-        || {
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_secs());
-            crate::recording_paths::default_output_path(now_secs, format)
-        },
-        std::path::PathBuf::from,
-    );
-    Ok(media::encode::EncoderConfig::for_output(
-        output_path,
-        format,
-    ))
+/// Directory for in-progress / awaiting-export scratch recordings
+/// (M-SAVE.1). Under the app *cache* dir so it's app-scoped and on
+/// the home volume (so the export `rename` into `~/Movies/Screen`
+/// etc. is atomic rather than a cross-device copy). `None` only if
+/// the platform path resolver fails.
+fn scratch_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    Some(app.path().app_cache_dir().ok()?.join("recordings-scratch"))
+}
+
+/// Scratch file path for `session_id` — `scratch-<id>.mp4`. The
+/// scratch is always MP4/H.264 (the canonical intermediate the Save
+/// panel moves or transcodes).
+///
+/// # Errors
+///
+/// `"app cache dir unavailable …"` when the platform path resolver
+/// fails (no `$HOME`, sandbox without a cache dir).
+fn scratch_file_path(app: &tauri::AppHandle, session_id: u64) -> Result<PathBuf, String> {
+    let dir = scratch_dir(app).ok_or("app cache dir unavailable for scratch recording")?;
+    Ok(dir.join(format!("scratch-{session_id}.mp4")))
+}
+
+/// Clear every file in the scratch dir (M-SAVE.1). Called once at app
+/// startup from `main.rs`: any scratch left by a crash or an
+/// un-exported recording from a previous run is abandoned (v0 has no
+/// cross-launch export recovery). Best-effort — logs and continues on
+/// failure.
+pub fn clean_scratch_dir(app: &tauri::AppHandle) {
+    let Some(dir) = scratch_dir(app) else {
+        return;
+    };
+    if !dir.exists() {
+        return;
+    }
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => {
+            tracing::info!(dir = %dir.display(), "clean_scratch_dir: cleared scratch recordings");
+        }
+        Err(err) => {
+            tracing::warn!(?err, dir = %dir.display(), "clean_scratch_dir: failed to clear scratch dir");
+        }
+    }
 }
 
 /// Stop the active recording session (M-RECORD.1).
@@ -2037,35 +2062,37 @@ pub fn stop_recording(
     session.finish_stop();
     let elapsed_ms = u64::try_from(session.elapsed().as_millis()).unwrap_or(u64::MAX);
 
-    // M-EXPORT.3 — finalize the encoder + generate the AVIF poster.
-    let output_path = if let Some(handle) = recording_state.take_encoder() {
-        let path = handle.output_path.clone();
+    // M-SAVE.1 — finalize the encoder to its scratch file, then stash
+    // it as a *pending export* instead of writing the final file now.
+    // The Save panel picks the format + folder; `export_recording`
+    // moves (MP4) or transcodes (WebM) the scratch into place and
+    // generates the AVIF poster next to the *exported* file (M-SAVE.2).
+    let pending_export = if let Some(handle) = recording_state.take_encoder() {
+        let scratch_path = handle.output_path.clone();
         match handle.finalize_now() {
-            Ok(final_path) => {
+            Ok(final_scratch) => {
                 tracing::info!(
                     session_id = session.id,
-                    output = %final_path.display(),
-                    "stop_recording: encoder finalized"
+                    scratch = %final_scratch.display(),
+                    "stop_recording: encoder finalized to scratch; awaiting export"
                 );
-                // M-EXPORT.5 — best-effort poster (silently skipped
-                // when `avifenc` not installed; logged when it
-                // genuinely fails).
-                match media::encode::generate_poster(&final_path) {
-                    Ok(Some(poster)) => {
-                        tracing::info!(poster = %poster.display(), "stop_recording: poster ready");
-                    }
-                    Ok(None) => {
-                        tracing::debug!("stop_recording: poster skipped (avifenc missing)");
-                    }
-                    Err(err) => {
-                        tracing::warn!(?err, "stop_recording: poster generation failed");
-                    }
-                }
-                Some(final_path.to_string_lossy().into_owned())
+                let pending = crate::recording::PendingExport {
+                    scratch_path: final_scratch,
+                    duration_ms: elapsed_ms,
+                    started_at_unix_secs: session.started_at_unix_secs,
+                };
+                let view = pending.view();
+                recording_state.set_pending_export(pending);
+                Some(view)
             }
             Err(err) => {
-                tracing::error!(?err, output = %path.display(), "stop_recording: encoder finalize failed");
-                Some(path.to_string_lossy().into_owned())
+                // A finalize failure usually means the mux never wrote
+                // its index / moov atom — the scratch is unplayable.
+                // Drop it and surface no pending export; the UI shows
+                // the recording as failed (neither path nor pending).
+                tracing::error!(?err, scratch = %scratch_path.display(), "stop_recording: finalize failed; discarding scratch");
+                let _ = std::fs::remove_file(&scratch_path);
+                None
             }
         }
     } else {
@@ -2076,7 +2103,9 @@ pub fn stop_recording(
         session_id: session.id,
         elapsed_ms,
         streams: final_health,
-        output_path,
+        // Stop no longer writes the final file (M-SAVE.1) — export does.
+        output_path: None,
+        pending_export,
     };
 
     {
@@ -2115,6 +2144,155 @@ pub fn recording_status(
         elapsed_ms,
         streams,
     }
+}
+
+// ---- M-SAVE.1 — deferred export (Save panel) ---------------------
+
+/// The recording currently sitting in scratch awaiting export, if
+/// any (M-SAVE.1). The Save panel polls this on mount (and after
+/// `stop_recording`) to decide whether to appear. `None` when nothing
+/// is awaiting export.
+#[tauri::command]
+#[must_use]
+pub fn recording_pending_export(
+    recording_state: State<'_, RecordingState>,
+) -> Option<crate::recording::PendingExportView> {
+    recording_state.pending_export_view()
+}
+
+/// Export the pending recording to `output_dir` in `format`, then
+/// return the final absolute path (M-SAVE.1 / .2).
+///
+/// - `format` — slug (`"mp4-h264"` / `"webm-vp9"`); `None` → default
+///   (`mp4-h264`). The scratch is MP4/H.264: an **MP4** export is a
+///   fast move; a **WebM** export re-encodes the scratch to VP9 + Opus
+///   (M-SAVE.2). H.265 / AV1 aren't exposed in the UI and return an
+///   "unsupported" error.
+/// - `output_dir` — override folder; `None` / empty → the persisted
+///   default ([`recorder_settings::resolved_output_dir`](crate::recorder_settings::resolved_output_dir)).
+///
+/// Runs the move / transcode + the AVIF poster on the blocking thread
+/// pool (`spawn_blocking`) so the webview stays responsive during a
+/// multi-second `WebM` transcode. On success the chosen format is
+/// persisted as the Save-panel default; on failure the pending export
+/// is restored so the user can retry.
+///
+/// # Errors
+///
+/// - `"no recording is awaiting export"` — nothing pending.
+/// - move / transcode failure (permissions, disk full, gst error) —
+///   surfaced verbatim.
+/// - `"export to … is not supported"` — H.265 / AV1.
+#[tauri::command]
+pub async fn export_recording(
+    app: tauri::AppHandle,
+    format: Option<String>,
+    output_dir: Option<String>,
+) -> Result<String, String> {
+    use media::encode::OutputFormat;
+
+    // An async command can't hold a `State<'_>` borrow across `.await`,
+    // so resolve `RecordingState` via `app.state()` at each touch point.
+    let pending = app
+        .state::<RecordingState>()
+        .take_pending_export()
+        .ok_or("no recording is awaiting export")?;
+    let format = format
+        .as_deref()
+        .and_then(OutputFormat::from_slug)
+        .unwrap_or_default();
+    let dir = output_dir.filter(|s| !s.trim().is_empty()).map_or_else(
+        || crate::recorder_settings::resolved_output_dir(&app),
+        PathBuf::from,
+    );
+    let final_path = dir.join(crate::recording_paths::default_filename(
+        pending.started_at_unix_secs,
+        format,
+    ));
+
+    // Move (MP4) / transcode (WebM) + poster generation all spawn gst
+    // subprocesses or touch disk; run them off the main thread.
+    let scratch = pending.scratch_path.clone();
+    let final_for_job = final_path.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        crate::recording_paths::ensure_parent_dir(&final_for_job)
+            .map_err(|err| format!("failed to create output dir: {err}"))?;
+        // The scratch is MP4/H.264: MP4 export is a move, WebM a
+        // transcode. H.265 / AV1 aren't offered in the UI.
+        match format {
+            OutputFormat::Mp4H264Aac => {
+                crate::recording_paths::move_file(&scratch, &final_for_job).map_err(|err| {
+                    format!(
+                        "failed to move recording to {}: {err}",
+                        final_for_job.display()
+                    )
+                })?;
+            }
+            OutputFormat::WebmVp9Opus => {
+                media::encode::transcode_to_webm(&scratch, &final_for_job)
+                    .map_err(|err| format!("WebM transcode failed: {err}"))?;
+                let _ = std::fs::remove_file(&scratch);
+            }
+            OutputFormat::Mp4H265Aac | OutputFormat::WebmAv1Opus => {
+                return Err(format!("export to {} is not supported", format.slug()));
+            }
+        }
+        // Best-effort AVIF poster next to the exported file.
+        match media::encode::generate_poster(&final_for_job) {
+            Ok(Some(poster)) => {
+                tracing::info!(poster = %poster.display(), "export_recording: poster written");
+            }
+            Ok(None) => tracing::debug!("export_recording: poster skipped (avifenc missing)"),
+            Err(err) => tracing::warn!(?err, "export_recording: poster generation failed"),
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|err| format!("export task failed to join: {err}"))?;
+
+    match job {
+        Ok(()) => {
+            // Persist the chosen format as the Save-panel default.
+            let mut settings = crate::recorder_settings::load(&app);
+            settings.last_format = Some(format.slug().to_owned());
+            if let Err(err) = crate::recorder_settings::save(&app, &settings) {
+                tracing::warn!(?err, "export_recording: failed to persist last_format");
+            }
+            tracing::info!(output = %final_path.display(), format = format.slug(), "export_recording: file exported");
+            Ok(final_path.to_string_lossy().into_owned())
+        }
+        Err(err) => {
+            // Restore so the user can retry with a different format /
+            // folder. The MP4 move and a failed WebM transcode both
+            // leave the scratch in place (only a *successful* WebM
+            // export removes it), so the restored path is still valid.
+            app.state::<RecordingState>().set_pending_export(pending);
+            Err(err)
+        }
+    }
+}
+
+/// Discard the pending recording — delete its scratch file and clear
+/// the awaiting-export state (M-SAVE.1). No-op when nothing is pending;
+/// a missing / unremovable scratch is logged, not surfaced. Returns
+/// `Result` (always `Ok` today) to keep the IPC signature stable.
+#[tauri::command]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "IPC signature stability — a delete failure may be surfaced in future."
+)]
+pub fn discard_recording(recording_state: State<'_, RecordingState>) -> Result<(), String> {
+    if let Some(pending) = recording_state.take_pending_export() {
+        match std::fs::remove_file(&pending.scratch_path) {
+            Ok(()) => {
+                tracing::info!(scratch = %pending.scratch_path.display(), "discard_recording: scratch removed");
+            }
+            Err(err) => {
+                tracing::warn!(?err, scratch = %pending.scratch_path.display(), "discard_recording: scratch already gone / unremovable");
+            }
+        }
+    }
+    Ok(())
 }
 
 // ---- M-RECORD.1 internal helpers ---------------------------------
@@ -2503,9 +2681,14 @@ fn spawn_status_emitter(app: tauri::AppHandle, session_id: u64) {
 /// `format_slug` is one of `"mp4-h264"`, `"mp4-h265"`, `"webm-vp9"`,
 /// `"webm-av1"`. Unknown slugs fall back to the default
 /// (`mp4-h264`).
+///
+/// As of M-SAVE.0 the directory comes from
+/// [`recorder_settings::resolved_output_dir`](crate::recorder_settings::resolved_output_dir)
+/// — the user's persisted choice if set, else the per-OS default —
+/// so the chosen folder is honored everywhere this path is computed.
 #[tauri::command]
 #[must_use]
-pub fn default_recording_output_path(format_slug: Option<String>) -> String {
+pub fn default_recording_output_path(app: tauri::AppHandle, format_slug: Option<String>) -> String {
     use media::encode::OutputFormat;
     let format = format_slug
         .as_deref()
@@ -2514,9 +2697,75 @@ pub fn default_recording_output_path(format_slug: Option<String>) -> String {
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    crate::recording_paths::default_output_path(now_secs, format)
+    let dir = crate::recorder_settings::resolved_output_dir(&app);
+    dir.join(crate::recording_paths::default_filename(now_secs, format))
         .to_string_lossy()
         .into_owned()
+}
+
+// ---- M-SAVE.0 — output-directory picker + persistence --------------
+
+/// Open a native folder picker and return the chosen absolute path,
+/// or `None` if the user cancelled. Does **not** persist the choice —
+/// the caller ([`set_output_dir`]) does. Opens at the current
+/// configured directory when it exists.
+///
+/// Runs on the blocking thread pool via `spawn_blocking`: the
+/// dialog-plugin `blocking_*` variants block the calling thread until
+/// the user responds, and deadlock if that's the main thread.
+///
+/// # Errors
+///
+/// Errors only if the dialog task fails to join; a user cancel is
+/// `Ok(None)`.
+#[tauri::command]
+pub async fn pick_output_dir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let initial = crate::recorder_settings::resolved_output_dir(&app);
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        let builder = app.dialog().file();
+        let builder = if initial.is_dir() {
+            builder.set_directory(&initial)
+        } else {
+            builder
+        };
+        builder.blocking_pick_folder()
+    })
+    .await
+    .map_err(|err| format!("folder-picker task failed: {err}"))?;
+    Ok(chosen
+        .and_then(|fp| fp.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned()))
+}
+
+/// Return the currently-configured output directory — the persisted
+/// override if the user set one, otherwise the per-OS default. Always
+/// returns an absolute path string (never empty).
+#[tauri::command]
+#[must_use]
+pub fn get_output_dir(app: tauri::AppHandle) -> String {
+    crate::recorder_settings::resolved_output_dir(&app)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Persist `dir` as the default output directory for future
+/// recordings. An empty / whitespace-only string clears the override,
+/// reverting to the per-OS default.
+///
+/// # Errors
+///
+/// Returns an error string when the settings file can't be written
+/// (app-config dir unavailable, read-only filesystem, …).
+#[tauri::command]
+pub fn set_output_dir(app: tauri::AppHandle, dir: String) -> Result<(), String> {
+    let mut settings = crate::recorder_settings::load(&app);
+    settings.output_dir = if dir.trim().is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(dir))
+    };
+    crate::recorder_settings::save(&app, &settings)
 }
 
 /// Return the latest BGRA frame from the camera capture slot

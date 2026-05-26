@@ -11,6 +11,7 @@ pub mod recording_controls_footer;
 pub mod recording_selects;
 pub mod recording_status_button;
 pub mod recording_toolbar;
+pub mod save_panel;
 pub mod system_audio;
 pub mod tray_record_popover;
 
@@ -33,6 +34,7 @@ pub use recording_status_button::{
     CompactRecordingState, CountdownBadge, RecordingStatusButton, format_countdown_seconds,
 };
 pub use recording_toolbar::{RecordingState, RecordingToolbar};
+pub use save_panel::{SaveFormat, SavePanel, SavePanelView};
 pub use system_audio::{
     AppIconView, AudioAppView, AudioFilter, SystemAudioAppList, SystemAudioRow, SystemAudioView,
     format_selection_count,

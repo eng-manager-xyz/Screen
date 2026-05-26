@@ -89,6 +89,21 @@ pub struct StreamHealthView {
     pub last_frame_ms_ago: Option<u64>,
 }
 
+/// Mirror of `screen_app::recording::PendingExportView` (M-SAVE.1).
+/// A finished recording sitting in scratch awaiting the user's format
+/// choice. Present in [`RecordingSummaryView::pending_export`] after
+/// `stop_recording` and returned by `recording_pending_export`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PendingExportView {
+    /// Recording duration in milliseconds.
+    pub duration_ms: u64,
+    /// Suggested base filename (no extension), e.g.
+    /// `"Screen-2026-05-25-123700"`. The Save panel appends the
+    /// extension for the chosen format.
+    pub suggested_basename: String,
+}
+
 /// Mirror of `screen_app::recording::RecordingSummary`. Returned by
 /// `stop_recording`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,8 +115,14 @@ pub struct RecordingSummaryView {
     pub elapsed_ms: u64,
     /// Final per-stream tally.
     pub streams: Vec<StreamHealthView>,
-    /// Output file path, if M-EXPORT wrote one.
+    /// Final output path on the legacy save-on-stop path. As of
+    /// M-SAVE.1 this is `None` (export is deferred to the Save panel);
+    /// `pending_export` carries the handoff instead.
     pub output_path: Option<String>,
+    /// Set (M-SAVE.1) when the stopped recording is awaiting export —
+    /// the Save panel keys off this to appear.
+    #[serde(default)]
+    pub pending_export: Option<PendingExportView>,
 }
 
 impl RecordingStatusViewIpc {
@@ -151,6 +172,57 @@ extern "C" {
     /// given path (M-EXPORT.4).
     #[wasm_bindgen(js_name = __screenRevealRecordingInFileManager, catch)]
     pub async fn reveal_in_file_manager_js(path: String) -> Result<JsValue, JsValue>;
+
+    /// `__screenRecordingPendingExport()` —
+    /// `Promise<PendingExportView | null>` (M-SAVE.1).
+    #[wasm_bindgen(js_name = __screenRecordingPendingExport, catch)]
+    async fn recording_pending_export_js() -> Result<JsValue, JsValue>;
+
+    /// `__screenExportRecording(formatSlug?, outputDir?)` —
+    /// `Promise<string>` (final path) or string error (M-SAVE.1).
+    #[wasm_bindgen(js_name = __screenExportRecording, catch)]
+    async fn export_recording_js(format: JsValue, output_dir: JsValue) -> Result<JsValue, JsValue>;
+
+    /// `__screenDiscardRecording()` — `Promise<void>` (M-SAVE.1).
+    #[wasm_bindgen(js_name = __screenDiscardRecording, catch)]
+    async fn discard_recording_js() -> Result<JsValue, JsValue>;
+}
+
+/// The recording awaiting export, if any (M-SAVE.1). `None` when
+/// nothing is pending or on IPC failure.
+pub async fn recording_pending_export() -> Option<PendingExportView> {
+    match recording_pending_export_js().await {
+        Ok(value) => serde_wasm_bindgen::from_value(value).ok(),
+        Err(_) => None,
+    }
+}
+
+/// Export the pending recording. `format` is a slug (`"mp4-h264"` /
+/// `"webm-vp9"`); `output_dir` overrides the configured folder when
+/// `Some`. Returns the final absolute path on success (M-SAVE.1).
+///
+/// # Errors
+///
+/// Surfaces the Rust-side error string (nothing pending, move
+/// failure, or "not yet wired" for transcode formats pre-M-SAVE.2).
+pub async fn export_recording(
+    format: Option<&str>,
+    output_dir: Option<&str>,
+) -> Result<String, String> {
+    let format_arg = format.map_or(JsValue::NULL, JsValue::from_str);
+    let dir_arg = output_dir.map_or(JsValue::NULL, JsValue::from_str);
+    match export_recording_js(format_arg, dir_arg).await {
+        Ok(value) => value
+            .as_string()
+            .ok_or_else(|| "export returned a non-string path".to_owned()),
+        Err(err) => Err(js_error_string(&err)),
+    }
+}
+
+/// Discard the pending recording (delete its scratch). Best-effort;
+/// errors are swallowed (M-SAVE.1).
+pub async fn discard_recording() {
+    let _ = discard_recording_js().await;
 }
 
 /// Resolve the default output path the recorder would write to if

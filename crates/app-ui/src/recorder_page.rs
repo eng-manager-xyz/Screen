@@ -26,18 +26,21 @@ use ui_storybook::components::recorder::{
     AppIconView, AudioAppView as StoryAudioAppView, AudioFilter, AutoZoomSelect, CaptureModeTabs,
     CaptureSourceKind, CaptureSourceView, CountdownSelect, DeviceOptionView, DevicePickerState,
     DeviceThumb, DisplayPreviewFrame, DisplayPreviewView, OnScreenOptionKind, OnScreenOptionView,
-    PreviewWindowChip, StartRecordingButton, StartRecordingState, SystemAudioView,
-    format_auto_zoom_label, format_countdown_label, format_selection_count,
+    PreviewWindowChip, SaveFormat, SavePanel, SavePanelView, StartRecordingButton,
+    StartRecordingState, SystemAudioView, format_auto_zoom_label, format_countdown_label,
+    format_selection_count,
 };
 use ui_storybook::fixtures::recorder::CaptureMode;
 
 use crate::camera_ipc::{self, CameraPermission, CameraView};
 use crate::mic_ipc::{self, MicrophoneView};
 use crate::recording_ipc::{
-    self, RecordingConfigView, RecordingStatusViewIpc, SessionStreamsView, default_output_path,
-    recording_status, start_recording, stop_recording,
+    self, PendingExportView, RecordingConfigView, RecordingStatusViewIpc, SessionStreamsView,
+    default_output_path, discard_recording, export_recording, recording_pending_export,
+    recording_status, reveal_in_file_manager, start_recording, stop_recording,
 };
 use crate::screen_ipc::{self, DisplaySourceView as IpcDisplaySourceView, ScreenSourcesResult};
+use crate::settings_ipc;
 use crate::system_audio_ipc::{
     self, AudioAppFilterView, AudioAppView as IpcAudioAppView, ListAudioAppsResult,
 };
@@ -117,6 +120,19 @@ pub fn RecorderPage() -> impl IntoView {
     // it's cleared when the next session starts. See `show_as_recording`.
     let stop_requested = RwSignal::new(false);
 
+    // -------- M-SAVE.3/.4 — Save panel + ⋯ menu state -----------------
+    // The stop handler sets `pending_export` from the stop summary;
+    // `Some` swaps the record footer for the Save panel. `export_busy`
+    // gates the controls during the (software-VP9) WebM transcode;
+    // `saved_path` drives the post-export "Saved → Reveal" state.
+    let pending_export = RwSignal::new(Option::<PendingExportView>::None);
+    let export_format = RwSignal::new("mp4-h264".to_string());
+    let export_busy = RwSignal::new(false);
+    let saved_path = RwSignal::new(Option::<String>::None);
+    let output_dir = RwSignal::new(String::new());
+    // ⋯ "More options" menu — set the output folder without recording.
+    let overflow_open = RwSignal::new(false);
+
     // -------- subscriptions -------------------------------------------
     mic_ipc::subscribe_mic_level(move |lvl| mic_level.set(lvl));
     install_status_listener(status);
@@ -124,6 +140,15 @@ pub fn RecorderPage() -> impl IntoView {
     spawn_local(async move {
         let view = recording_status().await;
         status.set(view);
+    });
+    // M-SAVE.3 — re-show the Save panel if a recording is awaiting
+    // export (e.g. the surface remounted after Stop) + load the
+    // configured output folder for display.
+    spawn_local(async move {
+        pending_export.set(recording_pending_export().await);
+    });
+    spawn_local(async move {
+        output_dir.set(settings_ipc::get_output_dir().await);
     });
     refresh_cameras(cameras, camera_selected, camera_permission);
     refresh_mics(mics, mic_selected, mic_permission);
@@ -439,12 +464,13 @@ pub fn RecorderPage() -> impl IntoView {
             // in flight (the post-stop "stuck" bug).
             stop_requested.set(true);
             spawn_local(async move {
-                // `stop_recording`'s only error is "no recording
-                // session is active" — i.e. the session is already
-                // gone. Either outcome means the recorder is idle, so
-                // reset the UI unconditionally rather than leaving the
-                // pill + Stop button stranded on the error path.
-                let _ = stop_recording().await;
+                // On success the summary carries the awaiting-export
+                // handoff (M-SAVE.1) → drives the Save panel. The only
+                // Err is "no recording session is active" (already
+                // gone); either way reset the live recording UI below.
+                if let Ok(summary) = stop_recording().await {
+                    pending_export.set(summary.pending_export);
+                }
                 error_msg.set(None);
                 status.set(RecordingStatusViewIpc::idle());
             });
@@ -453,6 +479,8 @@ pub fn RecorderPage() -> impl IntoView {
         // Clear the stop latch so the next session's `Running` event
         // can re-arm the controls.
         stop_requested.set(false);
+        // Clear any lingering Save-panel success state from a prior run.
+        saved_path.set(None);
         let cam = camera_enabled.get();
         let mic = mic_enabled.get();
         let sys = system_audio_enabled.get();
@@ -481,6 +509,61 @@ pub fn RecorderPage() -> impl IntoView {
         });
     });
 
+    // -------- M-SAVE.3 — Save panel callbacks -------------------------
+    let on_export = Callback::new(move |()| {
+        let fmt = export_format.get();
+        export_busy.set(true);
+        error_msg.set(None);
+        spawn_local(async move {
+            match export_recording(Some(fmt.as_str()), None).await {
+                Ok(path) => {
+                    pending_export.set(None);
+                    saved_path.set(Some(path));
+                }
+                // The backend restores the pending export on failure,
+                // so the panel stays up for a retry.
+                Err(err) => error_msg.set(Some(err)),
+            }
+            export_busy.set(false);
+        });
+    });
+
+    let on_discard = Callback::new(move |()| {
+        spawn_local(async move {
+            discard_recording().await;
+            pending_export.set(None);
+            saved_path.set(None);
+            error_msg.set(None);
+        });
+    });
+
+    // The Save panel's format dropdown is a controlled `<select>` —
+    // it fires `SaveFormat`; we stash the slug back into the signal the
+    // export handler reads.
+    let on_format_change =
+        Callback::new(move |fmt: SaveFormat| export_format.set(fmt.slug().to_owned()));
+
+    let on_change_folder = Callback::new(move |()| {
+        spawn_local(async move {
+            if let Some(dir) = settings_ipc::pick_output_dir().await {
+                if let Err(err) = settings_ipc::set_output_dir(&dir).await {
+                    error_msg.set(Some(err));
+                } else {
+                    output_dir.set(dir);
+                }
+            }
+        });
+    });
+
+    let on_reveal = Callback::new(move |()| {
+        let Some(path) = saved_path.get() else { return };
+        spawn_local(async move {
+            let _ = reveal_in_file_manager(&path).await;
+        });
+    });
+
+    let on_dismiss_saved = Callback::new(move |()| saved_path.set(None));
+
     // -------- view ----------------------------------------------------
     view! {
         <section
@@ -501,14 +584,35 @@ pub fn RecorderPage() -> impl IntoView {
                 <div class="recorder-page-tabs">
                     <CaptureModeTabs selected=capture_mode.get() />
                 </div>
-                <button
-                    type="button"
-                    class="recorder-page-overflow"
-                    aria-label="More options"
-                    aria-haspopup="menu"
-                >
-                    "⋯"
-                </button>
+                <div class="recorder-overflow-wrap">
+                    <button
+                        type="button"
+                        class="recorder-page-overflow"
+                        aria-label="More options"
+                        aria-haspopup="menu"
+                        aria-expanded=move || if overflow_open.get() { "true" } else { "false" }
+                        on:click=move |_| overflow_open.update(|o| *o = !*o)
+                    >
+                        "⋯"
+                    </button>
+                    <Show when=move || overflow_open.get() fallback=|| view! { <></> }>
+                        <div class="recorder-overflow-menu" role="menu">
+                            <div class="recorder-overflow-key">"Recording folder"</div>
+                            <div class="recorder-overflow-folder" title=move || output_dir.get()>
+                                {move || output_dir.get()}
+                            </div>
+                            <button
+                                type="button"
+                                class="recorder-overflow-change"
+                                role="menuitem"
+                                on:click=move |_| {
+                                    on_change_folder.run(());
+                                    overflow_open.set(false);
+                                }
+                            >"Change folder…"</button>
+                        </div>
+                    </Show>
+                </div>
             </header>
 
             <div class="recorder-page-body">
@@ -664,47 +768,87 @@ pub fn RecorderPage() -> impl IntoView {
 
             </div>
 
-            <footer class="recorder-page-action-bar">
-                <div class="recorder-page-controls" aria-label="Recording options">
-                    {move || view! { <AutoZoomSelect label=auto_zoom_label() /> }}
-                    {move || view! { <CountdownSelect label=countdown_label() /> }}
-                </div>
-                <Show
-                    when=is_recording
-                    fallback=move || view! {
-                        <div class="recording-controls-footer" data-state="ready">
-                            <div class="recording-controls-action">
-                                {move || view! {
-                                    <StartRecordingButton
-                                        state=start_state()
-                                        shortcuts=shortcut_keys()
-                                        on_start=on_start
-                                    />
-                                }}
+            // M-SAVE.3 — after Stop, the recording is parked awaiting
+            // export: the Save panel replaces the record/stop footer
+            // until the user exports or discards (a finished recording
+            // also blocks starting a new one, so hiding Record is
+            // correct). `saved_path` keeps the panel up in its success
+            // state after a successful export until "Done" is clicked.
+            <Show
+                when=move || save_panel_visible(pending_export.get().is_some(), saved_path.get().is_some())
+                fallback=move || view! {
+                    <footer class="recorder-page-action-bar">
+                        <div class="recorder-page-controls" aria-label="Recording options">
+                            {move || view! { <AutoZoomSelect label=auto_zoom_label() /> }}
+                            {move || view! { <CountdownSelect label=countdown_label() /> }}
+                        </div>
+                        <Show
+                            when=is_recording
+                            fallback=move || view! {
+                                <div class="recording-controls-footer" data-state="ready">
+                                    <div class="recording-controls-action">
+                                        {move || view! {
+                                            <StartRecordingButton
+                                                state=start_state()
+                                                shortcuts=shortcut_keys()
+                                                on_start=on_start
+                                            />
+                                        }}
+                                    </div>
+                                </div>
+                            }
+                        >
+                            <div class="recording-controls-footer recording-controls-footer-stop" data-state="recording">
+                                <div class="recording-controls-selects">
+                                    <span class="recorder-page-recording-elapsed">
+                                        {move || elapsed_label()}
+                                    </span>
+                                </div>
+                                <div class="recording-controls-action">
+                                    <button
+                                        type="button"
+                                        class="start-recording-btn start-recording-stop"
+                                        aria-label="Stop recording"
+                                        on:click=move |_| on_start.run(())
+                                    >
+                                        <span class="start-recording-glyph" aria-hidden="true">"■"</span>
+                                        <span class="start-recording-label">"Stop recording"</span>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        </Show>
+                    </footer>
+                }
+            >
+                // Presentational `SavePanel` (ui-storybook) wrapped in a
+                // reactive closure so it re-renders as `saved_path` /
+                // `export_format` / `export_busy` / `output_dir` change.
+                // A `Some(saved_path)` takes precedence (the post-export
+                // confirmation, dismissed via "Done"); otherwise it's
+                // the choosing/exporting state.
+                {move || {
+                    let panel_view = if let Some(path) = saved_path.get() {
+                        SavePanelView::Saved { path }
+                    } else {
+                        SavePanelView::Choosing {
+                            output_dir: output_dir.get(),
+                            format: SaveFormat::from_slug(&export_format.get()).unwrap_or_default(),
+                            busy: export_busy.get(),
+                        }
+                    };
+                    view! {
+                        <SavePanel
+                            view=panel_view
+                            on_change_folder=on_change_folder
+                            on_format_change=on_format_change
+                            on_discard=on_discard
+                            on_export=on_export
+                            on_reveal=on_reveal
+                            on_done=on_dismiss_saved
+                        />
                     }
-                >
-                    <div class="recording-controls-footer recording-controls-footer-stop" data-state="recording">
-                        <div class="recording-controls-selects">
-                            <span class="recorder-page-recording-elapsed">
-                                {move || elapsed_label()}
-                            </span>
-                        </div>
-                        <div class="recording-controls-action">
-                            <button
-                                type="button"
-                                class="start-recording-btn start-recording-stop"
-                                aria-label="Stop recording"
-                                on:click=move |_| on_start.run(())
-                            >
-                                <span class="start-recording-glyph" aria-hidden="true">"■"</span>
-                                <span class="start-recording-label">"Stop recording"</span>
-                            </button>
-                        </div>
-                    </div>
-                </Show>
-            </footer>
+                }}
+            </Show>
 
             <Show when=move || error_msg.get().is_some() fallback=|| view! { <></> }>
                 <div class="recorder-page-error" role="alert">
@@ -1197,6 +1341,14 @@ const fn show_as_recording(stop_requested: bool, backend_recording: bool) -> boo
     backend_recording && !stop_requested
 }
 
+/// Whether the post-record Save panel (M-SAVE.3) should replace the
+/// record/stop footer. True while a recording is awaiting export
+/// (`has_pending`) **or** an export just succeeded and is showing its
+/// "Saved → Reveal" confirmation (`has_saved`, dismissed via "Done").
+const fn save_panel_visible(has_pending: bool, has_saved: bool) -> bool {
+    has_pending || has_saved
+}
+
 fn capture_mode_slug(m: CaptureMode) -> &'static str {
     match m {
         CaptureMode::Screen => "screen",
@@ -1512,6 +1664,19 @@ mod tests {
         // An idle backend is always idle, latch or not.
         assert!(!show_as_recording(false, false));
         assert!(!show_as_recording(true, false));
+    }
+
+    #[test]
+    fn save_panel_visibility_rule() {
+        // Nothing pending, nothing saved → normal record/stop footer.
+        assert!(!save_panel_visible(false, false));
+        // Awaiting export → panel shows (choosing state).
+        assert!(save_panel_visible(true, false));
+        // Just exported → panel stays for the "Saved → Reveal" state.
+        assert!(save_panel_visible(false, true));
+        // Both set is defensive (shouldn't happen — export clears
+        // pending before setting saved) but still shows the panel.
+        assert!(save_panel_visible(true, true));
     }
 
     #[test]

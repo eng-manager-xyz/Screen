@@ -16,6 +16,7 @@ pub mod audio;
 pub mod commands;
 pub mod player_session;
 pub mod preview;
+pub mod recorder_settings;
 pub mod recording;
 pub mod recording_compose;
 pub mod recording_paths;

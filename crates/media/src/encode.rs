@@ -611,6 +611,143 @@ pub fn poster_path_for(video_path: &Path) -> PathBuf {
     p
 }
 
+// ---- M-SAVE.2 — MP4 → WebM transcode (deferred export) --------------
+
+/// Transcode an existing video file (the MP4/H.264 recording scratch)
+/// into a VP9 + Opus `.webm` at `output`. Drives the Save panel's
+/// "WebM" export: the recorder always captures to an MP4/H.264 scratch
+/// (the canonical intermediate), and a WebM export re-encodes it here.
+///
+/// Probes `input` for an audio track via [`scratch_has_audio`] and
+/// includes the Opus leg only when one is present — a screen-only
+/// recording's scratch has no audio track, and wiring an audio branch
+/// to a `decodebin` pad that never appears would hang `webmmux`
+/// waiting for EOS on it.
+///
+/// VP9 has no Apple HW encoder, so this uses the `vp9enc` software
+/// encoder (same as the live WebM encode path) — a short clip takes a
+/// few seconds. **Call it off the main thread** (the recorder runs it
+/// via `spawn_blocking`).
+///
+/// # Errors
+///
+/// - [`EncodeError::InvalidConfig`] — `input` doesn't exist.
+/// - [`EncodeError::Spawn`] — `gst-launch-1.0` missing from PATH.
+/// - [`EncodeError::PipelineFailed`] — the transcode exited non-zero.
+pub fn transcode_to_webm(input: &Path, output: &Path) -> Result<(), EncodeError> {
+    if !input.exists() {
+        return Err(EncodeError::InvalidConfig(format!(
+            "transcode input does not exist: {}",
+            input.display()
+        )));
+    }
+    let has_audio = scratch_has_audio(input);
+    let args = build_webm_transcode_args(input, output, has_audio);
+
+    tracing::info!(
+        input = %input.display(),
+        output = %output.display(),
+        has_audio,
+        "transcode_to_webm: spawning gst-launch-1.0"
+    );
+
+    let result = Command::new("gst-launch-1.0")
+        .args(&args)
+        .output()
+        .map_err(|err| EncodeError::Spawn {
+            source: err,
+            path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+        })?;
+
+    if result.status.success() {
+        Ok(())
+    } else {
+        Err(EncodeError::PipelineFailed {
+            exit: result.status.code(),
+            stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
+        })
+    }
+}
+
+/// Build the gst-launch argv for the MP4 → WebM transcode. Split out
+/// so tests assert the pipeline shape without spawning gst. The Opus
+/// audio leg is present only when `has_audio` (see
+/// [`transcode_to_webm`] for why).
+///
+/// Shape: `filesrc ! decodebin name=d  webmmux name=mux ! filesink
+/// d. ! queue ! videoconvert ! vp9enc ! mux.  [d. ! queue !
+/// audioconvert ! audioresample ! opusenc ! mux.]`
+#[must_use]
+pub fn build_webm_transcode_args(input: &Path, output: &Path, has_audio: bool) -> Vec<String> {
+    // `-e` forces EOS so the muxer writes its cues on completion;
+    // `-q` quiets per-buffer chatter.
+    let mut args = vec![
+        "-q".to_string(),
+        "-e".to_string(),
+        "filesrc".to_string(),
+        format!("location={}", input.display()),
+        "!".to_string(),
+        "decodebin".to_string(),
+        "name=d".to_string(),
+        // Muxer + sink declared up front so the `mux.` back-references
+        // below resolve at parse time.
+        "webmmux".to_string(),
+        "name=mux".to_string(),
+        "!".to_string(),
+        "filesink".to_string(),
+        format!("location={}", output.display()),
+        // Video leg.
+        "d.".to_string(),
+        "!".to_string(),
+        "queue".to_string(),
+        "!".to_string(),
+        "videoconvert".to_string(),
+        "!".to_string(),
+        "vp9enc".to_string(),
+        "!".to_string(),
+        "mux.".to_string(),
+    ];
+    if has_audio {
+        args.extend(
+            [
+                "d.",
+                "!",
+                "queue",
+                "!",
+                "audioconvert",
+                "!",
+                "audioresample",
+                "!",
+                "opusenc",
+                "!",
+                "mux.",
+            ]
+            .into_iter()
+            .map(String::from),
+        );
+    }
+    args
+}
+
+/// Probe `input` for an audio track via `gst-discoverer-1.0`. Returns
+/// `true` only when an audio stream is reported; any failure (binary
+/// missing, probe error, no audio) returns `false`, so the transcode
+/// falls back to a video-only pipeline rather than hang on a
+/// `decodebin` audio pad that never fires.
+#[must_use]
+pub fn scratch_has_audio(input: &Path) -> bool {
+    let Ok(output) = Command::new("gst-discoverer-1.0").arg(input).output() else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    // gst-discoverer prints `Audio #0: …` per stream + an `audio:` line
+    // in the topology — either marks an audio track.
+    let lower = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    lower.contains("audio #") || lower.contains("audio:")
+}
+
 fn mux_to_parser(format: OutputFormat) -> &'static str {
     match format {
         OutputFormat::Mp4H264Aac => "h264parse",
@@ -983,6 +1120,47 @@ mod tests {
     #[test]
     fn generate_poster_rejects_missing_video_file() {
         let result = generate_poster(Path::new("/tmp/definitely-not-a-real-video.mp4"));
+        assert!(matches!(result, Err(EncodeError::InvalidConfig(_))));
+    }
+
+    // ---- M-SAVE.2 — WebM transcode argv ----
+
+    #[test]
+    fn webm_transcode_args_video_only_omits_audio_leg() {
+        let args =
+            build_webm_transcode_args(Path::new("/tmp/in.mp4"), Path::new("/tmp/out.webm"), false);
+        // filesrc → decodebin → vp9enc → webmmux → filesink
+        assert!(args.iter().any(|a| a == "filesrc"));
+        assert!(args.iter().any(|a| a == "location=/tmp/in.mp4"));
+        assert!(args.iter().any(|a| a == "decodebin"));
+        assert!(args.iter().any(|a| a == "vp9enc"));
+        assert!(args.iter().any(|a| a == "webmmux"));
+        assert!(args.iter().any(|a| a == "location=/tmp/out.webm"));
+        // No audio leg for a video-only scratch.
+        assert!(!args.iter().any(|a| a == "opusenc"));
+        assert!(!args.iter().any(|a| a == "audioconvert"));
+        // Exactly one decodebin back-reference (video only).
+        assert_eq!(args.iter().filter(|a| a.as_str() == "d.").count(), 1);
+    }
+
+    #[test]
+    fn webm_transcode_args_with_audio_includes_opus_leg() {
+        let args =
+            build_webm_transcode_args(Path::new("/tmp/in.mp4"), Path::new("/tmp/out.webm"), true);
+        assert!(args.iter().any(|a| a == "vp9enc"));
+        assert!(args.iter().any(|a| a == "opusenc"));
+        assert!(args.iter().any(|a| a == "audioconvert"));
+        assert!(args.iter().any(|a| a == "audioresample"));
+        // Two decodebin back-references: video + audio legs.
+        assert_eq!(args.iter().filter(|a| a.as_str() == "d.").count(), 2);
+    }
+
+    #[test]
+    fn transcode_to_webm_rejects_missing_input() {
+        let result = transcode_to_webm(
+            Path::new("/tmp/definitely-not-a-real-scratch.mp4"),
+            Path::new("/tmp/out.webm"),
+        );
         assert!(matches!(result, Err(EncodeError::InvalidConfig(_))));
     }
 }
