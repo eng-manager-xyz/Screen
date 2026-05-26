@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use media::encode::{EncoderConfig, GstreamerEncoder, OutputFormat, VideoEncoder};
+use media::encode::{
+    EncoderConfig, GstreamerEncoder, LiveGstreamerEncoder, OutputFormat, VideoEncoder,
+};
 use media::gstreamer::is_available;
 
 const WIDTH: u32 = 64;
@@ -244,6 +246,160 @@ fn transcode_mp4_with_audio_to_webm_has_vp9_and_opus() {
     let _ = std::fs::remove_file(&webm);
 }
 
+// ---- M-QUAL.1 — live (streaming) encoder round-trip ----
+
+/// The live encoder streams BGRA into gst-launch's stdin during
+/// capture (compressed intermediate on disk) and remuxes the small
+/// raw-audio scratch in at finalize. This verifies the full lifecycle
+/// produces a valid H.264 + AAC MP4 of the right dimensions — the
+/// argv unit tests can't catch a stdin/EOS/remux regression.
+#[test]
+fn live_encoder_video_and_audio_produces_mp4_with_both_streams() {
+    if !is_available() {
+        eprintln!("gst-launch-1.0 not on PATH — skipping");
+        return;
+    }
+    if !gst_discoverer_available() {
+        eprintln!("gst-discoverer-1.0 not on PATH — skipping");
+        return;
+    }
+
+    let output_path =
+        std::env::temp_dir().join(format!("live_encode_av_{}.mp4", std::process::id()));
+    cleanup_artifacts(&output_path);
+
+    let mut encoder = LiveGstreamerEncoder::new(EncoderConfig {
+        output_path: output_path.clone(),
+        width: WIDTH,
+        height: HEIGHT,
+        framerate: FRAMERATE,
+        sample_rate: SAMPLE_RATE,
+        channels: CHANNELS,
+        format: OutputFormat::Mp4H264Aac,
+    })
+    .expect("live encoder constructs + spawns");
+
+    let mut frame = vec![0u8; (WIDTH as usize) * (HEIGHT as usize) * 4];
+    for px in frame.chunks_exact_mut(4) {
+        px.copy_from_slice(&[0, 0, 255, 255]); // B, G, R, A
+    }
+    let interval = Duration::from_micros(1_000_000 / u64::from(FRAMERATE));
+    for i in 0..FRAMERATE {
+        encoder
+            .push_video_frame(&frame, interval * i)
+            .expect("push video frame to live stdin");
+    }
+    let chunk_frames = SAMPLE_RATE as usize / 10;
+    for chunk_idx in 0..10_u64 {
+        encoder
+            .push_audio_chunk(
+                &sine_chunk_stereo(chunk_idx, chunk_frames),
+                Duration::from_millis(chunk_idx * 100),
+            )
+            .expect("push audio chunk");
+    }
+
+    assert_eq!(encoder.frames_pushed(), u64::from(FRAMERATE));
+    assert_eq!(encoder.audio_chunks_pushed(), 10);
+
+    let final_path = Box::new(encoder).finalize().expect("finalize succeeds");
+    assert_eq!(final_path, output_path);
+    assert!(output_path.exists(), "encoded mp4 should exist on disk");
+
+    let stdout = discover(&output_path);
+    assert!(stdout.contains("video #"), "no video stream:\n{stdout}");
+    assert!(stdout.contains("audio #"), "no audio stream:\n{stdout}");
+    assert!(
+        stdout.contains("H.264") || stdout.contains("h264"),
+        "expected H.264 video:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("AAC") || stdout.contains("aac"),
+        "expected AAC audio:\n{stdout}"
+    );
+    assert!(stdout.contains("64"), "expected 64x64 dims:\n{stdout}");
+
+    // The compressed intermediate + raw audio scratch are cleaned up.
+    for suffix in [".live-video.scratch", ".f32.scratch"] {
+        let mut p = output_path.as_os_str().to_owned();
+        p.push(suffix);
+        assert!(
+            !PathBuf::from(&p).exists(),
+            "scratch {p:?} should be removed after finalize"
+        );
+    }
+
+    cleanup_artifacts(&output_path);
+}
+
+/// A screen-only recording has no audio. The live encoder must produce
+/// a valid video-only MP4 by *moving* the intermediate into place (the
+/// remux is skipped) — guards the `has_video && !has_audio` finalize arm.
+#[test]
+fn live_encoder_video_only_moves_intermediate_to_output() {
+    if !is_available() {
+        eprintln!("gst-launch-1.0 not on PATH — skipping");
+        return;
+    }
+    if !gst_discoverer_available() {
+        eprintln!("gst-discoverer-1.0 not on PATH — skipping");
+        return;
+    }
+
+    let output_path =
+        std::env::temp_dir().join(format!("live_encode_vid_{}.mp4", std::process::id()));
+    cleanup_artifacts(&output_path);
+
+    let mut encoder = LiveGstreamerEncoder::new(EncoderConfig {
+        output_path: output_path.clone(),
+        width: WIDTH,
+        height: HEIGHT,
+        framerate: FRAMERATE,
+        sample_rate: SAMPLE_RATE,
+        channels: CHANNELS,
+        format: OutputFormat::Mp4H264Aac,
+    })
+    .expect("live encoder constructs + spawns");
+
+    let mut frame = vec![0u8; (WIDTH as usize) * (HEIGHT as usize) * 4];
+    for px in frame.chunks_exact_mut(4) {
+        px.copy_from_slice(&[255, 0, 0, 255]); // solid blue
+    }
+    let interval = Duration::from_micros(1_000_000 / u64::from(FRAMERATE));
+    for i in 0..(FRAMERATE / 2) {
+        encoder
+            .push_video_frame(&frame, interval * i)
+            .expect("push video frame");
+    }
+
+    let final_path = Box::new(encoder).finalize().expect("finalize succeeds");
+    assert_eq!(final_path, output_path);
+    assert!(output_path.exists(), "video-only mp4 should exist");
+
+    let stdout = discover(&output_path);
+    assert!(stdout.contains("video #"), "no video stream:\n{stdout}");
+    assert!(
+        !stdout.contains("audio #"),
+        "video-only recording must have no audio track:\n{stdout}"
+    );
+
+    cleanup_artifacts(&output_path);
+}
+
+/// Run `gst-discoverer-1.0` and return its stdout (asserting success).
+fn discover(path: &Path) -> String {
+    let probe = Command::new("gst-discoverer-1.0")
+        .arg(path)
+        .output()
+        .expect("spawn gst-discoverer-1.0");
+    assert!(
+        probe.status.success(),
+        "gst-discoverer-1.0 exited non-zero: {}",
+        String::from_utf8_lossy(&probe.stderr)
+    );
+    String::from_utf8_lossy(&probe.stdout).into_owned()
+}
+
 #[allow(
     clippy::cast_precision_loss,
     reason = "sample index < 48 000 fits f32 precision for a one-second buffer"
@@ -263,7 +419,7 @@ fn sine_chunk_stereo(chunk_idx: u64, frames_per_chunk: usize) -> Vec<f32> {
 
 fn cleanup_artifacts(output_path: &Path) {
     let _ = std::fs::remove_file(output_path);
-    for suffix in [".bgra.scratch", ".f32.scratch"] {
+    for suffix in [".bgra.scratch", ".f32.scratch", ".live-video.scratch"] {
         let mut p = output_path.as_os_str().to_owned();
         p.push(suffix);
         let _ = std::fs::remove_file(PathBuf::from(p));

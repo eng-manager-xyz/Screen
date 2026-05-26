@@ -6,6 +6,33 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-QUAL.1 — live (streaming) video encode (CLI-pipe to gst-launch stdin)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — first chunk of `feat/recording-quality` (ISS-08), branched off `main` after #58/#59 landed. Replaces the raw-BGRA-scratch + batch-encode recording path with a live encode that streams frames into `gst-launch-1.0`'s stdin, so only *compressed* video lands on disk during capture. Architectural prerequisite for native-resolution capture (M-QUAL.2): raw BGRA is `w×h×4×fps` ≈ 250 MB/s at 1080p, >1 GB/s at Retina — untenable on disk; the live path bounds the footprint to the encoded bitrate.
+
+### What shipped
+
+- **`crates/media/src/encode.rs` — `LiveGstreamerEncoder` (`VideoEncoder` impl).** `new()` spawns `gst-launch-1.0 -q -e fdsrc fd=0 ! rawvideoparse format=bgra width=W height=H framerate=F/1 ! videoconvert ! vtenc_h264_hw ! h264parse ! mp4mux ! filesink <intermediate>` with stdin piped + a stderr-drain thread (so a chatty pipeline can't deadlock on a full stderr pipe). `push_video_frame` writes BGRA straight to the child's stdin — a full pipe blocks, giving natural backpressure if the HW encoder falls behind the compose framerate. Audio stays a small raw `.f32.scratch` (≈0.4 MB/s). `finalize` closes stdin → fdsrc EOF → EOS → mp4mux writes its moov → child exits; then **remuxes** the video intermediate (stream-copied, no re-encode) + the audio scratch into the final MP4 (`build_remux_args`). Video-only recordings skip the remux and *move* the intermediate into place. A `Drop` impl kills the child on an early/error drop so we never orphan a gst-launch feeding a dead pipe.
+- **CLI-pipe, not `gstreamer-rs`.** Streams over the child's stdin (`fdsrc fd=0`) rather than `appsrc`, keeping the project's "CLI-pipe over Rust bindings" convention — no compile-time libgstreamer dep, no Windows-build breakage. Validated the exact pipeline shapes (live encode + finalize remux) with throwaway `gst-launch` runs before writing any Rust.
+- **Refactor:** extracted the per-(format, OS) encoder/mux selection + the audio-encoder / mux / demux element pickers out of `build_pipeline_args` into shared `encoder_and_mux_elements` / `audio_encoder_element` / `mux_element_for` / `demux_for` helpers, reused by the batch + live builders (one encoder-coverage table).
+- **`crates/app/src/recording.rs`** — swapped both `EncoderHandle::start_with_real_capture` and `start_with_test_pattern` to box `LiveGstreamerEncoder`. The batch `GstreamerEncoder` is retained (still drives the export round-trip integration tests).
+- **`_docs/milestone-2-record-and-export.md`** — added "Phase 7 — Recording quality (M-QUAL)" with the M-QUAL.1 / .2 Done-when contracts.
+
+### Verification
+
+- `just gate` — **green** (exit 0). fmt / check / lint / workspace nextest / doctest / docs / snapshots-check / mermaid-check / shared-check / required-files-check / pages-url-check all pass. No new doc warnings — the 12 media + 9 screen-app rustdoc warnings are all pre-existing (`=`-in-admonish-title at each module header + private-link noise); `encode.rs:1:1` warned identically before this change.
+- `cargo nextest run -p media` — 171 lib + 5 integration pass, incl. 6 new argv/validation unit tests + 2 new live-encoder round-trips (video+audio H.264/AAC confirmed via `gst-discoverer`; video-only via the move path; scratch cleanup asserted). Live integration tests are macOS-only + `is_available()` / `gst_discoverer_available()`-gated.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`), native + (media is wasm-free).
+
+### Notes / deferred
+
+- **No storybook story / asset / chapter** — encode is a non-render feature (CLAUDE.md exempts capture / encode / file-I/O from the storybook requirement).
+- **Batch `GstreamerEncoder` retained, not removed** — it's the simpler reference impl and still drives the export round-trip tests; a later cleanup can drop it once the live path is field-proven.
+- **Encoder-quality knobs (bitrate / keyframe / profile — Axis 1) still at GStreamer defaults** — out of scope for the chosen v1 (native res). `build_live_video_args` is the one-line place to add `vtenc` properties when Axis 1 lands.
+- **Next: M-QUAL.2** — native-resolution capture: thread the display's real backing pixel dims through the `start_recording` junction (`commands.rs:1880–1905`) into `EncoderConfig` + wisp `StreamDimensions` + the compose `RenderTexture` (no longer hardcoded 1920×1080).
+
+---
+
 ## M-SAVE.GATE — extract the Save panel into a presentational `SavePanel` component
 - **Date:** 2026-05-25
 - **Status:** ✅ done — sixth (gate) chunk of `feat/export`. Closes the M-SAVE.3 "Deferred (to M-SAVE.GATE)" item: the post-record Save panel was inline in `RecorderPage`; it's now a stateless `ui-storybook` component with stories + an SSR snapshot + an mdBook chapter.

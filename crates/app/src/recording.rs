@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use media::audio_mix::AudioMixer;
-use media::encode::{GstreamerEncoder, VideoEncoder};
+use media::encode::{LiveGstreamerEncoder, VideoEncoder};
 use serde::{Deserialize, Serialize};
 
 /// Default audio mixer channel count (stereo). Matches the
@@ -511,7 +511,7 @@ impl EncoderHandle {
         let framerate = encoder_config.framerate;
         let output_path = encoder_config.output_path.clone();
 
-        let inner = GstreamerEncoder::new(encoder_config)?;
+        let inner = LiveGstreamerEncoder::new(encoder_config)?;
         let encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>> =
             Arc::new(Mutex::new(Some(Box::new(inner))));
         let cancel = Arc::new(AtomicBool::new(false));
@@ -570,7 +570,7 @@ impl EncoderHandle {
         let sample_rate = encoder_config.sample_rate;
         let output_path = encoder_config.output_path.clone();
 
-        let inner = GstreamerEncoder::new(encoder_config)?;
+        let inner = LiveGstreamerEncoder::new(encoder_config)?;
         let encoder: Arc<Mutex<Option<Box<dyn VideoEncoder>>>> =
             Arc::new(Mutex::new(Some(Box::new(inner))));
         let cancel = Arc::new(AtomicBool::new(false));
