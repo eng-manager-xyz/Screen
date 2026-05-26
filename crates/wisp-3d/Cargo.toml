@@ -29,6 +29,10 @@ bytemuck = { version = "1", features = ["derive"] }
 [dev-dependencies]
 # Drive the async `wisp::Application::new` from inside `#[test]` fns.
 pollster = "0.4"
+# Render-to-PNG integration tests write the rendered output to the
+# committed `_docs/book/src/assets/wisp-3d/*.png` snapshots — the
+# PR-visible proof that the test asserted on real rendered pixels.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Browser-only deps for the wasm32 reduced-motion detector. Scoped
 # to `cfg(target_arch = "wasm32")` so native `cargo check` doesn't

@@ -312,13 +312,33 @@ impl WireframePipeline {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                // Always-pass: wireframe sits ON TOP of whatever's
+                // drawn into the same color attachment, regardless
+                // of depth. Two reasons:
+                //
+                // 1. Browser WebGPU REJECTS non-zero `depth_bias`
+                //    on `LineList` topology — the bias trick that
+                //    normally breaks z-fighting between coplanar
+                //    edges and their mesh isn't available.
+                //
+                // 2. Even with a 1.002× outward geometric offset
+                //    (see `wireframe_lines.wgsl::main_vs`), the
+                //    `LessEqual` test still loses against the
+                //    rasterised mesh's interpolated depth at
+                //    interior line pixels — observed empirically:
+                //    `LessEqual` produces no visible edges,
+                //    `Always` produces clean outlines.
+                //
+                // Trade-off: the wireframe is visible THROUGH the
+                // mesh from behind too. For the 404 pyramid use
+                // case (rotating, looking at front faces) that's
+                // visually identical to a depth-tested edge. If a
+                // future consumer needs back-face hiding,
+                // alternatives are: front-face cull on the
+                // wireframe, or render edges per-face only.
+                depth_compare: wgpu::CompareFunction::Always,
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState {
-                    constant: -1,
-                    slope_scale: -1.0,
-                    clamp: 0.0,
-                },
+                bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState {
                 count: msaa_samples,
