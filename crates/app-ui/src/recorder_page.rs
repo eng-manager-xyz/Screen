@@ -132,8 +132,11 @@ pub fn RecorderPage() -> impl IntoView {
     // Set on a successful export → the panel shows the "Saved → Reveal"
     // success state. Cleared on Discard / next recording.
     let saved_path = RwSignal::new(Option::<String>::None);
-    // The configured output directory, shown in the panel.
+    // The configured output directory, shown in the panel + the ⋯ menu.
     let output_dir = RwSignal::new(String::new());
+    // M-SAVE.4 — the ⋯ "More options" menu (output-folder setting),
+    // so the folder can be set without recording first.
+    let overflow_open = RwSignal::new(false);
 
     // -------- subscriptions -------------------------------------------
     mic_ipc::subscribe_mic_level(move |lvl| mic_level.set(lvl));
@@ -580,14 +583,35 @@ pub fn RecorderPage() -> impl IntoView {
                 <div class="recorder-page-tabs">
                     <CaptureModeTabs selected=capture_mode.get() />
                 </div>
-                <button
-                    type="button"
-                    class="recorder-page-overflow"
-                    aria-label="More options"
-                    aria-haspopup="menu"
-                >
-                    "⋯"
-                </button>
+                <div class="recorder-overflow-wrap">
+                    <button
+                        type="button"
+                        class="recorder-page-overflow"
+                        aria-label="More options"
+                        aria-haspopup="menu"
+                        aria-expanded=move || if overflow_open.get() { "true" } else { "false" }
+                        on:click=move |_| overflow_open.update(|o| *o = !*o)
+                    >
+                        "⋯"
+                    </button>
+                    <Show when=move || overflow_open.get() fallback=|| view! { <></> }>
+                        <div class="recorder-overflow-menu" role="menu">
+                            <div class="recorder-overflow-key">"Recording folder"</div>
+                            <div class="recorder-overflow-folder" title=move || output_dir.get()>
+                                {move || output_dir.get()}
+                            </div>
+                            <button
+                                type="button"
+                                class="recorder-overflow-change"
+                                role="menuitem"
+                                on:click=move |_| {
+                                    on_change_folder.run(());
+                                    overflow_open.set(false);
+                                }
+                            >"Change folder…"</button>
+                        </div>
+                    </Show>
+                </div>
             </header>
 
             <div class="recorder-page-body">

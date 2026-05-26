@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-SAVE.4 — output-folder setting in the ⋯ menu
+- **Date:** 2026-05-25
+- **Status:** ✅ done — fifth chunk of `feat/export`. The recorder's `⋯` "More options" button was inert; it now opens a small menu so the output folder can be set **without** recording first (previously Change… only appeared in the post-record Save panel).
+
+### What shipped (`crates/app-ui/src/recorder_page.rs`)
+
+- New `overflow_open: RwSignal<bool>`; the `⋯` button toggles it (`aria-expanded` wired).
+- A `<Show>`-gated dropdown menu (`role="menu"`) with a **Recording folder** label, the current folder (`output_dir`, truncated tail-visible), and a **Change folder…** item that reuses the M-SAVE.3 `on_change_folder` callback (`pick_output_dir` → `set_output_dir` → updates `output_dir`) and closes the menu.
+- CSS in `crates/ui-storybook/assets/style.css` (`.recorder-overflow-*`) — absolute popover anchored bottom-right of the button, same flat-on-black + 12 %-border palette.
+
+No new pure logic (view wiring + reuse of the tested `on_change_folder` / settings IPC), so no new unit test — scaffolding-level per `_docs/TESTING.md`. The configured folder now feeds three places off one `output_dir` signal: the Save panel, the ⋯ menu, and `default_recording_output_path`.
+
+### Verification
+
+- `cargo nextest run -p app-ui` — 60 passed. clippy native + wasm32 + fmt clean. `just gate` green.
+- Manual (user): open ⋯ → see the folder + Change… → pick a new folder → it updates everywhere.
+
+### Deferred
+
+- Click-outside-to-dismiss the menu (currently re-clicking ⋯ toggles it; clicking Change… closes it). A global click-away listener is a small polish item — not blocking.
+
+---
+
 ## M-SAVE.3 — post-record Save panel (folder + format dropdown + Export/Discard)
 - **Date:** 2026-05-25
 - **Status:** ✅ done — fourth chunk of `feat/export`. The first user-visible piece: after Stop, a Save panel replaces the record footer.
