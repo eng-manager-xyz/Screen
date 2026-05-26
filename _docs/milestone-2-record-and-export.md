@@ -265,6 +265,19 @@ Deferred to later passes: encoder bitrate / keyframe / profile tuning
   tests (even-rounding, sane cap); integration that a native-dim
   config yields a correctly-sized MP4.
 
+#### M-QUAL.3 — webcam bubble at 720×720, de-squished
+- The webcam bubble captured at 480×480 *and* was aspect-distorted: a
+  16:9 feed was `videoscale`d straight into a square (squished face).
+- Insert `aspectratiocrop aspect-ratio=1/1` before `videoscale` in the
+  shared `live_camera_tail_args` (center-crop to 1:1, then scale) and
+  bump the square capture to 720×720 — `PREVIEW_WIDTH/HEIGHT` (media
+  capture, → compose `cam_dims`) and `PREVIEW_CANVAS_WIDTH/HEIGHT`
+  (app-ui live-preview Canvas2D) in lockstep.
+- **Done when:** the recorded circular bubble is undistorted + visibly
+  sharper at native-res output; pipeline-order unit test asserts
+  `aspectratiocrop → videoscale → caps`; app-ui tests + wasm32 clippy
+  green.
+
 ## Out of scope for this milestone
 
 Explicitly punted to follow-up milestones:

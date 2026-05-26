@@ -269,6 +269,7 @@ Every rule below cost a recursive-fix iteration somewhere in the source. **Apply
 - **`u32::try_from(x).expect(...)` for `usize` → `u32`**, never `x as u32` (clippy::cast_possible_truncation).
 - **`f32 as u32` requires `#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "...")]`** even after `clamp` + `round` — the clamp bound isn't visible to clippy.
 - **`iter.next_back()`**, never `iter.rev().next()` (clippy::manual_next_back).
+- **`slice.contains(&x)`**, never `slice.iter().any(|e| *e == x)` (clippy::manual_contains). Bit M-QUAL.3 in a test assertion.
 - **Chained `if let Some(a) && let Some(b)`** (Rust 2024), never nested `if let` (clippy::collapsible_if).
 - **No `let mut x` if `x` isn't mutated** (unused_mut).
 - **No `1 * N`** (clippy::identity_op).

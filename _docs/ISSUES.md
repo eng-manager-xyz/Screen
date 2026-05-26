@@ -37,9 +37,10 @@ Copy and fill when filing a new issue.
   3. **Color** — HDR / wide-gamut / 10-bit (biggest pipeline change; a later pass).
 - **Resolution:** (partial — 2026-05-26) v1 target chosen = **Axis 2 (resolution)**. Shipped on `feat/recording-quality`:
   - **M-QUAL.1** — live (streaming) video encode: `LiveGstreamerEncoder` streams BGRA into `gst-launch-1.0`'s stdin so only compressed video lands on disk, removing the raw-scratch firehose (≈250 MB/s at 1080p, >1 GB/s at Retina) that made native res untenable. CLI-pipe, not `gstreamer-rs`.
-  - **M-QUAL.2** — native-resolution capture: `resolve_native_screen_dims` reads the display's true backing pixels (`CGDisplayMode::pixel_width/height`) and threads them through the SCK caps + encoder + compose canvas (3024×1964 on the dev MBP, vs the old squished 1920×1080).
+  - **M-QUAL.2** — native-resolution screen capture: `resolve_native_screen_dims` reads the display's true backing pixels (`CGDisplayMode::pixel_width/height`) and threads them through the SCK caps + encoder + compose canvas (3024×1964 on the dev MBP, vs the old squished 1920×1080).
+  - **M-QUAL.3** — webcam bubble 480×480 → 720×720 + de-squish (`aspectratiocrop aspect-ratio=1/1` before `videoscale`), so the circular bubble is undistorted + sharper instead of a 16:9-squished, upscaled 480².
 
-  **Axis 1** (encoder bitrate / keyframe / profile / rate-control) and **Axis 3** (HDR / 10-bit / wide-gamut) remain **open** for a later pass. See PROGRESS.md M-QUAL.1/.2 and milestone-2 "Phase 7 — M-QUAL".
+  **Axis 2 (resolution) is complete** for both screen + camera. **Axis 1** (encoder bitrate / keyframe / profile / rate-control) and **Axis 3** (HDR / 10-bit / wide-gamut) remain **open** for a later pass. See PROGRESS.md M-QUAL.1/.2/.3 and milestone-2 "Phase 7 — M-QUAL".
 
 ---
 

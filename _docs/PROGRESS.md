@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-QUAL.3 — webcam bubble at 720×720, de-squished
+- **Date:** 2026-05-26
+- **Status:** ✅ done — third chunk of `feat/recording-quality` (ISS-08), the camera half of the quality work. The webcam bubble was captured at 480×480 **and** aspect-distorted: a 16:9 feed `videoscale`d straight into a square = a horizontally-squished face. Now 720×720 with a center-crop to 1:1 first, so the circular bubble shows an undistorted, sharper face — most visible on native-res (M-QUAL.2) output.
+
+### What shipped
+
+- **`crates/media/src/gstreamer_video.rs`** — `live_camera_tail_args` inserts `aspectratiocrop aspect-ratio=1/1` before `videoscale`, so the native frame is center-cropped to square **then** scaled to the square caps (not squished). Covers both live paths (`from_default_camera` + `from_camera`); `test_source` is unaffected (videotestsrc emits exact dims). `aspectratiocrop` ships in gst-plugins-good (bundled with `gstreamer`).
+- **`crates/app/src/preview/pipeline.rs`** — `PREVIEW_WIDTH`/`PREVIEW_HEIGHT` 480 → 720 (square compile-time assert still holds; fps unchanged at 30). Flows to the recording compose's `cam_dims` automatically.
+- **`crates/app-ui/src/camera_preview.rs`** — `PREVIEW_CANVAS_WIDTH`/`HEIGHT` 480 → 720 to stay pixel-for-pixel with the capture: the live-preview Canvas2D `putImageData`s the *same* `CameraFrameSlot` bytes, so a size mismatch would garble the preview. The two constants live in separate crates (native vs wasm) and must be kept in lockstep. Preview IPC rises ~14 → ~31 MB/s at 15fps (fine for a preview).
+
+### Verification
+
+- `just gate` — **green** (exit 0).
+- `cargo nextest run -p media` — camera-pipeline order test now asserts `aspectratiocrop → videoscale → caps` (+ 1:1 target). `cargo nextest run -p app-ui` — 60 pass. `cargo clippy --target wasm32-unknown-unknown -p app-ui -- -D warnings` — clean (app-ui change touches the wasm path).
+- Real-camera de-squish is a manual macOS smoke: record with the camera on → the bubble face is undistorted + sharper than the old 480² squish.
+
+### Notes / deferred
+
+- **Framing change:** the bubble now shows a center-cropped square (loses the far left/right of the 16:9 frame) — the correct framing for a circular bubble; the old full-width view was distorted. Confirmed with the user before shipping.
+- **Camera fps stays 30** (the assert allows 30/60); higher cam fps is a separate lever, not the chosen axis.
+- Completes ISS-08 **Axis 2** for both screen (M-QUAL.2) and camera (M-QUAL.3). Axis 1 (encoder tuning) + Axis 3 (HDR/10-bit) remain.
+
+---
+
 ## M-QUAL.2 — native-resolution screen capture
 - **Date:** 2026-05-26
 - **Status:** ✅ done — second chunk of `feat/recording-quality` (ISS-08). Screen capture now records at the display's true Retina backing-pixel resolution instead of a fixed 1920×1080 — which previously both halved a Retina panel's detail *and* squished its non-16:9 aspect into 16:9. Builds on M-QUAL.1's live encode (the raw-scratch firehose would have made native res untenable on disk).
