@@ -15,9 +15,12 @@
 //! - **Screen frame** is the fullscreen background — a `Sprite`
 //!   anchored centre, scaled to fill NDC `[-1, 1]²`.
 //! - **Camera frame** is a smaller `Sprite` inside a `Container` whose
-//!   `clip` is a [`MaskShape::Circle`]. Default position is the
-//!   bottom-right corner with a small margin; the [`CamLayout`]
-//!   struct exposes this so the future editor can re-anchor.
+//!   `clip` is a [`MaskShape::Ellipse`] with half-extents
+//!   aspect-compensated for the output canvas, so the bubble is a true
+//!   circle in *pixels* (an NDC `Circle` would stretch into an ellipse
+//!   on a non-square frame). Default position is the bottom-left
+//!   corner with a small margin; the [`CamLayout`] struct exposes this
+//!   so the future editor can re-anchor.
 //!
 //! ```admonish important title="Latest-frame-wins"
 //! `set_screen_frame` / `set_camera_frame` overwrite the GPU
@@ -216,26 +219,49 @@ impl RecordingScene {
             .add_child(stage.root(), screen_sprite)
             .expect("Stage root is alive at scene construction");
 
-        // Circular cam container. The container's clip is the NDC
-        // circle; its transform positions the bubble; the child
-        // sprite fills the container's local-space at unit scale.
+        // Aspect-compensated bubble geometry. `cam_layout.radius` is in
+        // NDC, where `[-1, 1]` spans the FULL output canvas on each
+        // axis — so a circle with equal NDC x/y radius renders as an
+        // ELLIPSE on a non-square canvas (the recorded-output stretch
+        // bug). Convert the radius into per-axis NDC half-extents that
+        // are equal in PIXELS: a target pixel radius of
+        // `radius * min(w, h) / 2` (≈ `radius` of the shorter side, per
+        // the `CamLayout` doc) maps back to `radius * min(w,h)/w` in x
+        // and `radius * min(w,h)/h` in y. The output canvas size is
+        // `screen_dims` (the screen fills the frame 1:1).
+        // Dimensions fit u16 for any real display; `f32::from(u16)` is
+        // lossless and sidesteps the `u32 as f32` precision-loss lint
+        // (same conversion pattern as `render::mask_texture`).
+        let dim_to_f32 = |d: u32| f32::from(u16::try_from(d.min(u32::from(u16::MAX))).unwrap_or(1));
+        let canvas_width = dim_to_f32(screen_dims.width);
+        let canvas_height = dim_to_f32(screen_dims.height);
+        let min_side = canvas_width.min(canvas_height);
+        let cam_half_extents = Vec2::new(
+            cam_layout.radius * min_side / canvas_width,
+            cam_layout.radius * min_side / canvas_height,
+        );
+
+        // Cam container — the clip is a true pixel circle (an NDC
+        // ellipse with the compensated half-extents); its child sprite
+        // fills the same square pixel region so the feed is undistorted.
         let cam_container = Container {
-            clip: Some(MaskShape::circle(cam_layout.center, cam_layout.radius)),
+            clip: Some(MaskShape::ellipse(cam_layout.center, cam_half_extents)),
             ..Container::default()
         };
         let cam_container_id = stage
             .add_child(stage.root(), cam_container)
             .expect("Stage root is alive at scene construction");
 
-        // Cam sprite — anchored centre at the same NDC position as
-        // the circle, scaled to a square bounding box matching the
-        // circle's diameter. The clip on the parent container masks
-        // the sprite into a circle at render-time.
+        // Cam sprite — anchored centre at the bubble position, scaled
+        // so its square texture covers a SQUARE PIXEL region (diameter
+        // = the bubble's), i.e. NDC scale = `2 * half_extents`. Using
+        // `splat(radius*2)` here would re-introduce the stretch. The
+        // parent container's elliptical clip masks it to a circle.
         let mut cam_sprite =
             Sprite::from_texture(cam_video.texture().clone()).with_anchor(Vec2::splat(0.5));
         cam_sprite.container.transform = Transform {
             position: cam_layout.center,
-            scale: Vec2::splat(cam_layout.radius * 2.0),
+            scale: cam_half_extents * 2.0,
             ..Transform::IDENTITY
         };
         let cam_sprite_id = stage
@@ -439,8 +465,10 @@ mod tests {
     }
 
     #[test]
-    fn cam_container_carries_circle_clip() {
+    fn cam_container_clip_is_circle_on_square_canvas() {
         let app = boot();
+        // Square canvas → no aspect compensation → equal half-extents
+        // (a true circle, expressed as an Ellipse with hx == hy).
         let scene = RecordingScene::new(
             &app,
             StreamDimensions::new(64, 64),
@@ -454,15 +482,55 @@ mod tests {
         let container: &Container = cam_node.container();
         let clip = container.clip.expect("cam container has clip");
         match clip {
-            MaskShape::Circle { center, radius } => {
+            MaskShape::Ellipse {
+                center,
+                half_extents,
+            } => {
                 assert_eq!(center, CamLayout::BOTTOM_RIGHT.center);
-                // CamLayout constants are exact bit-for-bit equal
-                // to the consts they were copied from — direct
-                // comparison is safe, but clippy can't see that.
-                assert!((radius - CamLayout::BOTTOM_RIGHT.radius).abs() < 1e-6);
+                assert!(
+                    (half_extents.x - half_extents.y).abs() < 1e-6,
+                    "square canvas → equal half-extents (circle)"
+                );
+                assert!((half_extents.x - CamLayout::BOTTOM_RIGHT.radius).abs() < 1e-6);
             }
-            other => panic!("expected Circle, got {other:?}"),
+            other => panic!("expected Ellipse, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn cam_bubble_aspect_compensated_on_landscape_canvas() {
+        let app = boot();
+        // 16:9 landscape: the x half-extent must shrink so the bubble
+        // is a true circle in PIXELS, not a horizontally-stretched
+        // ellipse (the recorded-output bug). Equal pixel radii means
+        // `hx * width == hy * height`.
+        let scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(1920, 1080),
+            StreamDimensions::new(64, 64),
+            CamLayout::BOTTOM_RIGHT,
+        );
+        let clip = scene
+            .stage()
+            .get(scene.cam_container_id())
+            .expect("cam container alive")
+            .container()
+            .clip
+            .expect("cam container has clip");
+        let MaskShape::Ellipse {
+            half_extents: he, ..
+        } = clip
+        else {
+            panic!("expected Ellipse, got {clip:?}");
+        };
+        let r = CamLayout::BOTTOM_RIGHT.radius;
+        // min_side = 1080 → hx = r * 1080/1920, hy = r.
+        assert!((he.x - r * 1080.0 / 1920.0).abs() < 1e-6, "hx compensated");
+        assert!((he.y - r).abs() < 1e-6, "hy unchanged on landscape");
+        assert!(
+            (he.x * 1920.0 - he.y * 1080.0).abs() < 1e-3,
+            "equal pixel radii → true circle"
+        );
     }
 
     #[test]

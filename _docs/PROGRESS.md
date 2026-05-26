@@ -6,6 +6,44 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-QUAL.5 — recorded camera bubble is a true circle (aspect compensation)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. The recorded-output camera bubble rendered as a horizontal ellipse (stretched face) on the native-res canvas. Root cause: the clip was a `MaskShape::Circle` in **NDC**, and NDC `[-1,1]²` maps onto the full non-square video canvas → an ellipse in pixels. (Pre-existing; native-res just made it obvious — it was worse at 16:9.)
+
+### What shipped
+
+- **`crates/wisp/src/recording.rs`** — `RecordingScene::new` aspect-compensates the bubble: the clip is now a `MaskShape::Ellipse` with half-extents `(radius·min(w,h)/w, radius·min(w,h)/h)` = a true circle in **pixels**; the cam sprite scale matches (`2 · half_extents`) so the feed fills a square pixel region undistorted. Canvas size comes from `screen_dims` (the screen fills the frame 1:1). Dims convert via `f32::from(u16::try_from(...))` (lossless — avoids the `u32 as f32` precision-loss lint, same pattern as `render::mask_texture`).
+- Confirmed `aspectratiocrop` is active in the capture pipeline, so the feed is already de-squished — the NDC ellipse was the *only* output distortion (FaceTime had been the camera-stuck cause all along, not the de-squish).
+
+### Verification
+
+- `just gate` — **green**. 16 recording tests pass incl. 2 new: clip-is-circle-on-square-canvas + aspect-compensated-on-landscape (asserts equal pixel radii `hx·w == hy·h`). No `RecordingScene` storybook story exists, so no snapshot regen.
+- Manual (user): record → the output `.mp4` bubble is round + face undistorted, matching the preview.
+
+---
+
+## M-QUAL.4 — webcam-bubble preview redesign (overlay-on-circle)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. Rebuilt the `webcam-bubble` window's Leptos UI into the Screen-Studio-style overlay: a borderless **circular** camera feed with overlays painted on it + a floating device caption — no card.
+
+### What shipped
+
+- **`crates/app-ui/src/bubble.rs`** — `BubbleRoot` is a `.bubble-stage` (the circle's bounding square) holding the clipped circular feed plus three overlays as **siblings** (so the circle's `overflow:hidden` doesn't clip them): PREVIEW pill (top), pause/settings cluster (top-right edge), record/pause/stop controls (bottom, dark pill). Caption floats below. Icons via `leptos_icons` `Icon` + Lucide `icondata` (`LuPause`/`LuSettings`/`LuCircle`/`LuSquare`/`LuCamera`).
+- **`crates/app-ui/Cargo.toml`** — added `leptos_icons` 0.7 + `icondata` 0.7 (`default-features = false, features = ["lucide"]` so it doesn't compile every icon set).
+- **`crates/ui-storybook/assets/style.css`** (+ synced book copy) — `.bubble-*` overlay rules. Key fix: `html:has(.bubble-root)` **and** `body:has(.bubble-root)` both transparent — the base `html, body { background: --bg }` left the `html` element painting near-black behind the circle (the "surrounding black"). `.bubble-stage` is `240×240` + `flex-shrink:0` → a guaranteed perfect circle (a flex column could otherwise squash it into an ellipse). Lens `background: transparent` (no dark disc).
+- **`crates/app/tauri.conf.json`** — bubble window resized to fit the circle + caption.
+
+### Verification
+
+- `just gate` — **green**. `cargo nextest run -p app-ui` 60 pass. `cargo clippy --target wasm32-unknown-unknown -p app-ui` clean.
+- Manual (user): iterated overlay positions; circle confirmed round; bubble floats cleanly on the desktop (no black surround).
+
+### Notes
+
+- Live-IPC UI in app-ui, so no ui-storybook SSR story (consistent with `CameraPreview` — the presentational contract is for stateless components).
+
+---
+
 ## M-QUAL.3 — webcam bubble at 720×720, de-squished
 - **Date:** 2026-05-26
 - **Status:** ✅ done — third chunk of `feat/recording-quality` (ISS-08), the camera half of the quality work. The webcam bubble was captured at 480×480 **and** aspect-distorted: a 16:9 feed `videoscale`d straight into a square = a horizontally-squished face. Now 720×720 with a center-crop to 1:1 first, so the circular bubble shows an undistorted, sharper face — most visible on native-res (M-QUAL.2) output.
