@@ -14,15 +14,16 @@
 //!
 //! ## Integration with `wisp-animation::Driver`
 //!
-//! ```rust,no_run
-//! # use std::time::Duration;
-//! # fn make_driver() -> wisp_animation::Driver { wisp_animation::Driver::realtime() }
-//! let mut driver = make_driver();
+//! ```text
+//! let mut driver = wisp_animation::Driver::realtime();
 //! if wisp_3d::reduced_motion::detect_via_media_query() {
-//!     // Frozen at t = 0 — no clock advance.
-//!     driver.pause();
+//!     driver.pause(); // Frozen at t = 0 — no clock advance.
 //! }
 //! ```
+//!
+//! Snippet is `text` (not `rust`) so the doctest doesn't pull
+//! `wisp-animation` into `wisp-3d`'s dependency graph. Consumers
+//! that DO depend on both (e.g. `wisp-3d-web`) write this directly.
 //!
 //! ## Platform behaviour
 //!
