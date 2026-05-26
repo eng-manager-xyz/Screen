@@ -1,0 +1,38 @@
+[package]
+name = "wisp-3d"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Real-3D sibling to `wisp`: perspective camera + indexed mesh + depth-tested render pass on wgpu. Sister crate, not a superset — wisp stays 2D scene-graph-ordered."
+
+[lints]
+workspace = true
+
+# `wisp-3d` compiles for both native and wasm32-unknown-unknown.
+# It depends on `wisp` for the shared `Application` (wgpu device +
+# surface + MSAA helpers) and on `glam` for matrix math + on
+# `bytemuck` for the GPU-uniform `#[repr(C)]` types.
+#
+# wisp itself stays unaware of 3D — every depth attachment, view
+# matrix, and perspective concept lives HERE. This mirrors the
+# `wisp-chart` boundary (chart-specific deps never leak into wisp).
+[dependencies]
+wisp.workspace = true
+wgpu.workspace = true
+glam.workspace = true
+# bytemuck isn't a workspace.dependency — pin here per the pattern in
+# `crates/wisp/Cargo.toml`. `derive` is needed for `#[derive(Pod, Zeroable)]`
+# on the UBO structs (`ViewProj`, future `Globals`).
+bytemuck = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Drive the async `wisp::Application::new` from inside `#[test]` fns.
+pollster = "0.4"
+
+# Browser-only deps for the wasm32 reduced-motion detector. Scoped
+# to `cfg(target_arch = "wasm32")` so native `cargo check` doesn't
+# pull web-sys into its build graph (matches the wisp-chart-web
+# pattern).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["MediaQueryList", "Window"] }
