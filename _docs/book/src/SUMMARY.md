@@ -21,6 +21,17 @@
 
 - [Wisp at a glance](./wisp-overview.md)
 
+# `wisp-3d` — real-3D sibling
+
+- [Overview](./wisp-3d/overview.md)
+  - [Camera3D](./wisp-3d/camera-3d.md)
+  - [Mesh3D](./wisp-3d/mesh-3d.md)
+  - [Render3DPass](./wisp-3d/render-3d-pass.md)
+  - [Material3D + PaletteRampMaterial](./wisp-3d/material-3d.md)
+  - [EdgesMesh + wireframe](./wisp-3d/edges-mesh.md)
+  - [Sprite3D](./wisp-3d/sprite-3d.md)
+  - [wisp-3d-web (Trunk wasm32 bundle)](./wisp-3d/web.md)
+
 # `decode` — video decode
 
 - [Overview](./decode/overview.md)

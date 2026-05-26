@@ -9516,6 +9516,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "wisp-3d"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "pollster",
+ "screen-wisp",
+ "web-sys",
+ "wgpu",
+]
+
+[[package]]
+name = "wisp-3d-web"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "glam",
+ "js-sys",
+ "log",
+ "screen-wisp",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "wisp-3d",
+ "wisp-animation",
+]
+
+[[package]]
 name = "wisp-animation"
 version = "0.1.0"
 dependencies = [

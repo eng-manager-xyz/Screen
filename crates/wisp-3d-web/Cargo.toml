@@ -1,0 +1,50 @@
+[package]
+name = "wisp-3d-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "WebGPU / wasm32 browser demo for `wisp-3d`. Renders the engmanager.xyz 404 pyramid into a <canvas> via wgpu's BROWSER_WEBGPU backend. Trunk-built."
+
+[lints]
+workspace = true
+
+# `wisp-3d-web` is wasm32-only by intent. Same shape as
+# `wisp-chart-web` — `cdylib` for wasm-bindgen, `rlib` so workspace
+# `cargo check` (native) still type-checks.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wisp-3d = { path = "../wisp-3d" }
+wisp = { path = "../wisp", package = "screen-wisp" }
+wisp-animation = { path = "../wisp-animation" }
+glam.workspace = true
+wgpu = { workspace = true }
+log = "0.4"
+
+# Browser-only deps scoped to wasm32 so native `cargo check` doesn't
+# pull web-sys / wasm-bindgen into its graph.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "Location",
+    "MediaQueryList",
+    "Node",
+    "Performance",
+    "Window",
+    "console",
+] }
+console_error_panic_hook = "0.1"
+console_log = "1"
+
+[package.metadata.cargo-machete]
+# `log` is consumed via `log::info!` macros that only fire on wasm32
+# through `console_log`. machete can't see the macro use cleanly.
+ignored = ["log"]

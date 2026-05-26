@@ -226,6 +226,42 @@ Goal: a place to choose which directory recordings save to, and a format dropdow
 
 ---
 
+## Recorder no longer gets stuck on "Stop recording"
+- **Date:** 2026-05-25
+- **Status:** ✅ done — standalone frontend bugfix on `fix/recorder-stop-latch` (branched clean off `main`), PR'd separately ahead of the in-flight export (`feat/export`) work so the two don't conflict in `recorder_page.rs`.
+
+### Symptom
+
+Click Record → record a few seconds → click Stop. The elapsed counter freezes, the "RECORDING" pill stays up, the footer stays on "Stop recording", and "no recording session is active" is shown. No number of further Stop clicks resets the surface to the Start button — the recorder is unusable until app relaunch.
+
+### Root cause — a frontend state-reconciliation bug in `recorder_page.rs`
+
+Two compounding issues, both in the live `RecorderPage` Start↔Stop wiring (not the encoder / capture path):
+
+1. **The stop handler only reset the UI on `Ok`.** `stop_recording`'s sole error is `"no recording session is active"` (`commands.rs`) — i.e. the session is already gone. The handler's `Err` arm set `error_msg` but left `status` untouched, so `is_recording()` stayed true.
+2. **A trailing `Stopping` status event re-armed the controls.** `is_recording()` only ever flips *true* via the 500 ms `recording-status` pump (`spawn_status_emitter`). `stop_recording` sets the session to `Stopping` (and persists it) *before* tearing down channels — and `finalize_now()` runs the gst-launch encode, easily >500 ms. The pump ticks mid-teardown, emits `Stopping` (which `is_recording()` treats as recording), and that event can land in the webview *after* the stop handler reset the UI — re-arming the pill + button. From then on the backend session is `None`, so every Stop click hits issue #1's `Err` path and never recovers.
+
+### Fix (frontend-only — `crates/app-ui/src/recorder_page.rs`)
+
+- New UI-local latch `stop_requested: RwSignal<bool>`, set the instant the user requests a stop and cleared when the next session starts.
+- `is_recording` now reads through a pure helper `show_as_recording(stop_requested, backend_recording) = backend_recording && !stop_requested`, so a trailing `Stopping` event can't re-arm the controls once a stop is in flight.
+- The stop handler resets `status` → idle on **both** outcomes (the only `Err` means "already idle"), and the start handler clears the latch so the next `Running` event re-arms normally.
+- `on_start`'s stop/start branch decision uses the gated `is_recording()` (not the raw `status.get().is_recording()`) so a stale `Stopping` event can't route a Start click into the Stop branch.
+
+### Verification
+
+- `cargo nextest run -p app-ui` — green incl. new `recorder_page::tests::stop_latch_suppresses_trailing_recording_state` (all four `show_as_recording` cases).
+- `cargo clippy -p app-ui --all-targets -- -D warnings` (native) + `--target wasm32-unknown-unknown` — clean.
+- `cargo fmt --all --check` — clean. `just gate` — green.
+- No `Cargo.toml` change.
+
+### Notes
+
+- The reactive event race itself isn't unit-testable in this harness; the latch decision is extracted into the pure `show_as_recording` helper and guarded by a unit test, mirroring how the rest of `recorder_page.rs` keeps its logic testable.
+- Originally prototyped in a `Screen-stopfix` worktree on `fix/recorder-stop-stuck` (branched off the export line); re-extracted onto a clean `main` base for an independent PR since `recorder_page.rs` is byte-identical across main / the export commits.
+
+---
+
 ## Cam bubble default position moved BOTTOM_RIGHT → BOTTOM_LEFT
 - **Date:** 2026-05-24
 - **Status:** ✅ done — same `fix-screen-recording` branch.

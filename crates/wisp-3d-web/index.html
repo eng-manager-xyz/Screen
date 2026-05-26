@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wisp-3d — WebGPU 404 pyramid demo</title>
+    <link data-trunk rel="rust" data-wasm-opt="z" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #11111b;
+        color: #cdd6f4;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      /* The canvas selector matches what engmanager.xyz's `not-found.js`
+         already renders into (`<canvas class="not-found-stage"
+         data-404-stage>`). The wasm bundle picks the element up by
+         that data-attribute so the engmanager page can stay as-is
+         and just swap the JS importer. */
+      canvas[data-404-stage] {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .not-found-copy {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        font-size: 14px;
+        opacity: 0.62;
+        z-index: 2;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas data-404-stage></canvas>
+    <div class="not-found-copy">
+      wisp-3d · WebGPU 404 pyramid demo
+    </div>
+  </body>
+</html>
