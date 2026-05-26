@@ -814,6 +814,21 @@ fine on lavapipe — **don't guard them**.
   `brew install gstreamer`. Upgrading to `gstreamer-rs` Rust bindings is a
   later chunk; the `VideoStream` trait makes it a one-line swap at the
   call site.
+- **Live encode = stream INTO `gst-launch` over stdin, not `appsrc`.**
+  The recorder's live encoder (`media::encode::LiveGstreamerEncoder`,
+  M-QUAL.1) spawns `gst-launch-1.0 -q -e fdsrc fd=0 ! rawvideoparse
+  format=bgra ... ! videoconvert ! vtenc_h264_hw ! h264parse ! mp4mux
+  ! filesink <intermediate>` with `stdin(Stdio::piped())` and writes
+  composed BGRA frames straight to the child's stdin — the *input*
+  mirror of the `fdsink fd=1` decode pattern. A full pipe blocks the
+  writer = natural backpressure. Audio stays a small raw `.f32.scratch`
+  (≈0.4 MB/s); `finalize` closes stdin (EOF → EOS → moov written) then
+  remuxes video (stream-copied) + audio into the final container. This
+  keeps the no-`gstreamer-rs` convention while bounding on-disk scratch
+  to the *compressed* bitrate (raw BGRA is `w×h×4×fps` — >1 GB/s at
+  Retina), which is what made native-resolution capture (M-QUAL.2)
+  viable. Drain the child's stderr on a side thread so a chatty
+  pipeline can't deadlock on a full stderr pipe.
 - **`gst-discoverer-1.0` for metadata, `gst-launch-1.0` for the stream.**
   Discover before launch; the launch pipeline can't carry caps in a way
   the consumer can read out, so `width × height × 4` for `read_exact`
@@ -1067,7 +1082,7 @@ Library is means; the app is the goal.
 - **Renderer:** `wisp` (in-repo, `crates/wisp`) — wgpu + WGSL
 - **Editor preview:** native `winit` sibling window rendered by `wisp`
 - **Capture:** `objc2`/ScreenCaptureKit (macOS), `windows-rs` (Windows), `pipewire-rs` (Linux)
-- **Media (decode + playback + encode + mux):** GStreamer is the single media stack. Decode + playback ship today as a `gst-launch-1.0` CLI subprocess (see [GStreamer integration choice](#gstreamer-integration-choice) below); encode lands in M-EXPORT via `gstreamer-rs` Rust bindings + `appsrc` (so wisp's render-target frames push into the pipeline) with platform HW encoders (`vtenc_h264_hw` macOS, `mfh264enc` Windows, `vaapih264enc`/`nvh264enc` Linux).
+- **Media (decode + playback + encode + mux):** GStreamer is the single media stack, integrated via the `gst-launch-1.0` CLI subprocess throughout (see [GStreamer integration choice](#gstreamer-integration-choice) below) — **not** `gstreamer-rs` Rust bindings. Decode + playback pipe over the CLI; encode does too — the live recorder (`LiveGstreamerEncoder`, M-QUAL.1) streams wisp's render-target BGRA frames into the encoder over the child's **stdin** (`fdsrc fd=0`) rather than `appsrc`, with the batch `GstreamerEncoder` using scratch files for export round-trips. Platform HW encoders: `vtenc_h264_hw` macOS, `mfh264enc` Windows, `vaapih264enc`/`nvh264enc` Linux. (A programmatic `appsrc` pipeline via `gstreamer-rs` remains a possible future swap behind the `VideoEncoder` trait.)
 
 ```admonish important title="GStreamer is the only media library — do NOT add ffmpeg-next"
 This project deliberately uses **only GStreamer** for decode, playback, encode, and mux. Earlier planning docs (now corrected) listed `ffmpeg-next` as a transitional MVP option; that path was dropped before any encode code shipped. Reasons captured in [AUT-144](https://linear.app/harwood/issue/AUT-144):

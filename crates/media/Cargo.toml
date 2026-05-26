@@ -68,6 +68,13 @@ objc2-core-video = { version = "0.3", features = [
     "CVPixelFormatDescription",
 ] }
 objc2-core-audio-types = { version = "0.3", features = ["CoreAudioBaseTypes"] }
+# M-QUAL.2 — query a display's native backing-pixel resolution
+# (`CGMainDisplayID` / `CGDisplayCopyDisplayMode` /
+# `CGDisplayMode::pixel_width`) so screen capture runs at native
+# Retina res instead of a fixed 1920×1080. Already in the tree via
+# `objc2-screen-capture-kit`'s `objc2-core-graphics` feature; named
+# here as a direct dep so `media` can call the display-mode APIs.
+objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay"] }
 block2 = "0.6"
 dispatch2 = "0.3"
 

@@ -6,6 +6,31 @@ Use the template at the bottom for new entries.
 
 ---
 
+## M-QUAL.2 — native-resolution screen capture
+- **Date:** 2026-05-26
+- **Status:** ✅ done — second chunk of `feat/recording-quality` (ISS-08). Screen capture now records at the display's true Retina backing-pixel resolution instead of a fixed 1920×1080 — which previously both halved a Retina panel's detail *and* squished its non-16:9 aspect into 16:9. Builds on M-QUAL.1's live encode (the raw-scratch firehose would have made native res untenable on disk).
+
+### What shipped
+
+- **`crates/media/src/sck_video.rs` — `resolve_native_screen_dims(source) -> (u32, u32)`.** Resolves the target display's `CGDirectDisplayID` (`CGMainDisplayID` for the primary; `parse_display_id` for a `display-<id>`) and reads its true backing pixels via `CGDisplayCopyDisplayMode` + `CGDisplayMode::pixel_width/pixel_height` (the `pixel_*` variants — true pixels, not the "looks like" point size). Window sources + any CG failure fall back to `DEFAULT_WIDTH/HEIGHT`. A pure `sanitize_dims` helper even-rounds (H.264 needs mod-2 dims) + clamps to a 7680 ceiling (guards a bogus mode; never hit by real panels — no downscale of any real display).
+- **`crates/media/Cargo.toml`** — added `objc2-core-graphics` (macOS-gated, `CGDirectDisplay` feature) as a direct dep. Already in the tree via SCK's feature so no new license; named directly so `media` can call the display-mode APIs.
+- **`crates/app/src/commands.rs`** — `start_screen_for_session` resolves native dims, sets `config.width/height`, and **returns** the resolved `(w, h)`. `start_recording` captures them and threads the same dims into the `EncoderConfig` (width/height) + the wisp `StreamDimensions` (`screen_dims`) so the SCK caps, the compose canvas, and the encoder all agree (screen sprite fills the canvas 1:1). Camera-only / non-macOS recordings keep the 1920×1080 default; the macOS / non-macOS paths are cfg-split (no `unused_mut` on the non-macOS clippy path).
+
+### Verification
+
+- `just gate` — **green** (exit 0).
+- `cargo nextest run -p media` — 177 lib + 5 integration pass, incl. 4 new M-QUAL.2 tests: `sanitize_dims` even-rounding + clamp (pure, all OSes); a macOS resolver smoke asserting even / non-zero / within-bounds; a window-source fallback test. The smoke logs the resolved dims — on the 14" MBP dev machine it returns **3024×1964** (the panel's native pixels), confirming the CoreGraphics path works on real hardware rather than hitting the fallback.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`). The resolver + the `objc2-core-graphics` dep live in the macOS-only `sck_video` module, so Linux/Windows never compile them.
+
+### Notes / deferred
+
+- **Full native-res recording is a manual macOS smoke** (like the M-PIX "Done when"s): record a few seconds → the output MP4's dimensions match the display's native pixels (3024×1964 here), aspect undistorted. The headless gate covers the resolver value + that the live encoder handles arbitrary (non-1080p) dims (the M-QUAL.1 round-trips use 64×64).
+- **Window-source native sizing deferred** — a window's pixel size isn't a display mode; window captures keep 1920×1080 until per-window sizing lands.
+- **Camera bubble stays 480×480** — a small overlay; webcam resolution is a separate concern (not the chosen axis).
+- **Axis 1 (encoder bitrate/keyframe/profile) + Axis 3 (HDR / 10-bit / wide-gamut) still deferred** — ISS-08's other two axes. `build_live_video_args` is where Axis 1's `vtenc` properties would go.
+
+---
+
 ## M-QUAL.1 — live (streaming) video encode (CLI-pipe to gst-launch stdin)
 - **Date:** 2026-05-26
 - **Status:** ✅ done — first chunk of `feat/recording-quality` (ISS-08), branched off `main` after #58/#59 landed. Replaces the raw-BGRA-scratch + batch-encode recording path with a live encode that streams frames into `gst-launch-1.0`'s stdin, so only *compressed* video lands on disk during capture. Architectural prerequisite for native-resolution capture (M-QUAL.2): raw BGRA is `w×h×4×fps` ≈ 250 MB/s at 1080p, >1 GB/s at Retina — untenable on disk; the live path bounds the footprint to the encoded bitrate.

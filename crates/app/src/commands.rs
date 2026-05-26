@@ -1840,12 +1840,25 @@ pub fn start_recording(
         started.push(StreamKind::Microphone);
     }
 
+    // M-QUAL.2 — the recording canvas + encoder run at the screen
+    // source's *native* backing-pixel resolution, captured from the
+    // screen-start below. Stays at the 1920×1080 default for a
+    // camera-only recording (no screen source to size against).
+    #[cfg(target_os = "macos")]
+    let mut screen_native_dims = (
+        media::sck_video::DEFAULT_WIDTH,
+        media::sck_video::DEFAULT_HEIGHT,
+    );
+
     // Screen (macOS-only) — re-uses M-SCK.0.1 source routing.
     #[cfg(target_os = "macos")]
     if config.streams.screen {
-        if let Err(err) = start_screen_for_session(&app, config.screen_source_id.as_deref()) {
-            rollback_started(&app, &started);
-            return Err(format!("screen start failed: {err}"));
+        match start_screen_for_session(&app, config.screen_source_id.as_deref()) {
+            Ok(dims) => screen_native_dims = dims,
+            Err(err) => {
+                rollback_started(&app, &started);
+                return Err(format!("screen start failed: {err}"));
+            }
         }
         started.push(StreamKind::Screen);
     }
@@ -1877,6 +1890,19 @@ pub fn start_recording(
     // longer consulted at record time. Failure here rolls back the
     // per-channel streams too.
     let scratch_path = scratch_file_path(&app, session_id)?;
+    // M-QUAL.2 — encode at the native screen resolution resolved
+    // above (matches the SCK capture caps + the compose canvas).
+    // Camera-only / non-macOS keep the 1920×1080 `for_output` default.
+    #[cfg(target_os = "macos")]
+    let encoder_config = media::encode::EncoderConfig {
+        width: screen_native_dims.0,
+        height: screen_native_dims.1,
+        ..media::encode::EncoderConfig::for_output(
+            scratch_path,
+            media::encode::OutputFormat::Mp4H264Aac,
+        )
+    };
+    #[cfg(not(target_os = "macos"))]
     let encoder_config = media::encode::EncoderConfig::for_output(
         scratch_path,
         media::encode::OutputFormat::Mp4H264Aac,
@@ -1885,17 +1911,14 @@ pub fn start_recording(
     let has_video = config.streams.camera || config.streams.screen;
     let handle_result = if has_video {
         use wisp::recording::StreamDimensions;
-        // Scene dims match what the capture sides emit. On
-        // non-macOS the SCK constants don't exist; the
-        // SCK-derived screen dims default to 1920×1080 verbatim
-        // (matching `media::sck_video::DEFAULT_WIDTH/HEIGHT`)
-        // since neither the screen nor system-audio channel
-        // actually runs there yet (rolled back at top of fn).
+        // Scene dims match what the capture sides emit. On macOS this
+        // is the screen source's native resolution (M-QUAL.2),
+        // resolved at screen-start and equal to the encoder caps so
+        // the screen sprite fills the canvas 1:1. On non-macOS neither
+        // screen nor system-audio runs yet (rolled back at top of fn),
+        // so the default 1920×1080 stands in.
         #[cfg(target_os = "macos")]
-        let (sck_w, sck_h) = (
-            media::sck_video::DEFAULT_WIDTH,
-            media::sck_video::DEFAULT_HEIGHT,
-        );
+        let (sck_w, sck_h) = screen_native_dims;
         #[cfg(not(target_os = "macos"))]
         let (sck_w, sck_h) = (1920_u32, 1080_u32);
         let screen_dims = StreamDimensions::new(sck_w, sck_h);
@@ -2413,8 +2436,15 @@ fn stop_mic_for_session(mic_state: &MicCaptureState, mic_handle: &MicCaptureHand
     }
 }
 
+/// Start the recording screen capture at the source's **native**
+/// backing-pixel resolution and return the resolved `(width, height)`
+/// so the caller threads the same dims into the encoder + compose
+/// canvas (M-QUAL.2). Returns the dims on success.
 #[cfg(target_os = "macos")]
-fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> Result<(), String> {
+fn start_screen_for_session(
+    app: &tauri::AppHandle,
+    source_id: Option<&str>,
+) -> Result<(u32, u32), String> {
     use media::sck_video::{ScreenCaptureConfig, ScreenCaptureSource};
     let Some(state) = app.try_state::<ScreenCaptureState>() else {
         return Err("ScreenCaptureState not managed".into());
@@ -2425,6 +2455,9 @@ fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> 
         Some(id) if id.starts_with("window-") => ScreenCaptureSource::Window(id.to_string()),
         Some(other) => return Err(format!("unknown source_id prefix `{other}`")),
     };
+    // M-QUAL.2 — capture at the display's true Retina resolution
+    // (resolve before `source` is moved into the config).
+    let native_dims = media::sck_video::resolve_native_screen_dims(&source);
     // M-PIX.2 — plumb the shared screen frame slot from
     // RecordingState into the SCK delegate so it writes BGRA bytes
     // there for the encoder feed thread.
@@ -2439,10 +2472,13 @@ fn start_screen_for_session(app: &tauri::AppHandle, source_id: Option<&str>) -> 
         .map(|id| vec![id])
         .unwrap_or_default();
     let mut config = ScreenCaptureConfig::for_source(source);
+    config.width = native_dims.0;
+    config.height = native_dims.1;
     config.excluded_window_ids = excluded_window_ids;
     state
         .start_with_frame_slot(config, frame_slot)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(native_dims)
 }
 
 #[cfg(target_os = "macos")]

@@ -25,6 +25,24 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-08: increase camera + screen recording quality
+- **Filed:** 2026-05-26
+- **By:** user (next feature after `feat/export`)
+- **Severity:** deferral → in progress
+- **Affects:** the capture + encode path — `crates/media` (GStreamer encode pipeline + SCK config) + `crates/app` (recording orchestration); **not** the UI layer.
+- **Description:**
+  Goal: raise the quality of recorded camera + screen output. Three independent axes, each touching a different part of the pipeline:
+  1. **Encoder settings** — bitrate, H.264/H.265 profile + level, keyframe interval, rate-control mode. Lives in the GStreamer encode element config (HW encoders: `vtenc_h264_hw` macOS). All currently at GStreamer defaults.
+  2. **Resolution + framerate** — capture at native Retina (no downscale) and/or higher fps; capture was fixed at 1920×1080 (squishing non-16:9 Retina panels).
+  3. **Color** — HDR / wide-gamut / 10-bit (biggest pipeline change; a later pass).
+- **Resolution:** (partial — 2026-05-26) v1 target chosen = **Axis 2 (resolution)**. Shipped on `feat/recording-quality`:
+  - **M-QUAL.1** — live (streaming) video encode: `LiveGstreamerEncoder` streams BGRA into `gst-launch-1.0`'s stdin so only compressed video lands on disk, removing the raw-scratch firehose (≈250 MB/s at 1080p, >1 GB/s at Retina) that made native res untenable. CLI-pipe, not `gstreamer-rs`.
+  - **M-QUAL.2** — native-resolution capture: `resolve_native_screen_dims` reads the display's true backing pixels (`CGDisplayMode::pixel_width/height`) and threads them through the SCK caps + encoder + compose canvas (3024×1964 on the dev MBP, vs the old squished 1920×1080).
+
+  **Axis 1** (encoder bitrate / keyframe / profile / rate-control) and **Axis 3** (HDR / 10-bit / wide-gamut) remain **open** for a later pass. See PROGRESS.md M-QUAL.1/.2 and milestone-2 "Phase 7 — M-QUAL".
+
+---
+
 ## ISS-07: stale rustdoc deep-links in existing `ui/chunks/*.md` chapters
 - **Filed:** 2026-05-25
 - **By:** M-SAVE.GATE (verified rustdoc paths while authoring `save-panel.md`)
