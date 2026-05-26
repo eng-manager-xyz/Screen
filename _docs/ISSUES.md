@@ -25,6 +25,18 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-07: stale rustdoc deep-links in existing `ui/chunks/*.md` chapters
+- **Filed:** 2026-05-25
+- **By:** M-SAVE.GATE (verified rustdoc paths while authoring `save-panel.md`)
+- **Severity:** bug (docs only)
+- **Affects:** `_docs/book/src/ui/chunks/*.md` — at least `status-bar-*.md`, `button-sizes.md`, `card-basic.md`, `card-with-dope-sheet.md`, `drop-zone-idle.md`, `recording-toolbar-recording.md`, `dope-sheet-basic.md`, `player-controls-near-end.md`
+- **Status:** open (not in the `just gate` CI path — markdown `[](…)` hrefs aren't intra-doc links, so `cargo doc` doesn't validate them; only the deploy-time smoke in `docs.yml` would, and it only spot-checks a few well-known files)
+- **Description:**
+  These chapters link into the published rustdoc with a path that omits the component subgroup, e.g. `[`StatusBar`](../../api/ui_storybook/components/status_bar/fn.StatusBar.html)`. The real generated path includes the subgroup: `components/shell/status_bar/fn.StatusBar.html` (confirmed via `cargo doc -p ui-storybook --no-deps` → `target/doc/ui_storybook/components/shell/status_bar/fn.StatusBar.html`). Same class of error for `button` (→ `components/primitives/button/`), `card` (→ `primitives/card/`), `dope_sheet` (→ `editor/dope_sheet/`), `recording_toolbar` (→ `recorder/recording_toolbar/`), `drop_zone` (→ `shell/drop_zone/`). Every one of these deep-links 404s on the deployed site. The new `save-panel.md` uses the correct `components/recorder/save_panel/…` path, so it's not affected.
+- **Resolution:** (open) Mechanical fix — for each chapter, re-point the `api/` href to the subgroup-qualified path (grep `target/doc/ui_storybook` for the real location of each item). Worth a dedicated `docs: fix stale rustdoc deep-links in ui chapters` pass; consider a `doc-gates` check that resolves every `api/…` href in the book against `target/doc` so this can't regress.
+
+---
+
 ## ISS-06: `cargo deny` / `cargo machete` fail on pre-existing repo state with current tool versions
 - **Filed:** 2026-05-25
 - **By:** M-SAVE.0 (ran deny/machete after adding `tauri-plugin-dialog`)
