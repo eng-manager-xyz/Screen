@@ -46,7 +46,7 @@
         "url": "index.html?mount=bubble",
         "title": "Webcam",
         "width": 260,
-        "height": 320,
+        "height": 300,
         "decorations": false,
         "resizable": false,
         "transparent": true,

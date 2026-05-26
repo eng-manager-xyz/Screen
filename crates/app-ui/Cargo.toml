@@ -24,6 +24,16 @@ tray-appshell-preview = []
 
 [dependencies]
 leptos = { version = "0.8", default-features = false, features = ["csr"] }
+# M-QUAL.4 — Lucide icons (LuPause / LuSettings / LuCamera …) for the
+# webcam-bubble chrome, rendered as inline SVG via leptos_icons' `Icon`
+# component. `icondata` carries the icon path data; `leptos_icons`
+# 0.7 targets leptos 0.8. Unused icons are dead-code-eliminated from
+# the wasm bundle (only the consts we reference are kept).
+leptos_icons = "0.7"
+# Lucide-only: `icondata`'s default features pull in EVERY icon set
+# (dozens of subcrates → slow build + heavy wasm). We only use `Lu*`
+# glyphs, so gate to the `lucide` set.
+icondata = { version = "0.7", default-features = false, features = ["lucide"] }
 ui-storybook = { path = "../ui-storybook", default-features = false, features = ["csr"] }
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
