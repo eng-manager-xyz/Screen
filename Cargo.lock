@@ -9624,6 +9624,7 @@ dependencies = [
  "js-sys",
  "log",
  "screen-wisp",
+ "screen-wisp-interaction",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
