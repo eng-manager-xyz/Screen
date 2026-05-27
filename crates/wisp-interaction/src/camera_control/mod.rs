@@ -4,7 +4,8 @@
 //! - [`OrbitController`] — 3D orbit around a target point. Port of
 //!   Three.js's `OrbitControls.js` (state machine, spherical-coord
 //!   math, damping, dolly clamps, auto-rotate).
-//! - `PanZoomController` (WI.5 follow-up) — 2D pan + zoom-around-pointer.
+//! - [`PanZoomController`] — 2D pan + zoom-around-pointer (Figma /
+//!   Google-Maps math). Mutates a [`Viewport2D`] you pass in.
 //!
 //! The 3D controller stays decoupled from `wisp-3d` via a tiny
 //! [`Camera3D`] trait — the controller mutates whatever struct
@@ -15,5 +16,7 @@
 //! two), never `wisp-interaction → wisp-3d`.
 
 pub mod orbit;
+pub mod pan_zoom;
 
 pub use orbit::{Camera3D, OrbitController, OrbitState};
+pub use pan_zoom::{PanZoomController, Viewport2D};

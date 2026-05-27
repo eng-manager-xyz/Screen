@@ -56,7 +56,7 @@ pub mod hit_test;
 pub mod input;
 pub mod pointer;
 
-pub use camera_control::{Camera3D, OrbitController, OrbitState};
+pub use camera_control::{Camera3D, OrbitController, OrbitState, PanZoomController, Viewport2D};
 pub use hit_test::{HitShape, HitTestBackend, Pickable, PickableMap, Wisp2dHitTest};
 pub use input::{
     AccumulatedMouseMotion, ButtonInput, InputEvent, KeyCode, KeyboardEvent, KeyboardInput,
