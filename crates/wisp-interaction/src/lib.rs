@@ -52,14 +52,20 @@ pub use wisp::application::Application;
 pub use wisp::scene::{NodeId, Stage};
 
 pub mod input;
+pub mod pointer;
 
 pub use input::{
     AccumulatedMouseMotion, ButtonInput, InputEvent, KeyCode, KeyboardEvent, KeyboardInput,
     ModifierState, MouseButton, MouseButtonEvent, MouseButtonInput, MouseMotionEvent,
     MouseWheelEvent, TouchEvent, TouchPhase, WheelDelta,
 };
+pub use pointer::{
+    CallbackRegistry, Cancel, Click, Drag, DragDrop, DragEnd, DragEnter, DragLeave, DragOver,
+    DragStart, EventKind, Hit, Move, Out, Over, Pointer, PointerDispatcher, PointerId,
+    PointerLocation, Press, Release, Scroll,
+};
 
-// W I.2+ modules land in subsequent commits.
+// W I.3+ modules land in subsequent commits.
 
 #[cfg(test)]
 mod tests {
