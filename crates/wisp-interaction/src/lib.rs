@@ -51,9 +51,11 @@
 pub use wisp::application::Application;
 pub use wisp::scene::{NodeId, Stage};
 
+pub mod hit_test;
 pub mod input;
 pub mod pointer;
 
+pub use hit_test::{HitShape, HitTestBackend, Pickable, PickableMap, Wisp2dHitTest};
 pub use input::{
     AccumulatedMouseMotion, ButtonInput, InputEvent, KeyCode, KeyboardEvent, KeyboardInput,
     ModifierState, MouseButton, MouseButtonEvent, MouseButtonInput, MouseMotionEvent,
@@ -65,7 +67,7 @@ pub use pointer::{
     PointerLocation, Press, Release, Scroll,
 };
 
-// W I.3+ modules land in subsequent commits.
+// W I.4+ modules land in subsequent commits.
 
 #[cfg(test)]
 mod tests {
