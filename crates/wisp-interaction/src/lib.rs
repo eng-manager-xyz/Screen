@@ -52,10 +52,13 @@ pub use wisp::application::Application;
 pub use wisp::scene::{NodeId, Stage};
 
 pub mod adapter;
+pub mod animation_triggers;
 pub mod camera_control;
 pub mod hit_test;
 pub mod input;
 pub mod pointer;
+
+pub use animation_triggers::{AnimationTriggers, Cooldown, cooldown_action};
 
 pub use camera_control::{Camera3D, OrbitController, OrbitState, PanZoomController, Viewport2D};
 pub use hit_test::{HitShape, HitTestBackend, Pickable, PickableMap, Wisp2dHitTest};
