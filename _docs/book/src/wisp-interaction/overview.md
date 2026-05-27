@@ -2,8 +2,20 @@
 
 `wisp-interaction` is the input + hit-test + camera-controller layer for the wisp family. It does NOT add input handling to each library individually — that produces N inconsistent APIs. It owns the vocabulary once.
 
-```admonish important title="WI.0 is the skeleton"
-This chapter is the placeholder companion to WI.0 (AUT-303) — the crate skeleton commit that pins the public path conventions. The full surface (keyboard / mouse / pointer / hit-test / orbit / pan-zoom / adapters / animation triggers) lands across WI.1..WI.11 with their own chapters and live iframe examples.
+```admonish info title="The Mother of All Demos — December 9, 1968"
+On the morning of December 9, 1968, Douglas Engelbart stood at the
+Fall Joint Computer Conference in San Francisco and spent ninety
+minutes demonstrating almost every interactive-computing primitive
+we still use. He moved a wooden box on rollers and a cursor tracked
+on a video projection. He chord-keyed text. He dragged regions
+between windows, followed hyperlinks, and held a real-time video
+conference with collaborators in Menlo Park.
+
+That was the founding moment of *direct manipulation* — the idea
+that a computer can present a scene the user touches with a pointer,
+and the scene responds. Sixty years later, the gap between "this
+thing draws pixels" and "this thing responds to a user" still needs
+to be bridged by code. `wisp-interaction` is that bridge.
 ```
 
 ## Where it fits
@@ -47,22 +59,34 @@ Explicit non-goals:
 - **No 5-state `eventMode` enum.** Bevy's orthogonal 2-bit `Pickable { should_block_lower, is_hoverable }` captures the same semantics with less ceremony.
 - **No brute-force per-triangle ray scan.** When a wisp-3d picking backend lands (follow-up), it'll need a BVH from day one — Three.js's naive Möller-Trumbore brute scan is a known footgun for any non-trivial mesh.
 
-## Quickstart (preview)
+## Quickstart
 
 ```rust,no_run
-# // The API is sketched here; cells WI.1..WI.7 fill in the
-# // implementation, and WI.10 ships live iframe examples.
-use wisp_interaction::Application;
+use glam::Vec2;
+use wisp_interaction::{
+    CallbackRegistry, HitShape, MouseButton, PickableMap,
+    PointerDispatcher, PointerId, PointerLocation, Wisp2dHitTest,
+    HitTestBackend, Click, Pointer, ModifierState,
+};
+use wisp::math::Rect;
+use wisp::scene::{Container, Stage};
 
-# async fn demo() -> anyhow::Result<()> {
-let _app = Application::new(Default::default()).await?;
-// In WI.1 we add: let mut keys = KeyboardInput::default();
-// In WI.2 we add: let mut dispatcher = PointerDispatcher::new();
-// In WI.4 we add: let mut orbit = OrbitController::new(camera);
-// In WI.6 we add: let adapter = WinitAdapter::new(...);
-// In WI.10 we ship iframe-embedded examples for each of the above.
-# Ok(())
-# }
+let mut stage = Stage::new();
+let button = stage.add_child(stage.root(), Container::new()).unwrap();
+let mut pickable = PickableMap::new();
+pickable.insert_shape(button, HitShape::Rect(Rect::new(0.0, 0.0, 100.0, 40.0)));
+
+let mut registry = CallbackRegistry::new();
+registry.on_click(button, |_: &Pointer<Click>| {
+    println!("clicked!");
+});
+
+let backend = Wisp2dHitTest::new(&stage, &pickable);
+let mut dispatcher = PointerDispatcher::new();
+let loc = PointerLocation { viewport: Vec2::new(50.0, 20.0), modifiers: ModifierState::none() };
+let hits = backend.pick(loc.viewport);
+dispatcher.on_pointer_press(PointerId::Mouse, loc, MouseButton::Left, &hits, &stage, &registry);
+dispatcher.on_pointer_release(PointerId::Mouse, loc, MouseButton::Left, &hits, &stage, &registry);
 ```
 
 ## Read next
