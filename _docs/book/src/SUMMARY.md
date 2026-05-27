@@ -32,6 +32,10 @@
   - [Sprite3D](./wisp-3d/sprite-3d.md)
   - [wisp-3d-web (Trunk wasm32 bundle)](./wisp-3d/web.md)
 
+# `wisp-interaction` — input + hit-test + camera controllers
+
+- [Overview](./wisp-interaction/overview.md)
+
 # `decode` — video decode
 
 - [Overview](./decode/overview.md)

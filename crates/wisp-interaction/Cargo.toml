@@ -1,0 +1,75 @@
+[package]
+name = "screen-wisp-interaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Input + hit-testing + camera controllers for the wisp family. Keyboard, mouse, touch, pointer events, orbit camera, pan/zoom — one normalised vocabulary, multiple input adapters."
+
+[lib]
+# Library name decouples from package name so consumers write
+# `use wisp_interaction::*` while crates.io sees `screen-wisp-interaction`
+# (the bare `wisp-interaction` may be claimed by an unrelated project).
+# Mirrors the `wisp` / `screen-wisp` pattern documented in CLAUDE.md
+# "Publishing crates to crates.io".
+name = "wisp_interaction"
+
+[lints]
+workspace = true
+
+# `wisp-interaction` compiles for both native and wasm32-unknown-unknown.
+# Depends on `wisp` for the scene-graph types (NodeId, Stage, Transform)
+# the hit-test backend traverses; on `glam` for vector / matrix math; on
+# `rstar` for the opt-in R-tree spatial index used by Wisp2dHitTest.
+#
+# winit + web-sys are feature-gated so the base crate stays adapter-free.
+# Consumers opt in to whichever adapter their host already uses (winit on
+# native shells, web-sys in browsers).
+[dependencies]
+wisp.workspace = true
+glam.workspace = true
+# rstar — MIT/Apache R-tree. Used by `hit_test::Wisp2dHitTest` when the
+# spatial index is enabled (off by default; opt-in for scenes >> 100
+# pickable nodes).
+rstar = "0.12"
+
+# Feature-gated adapters. `winit` is the native-shell event source;
+# `web` pulls the browser stack for wasm32 builds.
+winit = { version = "0.30", optional = true, default-features = false, features = ["x11", "wayland"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Browser bits for the `web` feature. Scoped to wasm32 so native
+# `cargo check` doesn't pull web-sys into its build graph. The exact
+# feature list grows as WI.7 lands the adapter.
+web-sys = { version = "0.3", optional = true, features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "PointerEvent",
+    "WheelEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
+    "DomRect",
+    "console",
+] }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+[features]
+default = []
+# Native-window event source. Off by default so wisp-interaction stays
+# wasm-clean; native shells (preview, screen-app) enable this.
+winit = ["dep:winit"]
+# Browser DOM event source. Off by default; wasm bundles enable this.
+web = ["dep:web-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys"]
+
+[dev-dependencies]
+# Some hit-test tests build a tiny Stage with sample nodes; that needs
+# nothing async, but the convention from wisp-3d carries through.
+pollster = "0.4"
