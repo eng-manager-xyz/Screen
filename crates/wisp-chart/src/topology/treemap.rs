@@ -78,10 +78,27 @@ impl Treemap {
     /// rects share a fill colour.
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
+
+    /// Like [`emit_graphics`](Self::emit_graphics) but additionally
+    /// returns a reverse-lookup mapping each leaf's primitive index
+    /// → [`ChartElementId::Leaf`](crate::interaction::ChartElementId::Leaf).
+    /// Leaf indices are assigned in depth-first traversal order.
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
         let _ = theme;
         let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
         if self.root.children.is_empty() && self.root.rendered_weight().abs() < f32::EPSILON {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let pad = 16.0_f32;
         let rect = (
@@ -90,13 +107,27 @@ impl Treemap {
             viewport_px.x - pad * 2.0,
             viewport_px.y - pad * 2.0,
         );
-        emit_node(&mut g, &self.root, rect, 0, viewport_px);
-        g
+        let mut leaf_counter: usize = 0;
+        emit_node_with_interaction(
+            &mut g,
+            &mut elements,
+            &mut leaf_counter,
+            &self.root,
+            rect,
+            0,
+            viewport_px,
+        );
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 
-fn emit_node(
+fn emit_node_with_interaction(
     out: &mut Graphics,
+    elements: &mut Vec<(usize, crate::interaction::ChartElementId)>,
+    leaf_counter: &mut usize,
     node: &TreemapNode,
     rect: (f32, f32, f32, f32),
     depth: u32,
@@ -116,20 +147,25 @@ fn emit_node(
             viewport_px,
         );
         out.draw_rect(ndc);
+        elements.push((
+            out.primitive_count() - 1,
+            crate::interaction::ChartElementId::Leaf(*leaf_counter),
+        ));
+        *leaf_counter += 1;
         return;
     }
     let total: f32 = node.children.iter().map(TreemapNode::rendered_weight).sum();
     if total.abs() < f32::EPSILON {
         return;
     }
-    // Slice-and-dice — even depth splits vertically (rows of
-    // children stacked downward); odd depth splits horizontally.
     if depth.is_multiple_of(2) {
         let mut cursor = ry;
         for child in &node.children {
             let child_h = child.rendered_weight() / total * rh;
-            emit_node(
+            emit_node_with_interaction(
                 out,
+                elements,
+                leaf_counter,
                 child,
                 (rx, cursor, rw, child_h),
                 depth + 1,
@@ -141,8 +177,10 @@ fn emit_node(
         let mut cursor = rx;
         for child in &node.children {
             let child_w = child.rendered_weight() / total * rw;
-            emit_node(
+            emit_node_with_interaction(
                 out,
+                elements,
+                leaf_counter,
                 child,
                 (cursor, ry, child_w, rh),
                 depth + 1,

@@ -86,10 +86,29 @@ impl Histogram2D {
     /// Emit one rect per non-zero cell.
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
+
+    /// Like [`emit_graphics`](Self::emit_graphics) but additionally
+    /// returns a reverse-lookup mapping each emitted cell's
+    /// primitive index → [`ChartElementId::Cell`](
+    /// crate::interaction::ChartElementId::Cell)`{ row, col }`.
+    /// Empty cells (count == 0) are skipped, so the elements vector
+    /// is sparse relative to `rows * cols`.
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
         let _ = theme;
         let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
         if self.counts.is_empty() {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let pad = 16.0_f32;
         let plot_left = pad;
@@ -102,7 +121,10 @@ impl Histogram2D {
         let cell_h = plot_h / usize_to_f32(self.rows);
         let max_count = self.counts.iter().copied().max().unwrap_or(0);
         if max_count == 0 {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let max_f = u32_to_f32(max_count);
 
@@ -121,9 +143,16 @@ impl Histogram2D {
                 let y = plot_bottom - (usize_to_f32(row) + 1.0) * cell_h;
                 let rect = px_rect_to_ndc(x, y, cell_w, cell_h, viewport_px);
                 g.draw_rect(rect);
+                elements.push((
+                    g.primitive_count() - 1,
+                    crate::interaction::ChartElementId::Cell { row, col },
+                ));
             }
         }
-        g
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 

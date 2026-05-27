@@ -124,10 +124,26 @@ impl Histogram {
     /// Emit one bar per bin.
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
+
+    /// Like [`emit_graphics`](Self::emit_graphics) but additionally
+    /// returns a reverse-lookup table mapping each bin's primitive
+    /// index → [`ChartElementId::Bin`](crate::interaction::ChartElementId::Bin).
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
         let _ = theme;
         let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
         if self.bins.is_empty() {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let pad = 16.0_f32;
         let plot_left = pad;
@@ -140,7 +156,10 @@ impl Histogram {
         let bar_w = plot_w / usize_to_f32(n);
         let max_count: usize = self.bins.iter().map(|b| b.count).max().unwrap_or(1);
         if max_count == 0 {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let max_count_f = usize_to_f32(max_count);
         g.fill(Fill::Solid(chart_to_wisp(self.color)));
@@ -153,8 +172,15 @@ impl Histogram {
             // visually merge.
             let rect = px_rect_to_ndc(x + 0.5, y, (bar_w - 1.0).max(0.0), bar_h, viewport_px);
             g.draw_rect(rect);
+            elements.push((
+                g.primitive_count() - 1,
+                crate::interaction::ChartElementId::Bin(i),
+            ));
         }
-        g
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 

@@ -73,11 +73,31 @@ impl Pie {
     /// labels).
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
+
+    /// Like [`emit_graphics`](Self::emit_graphics) but additionally
+    /// returns a reverse-lookup table mapping each emitted primitive
+    /// to its [`ChartElementId::Slice`].
+    ///
+    /// Slice indices match `self.slices` insertion order; zero-area
+    /// slices (`span < 1e-5`) are skipped so the elements vector
+    /// can be shorter than `self.slices.len()`.
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
         let _ = theme;
         let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
         let total = self.total();
         if total.abs() < f32::EPSILON || self.slices.is_empty() {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let centre_px = viewport_px * 0.5;
         let radius_px = (viewport_px.x.min(viewport_px.y)) * 0.45;
@@ -86,7 +106,7 @@ impl Pie {
         let centre_ndc = pixel_to_ndc(centre_px, viewport_px);
 
         let mut angle = 0.0_f32;
-        for slice in &self.slices {
+        for (slice_idx, slice) in self.slices.iter().enumerate() {
             let span = slice.value / total * std::f32::consts::TAU;
             let start = angle;
             let end = angle + span;
@@ -96,8 +116,16 @@ impl Pie {
             }
             g.fill(Fill::Solid(chart_to_wisp(slice.color)));
             g.draw_annular_sector(centre_ndc, r_inner_ndc, r_outer_ndc, start, end);
+            // Primitive just pushed lives at `primitive_count() - 1`.
+            elements.push((
+                g.primitive_count() - 1,
+                crate::interaction::ChartElementId::Slice(slice_idx),
+            ));
         }
-        g
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 
