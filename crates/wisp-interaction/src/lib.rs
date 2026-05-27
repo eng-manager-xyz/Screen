@@ -51,10 +51,15 @@
 pub use wisp::application::Application;
 pub use wisp::scene::{NodeId, Stage};
 
-// W I.1+ modules land in the next commits on this branch. Keeping the
-// module tree empty for W I.0 so the gate has something concrete to
-// check ("the crate compiles, links to wisp, and re-exports the
-// shared scene-graph types").
+pub mod input;
+
+pub use input::{
+    AccumulatedMouseMotion, ButtonInput, InputEvent, KeyCode, KeyboardEvent, KeyboardInput,
+    ModifierState, MouseButton, MouseButtonEvent, MouseButtonInput, MouseMotionEvent,
+    MouseWheelEvent, TouchEvent, TouchPhase, WheelDelta,
+};
+
+// W I.2+ modules land in subsequent commits.
 
 #[cfg(test)]
 mod tests {
