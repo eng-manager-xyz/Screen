@@ -41,10 +41,27 @@ impl BaselineChart {
     /// split by a baseline produces non-convex shapes.
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
+
+    /// Like [`emit_graphics`](Self::emit_graphics) but returns the
+    /// reverse-lookup table — each polygon maps to
+    /// [`ChartElementId::Bar`](crate::interaction::ChartElementId::Bar)
+    /// keyed by the segment index `0..self.points.len()-1`.
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
         let _ = theme;
         let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
         if self.points.len() < 2 {
-            return g;
+            return crate::interaction::EmittedChart {
+                graphics: g,
+                elements,
+            };
         }
         let pad = 16.0_f32;
         let plot_left = pad;
@@ -76,7 +93,7 @@ impl BaselineChart {
         let map_y = |y: f32| plot_bottom - (y - y_lo) / y_span * plot_h;
         let by = map_y(self.baseline);
 
-        for pair in self.points.windows(2) {
+        for (seg_idx, pair) in self.points.windows(2).enumerate() {
             let (x0, y0) = pair[0];
             let (x1, y1) = pair[1];
             let px0 = map_x(x0);
@@ -98,8 +115,15 @@ impl BaselineChart {
             // CCW winding — convex by construction because the
             // top and bottom edges share x-extents.
             g.draw_polygon(&[bottom_left, bottom_right, top_right, top_left]);
+            elements.push((
+                g.primitive_count() - 1,
+                crate::interaction::ChartElementId::Bar(seg_idx),
+            ));
         }
-        g
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 

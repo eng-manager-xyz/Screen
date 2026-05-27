@@ -32,17 +32,25 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Document",
     "Element",
+    "EventTarget",
     "HtmlCanvasElement",
     "HtmlElement",
     "Location",
     "MediaQueryList",
+    "MouseEvent",
     "Node",
     "Performance",
+    "PointerEvent",
+    "WheelEvent",
     "Window",
     "console",
 ] }
 console_error_panic_hook = "0.1"
 console_log = "1"
+# wisp-interaction with the `web` adapter — feature-gated DOM event
+# translation. Used here to wire OrbitController to canvas pointer
+# events (WI.11 / AUT-314).
+wisp-interaction = { path = "../wisp-interaction", package = "screen-wisp-interaction", features = ["web"] }
 
 [package.metadata.cargo-machete]
 # `log` is consumed via `log::info!` macros that only fire on wasm32

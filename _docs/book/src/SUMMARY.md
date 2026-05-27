@@ -32,6 +32,17 @@
   - [Sprite3D](./wisp-3d/sprite-3d.md)
   - [wisp-3d-web (Trunk wasm32 bundle)](./wisp-3d/web.md)
 
+# `wisp-interaction` — input + hit-test + camera controllers
+
+- [Overview](./wisp-interaction/overview.md)
+- [ButtonInput — keyboard / mouse state](./wisp-interaction/button-input.md)
+- [Pointer events — typed event taxonomy](./wisp-interaction/pointer-events.md)
+- [HitTestBackend — what did the user click?](./wisp-interaction/hit-test.md)
+- [OrbitController — orbit around a target](./wisp-interaction/orbit-controller.md)
+- [PanZoomController — 2D pan + zoom-around-pointer](./wisp-interaction/pan-zoom-controller.md)
+- [Adapters — winit + web-sys](./wisp-interaction/adapters.md)
+- [AnimationTriggers — wire pointer events to animations](./wisp-interaction/animation-triggers.md)
+
 # `decode` — video decode
 
 - [Overview](./decode/overview.md)

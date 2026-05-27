@@ -35,6 +35,7 @@ pub mod finance;
 pub mod gantt;
 pub mod heatmap;
 pub mod indicator;
+pub mod interaction;
 pub mod legend;
 pub mod multi;
 pub mod overlay;
@@ -48,6 +49,7 @@ pub mod topology;
 
 pub use color::Color;
 pub use gantt::{Bar, DateRange, Gantt, Person, PersonMap, Row};
+pub use interaction::{ChartElementId, EmittedChart};
 pub use palette::OwnerPalette;
 pub use plot::{DataFrame, Encoding, Mark, Plot, ScaleKind, Value};
 pub use scale::{BandScale, LinearScale, LogScale, OrdinalScale, TimeScale};
