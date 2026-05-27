@@ -51,6 +51,7 @@
 pub use wisp::application::Application;
 pub use wisp::scene::{NodeId, Stage};
 
+pub mod adapter;
 pub mod camera_control;
 pub mod hit_test;
 pub mod input;
