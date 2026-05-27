@@ -6,6 +6,152 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Cleanup — remove dead batch `GstreamerEncoder` (code review)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. A code-review pass over the M-QUAL work. The batch `GstreamerEncoder` (raw-BGRA-to-scratch + single `gst-launch` at finalize) was the original M-EXPORT.1 impl; M-QUAL.1's `LiveGstreamerEncoder` superseded it for all production paths (recording streams compressed video to encode-pipeline stdin). The batch impl had no remaining callers outside its own tests — dead code carrying a parallel pipeline-builder. Removed it so there's a single `VideoEncoder` impl.
+
+### What shipped
+
+- **`crates/media/src/encode.rs`** — deleted the `GstreamerEncoder` struct, its `VideoEncoder` impl, `build_pipeline_args`, and its 10 unit tests. The shared per-(format, OS) element pickers (`encoder_and_mux_elements` / `audio_encoder_element` / `mux_element_for` / `demux_for`) stay — `LiveGstreamerEncoder` + the remux path use them. Module/struct/trait docs rewritten to describe the single streaming impl. Added `encoder_and_mux_elements_maps_each_format` to retain the per-format encoder/mux/audio coverage the removed batch tests had.
+- **`crates/media/tests/encode_integration.rs`** — dropped the batch `full_lifecycle_with_audio_…` round-trip (the live `live_encoder_video_and_audio_…` test already asserts the same both-streams / H.264 / AAC result). The transcode-fixture helper `encode_test_mp4` now produces its MP4 via `LiveGstreamerEncoder`.
+- **`crates/app/src/commands.rs`** — `stop_recording`'s two unused `State` params removed (see M-QUAL.6 below).
+- **`crates/ui-storybook/assets/style.css`** (+ synced book copy) — replaced the stale `.bubble-card` design comment (described the removed card layout) with the current overlay-on-circle description; dropped a redundant `min-height:0` on `.bubble-stage`.
+- **`crates/app/capabilities/default.json`** — `core:window:allow-start-dragging` (makes the borderless bubble's `data-tauri-drag-region` move the window; not in `core:default`).
+
+### Verification
+
+- `just gate` — **green**. `media` + `screen-app` type-check clean; the format-coverage unit test + the two live integration tests (skip-guarded on `gst-launch-1.0` / `gst-discoverer-1.0`) exercise the surviving pipeline.
+
+---
+
+## M-QUAL.6 — camera preview no longer freezes after a recording
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. After record → stop, the webcam preview (bubble) froze on its last frame until the next record. Cause: `stop_recording` tore down the camera worker (`stop_camera_for_session`) alongside the recording-only captures — but that worker backs the **live preview**, owned by `start_preview`/`stop_preview`; recording only *borrows* its frames via the shared `CameraFrameSlot`. Killing it on stop starved the preview; the next `start_recording` re-spawned it (the "unfreezes when I click record" symptom).
+
+### What shipped
+
+- **`crates/app/src/commands.rs`** — `stop_recording` no longer stops the camera. Screen / mic / sys-audio (recording-only captures) are still torn down in reverse order; the camera worker is left running so the bubble stays live, and is stopped by `stop_preview` (camera toggle off / recorder closed) as before. The two now-unused `State` params (`PreviewState`, `CameraPipelineHandle`) were dropped from the command signature (Tauri-injected, so no frontend change) rather than kept as `_`-prefixed dead params.
+
+### Verification
+
+- `just gate` — **green**. No test asserted camera-teardown-on-stop (the camera worker lifecycle lives in the Tauri command path, which isn't unit-tested without a mock + a live gst worker — scaffolding-level per `_docs/TESTING.md`). Verified manually (user): record → export → done leaves the preview live (no freeze).
+
+---
+
+## M-QUAL.5 — recorded camera bubble is a true circle (aspect compensation)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. The recorded-output camera bubble rendered as a horizontal ellipse (stretched face) on the native-res canvas. Root cause: the clip was a `MaskShape::Circle` in **NDC**, and NDC `[-1,1]²` maps onto the full non-square video canvas → an ellipse in pixels. (Pre-existing; native-res just made it obvious — it was worse at 16:9.)
+
+### What shipped
+
+- **`crates/wisp/src/recording.rs`** — `RecordingScene::new` aspect-compensates the bubble: the clip is now a `MaskShape::Ellipse` with half-extents `(radius·min(w,h)/w, radius·min(w,h)/h)` = a true circle in **pixels**; the cam sprite scale matches (`2 · half_extents`) so the feed fills a square pixel region undistorted. Canvas size comes from `screen_dims` (the screen fills the frame 1:1). Dims convert via `f32::from(u16::try_from(...))` (lossless — avoids the `u32 as f32` precision-loss lint, same pattern as `render::mask_texture`).
+- Confirmed `aspectratiocrop` is active in the capture pipeline, so the feed is already de-squished — the NDC ellipse was the *only* output distortion (FaceTime had been the camera-stuck cause all along, not the de-squish).
+
+### Verification
+
+- `just gate` — **green**. 16 recording tests pass incl. 2 new: clip-is-circle-on-square-canvas + aspect-compensated-on-landscape (asserts equal pixel radii `hx·w == hy·h`). No `RecordingScene` storybook story exists, so no snapshot regen.
+- Manual (user): record → the output `.mp4` bubble is round + face undistorted, matching the preview.
+
+---
+
+## M-QUAL.4 — webcam-bubble preview redesign (overlay-on-circle)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — `feat/recording-quality`. Rebuilt the `webcam-bubble` window's Leptos UI into the Screen-Studio-style overlay: a borderless **circular** camera feed with overlays painted on it + a floating device caption — no card.
+
+### What shipped
+
+- **`crates/app-ui/src/bubble.rs`** — `BubbleRoot` is a `.bubble-stage` (the circle's bounding square) holding the clipped circular feed plus three overlays as **siblings** (so the circle's `overflow:hidden` doesn't clip them): PREVIEW pill (top), pause/settings cluster (top-right edge), record/pause/stop controls (bottom, dark pill). Caption floats below. Icons via `leptos_icons` `Icon` + Lucide `icondata` (`LuPause`/`LuSettings`/`LuCircle`/`LuSquare`/`LuCamera`).
+- **`crates/app-ui/Cargo.toml`** — added `leptos_icons` 0.7 + `icondata` 0.7 (`default-features = false, features = ["lucide"]` so it doesn't compile every icon set).
+- **`crates/ui-storybook/assets/style.css`** (+ synced book copy) — `.bubble-*` overlay rules. Key fix: `html:has(.bubble-root)` **and** `body:has(.bubble-root)` both transparent — the base `html, body { background: --bg }` left the `html` element painting near-black behind the circle (the "surrounding black"). `.bubble-stage` is `240×240` + `flex-shrink:0` → a guaranteed perfect circle (a flex column could otherwise squash it into an ellipse). Lens `background: transparent` (no dark disc).
+- **`crates/app/tauri.conf.json`** — bubble window resized to fit the circle + caption.
+
+### Verification
+
+- `just gate` — **green**. `cargo nextest run -p app-ui` 60 pass. `cargo clippy --target wasm32-unknown-unknown -p app-ui` clean.
+- Manual (user): iterated overlay positions; circle confirmed round; bubble floats cleanly on the desktop (no black surround).
+
+### Notes
+
+- Live-IPC UI in app-ui, so no ui-storybook SSR story (consistent with `CameraPreview` — the presentational contract is for stateless components).
+
+---
+
+## M-QUAL.3 — webcam bubble at 720×720, de-squished
+- **Date:** 2026-05-26
+- **Status:** ✅ done — third chunk of `feat/recording-quality` (ISS-08), the camera half of the quality work. The webcam bubble was captured at 480×480 **and** aspect-distorted: a 16:9 feed `videoscale`d straight into a square = a horizontally-squished face. Now 720×720 with a center-crop to 1:1 first, so the circular bubble shows an undistorted, sharper face — most visible on native-res (M-QUAL.2) output.
+
+### What shipped
+
+- **`crates/media/src/gstreamer_video.rs`** — `live_camera_tail_args` inserts `aspectratiocrop aspect-ratio=1/1` before `videoscale`, so the native frame is center-cropped to square **then** scaled to the square caps (not squished). Covers both live paths (`from_default_camera` + `from_camera`); `test_source` is unaffected (videotestsrc emits exact dims). `aspectratiocrop` ships in gst-plugins-good (bundled with `gstreamer`).
+- **`crates/app/src/preview/pipeline.rs`** — `PREVIEW_WIDTH`/`PREVIEW_HEIGHT` 480 → 720 (square compile-time assert still holds; fps unchanged at 30). Flows to the recording compose's `cam_dims` automatically.
+- **`crates/app-ui/src/camera_preview.rs`** — `PREVIEW_CANVAS_WIDTH`/`HEIGHT` 480 → 720 to stay pixel-for-pixel with the capture: the live-preview Canvas2D `putImageData`s the *same* `CameraFrameSlot` bytes, so a size mismatch would garble the preview. The two constants live in separate crates (native vs wasm) and must be kept in lockstep. Preview IPC rises ~14 → ~31 MB/s at 15fps (fine for a preview).
+
+### Verification
+
+- `just gate` — **green** (exit 0).
+- `cargo nextest run -p media` — camera-pipeline order test now asserts `aspectratiocrop → videoscale → caps` (+ 1:1 target). `cargo nextest run -p app-ui` — 60 pass. `cargo clippy --target wasm32-unknown-unknown -p app-ui -- -D warnings` — clean (app-ui change touches the wasm path).
+- Real-camera de-squish is a manual macOS smoke: record with the camera on → the bubble face is undistorted + sharper than the old 480² squish.
+
+### Notes / deferred
+
+- **Framing change:** the bubble now shows a center-cropped square (loses the far left/right of the 16:9 frame) — the correct framing for a circular bubble; the old full-width view was distorted. Confirmed with the user before shipping.
+- **Camera fps stays 30** (the assert allows 30/60); higher cam fps is a separate lever, not the chosen axis.
+- Completes ISS-08 **Axis 2** for both screen (M-QUAL.2) and camera (M-QUAL.3). Axis 1 (encoder tuning) + Axis 3 (HDR/10-bit) remain.
+
+---
+
+## M-QUAL.2 — native-resolution screen capture
+- **Date:** 2026-05-26
+- **Status:** ✅ done — second chunk of `feat/recording-quality` (ISS-08). Screen capture now records at the display's true Retina backing-pixel resolution instead of a fixed 1920×1080 — which previously both halved a Retina panel's detail *and* squished its non-16:9 aspect into 16:9. Builds on M-QUAL.1's live encode (the raw-scratch firehose would have made native res untenable on disk).
+
+### What shipped
+
+- **`crates/media/src/sck_video.rs` — `resolve_native_screen_dims(source) -> (u32, u32)`.** Resolves the target display's `CGDirectDisplayID` (`CGMainDisplayID` for the primary; `parse_display_id` for a `display-<id>`) and reads its true backing pixels via `CGDisplayCopyDisplayMode` + `CGDisplayMode::pixel_width/pixel_height` (the `pixel_*` variants — true pixels, not the "looks like" point size). Window sources + any CG failure fall back to `DEFAULT_WIDTH/HEIGHT`. A pure `sanitize_dims` helper even-rounds (H.264 needs mod-2 dims) + clamps to a 7680 ceiling (guards a bogus mode; never hit by real panels — no downscale of any real display).
+- **`crates/media/Cargo.toml`** — added `objc2-core-graphics` (macOS-gated, `CGDirectDisplay` feature) as a direct dep. Already in the tree via SCK's feature so no new license; named directly so `media` can call the display-mode APIs.
+- **`crates/app/src/commands.rs`** — `start_screen_for_session` resolves native dims, sets `config.width/height`, and **returns** the resolved `(w, h)`. `start_recording` captures them and threads the same dims into the `EncoderConfig` (width/height) + the wisp `StreamDimensions` (`screen_dims`) so the SCK caps, the compose canvas, and the encoder all agree (screen sprite fills the canvas 1:1). Camera-only / non-macOS recordings keep the 1920×1080 default; the macOS / non-macOS paths are cfg-split (no `unused_mut` on the non-macOS clippy path).
+
+### Verification
+
+- `just gate` — **green** (exit 0).
+- `cargo nextest run -p media` — 177 lib + 5 integration pass, incl. 4 new M-QUAL.2 tests: `sanitize_dims` even-rounding + clamp (pure, all OSes); a macOS resolver smoke asserting even / non-zero / within-bounds; a window-source fallback test. The smoke logs the resolved dims — on the 14" MBP dev machine it returns **3024×1964** (the panel's native pixels), confirming the CoreGraphics path works on real hardware rather than hitting the fallback.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`). The resolver + the `objc2-core-graphics` dep live in the macOS-only `sck_video` module, so Linux/Windows never compile them.
+
+### Notes / deferred
+
+- **Full native-res recording is a manual macOS smoke** (like the M-PIX "Done when"s): record a few seconds → the output MP4's dimensions match the display's native pixels (3024×1964 here), aspect undistorted. The headless gate covers the resolver value + that the live encoder handles arbitrary (non-1080p) dims (the M-QUAL.1 round-trips use 64×64).
+- **Window-source native sizing deferred** — a window's pixel size isn't a display mode; window captures keep 1920×1080 until per-window sizing lands.
+- **Camera bubble stays 480×480** — a small overlay; webcam resolution is a separate concern (not the chosen axis).
+- **Axis 1 (encoder bitrate/keyframe/profile) + Axis 3 (HDR / 10-bit / wide-gamut) still deferred** — ISS-08's other two axes. `build_live_video_args` is where Axis 1's `vtenc` properties would go.
+
+---
+
+## M-QUAL.1 — live (streaming) video encode (CLI-pipe to gst-launch stdin)
+- **Date:** 2026-05-26
+- **Status:** ✅ done — first chunk of `feat/recording-quality` (ISS-08), branched off `main` after #58/#59 landed. Replaces the raw-BGRA-scratch + batch-encode recording path with a live encode that streams frames into `gst-launch-1.0`'s stdin, so only *compressed* video lands on disk during capture. Architectural prerequisite for native-resolution capture (M-QUAL.2): raw BGRA is `w×h×4×fps` ≈ 250 MB/s at 1080p, >1 GB/s at Retina — untenable on disk; the live path bounds the footprint to the encoded bitrate.
+
+### What shipped
+
+- **`crates/media/src/encode.rs` — `LiveGstreamerEncoder` (`VideoEncoder` impl).** `new()` spawns `gst-launch-1.0 -q -e fdsrc fd=0 ! rawvideoparse format=bgra width=W height=H framerate=F/1 ! videoconvert ! vtenc_h264_hw ! h264parse ! mp4mux ! filesink <intermediate>` with stdin piped + a stderr-drain thread (so a chatty pipeline can't deadlock on a full stderr pipe). `push_video_frame` writes BGRA straight to the child's stdin — a full pipe blocks, giving natural backpressure if the HW encoder falls behind the compose framerate. Audio stays a small raw `.f32.scratch` (≈0.4 MB/s). `finalize` closes stdin → fdsrc EOF → EOS → mp4mux writes its moov → child exits; then **remuxes** the video intermediate (stream-copied, no re-encode) + the audio scratch into the final MP4 (`build_remux_args`). Video-only recordings skip the remux and *move* the intermediate into place. A `Drop` impl kills the child on an early/error drop so we never orphan a gst-launch feeding a dead pipe.
+- **CLI-pipe, not `gstreamer-rs`.** Streams over the child's stdin (`fdsrc fd=0`) rather than `appsrc`, keeping the project's "CLI-pipe over Rust bindings" convention — no compile-time libgstreamer dep, no Windows-build breakage. Validated the exact pipeline shapes (live encode + finalize remux) with throwaway `gst-launch` runs before writing any Rust.
+- **Refactor:** extracted the per-(format, OS) encoder/mux selection + the audio-encoder / mux / demux element pickers out of `build_pipeline_args` into shared `encoder_and_mux_elements` / `audio_encoder_element` / `mux_element_for` / `demux_for` helpers, reused by the batch + live builders (one encoder-coverage table).
+- **`crates/app/src/recording.rs`** — swapped both `EncoderHandle::start_with_real_capture` and `start_with_test_pattern` to box `LiveGstreamerEncoder`. The batch `GstreamerEncoder` is retained (still drives the export round-trip integration tests).
+- **`_docs/milestone-2-record-and-export.md`** — added "Phase 7 — Recording quality (M-QUAL)" with the M-QUAL.1 / .2 Done-when contracts.
+
+### Verification
+
+- `just gate` — **green** (exit 0). fmt / check / lint / workspace nextest / doctest / docs / snapshots-check / mermaid-check / shared-check / required-files-check / pages-url-check all pass. No new doc warnings — the 12 media + 9 screen-app rustdoc warnings are all pre-existing (`=`-in-admonish-title at each module header + private-link noise); `encode.rs:1:1` warned identically before this change.
+- `cargo nextest run -p media` — 171 lib + 5 integration pass, incl. 6 new argv/validation unit tests + 2 new live-encoder round-trips (video+audio H.264/AAC confirmed via `gst-discoverer`; video-only via the move path; scratch cleanup asserted). Live integration tests are macOS-only + `is_available()` / `gst_discoverer_available()`-gated.
+- `cargo clippy -p media -p screen-app --all-targets` — clean (`-D warnings`), native + (media is wasm-free).
+
+### Notes / deferred
+
+- **No storybook story / asset / chapter** — encode is a non-render feature (CLAUDE.md exempts capture / encode / file-I/O from the storybook requirement).
+- **Batch `GstreamerEncoder` retained, not removed** — it's the simpler reference impl and still drives the export round-trip tests; a later cleanup can drop it once the live path is field-proven.
+- **Encoder-quality knobs (bitrate / keyframe / profile — Axis 1) still at GStreamer defaults** — out of scope for the chosen v1 (native res). `build_live_video_args` is the one-line place to add `vtenc` properties when Axis 1 lands.
+- **Next: M-QUAL.2** — native-resolution capture: thread the display's real backing pixel dims through the `start_recording` junction (`commands.rs:1880–1905`) into `EncoderConfig` + wisp `StreamDimensions` + the compose `RenderTexture` (no longer hardcoded 1920×1080).
+
+---
+
 ## M-SAVE.GATE — extract the Save panel into a presentational `SavePanel` component
 - **Date:** 2026-05-25
 - **Status:** ✅ done — sixth (gate) chunk of `feat/export`. Closes the M-SAVE.3 "Deferred (to M-SAVE.GATE)" item: the post-record Save panel was inline in `RecorderPage`; it's now a stateless `ui-storybook` component with stories + an SSR snapshot + an mdBook chapter.

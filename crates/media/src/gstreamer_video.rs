@@ -344,10 +344,19 @@ impl GstreamerVideoCapture {
     }
 }
 
-fn live_camera_tail_args(caps: &str) -> [&str; 9] {
+fn live_camera_tail_args(caps: &str) -> [&str; 12] {
     [
         "!",
         "videoconvert",
+        "!",
+        // M-QUAL.3 — center-crop the webcam's native 16:9 (or other)
+        // frame to 1:1 BEFORE scaling to the square preview caps, so
+        // the circular bubble shows an undistorted face. Without this
+        // `videoscale` squishes the full frame into the square (a
+        // horizontally-compressed face). `aspectratiocrop` is in
+        // gst-plugins-good, shipped with every `gstreamer` install.
+        "aspectratiocrop",
+        "aspect-ratio=1/1",
         "!",
         "videoscale",
         "!",
@@ -418,9 +427,13 @@ mod tests {
     }
 
     #[test]
-    fn live_camera_pipeline_scales_before_square_caps() {
-        let caps = "video/x-raw,format=BGRA,width=480,height=480,framerate=30/1";
+    fn live_camera_pipeline_crops_then_scales_before_square_caps() {
+        let caps = "video/x-raw,format=BGRA,width=720,height=720,framerate=30/1";
         let args = live_camera_tail_args(caps);
+        let crop_pos = args
+            .iter()
+            .position(|arg| *arg == "aspectratiocrop")
+            .expect("live camera pipeline should center-crop to square (M-QUAL.3)");
         let scale_pos = args
             .iter()
             .position(|arg| *arg == "videoscale")
@@ -430,9 +443,17 @@ mod tests {
             .position(|arg| arg.starts_with("video/x-raw"))
             .expect("live camera pipeline should include raw caps");
 
+        // Order matters: crop the native frame to 1:1 first (undistorted
+        // face), THEN scale to the square preview caps. Cropping after
+        // the squish-scale would be too late.
         assert!(
-            scale_pos < caps_pos,
-            "live camera sources output native sizes; videoscale must run before square preview caps"
+            crop_pos < scale_pos && scale_pos < caps_pos,
+            "expected aspectratiocrop → videoscale → caps, got {args:?}"
+        );
+        // The crop must request a 1:1 aspect, else it's a no-op.
+        assert!(
+            args.contains(&"aspect-ratio=1/1"),
+            "aspectratiocrop must target 1/1: {args:?}"
         );
     }
 }

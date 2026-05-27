@@ -56,6 +56,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{AllocAnyThread, DefinedClass, define_class, msg_send};
+use objc2_core_graphics::{CGDisplayCopyDisplayMode, CGDisplayMode, CGMainDisplayID};
 use objc2_core_media::{CMSampleBuffer, CMTime};
 use objc2_core_video::{
     CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight,
@@ -175,6 +176,50 @@ impl ScreenCaptureConfig {
             ..Self::default()
         }
     }
+}
+
+/// Resolve `source`'s native backing-pixel dimensions for recording
+/// (M-QUAL.2). Returns even-rounded `(width, height)` — the display's
+/// true Retina pixel resolution, so capture is 1:1 with **no
+/// downscale** and no aspect squish (the old fixed 1920×1080 both
+/// halved a Retina panel's detail *and* distorted its non-16:9 aspect).
+///
+/// Falls back to `(DEFAULT_WIDTH, DEFAULT_HEIGHT)` when the
+/// CoreGraphics query fails, or for window sources — a window's pixel
+/// size isn't a display mode, so per-window native sizing is a
+/// follow-up.
+#[must_use]
+pub fn resolve_native_screen_dims(source: &ScreenCaptureSource) -> (u32, u32) {
+    let display_id = match source {
+        ScreenCaptureSource::PrimaryDisplay => CGMainDisplayID(),
+        ScreenCaptureSource::Display(id) => match parse_display_id(id) {
+            Some(did) => did,
+            None => return (DEFAULT_WIDTH, DEFAULT_HEIGHT),
+        },
+        ScreenCaptureSource::Window(_) => return (DEFAULT_WIDTH, DEFAULT_HEIGHT),
+    };
+    let Some(mode) = CGDisplayCopyDisplayMode(display_id) else {
+        return (DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    };
+    // `pixel_*` (vs `width`/`height`) returns the true backing pixels —
+    // 3024×1964 on a 14" MBP, not the 1512×982 "looks like" point size.
+    let w = CGDisplayMode::pixel_width(Some(&mode));
+    let h = CGDisplayMode::pixel_height(Some(&mode));
+    sanitize_dims(w, h)
+}
+
+/// Even-round (H.264 requires mod-2 dimensions) + clamp to a sane
+/// ceiling so a misreported display mode can't yield an invalid encode
+/// pipeline. Pure — unit-tested without CoreGraphics.
+fn sanitize_dims(w: usize, h: usize) -> (u32, u32) {
+    // H.264 level-6 max edge. No real Retina panel reaches it, so this
+    // guards against a bogus reading rather than downscaling anything.
+    const MAX_EDGE: u32 = 7680;
+    let clamp_even = |v: usize| -> u32 {
+        let v = u32::try_from(v).unwrap_or(MAX_EDGE).clamp(2, MAX_EDGE);
+        v & !1 // round down to even
+    };
+    (clamp_even(w), clamp_even(h))
 }
 
 /// Atomic counters surfaced for diagnostics (M-CAM.3's
@@ -862,6 +907,48 @@ mod tests {
     fn parse_window_id_extracts_numeric_suffix() {
         assert_eq!(parse_window_id("window-1"), Some(1));
         assert_eq!(parse_window_id("window-99999"), Some(99_999));
+    }
+
+    // ---- M-QUAL.2 — native-resolution capture ----
+
+    #[test]
+    fn sanitize_dims_rounds_down_to_even() {
+        // H.264 needs mod-2 dims; odd values round down.
+        assert_eq!(sanitize_dims(1921, 1081), (1920, 1080));
+        // Already-even native dims (14" MBP) pass through untouched.
+        assert_eq!(sanitize_dims(3024, 1964), (3024, 1964));
+        assert_eq!(sanitize_dims(5120, 2880), (5120, 2880));
+    }
+
+    #[test]
+    fn sanitize_dims_clamps_degenerate_and_absurd_values() {
+        // 0 can't make a valid pipeline — floor at 2.
+        assert_eq!(sanitize_dims(0, 0), (2, 2));
+        // A bogus huge reading is clamped to the H.264 ceiling (even).
+        assert_eq!(sanitize_dims(999_999, 999_999), (7680, 7680));
+    }
+
+    /// On real macOS hardware the primary display resolves to its
+    /// native backing pixels; on a headless CI runner `CGMainDisplayID`
+    /// has no mode and we fall back to `DEFAULT_WIDTH/HEIGHT`. Either
+    /// way the result must be even, non-zero, and within bounds — so
+    /// the encoder caps + compose canvas are always valid.
+    #[test]
+    fn resolve_native_primary_display_is_even_nonzero_bounded() {
+        let (w, h) = resolve_native_screen_dims(&ScreenCaptureSource::PrimaryDisplay);
+        eprintln!("resolved primary-display native dims: {w}x{h}");
+        assert!(w >= 2 && h >= 2, "non-zero: {w}x{h}");
+        assert!(w <= 7680 && h <= 7680, "within H.264 ceiling: {w}x{h}");
+        assert_eq!(w % 2, 0, "even width: {w}");
+        assert_eq!(h % 2, 0, "even height: {h}");
+    }
+
+    #[test]
+    fn resolve_native_window_source_falls_back_to_default() {
+        // A window's pixel size isn't a display mode — keep the default
+        // until per-window native sizing lands.
+        let dims = resolve_native_screen_dims(&ScreenCaptureSource::Window("window-1".into()));
+        assert_eq!(dims, (DEFAULT_WIDTH, DEFAULT_HEIGHT));
     }
 
     #[test]

@@ -85,22 +85,24 @@ impl RecorderPreviewState {
 /// `putImageData`s frames into its 2D context.
 pub const CANVAS_DOM_ID: &str = "camera-preview-canvas";
 
-/// Frame width the camera preview canvas paints at — matches
-/// `crate::preview::pipeline::PREVIEW_WIDTH` so the BGRA bytes
-/// fit the canvas pixel-for-pixel.
-pub const PREVIEW_CANVAS_WIDTH: u32 = 480;
-/// Frame height (square: matches the M-CAM.3 preview pipeline).
-pub const PREVIEW_CANVAS_HEIGHT: u32 = 480;
+/// Frame width the camera preview canvas paints at — must match the
+/// capture size (`screen_app::preview::pipeline::PREVIEW_WIDTH`, 720
+/// since M-QUAL.3) so the polled BGRA bytes fit the canvas
+/// pixel-for-pixel (`putImageData` does not scale). The two crates
+/// can't share a constant (native vs wasm), so keep them in lockstep.
+pub const PREVIEW_CANVAS_WIDTH: u32 = 720;
+/// Frame height (square: matches the preview pipeline).
+pub const PREVIEW_CANVAS_HEIGHT: u32 = 720;
 /// Bytes per frame (BGRA × width × height).
 pub const PREVIEW_CANVAS_BYTES: usize =
     (PREVIEW_CANVAS_WIDTH as usize) * (PREVIEW_CANVAS_HEIGHT as usize) * 4;
 /// 15 fps preview poll interval in milliseconds. Sufficient for a
-/// "see your face" UX while keeping IPC traffic ~14 MB/s at 480×480.
+/// "see your face" UX; IPC traffic ~31 MB/s at 720×720.
 pub const PREVIEW_POLL_MS: i32 = 66;
 
 /// `<CameraPreview />` — the recorder surface's webcam preview.
 ///
-/// The component renders a 480×480 `<canvas>` plus an overlaid copy
+/// The component renders a 720×720 `<canvas>` plus an overlaid copy
 /// element that displays the current `RecorderPreviewState`. M-PIX.8
 /// installs a 15 fps poll that pulls the latest BGRA frame from
 /// `CameraFrameSlot` via the `latest_camera_frame_bgra` Tauri

@@ -47,14 +47,15 @@ use super::diagnostics::{PreviewDiagnostics, maybe_dump_first_frame};
 use super::{CameraError, PreviewState};
 
 /// Default capture width in pixels. Paired with [`PREVIEW_HEIGHT`]
-/// — square dims are the natural input shape for the circular mask
-/// the follow-up commit applies; rendering also lands at 480×480,
-/// so source-side scaling is a no-op at the readback stage.
-pub const PREVIEW_WIDTH: u32 = 480;
+/// — square dims are the natural input shape for the circular bubble
+/// mask. 720×720 (M-QUAL.3): the webcam's native 16:9 frame is
+/// center-cropped to 1:1 then scaled here, so the recorded bubble is
+/// crisp at native-resolution output instead of an upscaled 480².
+pub const PREVIEW_WIDTH: u32 = 720;
 
 /// Default capture height in pixels. Matches [`PREVIEW_WIDTH`] —
 /// see that constant's docs for the square-crop rationale.
-pub const PREVIEW_HEIGHT: u32 = 480;
+pub const PREVIEW_HEIGHT: u32 = 720;
 
 /// Source framerate request. gst will negotiate the closest the OS
 /// camera supports; the actual rate is reflected in

@@ -222,6 +222,64 @@ The M-RECORD-EXPORT.GATE closeout shipped with a test-pattern encoder feed (soli
 - **Cursor smoothing / zoom effects.** M-CURSOR.
 - **Multi-display compose** (record display 1 + display 2 side-by-side). M-SCK.MULTI.
 
+## Phase 7 — Recording quality (M-QUAL, 2 chunks) — appended 2026-05-26
+
+Raises recorded output quality ([ISS-08](ISSUES.md)). v1 target axis:
+**native-resolution screen capture**. The blocker was the encode
+architecture — recording wrote *raw* BGRA to disk every frame
+(≈250 MB/s at 1080p, >1 GB/s at Retina), so native res was untenable.
+M-QUAL.1 fixes the architecture; M-QUAL.2 lifts the resolution.
+Deferred to later passes: encoder bitrate / keyframe / profile tuning
+(Axis 1) and HDR / 10-bit / wide-gamut color (Axis 3).
+
+#### M-QUAL.1 — live (streaming) video encode
+- New `LiveGstreamerEncoder` (`VideoEncoder` impl): spawns the encode
+  pipeline up front and streams BGRA frames into `gst-launch-1.0`'s
+  stdin (`fdsrc fd=0 ! rawvideoparse ! videoconvert ! vtenc_h264_hw !
+  h264parse ! mp4mux ! filesink`), so only *compressed* video lands on
+  disk during capture. Audio stays a small raw `.f32.scratch`,
+  remuxed (video stream-copied, no re-encode) at finalize.
+- CLI-pipe, **not** `gstreamer-rs` — no compile-time libgstreamer dep;
+  respects the project's CLI-pipe convention and keeps the Windows
+  build green.
+- Swapped into both `EncoderHandle::start_with_real_capture` and
+  `start_with_test_pattern`. The live encoder is the sole `VideoEncoder`
+  impl — the earlier batch `GstreamerEncoder` was removed in M-QUAL.6
+  once the live path was field-proven (the transcode round-trip tests
+  now generate their fixture MP4s via the live encoder).
+- **Done when:** macOS integration test pushes synthetic BGRA + audio
+  through the live encoder, finalizes, and `gst-discoverer-1.0`
+  confirms an H.264 + AAC MP4 of the right dims; a video-only run
+  produces a no-audio MP4 via the move path. Argv unit tests for the
+  live + remux builders.
+
+#### M-QUAL.2 — native-resolution screen capture
+- Resolve the target display's true backing pixel dims
+  (`CGDisplayModeGetPixelWidth/Height`; `SCDisplay::frame` already
+  wired via `objc2-core-graphics`) instead of the fixed
+  `DEFAULT_WIDTH/HEIGHT`; round to even dims (H.264). Read back the
+  negotiated SCStream dims so the encoder caps match exactly.
+- Thread the resolved dims through the `start_recording` junction into
+  `EncoderConfig` + wisp `StreamDimensions` + the compose
+  `RenderTexture` (no longer hardcoded 1920×1080 as at M-PIX.5).
+- **Done when:** a recording on a Retina display produces an MP4 at
+  the display's native pixel resolution (not 1080p); dim-resolver unit
+  tests (even-rounding, sane cap); integration that a native-dim
+  config yields a correctly-sized MP4.
+
+#### M-QUAL.3 — webcam bubble at 720×720, de-squished
+- The webcam bubble captured at 480×480 *and* was aspect-distorted: a
+  16:9 feed was `videoscale`d straight into a square (squished face).
+- Insert `aspectratiocrop aspect-ratio=1/1` before `videoscale` in the
+  shared `live_camera_tail_args` (center-crop to 1:1, then scale) and
+  bump the square capture to 720×720 — `PREVIEW_WIDTH/HEIGHT` (media
+  capture, → compose `cam_dims`) and `PREVIEW_CANVAS_WIDTH/HEIGHT`
+  (app-ui live-preview Canvas2D) in lockstep.
+- **Done when:** the recorded circular bubble is undistorted + visibly
+  sharper at native-res output; pipeline-order unit test asserts
+  `aspectratiocrop → videoscale → caps`; app-ui tests + wasm32 clippy
+  green.
+
 ## Out of scope for this milestone
 
 Explicitly punted to follow-up milestones:
