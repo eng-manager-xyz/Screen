@@ -101,6 +101,33 @@ pub enum ChartElementId {
     Candle(usize),
     /// Gantt bar at index N (matches `Bar` array order).
     GanttBar(usize),
+    /// Gantt row band at index N (matches `Gantt::rows` order).
+    /// Emitted by [`crate::Gantt::row_hit_regions`] so hover events
+    /// over the row's full-width band resolve to a project-level
+    /// tooltip target, independent of which bars sit inside it.
+    GanttRow(usize),
+    /// Gantt timeline cell at `(row_idx, week_idx)`. `week_idx` is
+    /// the index in `gantt::layout::weeks_in_range(gantt.range)`,
+    /// so callers can recover the cell's `DateRange` by re-running
+    /// that helper. Emitted by [`crate::Gantt::cell_hit_regions`].
+    GanttCell {
+        /// Row index in `Gantt::rows`.
+        row_idx: usize,
+        /// Week-bucket index in `weeks_in_range(gantt.range)`.
+        week_idx: usize,
+    },
+    /// Gantt header column for week N. Same `week_idx` convention
+    /// as [`GanttCell`](Self::GanttCell) so callers can pair them.
+    /// Emitted by [`crate::Gantt::header_hit_regions`].
+    GanttHeaderWeek(usize),
+    /// Gantt holiday pip in the header. Indexes into the holiday
+    /// markers in `Gantt::markers` filtered to
+    /// `GanttMarker::Holiday` variants in iteration order.
+    GanttHeaderHoliday(usize),
+    /// Gantt quarter tick in the header. Indexes into the quarter
+    /// markers in `Gantt::markers` filtered to
+    /// `GanttMarker::QuarterStart` variants in iteration order.
+    GanttHeaderQuarter(usize),
     /// Box-plot box at index N.
     Box(usize),
     /// KDE-plot curve point at index N.

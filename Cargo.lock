@@ -9651,6 +9651,7 @@ dependencies = [
  "pollster",
  "screen-wisp",
  "wgpu",
+ "wisp-animation",
 ]
 
 [[package]]
