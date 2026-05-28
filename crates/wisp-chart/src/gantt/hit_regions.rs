@@ -83,6 +83,101 @@ impl Gantt {
         out
     }
 
+    /// Pickable header regions. Emits three categories in one call,
+    /// matching the three `GanttHeader*` variants in
+    /// [`ChartElementId`]:
+    ///
+    /// - One [`ChartElementId::GanttHeaderWeek`] region per week
+    ///   column above the timeline.
+    /// - One [`ChartElementId::GanttHeaderHoliday`] region per
+    ///   `GanttMarker::Holiday` in `gantt.markers` (in marker
+    ///   iteration order). Holiday pips render inside the header
+    ///   band.
+    /// - One [`ChartElementId::GanttHeaderQuarter`] region per
+    ///   `GanttMarker::QuarterStart`.
+    ///
+    /// All regions live within `y ∈ [0, theme.gantt.header_height)`
+    /// — they don't intrude into the body rows, so they coexist
+    /// cleanly with row / cell / bar hit regions even when the
+    /// host registers all four sets at once.
+    ///
+    /// The width of holiday + quarter regions is intentionally
+    /// generous (8 viewport pixels minimum) so users can click
+    /// without sub-pixel precision.
+    #[must_use]
+    pub fn header_hit_regions(&self, theme: &Theme, viewport_px: Vec2) -> Vec<GanttHitRegion> {
+        let weeks = crate::gantt::layout::weeks_in_range(self.range);
+        let mut out = Vec::new();
+        let header_h = theme.gantt.header_height;
+
+        // Week columns inside the header band.
+        for (week_idx, week) in weeks.iter().enumerate() {
+            let x_start = crate::gantt::layout::date_to_x(
+                week.start,
+                self.range,
+                theme.gantt.gutter_width,
+                viewport_px.x,
+            );
+            let x_end = crate::gantt::layout::date_to_x(
+                week.end,
+                self.range,
+                theme.gantt.gutter_width,
+                viewport_px.x,
+            );
+            out.push(GanttHitRegion::new(
+                Rect::new(x_start, 0.0, (x_end - x_start).max(0.0), header_h),
+                ChartElementId::GanttHeaderWeek(week_idx),
+            ));
+        }
+
+        // Holiday + quarter markers — track separate indices so
+        // the host can iterate `Gantt::markers` and pair indices.
+        let mut holiday_idx = 0_usize;
+        let mut quarter_idx = 0_usize;
+        for marker in &self.markers {
+            match marker {
+                crate::gantt::GanttMarker::Holiday { range, .. } => {
+                    let x_start = crate::gantt::layout::date_to_x(
+                        range.start,
+                        self.range,
+                        theme.gantt.gutter_width,
+                        viewport_px.x,
+                    );
+                    let x_end = crate::gantt::layout::date_to_x(
+                        range.end,
+                        self.range,
+                        theme.gantt.gutter_width,
+                        viewport_px.x,
+                    );
+                    let w = (x_end - x_start).max(8.0); // clickable minimum
+                    out.push(GanttHitRegion::new(
+                        Rect::new(x_start, 0.0, w, header_h),
+                        ChartElementId::GanttHeaderHoliday(holiday_idx),
+                    ));
+                    holiday_idx += 1;
+                }
+                crate::gantt::GanttMarker::QuarterStart { date, .. } => {
+                    let x = crate::gantt::layout::date_to_x(
+                        *date,
+                        self.range,
+                        theme.gantt.gutter_width,
+                        viewport_px.x,
+                    );
+                    // 8 px wide centred on the quarter tick.
+                    out.push(GanttHitRegion::new(
+                        Rect::new(x - 4.0, 0.0, 8.0, header_h),
+                        ChartElementId::GanttHeaderQuarter(quarter_idx),
+                    ));
+                    quarter_idx += 1;
+                }
+                // CurrentDate + PlanningOverlay are body-pane
+                // overlays — not header hit targets.
+                _ => {}
+            }
+        }
+        out
+    }
+
     /// Pickable timeline cells — one region per (row, week) pair.
     ///
     /// Weeks are 7-day buckets anchored at `gantt.range.start`
@@ -245,6 +340,109 @@ mod tests {
         g.range = DateRange::from_range(date(2026, 1, 1)..date(2026, 1, 1));
         let regions = g.cell_hit_regions(&Theme::light(), Vec2::new(1920.0, 800.0));
         assert!(regions.is_empty());
+    }
+
+    #[test]
+    fn header_hit_regions_emit_one_per_week() {
+        let g = fixture();
+        let theme = Theme::light();
+        let weeks = crate::gantt::layout::weeks_in_range(g.range);
+        let regions = g.header_hit_regions(&theme, Vec2::new(1920.0, 800.0));
+        // Only week regions (no markers in fixture).
+        assert_eq!(regions.len(), weeks.len());
+        assert_eq!(regions[0].element, ChartElementId::GanttHeaderWeek(0));
+        assert_eq!(
+            regions.last().unwrap().element,
+            ChartElementId::GanttHeaderWeek(weeks.len() - 1)
+        );
+    }
+
+    #[test]
+    fn header_hit_regions_stay_inside_header_band() {
+        let g = fixture();
+        let theme = Theme::light();
+        let regions = g.header_hit_regions(&theme, Vec2::new(1920.0, 800.0));
+        for r in &regions {
+            // y starts at 0, never spills below header_height.
+            assert!(r.rect.min.y >= -1e-4);
+            assert!((r.rect.min.y + r.rect.size.y) <= theme.gantt.header_height + 1e-4);
+        }
+    }
+
+    #[test]
+    fn header_hit_regions_include_holiday_and_quarter_markers() {
+        use crate::gantt::GanttMarker;
+        let mut g = fixture();
+        g.markers.push(GanttMarker::Holiday {
+            range: crate::gantt::DateRange::day(date(2026, 7, 4)),
+            label: "Independence Day".into(),
+        });
+        g.markers.push(GanttMarker::QuarterStart {
+            date: date(2026, 4, 1),
+            label: Some("Q2 2026".into()),
+        });
+        // CurrentDate + PlanningOverlay should be IGNORED by the
+        // header pass (they live in the body pane).
+        g.markers.push(GanttMarker::CurrentDate {
+            date: date(2026, 6, 15),
+        });
+        let theme = Theme::light();
+        let weeks = crate::gantt::layout::weeks_in_range(g.range);
+        let regions = g.header_hit_regions(&theme, Vec2::new(1920.0, 800.0));
+        // weeks + 1 holiday + 1 quarter. CurrentDate skipped.
+        assert_eq!(regions.len(), weeks.len() + 2);
+        // Holiday + quarter elements present.
+        assert!(
+            regions
+                .iter()
+                .any(|r| matches!(r.element, ChartElementId::GanttHeaderHoliday(0)))
+        );
+        assert!(
+            regions
+                .iter()
+                .any(|r| matches!(r.element, ChartElementId::GanttHeaderQuarter(0)))
+        );
+    }
+
+    #[test]
+    fn header_hit_region_indices_are_distinct_per_kind() {
+        use crate::gantt::GanttMarker;
+        let mut g = fixture();
+        // Two holidays — distinct indices.
+        g.markers.push(GanttMarker::Holiday {
+            range: crate::gantt::DateRange::day(date(2026, 7, 4)),
+            label: "Indep".into(),
+        });
+        g.markers.push(GanttMarker::Holiday {
+            range: crate::gantt::DateRange::day(date(2026, 12, 25)),
+            label: "Xmas".into(),
+        });
+        g.markers.push(GanttMarker::QuarterStart {
+            date: date(2026, 4, 1),
+            label: None,
+        });
+        g.markers.push(GanttMarker::QuarterStart {
+            date: date(2026, 7, 1),
+            label: None,
+        });
+        let theme = Theme::light();
+        let regions = g.header_hit_regions(&theme, Vec2::new(1920.0, 800.0));
+        let holidays: Vec<_> = regions
+            .iter()
+            .filter_map(|r| match r.element {
+                ChartElementId::GanttHeaderHoliday(i) => Some(i),
+                _ => None,
+            })
+            .collect();
+        let quarters: Vec<_> = regions
+            .iter()
+            .filter_map(|r| match r.element {
+                ChartElementId::GanttHeaderQuarter(i) => Some(i),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(holidays, vec![0, 1]);
+        assert_eq!(quarters, vec![0, 1]);
     }
 
     #[test]

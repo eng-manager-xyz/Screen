@@ -116,6 +116,18 @@ pub enum ChartElementId {
         /// Week-bucket index in `weeks_in_range(gantt.range)`.
         week_idx: usize,
     },
+    /// Gantt header column for week N. Same `week_idx` convention
+    /// as [`GanttCell`](Self::GanttCell) so callers can pair them.
+    /// Emitted by [`crate::Gantt::header_hit_regions`].
+    GanttHeaderWeek(usize),
+    /// Gantt holiday pip in the header. Indexes into the holiday
+    /// markers in `Gantt::markers` filtered to
+    /// `GanttMarker::Holiday` variants in iteration order.
+    GanttHeaderHoliday(usize),
+    /// Gantt quarter tick in the header. Indexes into the quarter
+    /// markers in `Gantt::markers` filtered to
+    /// `GanttMarker::QuarterStart` variants in iteration order.
+    GanttHeaderQuarter(usize),
     /// Box-plot box at index N.
     Box(usize),
     /// KDE-plot curve point at index N.
