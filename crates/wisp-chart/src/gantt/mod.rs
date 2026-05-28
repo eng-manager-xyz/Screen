@@ -7,6 +7,7 @@
 pub mod chrome;
 pub mod data;
 pub mod hit_regions;
+pub mod kinetic;
 pub mod layout;
 pub mod pan;
 pub mod render;
@@ -15,6 +16,7 @@ pub mod scene;
 
 pub use data::{Bar, DateRange, Gantt, GanttMarker, GanttRole, Person, PersonMap, Row, RowKind};
 pub use hit_regions::GanttHitRegion;
+pub use kinetic::{DEFAULT_TAU, KineticPan, MIN_VELOCITY_PX_PER_S};
 pub use pan::{GanttPanController, GanttViewport};
 pub use resolver::GanttHitResolver;
 pub use scene::{GanttScene, Pane, PaneScissor, pane_scissor};

@@ -21,6 +21,11 @@ workspace = true
 #    a Pixi-equivalent primitive renderer."
 [dependencies]
 wisp.workspace = true
+# wisp-animation supplies the `Decay` primitive used by Gantt's
+# kinetic-pan (WG.7 / AUT-327). The dep is added here (not in the
+# workspace's wisp-chart-web) because the math is small + pure,
+# and downstream chart-web/native consumers reuse it unchanged.
+wisp-animation = { path = "../wisp-animation" }
 glam.workspace = true
 # jiff is scoped to wisp-chart; not added to workspace dependencies
 # so it cannot leak into wisp. Re-pin in this file when bumping.
