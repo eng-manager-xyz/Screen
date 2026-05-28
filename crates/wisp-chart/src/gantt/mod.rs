@@ -4,6 +4,7 @@
 //! Layout + render passes land in subsequent M-CHART.0 chunks
 //! (AUT-180).
 
+pub mod chrome;
 pub mod data;
 pub mod hit_regions;
 pub mod layout;
