@@ -106,6 +106,16 @@ pub enum ChartElementId {
     /// over the row's full-width band resolve to a project-level
     /// tooltip target, independent of which bars sit inside it.
     GanttRow(usize),
+    /// Gantt timeline cell at `(row_idx, week_idx)`. `week_idx` is
+    /// the index in `gantt::layout::weeks_in_range(gantt.range)`,
+    /// so callers can recover the cell's `DateRange` by re-running
+    /// that helper. Emitted by [`crate::Gantt::cell_hit_regions`].
+    GanttCell {
+        /// Row index in `Gantt::rows`.
+        row_idx: usize,
+        /// Week-bucket index in `weeks_in_range(gantt.range)`.
+        week_idx: usize,
+    },
     /// Box-plot box at index N.
     Box(usize),
     /// KDE-plot curve point at index N.

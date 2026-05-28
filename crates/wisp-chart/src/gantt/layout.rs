@@ -103,6 +103,36 @@ pub fn bar_pixel_rect(
     })
 }
 
+/// Split `range` into 7-day buckets, anchored at `range.start`.
+/// The final bucket may be shorter if `range`'s length isn't a
+/// multiple of 7.
+///
+/// Used by [`crate::Gantt::cell_hit_regions`] (AUT-318) to emit
+/// one pickable region per timeline week.
+#[must_use]
+pub fn weeks_in_range(range: DateRange) -> Vec<DateRange> {
+    let total_days = days_between(range.start, range.end).max(0);
+    if total_days == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut cursor = range.start;
+    let mut remaining = total_days;
+    while remaining > 0 {
+        let chunk = remaining.min(7);
+        let next = cursor
+            .checked_add(jiff::Span::new().days(chunk))
+            .unwrap_or(range.end);
+        out.push(DateRange {
+            start: cursor,
+            end: next,
+        });
+        cursor = next;
+        remaining -= chunk;
+    }
+    out
+}
+
 /// Pixel-space rectangle, top-left origin.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PixelRect {
@@ -204,6 +234,33 @@ mod tests {
         // Width > 0 — the bar spans 28 days, so a sliver of the
         // plot width.
         assert!(rect.w > 0.0);
+    }
+
+    #[test]
+    fn weeks_in_range_year_emits_53_buckets() {
+        // 365 days = 52 full weeks + 1 partial week.
+        let weeks = weeks_in_range(year_2026());
+        assert_eq!(weeks.len(), 53);
+        // First bucket starts on Jan 1.
+        assert_eq!(weeks[0].start, date(2026, 1, 1));
+        // Last bucket ends on Dec 31 / Jan 1 of next year.
+        assert_eq!(weeks.last().unwrap().end, date(2027, 1, 1));
+    }
+
+    #[test]
+    fn weeks_in_range_empty_for_zero_day_range() {
+        let r = DateRange::from_range(date(2026, 1, 1)..date(2026, 1, 1));
+        assert!(weeks_in_range(r).is_empty());
+    }
+
+    #[test]
+    fn weeks_in_range_handles_under_seven_days() {
+        let r = DateRange::from_range(date(2026, 1, 1)..date(2026, 1, 4));
+        let weeks = weeks_in_range(r);
+        assert_eq!(weeks.len(), 1);
+        // Single 3-day bucket — shorter than 7.
+        assert_eq!(weeks[0].start, date(2026, 1, 1));
+        assert_eq!(weeks[0].end, date(2026, 1, 4));
     }
 
     #[test]
