@@ -81,6 +81,7 @@
 - [Data-struct API](./charts/gantt/api.md)
 - [Theme + palette](./charts/gantt/theme.md)
 - [Time axis](./charts/gantt/time-axis.md)
+- [Interaction — pan + frozen panes + click-to-select](./charts/gantt/interaction.md)
 - [Example: 2026 roadmap](./charts/gantt/examples/2026-roadmap.md)
 
 # Web demo
