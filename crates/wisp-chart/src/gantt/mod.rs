@@ -6,6 +6,8 @@
 
 pub mod data;
 pub mod layout;
+pub mod pan;
 pub mod render;
 
 pub use data::{Bar, DateRange, Gantt, Person, PersonMap, Row};
+pub use pan::{GanttPanController, GanttViewport};

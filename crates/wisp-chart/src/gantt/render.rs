@@ -32,14 +32,36 @@ impl Gantt {
     /// not a render error.
     #[must_use]
     pub fn emit_graphics(&self, theme: &Theme, viewport_px: Vec2) -> Graphics {
-        let mut g = Graphics::new();
+        self.emit_with_interaction(theme, viewport_px).graphics
+    }
 
-        // Full-frame background. Rect in NDC.
+    /// Like [`emit_graphics`](Self::emit_graphics) but additionally
+    /// returns a reverse-lookup table mapping each bar's primitive
+    /// index → [`ChartElementId::GanttBar`](crate::interaction::ChartElementId::GanttBar)
+    /// keyed by the bar's index in [`Gantt::bars`].
+    ///
+    /// The first primitive is the cosmetic chart background — it has
+    /// NO entry in `elements` (clicks on empty canvas resolve to no
+    /// gantt bar). Bars referencing unknown rows are still skipped
+    /// (matches `emit_graphics`); the elements vector therefore can
+    /// be SHORTER than `self.bars.len()`, but every entry carries the
+    /// bar's ORIGINAL index in `self.bars` so the caller can still
+    /// map back to the source data.
+    #[must_use]
+    pub fn emit_with_interaction(
+        &self,
+        theme: &Theme,
+        viewport_px: Vec2,
+    ) -> crate::interaction::EmittedChart {
+        let mut g = Graphics::new();
+        let mut elements: Vec<(usize, crate::interaction::ChartElementId)> = Vec::new();
+
+        // Full-frame background — cosmetic, NOT pickable.
         g.fill(Fill::Solid(chart_to_wisp(theme.bg)));
         g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
 
         // Bars.
-        for bar in &self.bars {
+        for (bar_idx, bar) in self.bars.iter().enumerate() {
             let Some(rect_px) = bar_pixel_rect(bar, self, theme, viewport_px.x) else {
                 continue;
             };
@@ -48,9 +70,16 @@ impl Gantt {
             let ndc = pixel_rect_to_ndc(rect_px, viewport_px);
             let corner_ndc = theme.gantt.bar_corner_radius / viewport_px.y * 2.0;
             g.draw_rounded_rect(ndc, corner_ndc);
+            elements.push((
+                g.primitive_count() - 1,
+                crate::interaction::ChartElementId::GanttBar(bar_idx),
+            ));
         }
 
-        g
+        crate::interaction::EmittedChart {
+            graphics: g,
+            elements,
+        }
     }
 }
 
@@ -164,6 +193,62 @@ mod tests {
         assert!((r.min.y - -1.0).abs() < 1e-6);
         assert!((r.max().x - 1.0).abs() < 1e-6);
         assert!((r.max().y - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn emit_with_interaction_returns_one_element_per_bar_with_background_unmapped() {
+        let g = fixture().emit_with_interaction(&Theme::light(), Vec2::new(1920.0, 800.0));
+        // 1 background + 2 bars in graphics.
+        assert_eq!(g.graphics.primitive_count(), 3);
+        // 2 bars in elements — background is NOT mapped.
+        assert_eq!(g.elements.len(), 2);
+        assert_eq!(
+            g.elements[0].1,
+            crate::interaction::ChartElementId::GanttBar(0)
+        );
+        assert_eq!(
+            g.elements[1].1,
+            crate::interaction::ChartElementId::GanttBar(1)
+        );
+        // Primitive indices skip the background (index 0).
+        assert_eq!(g.elements[0].0, 1);
+        assert_eq!(g.elements[1].0, 2);
+    }
+
+    #[test]
+    fn emit_with_interaction_preserves_original_bar_index_when_unknown_rows_are_skipped() {
+        // Bars: [valid(row=a), ghost(row=ghost), valid(row=b)]. Middle one is dropped.
+        let mut g = fixture();
+        g.bars.insert(
+            1,
+            Bar::new("ghost", date(2026, 2, 1)..date(2026, 3, 1), "Carol"),
+        );
+        // Now bars = [valid_0(a), ghost_1, valid_2(b)]
+        let emitted = g.emit_with_interaction(&Theme::light(), Vec2::new(1920.0, 800.0));
+        // 1 background + 2 valid bars (ghost dropped).
+        assert_eq!(emitted.graphics.primitive_count(), 3);
+        assert_eq!(emitted.elements.len(), 2);
+        // Original indices preserved: bar at position 0 and bar at position 2.
+        assert_eq!(
+            emitted.elements[0].1,
+            crate::interaction::ChartElementId::GanttBar(0)
+        );
+        assert_eq!(
+            emitted.elements[1].1,
+            crate::interaction::ChartElementId::GanttBar(2)
+        );
+    }
+
+    #[test]
+    fn emit_graphics_parity_with_emit_with_interaction() {
+        // The thin wrapper must produce primitive-count-identical
+        // output. Same fixture, same viewport.
+        let f = fixture();
+        let theme = Theme::light();
+        let vp = Vec2::new(1920.0, 800.0);
+        let g_simple = f.emit_graphics(&theme, vp);
+        let g_full = f.emit_with_interaction(&theme, vp).graphics;
+        assert_eq!(g_simple.primitive_count(), g_full.primitive_count());
     }
 
     #[test]
