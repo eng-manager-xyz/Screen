@@ -10,7 +10,9 @@ pub mod hit_regions;
 pub mod layout;
 pub mod pan;
 pub mod render;
+pub mod scene;
 
 pub use data::{Bar, DateRange, Gantt, GanttMarker, GanttRole, Person, PersonMap, Row, RowKind};
 pub use hit_regions::GanttHitRegion;
 pub use pan::{GanttPanController, GanttViewport};
+pub use scene::{GanttScene, Pane, PaneScissor, pane_scissor};
