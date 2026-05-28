@@ -109,6 +109,7 @@ pub fn sample_gantt() -> Gantt {
             Bar::new("bool", date(2026, 8, 1)..date(2026, 12, 15), "Matt"),
         ],
         people,
+        markers: Vec::new(),
     }
 }
 

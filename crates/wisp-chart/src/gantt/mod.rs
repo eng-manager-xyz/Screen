@@ -9,5 +9,5 @@ pub mod layout;
 pub mod pan;
 pub mod render;
 
-pub use data::{Bar, DateRange, Gantt, Person, PersonMap, Row};
+pub use data::{Bar, DateRange, Gantt, GanttMarker, GanttRole, Person, PersonMap, Row, RowKind};
 pub use pan::{GanttPanController, GanttViewport};

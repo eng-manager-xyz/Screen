@@ -191,6 +191,7 @@ mod tests {
             rows: vec![Row::new("a", "A"), Row::new("b", "B")],
             bars: vec![],
             people: crate::PersonMap::default(),
+            markers: Vec::new(),
         };
         gantt
             .bars
@@ -217,6 +218,7 @@ mod tests {
                 "Matt",
             )],
             people: crate::PersonMap::default(),
+            markers: Vec::new(),
         };
         assert!(bar_pixel_rect(&gantt.bars[0], &gantt, &theme, 1920.0).is_none());
     }

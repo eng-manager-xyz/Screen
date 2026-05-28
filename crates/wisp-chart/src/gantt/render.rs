@@ -154,6 +154,7 @@ mod tests {
                 Bar::new("b", date(2026, 3, 1)..date(2026, 10, 1), "Alice"),
             ],
             people,
+            markers: Vec::new(),
         }
     }
 
