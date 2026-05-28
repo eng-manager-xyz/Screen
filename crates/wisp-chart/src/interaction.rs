@@ -101,6 +101,11 @@ pub enum ChartElementId {
     Candle(usize),
     /// Gantt bar at index N (matches `Bar` array order).
     GanttBar(usize),
+    /// Gantt row band at index N (matches `Gantt::rows` order).
+    /// Emitted by [`crate::Gantt::row_hit_regions`] so hover events
+    /// over the row's full-width band resolve to a project-level
+    /// tooltip target, independent of which bars sit inside it.
+    GanttRow(usize),
     /// Box-plot box at index N.
     Box(usize),
     /// KDE-plot curve point at index N.
