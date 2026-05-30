@@ -492,7 +492,7 @@ impl Plot {
             let Some(bx_centre) = layout
                 .x_scale
                 .range_for(&x_val.to_owned())
-                .map(|(a, b)| (a + b) * 0.5)
+                .map(|(a, b)| f32::midpoint(a, b))
             else {
                 continue;
             };
@@ -802,7 +802,7 @@ impl Plot {
             };
             let Some(bx_centre) = x_scale
                 .range_for(&x_val.to_owned())
-                .map(|(a, b)| (a + b) * 0.5)
+                .map(|(a, b)| f32::midpoint(a, b))
             else {
                 continue;
             };

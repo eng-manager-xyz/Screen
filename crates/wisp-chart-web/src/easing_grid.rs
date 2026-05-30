@@ -263,7 +263,7 @@ pub fn build_labels(font: &Font) -> Vec<Text> {
                 reason = "label length capped by table contents (< 20)"
             )]
             let label_w = glyph_w * name.chars().count() as f32;
-            let centre_x = (rect.min.x + rect.max().x) * 0.5;
+            let centre_x = f32::midpoint(rect.min.x, rect.max().x);
             text.container.transform.position =
                 Vec2::new(centre_x - label_w * 0.5, rect.min.y - LABEL_CELL * 2.5);
             text

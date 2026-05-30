@@ -238,7 +238,7 @@ pub fn emit_x_axis_text(
 
     if let Some(t) = title {
         let title_offset_y = label_offset_y + axis_theme.tick_label_font_size * 2.2;
-        let centre_x = (plot_rect.min.x + plot_rect.max().x) * 0.5;
+        let centre_x = f32::midpoint(plot_rect.min.x, plot_rect.max().x);
         let anchor_px = Vec2::new(centre_x, axis_y + title_offset_y * label_y_dir);
         let spec = ChartTextSpec {
             content: t.to_owned(),

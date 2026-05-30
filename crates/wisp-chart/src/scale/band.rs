@@ -98,7 +98,7 @@ impl<C: Eq + Clone> BandScale<C> {
     #[must_use]
     pub fn band_centre(&self, i: usize) -> Option<f32> {
         let (s, e) = self.band_at(i)?;
-        Some((s + e) * 0.5)
+        Some(f32::midpoint(s, e))
     }
 
     fn band_range_at(&self, i: usize) -> (f32, f32) {
@@ -160,7 +160,7 @@ mod tests {
         let s = BandScale::new(["a", "b", "c"], (0.0, 300.0)).padding(0.2);
         let centre = s.band_centre(1).unwrap();
         let (s0, s1) = s.band_at(1).unwrap();
-        assert!((centre - (s0 + s1) * 0.5).abs() < 1e-4);
+        assert!((centre - f32::midpoint(s0, s1)).abs() < 1e-4);
         assert!(s0 < centre && centre < s1);
     }
 
