@@ -1,0 +1,26 @@
+# Nextest configuration — https://nexte.st/docs/configuration/
+#
+# GStreamer-backed integration tests spawn `gst-launch-1.0` subprocesses
+# (decode / seek / encode) and some also open a wgpu device. Run many of
+# them concurrently under nextest's default ~16-way parallelism and they
+# race on subprocess spawn + device handles, flaking with *real-looking*
+# decode panics — e.g. `decode::editor_seek::out_of_range_seek_clamps_to_last`
+# and `screen-app::editor_pipeline` — that pass deterministically when
+# re-run solo. This bit macOS `gate-screen` (the visual truth runner),
+# reding the gate on unlucky scheduling unrelated to the change under test.
+# See CLAUDE.md § "GStreamer / external CLI integration".
+#
+# Fix: collect every gst-backed integration test binary into one `gstreamer`
+# group capped at a single concurrent test (no spawn contention), plus one
+# retry to absorb any residual transient — a genuinely broken test still
+# fails both attempts and is caught. Fast unit / wgpu tests keep full
+# parallelism. When you add a new gst-spawning integration test, add its
+# binary here.
+
+[test-groups]
+gstreamer = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(editor_seek) | binary(gstreamer_integration) | binary(encode_integration) | binary(render_smoke) | binary(editor_pipeline) | binary(player_session) | binary(commands)'
+test-group = 'gstreamer'
+retries = 1
