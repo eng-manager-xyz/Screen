@@ -293,6 +293,40 @@ pub fn install_editor_saved_listener(saved: RwSignal<Option<String>>) {
     });
 }
 
+// ── ED.24: recordings library ───────────────────────────────────────────
+
+/// Library mirror of the backend `RecordingEntry` (deserialize side).
+#[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
+pub struct RecordingEntry {
+    /// Absolute path to the `.mp4`.
+    pub path: String,
+    /// Display name (file stem).
+    pub name: String,
+    /// Whether a saved `.screenproj` sits beside it.
+    pub has_project: bool,
+}
+
+#[wasm_bindgen]
+extern "C" {
+    /// List recordings; results arrive as a `recordings-listed` event.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenListRecordings", catch)]
+    fn screen_list_recordings_js() -> Result<JsValue, JsValue>;
+}
+
+/// Ask the shell to list recordings (results via `recordings-listed`).
+pub fn list_recordings() {
+    let _ = screen_list_recordings_js();
+}
+
+/// Install a `recordings-listed` listener pushing the entries into `entries`.
+pub fn install_recordings_listener(entries: RwSignal<Vec<RecordingEntry>>) {
+    on_custom_event("recordings-listed", move |custom| {
+        if let Ok(list) = serde_wasm_bindgen::from_value::<Vec<RecordingEntry>>(custom.detail()) {
+            entries.set(list);
+        }
+    });
+}
+
 #[cfg(test)]
 mod export_tests {
     use super::export_percent;

@@ -79,6 +79,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     provide_context(editor_saved);
     crate::editor_ipc::install_editor_saved_listener(editor_saved);
 
+    // ED.24 — recordings library entries, fed by the `recordings-listed` event.
+    let editor_recordings = RwSignal::new(Vec::<crate::editor_ipc::RecordingEntry>::new());
+    provide_context(editor_recordings);
+    crate::editor_ipc::install_recordings_listener(editor_recordings);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.
@@ -204,8 +209,7 @@ fn NonRecorderSurfaces(active: RwSignal<AppSection>) -> impl IntoView {
             fallback=move || view! { <EditorOrLater active=active /> }
         >
             <section class="app-surface app-surface--library">
-                <h1>"Library"</h1>
-                <p>"Recordings grid + sidebar. Future tickets: AUT-134 / AUT-135."</p>
+                <crate::recordings_library::RecordingsLibrary active=active />
             </section>
         </Show>
     }

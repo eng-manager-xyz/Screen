@@ -195,6 +195,18 @@ pub fn set_cursor(
     });
 }
 
+/// Retune the easing curve of the zoom with the given id (ED.13 dopesheet).
+pub fn set_zoom_ease(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    id: edit::zoom::ZoomId,
+    ease: edit::zoom::EditEase,
+) {
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::SetZoomEase { id, ease });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {

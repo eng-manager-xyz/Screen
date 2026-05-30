@@ -28,6 +28,7 @@ export. Each chunk retraces one step:
 | The mag track running beside the picture | **ED.10** audio waveform |
 | The razor + tape splice | **ED.11** split / ripple / undo |
 | The exposure sheet — moves planned per frame | **ED.12** zoom lane |
+| The dope sheet — keyframed timing + ease | **ED.13** dopesheet |
 | Step- / skip-printing — slow & fast motion | **ED.14** per-segment speed |
 | The hard matte + pan-and-scan | **ED.15** crop + aspect |
 | The rostrum camera's slow push-in | **ED.16** zoom engine |
@@ -96,6 +97,7 @@ sixty years on.
 - [Audio waveform lane — ED.10](./chunks/ed10-waveform.md)
 - [Splitting, ripple-delete + undo/redo — ED.11](./chunks/ed11-editing.md)
 - [The zoom lane — ED.12](./chunks/ed12-zoom-lane.md)
+- [Dopesheet keyframes + Easy Ease — ED.13](./chunks/ed13-dopesheet.md)
 - [Per-segment speed — ED.14](./chunks/ed14-speed.md)
 - [Crop + aspect reframe — ED.15](./chunks/ed15-crop-aspect.md)
 - [The zoom engine — ED.16](./chunks/ed16-zoom-engine.md)
@@ -106,3 +108,4 @@ sixty years on.
 - [End-to-end edited export — ED.21](./chunks/ed21-export.md)
 - [Export progress + cancel — ED.22](./chunks/ed22-export-ui.md)
 - [Project persistence — `.screenproj` — ED.23](./chunks/ed23-persistence.md)
+- [Recordings library + open-in-editor — ED.24](./chunks/ed24-library.md)

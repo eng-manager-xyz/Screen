@@ -278,6 +278,7 @@ pub fn EditorSurface() -> impl IntoView {
                             <crate::timeline_view::TimelineRuler />
                             <crate::filmstrip::VideoFilmstrip />
                             <crate::zoom_lane::ZoomLane />
+                            <crate::zoom_dopesheet::ZoomDopesheet />
                             <crate::waveform::AudioWaveform />
                             <EditorTransportBar />
                         })

@@ -1227,3 +1227,113 @@
 .export-save:hover {
   border-color: var(--accent, #4fc3f7);
 }
+
+/* ── Recordings library (ED.24) ─────────────────────────────────────── */
+.recordings-library {
+  padding: 20px;
+  width: 100%;
+  overflow: auto;
+}
+.library-title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  color: var(--fg, #e8eaed);
+}
+.library-empty {
+  color: var(--fg-muted, #8a909a);
+  font-size: 14px;
+}
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.library-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #2c3036);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.library-card:hover {
+  border-color: var(--accent, #4fc3f7);
+  transform: translateY(-2px);
+}
+.library-card-thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #2a2f3a, #1a1d21);
+}
+.library-card-name {
+  font-size: 13px;
+  color: var(--fg, #e8eaed);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.library-card-badge {
+  align-self: flex-start;
+  padding: 1px 7px;
+  font-size: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #4fc3f7) 24%, transparent);
+  color: var(--accent, #4fc3f7);
+}
+
+/* ── Zoom dopesheet (ED.13: keyframes + Easy Ease) ──────────────────── */
+.dopesheet {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--surface-1, #1a1d21);
+  border: 1px solid var(--border, #2c3036);
+  border-radius: var(--radius-sm, 6px);
+}
+.dopesheet-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted, #8a909a);
+}
+.dopesheet-track {
+  position: relative;
+  height: 18px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: var(--surface-2, #25282d);
+}
+.dopesheet-key {
+  position: absolute;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  transform: rotate(45deg);
+  background: var(--accent, #4fc3f7);
+  border-radius: 2px;
+}
+.dopesheet-eases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.ease-btn {
+  padding: 2px 9px;
+  font-size: 11px;
+  background: var(--surface-2, #25282d);
+  color: var(--fg, #e8eaed);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ease-btn:hover {
+  border-color: var(--accent, #4fc3f7);
+}
+.ease-btn--active {
+  background: color-mix(in srgb, var(--accent, #4fc3f7) 28%, transparent);
+  border-color: var(--accent, #4fc3f7);
+  color: var(--fg, #fff);
+}

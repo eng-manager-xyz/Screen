@@ -126,6 +126,50 @@ pub fn active_zoom_at(project: &EditProject, frame: Frame) -> ZoomTransform {
         .map_or_else(ZoomTransform::identity, |z| zoom_at(z, frame, ramp))
 }
 
+/// A dopesheet keyframe for a zoom: a project frame and the scale at it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ZoomKeyframe {
+    /// Project frame of the keyframe.
+    pub frame: Frame,
+    /// Scale at the keyframe (`1.0` = no zoom; `amount` across the hold).
+    pub scale: f64,
+}
+
+/// The keyframes of a zoom's scale curve, for the dopesheet (ED.13):
+/// identity at both edges, full `amount` across the hold, eased between.
+/// Four keyframes when there's a hold; three (a triangle peak) when the
+/// ramps fill the window. This is the dopesheet's view of [`zoom_at`] —
+/// pass the same `ramp_frames`.
+#[must_use]
+pub fn zoom_keyframes(seg: &ZoomSegment, ramp_frames: Frame) -> Vec<ZoomKeyframe> {
+    if seg.is_empty() {
+        return Vec::new();
+    }
+    let ramp = ramp_frames.min(seg.len() / 2);
+    let amount = seg.amount;
+    let in_peak = seg.start + ramp;
+    let out_peak = seg.end.saturating_sub(ramp);
+    let mut kfs = vec![ZoomKeyframe {
+        frame: seg.start,
+        scale: 1.0,
+    }];
+    kfs.push(ZoomKeyframe {
+        frame: in_peak,
+        scale: amount,
+    });
+    if out_peak > in_peak {
+        kfs.push(ZoomKeyframe {
+            frame: out_peak,
+            scale: amount,
+        });
+    }
+    kfs.push(ZoomKeyframe {
+        frame: seg.end,
+        scale: 1.0,
+    });
+    kfs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,5 +271,29 @@ mod tests {
         assert!(!active_zoom_at(&p, 150).is_identity());
         // The hold reaches full amount.
         assert!((active_zoom_at(&p, 150).scale - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn keyframes_bracket_the_hold() {
+        let kfs = zoom_keyframes(&seg(), 10); // [100,200), 2.0×, ramp 10
+        assert_eq!(kfs.len(), 4);
+        assert_eq!(kfs[0].frame, 100);
+        assert!((kfs[0].scale - 1.0).abs() < 1e-9);
+        assert_eq!(kfs[1].frame, 110);
+        assert!((kfs[1].scale - 2.0).abs() < 1e-9);
+        assert_eq!(kfs[2].frame, 190);
+        assert!((kfs[2].scale - 2.0).abs() < 1e-9);
+        assert_eq!(kfs[3].frame, 200);
+        assert!((kfs[3].scale - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn keyframes_collapse_to_a_triangle_with_no_hold() {
+        // ramp clamps to len/2 (= 5) → in_peak == out_peak → 3 keyframes.
+        let z = ZoomSegment::manual(ZoomId(3), 0, 10, 3.0);
+        let kfs = zoom_keyframes(&z, 100);
+        assert_eq!(kfs.len(), 3);
+        assert_eq!(kfs[1].frame, 5);
+        assert!((kfs[1].scale - 3.0).abs() < 1e-9);
     }
 }

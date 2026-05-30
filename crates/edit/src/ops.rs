@@ -11,7 +11,7 @@
 use crate::project::EditProject;
 use crate::segment::{Frame, TimelineSegment};
 use crate::style::{AspectRatio, BackgroundConfig, CropRect, CursorConfig};
-use crate::zoom::{ZoomId, ZoomSegment};
+use crate::zoom::{EditEase, ZoomId, ZoomSegment};
 
 /// Which edge of a segment a [`EditOp::Trim`] moves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +96,13 @@ pub enum EditOp {
         /// New cursor config.
         cursor: CursorConfig,
     },
+    /// Retune the easing curve of the zoom with the given id (ED.13).
+    SetZoomEase {
+        /// Id of the zoom to retune.
+        id: ZoomId,
+        /// New easing curve.
+        ease: EditEase,
+    },
 }
 
 /// Why an [`EditOp`] could not be applied.
@@ -173,6 +180,7 @@ impl EditProject {
                 self.cursor = *cursor;
                 Ok(())
             }
+            EditOp::SetZoomEase { id, ease } => self.apply_set_zoom_ease(*id, *ease),
         }
     }
 
@@ -292,6 +300,16 @@ impl EditProject {
         zoom.start = start;
         zoom.end = end;
         self.zooms.sort_by_key(|z| z.start);
+        Ok(())
+    }
+
+    fn apply_set_zoom_ease(&mut self, id: ZoomId, ease: EditEase) -> Result<(), EditError> {
+        let zoom = self
+            .zooms
+            .iter_mut()
+            .find(|z| z.id == id)
+            .ok_or(EditError::ZoomNotFound(id))?;
+        zoom.ease = ease;
         Ok(())
     }
 
@@ -634,5 +652,34 @@ mod tests {
         .unwrap();
         assert_eq!(p.segments[0].source_end, 900);
         p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn set_zoom_ease_retunes_the_zoom() {
+        let mut p = project();
+        p.apply(&EditOp::AddZoom {
+            zoom: ZoomSegment::manual(ZoomId(0), 100, 200, 2.0),
+        })
+        .unwrap();
+        let id = p.zooms[0].id;
+        assert_eq!(
+            p.zooms[0].ease,
+            EditEase::InOutCubic,
+            "default is Easy Ease"
+        );
+        p.apply(&EditOp::SetZoomEase {
+            id,
+            ease: EditEase::Linear,
+        })
+        .unwrap();
+        assert_eq!(p.zooms[0].ease, EditEase::Linear);
+        // Retuning an unknown zoom errors.
+        assert!(
+            p.apply(&EditOp::SetZoomEase {
+                id: ZoomId(999),
+                ease: EditEase::Linear,
+            })
+            .is_err()
+        );
     }
 }

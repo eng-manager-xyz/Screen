@@ -156,6 +156,7 @@
   - [Audio waveform lane — ED.10](./editor/chunks/ed10-waveform.md)
   - [Splitting, ripple-delete + undo/redo — ED.11](./editor/chunks/ed11-editing.md)
   - [The zoom lane — ED.12](./editor/chunks/ed12-zoom-lane.md)
+  - [Dopesheet keyframes + Easy Ease — ED.13](./editor/chunks/ed13-dopesheet.md)
   - [Per-segment speed — ED.14](./editor/chunks/ed14-speed.md)
   - [Crop + aspect reframe — ED.15](./editor/chunks/ed15-crop-aspect.md)
   - [The zoom engine — ED.16](./editor/chunks/ed16-zoom-engine.md)
@@ -166,6 +167,7 @@
   - [End-to-end edited export — ED.21](./editor/chunks/ed21-export.md)
   - [Export progress + cancel — ED.22](./editor/chunks/ed22-export-ui.md)
   - [Project persistence — `.screenproj` — ED.23](./editor/chunks/ed23-persistence.md)
+  - [Recordings library + open-in-editor — ED.24](./editor/chunks/ed24-library.md)
 
 # Milestones
 

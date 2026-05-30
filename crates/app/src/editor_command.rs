@@ -214,6 +214,64 @@ pub fn editor_load_project(path: String) -> Result<EditProject, String> {
     edit::persist::from_screenproj(&json)
 }
 
+/// A recording in the library: its file path, display name, and whether a
+/// saved `.screenproj` sits beside it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct RecordingEntry {
+    /// Absolute path to the `.mp4`.
+    pub path: String,
+    /// Display name (the file stem).
+    pub name: String,
+    /// Whether a `<stem>.screenproj` exists beside the recording.
+    pub has_project: bool,
+}
+
+/// Build library entries from a directory listing: each `.mp4` becomes an
+/// entry, newest first (lexical-descending on the timestamped filename),
+/// flagged if a sibling `.screenproj` is present. Pure (no I/O).
+#[must_use]
+pub fn recording_entries(filenames: &[String], dir: &Path) -> Vec<RecordingEntry> {
+    let mut mp4s: Vec<&String> = filenames
+        .iter()
+        .filter(|n| {
+            Path::new(n.as_str())
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
+        })
+        .collect();
+    mp4s.sort_unstable();
+    mp4s.reverse(); // newest (highest timestamp in the name) first
+    mp4s.into_iter()
+        .map(|name| {
+            let stem = Path::new(name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(name);
+            let proj = format!("{stem}.{}", edit::persist::SCREENPROJ_EXTENSION);
+            RecordingEntry {
+                path: dir.join(name).to_string_lossy().into_owned(),
+                name: stem.to_owned(),
+                has_project: filenames.iter().any(|f| f == &proj),
+            }
+        })
+        .collect()
+}
+
+/// List the recordings in the user's output folder (newest first). Returns
+/// an empty list if the folder can't be read.
+#[tauri::command]
+pub fn list_recordings(app: tauri::AppHandle) -> Vec<RecordingEntry> {
+    let dir = crate::recorder_settings::resolved_output_dir(&app);
+    let Ok(read) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let names: Vec<String> = read
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().to_str().map(ToOwned::to_owned))
+        .collect();
+    recording_entries(&names, &dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +286,23 @@ mod tests {
         assert_eq!(p.segments.len(), 1);
         assert_eq!(p.project_duration(), 600);
         assert!(p.zooms.is_empty());
+    }
+
+    #[test]
+    fn recording_entries_filters_sorts_and_flags_projects() {
+        let names = vec![
+            "rec-2026-01-01.mp4".to_owned(),
+            "rec-2026-02-01.mp4".to_owned(),
+            "rec-2026-02-01.screenproj".to_owned(),
+            "notes.txt".to_owned(),
+        ];
+        let entries = recording_entries(&names, Path::new("/out"));
+        assert_eq!(entries.len(), 2, "only .mp4 files become entries");
+        assert_eq!(entries[0].name, "rec-2026-02-01", "newest first");
+        assert!(entries[0].has_project, "Feb has a sibling .screenproj");
+        assert_eq!(entries[0].path, "/out/rec-2026-02-01.mp4");
+        assert_eq!(entries[1].name, "rec-2026-01-01");
+        assert!(!entries[1].has_project);
     }
 
     #[test]

@@ -109,6 +109,14 @@
             window.dispatchEvent(new CustomEvent("editor-saved", { detail: path })))
           .catch((e) => console.error("editor_save_project failed", e));
 
+      // ED.24 — list recordings for the library; results re-dispatched as a
+      // `recordings-listed` CustomEvent the Leptos listener consumes.
+      window.__screenListRecordings = () =>
+        window.__TAURI__?.core?.invoke("list_recordings")
+          .then((entries) =>
+            window.dispatchEvent(new CustomEvent("recordings-listed", { detail: entries })))
+          .catch((e) => console.error("list_recordings failed", e));
+
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the
       // `crate::camera_ipc` extern declarations.

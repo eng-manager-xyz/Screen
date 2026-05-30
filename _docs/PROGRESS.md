@@ -6,6 +6,51 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.13 (AUT-348) — dopesheet keyframes + Easy Ease
+- **Date:** 2026-05-30
+- **Status:** ✅ done (keyframe model + ease authoring) — `video-editing-v2` (PR #65). The animator's dope sheet. **Final M-EDIT rubric chunk.**
+
+### What shipped
+
+- **`crates/edit/src/ops.rs`** — `EditOp::SetZoomEase { id, ease }` + `apply_set_zoom_ease` (find zoom by id, retune; `ZoomNotFound` on miss). +1 test.
+- **`crates/edit/src/zoom_anim.rs`** — `ZoomKeyframe { frame, scale }` + `zoom_keyframes(seg, ramp)`: the pure `Track`-shaped view of the engine's ramp (identity → full → full → identity; triangle when the ramps fill the window), same `ramp_frames` as `zoom_at`. 2 tests.
+- **`crates/app-ui/src/zoom_dopesheet.rs`** (new) — `ZoomDopesheet`: plots the selected zoom's keyframes + an ease-preset row (Easy Ease = `InOutCubic` leads); choosing one commits `SetZoomEase` through `History`. Reads the ED.12 zoom selection. Pure tested helpers `EASES` + `selected_zoom`. `editor_edits::set_zoom_ease`; wired into the timeline beneath the zoom lane; styled.
+
+### Verification
+
+- `cargo clippy -p edit -p app-ui --all-targets -- -D warnings` (native) + app-ui wasm — clean. edit + app-ui tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed13-dopesheet.md` (the animator's dope sheet).
+
+### Notes
+
+- Authoring core (keyframe model + ease selection); `EditEase::eval` already drives the eased motion. Dragging an editable Bézier handle + compiling to a literal `wisp_animation::Track<Transform>` (its `Ease` maps 1:1 to ours) ride the render-integration pass.
+
+### Issues filed: none
+
+---
+
+## ED.24 (AUT-359) — recordings library + open-in-editor
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). The vault shelf — closes the Record→Edit→Export loop.
+
+### What shipped
+
+- **`crates/app/src/editor_command.rs`** — `RecordingEntry { path, name, has_project }`; pure tested `recording_entries(filenames, dir)` (every `.mp4`, newest-first, flagged if a sibling `.screenproj` exists); `list_recordings(app)` command scans `resolved_output_dir`. Registered in both `main.rs` handler arms.
+- **`crates/app-ui/src/recordings_library.rs`** (new) — `RecordingsLibrary`: a grid of clickable recording tiles (newest first, "edited" badge for saved projects); click reuses the ED.5 `open_in_editor` handoff + flips the nav to the editor. Refreshes on mount. **`editor_ipc`**: `RecordingEntry` mirror, `list_recordings` binding + `install_recordings_listener`; **`index.html`** `__screenListRecordings` + `recordings-listed` bridge; **`app_shell_mount`** provides the entries signal + listener and the `Library` section now renders the real grid (was a placeholder). Styled in `shell.css`.
+
+### Verification
+
+- `cargo clippy -p screen-app -p app-ui --all-targets -- -D warnings` (native) + app-ui wasm — clean. `recording_entries` test passes. `just gate` — green.
+- mdBook: `editor/chunks/ed24-library.md` (the vault shelf).
+
+### Notes
+
+- Functional grid (list / tile / click-to-open) now; the richer storybook `RecordingCard` (poster thumbnails, processing overlay, metrics) is the design target once a thumbnail pipeline lands. Opening builds a fresh project; opening the *saved* `.screenproj` via `editor_load_project` (backend-ready, ED.23) is the next refinement.
+
+### Issues filed: none
+
+---
+
 ## ED.23 (AUT-358) — project persistence (.screenproj)
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2` (PR #65). The decision list, filed in the can.
