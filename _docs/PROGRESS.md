@@ -6,6 +6,33 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.1 (AUT-336) — `crates/edit`: the non-destructive edit model + project↔source frame mapping
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. First chunk of M-EDIT (the Record→Edit→Export editor). New **pure** crate `crates/edit` — the testable spine. No wgpu / GStreamer / Leptos; serde + math + tests only.
+
+### What shipped
+
+- **`crates/edit/src/segment.rs`** — `TimelineSegment { source_start, source_end, timescale }` + the project↔source frame arithmetic. `project_len()` applies `timescale` (2× → half the project frames; a non-empty slice never rounds to 0), `source_frame_at(offset)` maps a within-segment project offset to a source frame (clamped inside `[start, end)`). A single contained cast site (`scale_div`/`scale_mul`) carries the only `#[allow(clippy::cast_*)]`. Invalid `timescale` (≤0 / NaN / ∞) sanitizes to real time. 7 unit tests.
+- **`crates/edit/src/zoom.rs`** — `ZoomSegment { id, start, end, amount, mode, ease }` + `ZoomId`, `ZoomMode (Auto | Manual{x,y})`, and a serde-friendly `EditEase` (lean subset of `wisp_animation::Ease`, which can't serde its `Fn` variant). Default ease = `InOutCubic` (the "Easy Ease" equivalent). 4 tests.
+- **`crates/edit/src/style.rs`** — the cinematic framing layer: `BackgroundConfig` (wallpaper/gradient/color + padding/corner_radius/shadow/inset), `CursorConfig` (size/smoothing/ripples/hide-static + `AutoZoomConfig`), `CropRect` (normalized), `AspectRatio` (Wide/Vertical/Square/Classic with `canvas_dims`). Defaults mirror the reference design (padding 64, radius 14, shadow 60, cursor 180 %, auto-zoom hold 1.2 s / max 2.4×). 4 tests.
+- **`crates/edit/src/{clip,project}.rs`** — `ClipRef` (source metadata) + `EditProject` (the serialized document). `from_recording()` builds a single full-length real-time segment; `project_duration()` / `locate()` / `source_time()` are the editor's time authority. serde round-trip is lossless; missing optional fields deserialize to defaults (forward-compat for ED.23). 6 tests.
+
+### Verification
+
+- `cargo clippy -p edit --all-targets -- -D warnings` — clean (one `doc_markdown` backtick fix on "GStreamer").
+- `cargo nextest run -p edit` — **21/21 pass**. `cargo test -p edit --doc` — clean.
+- `just gate` — green (full workspace, ED.1 verification run).
+- mdBook: new `editor` section in `SUMMARY.md` + `editor/overview.md` + `editor/chunks/ed1-edit-model.md` (prose + mermaid class/flow diagrams; non-visual chunk so no PNG asset).
+
+### Notes
+
+- Adopted **Cap's segment-list project model** as the architecture keystone (see `_docs/milestone-3-editor.md`). Trim/split/speed are list ops; zoom compiles to a keyframed transform at the render boundary (ED.13/ED.16) — kept out of `edit` so the model stays GPU-free.
+- `EditEase` is intentionally a small serde mirror of `wisp_animation::Ease`; the map to the real easing happens in `app`/`wisp` at render time.
+
+### Issues filed: none
+
+---
+
 ## AUT-334 — recordings on >4K (5K/6K/8K) displays no longer produce an empty output dir
 - **Date:** 2026-05-29
 - **Status:** ✅ done — `video-editing`. A 5K display (5120×2880) recorded → stopped and **nothing** landed in `~/Movies/Screen/`. Root cause: M-QUAL.2 native-resolution capture fed the screen's full backing-pixel resolution straight into the live H.264 scratch encoder. Apple's `vtenc_h264_hw` rejects caps negotiation the instant *either* edge exceeds 4096 px (`not-negotiated (-4)` → the feed thread's first `push_video_frame` hits a broken pipe → `stop_recording` discards the scratch). Empirically probed on this M1 (GStreamer 1.26.8): the limit is a strict **per-axis** cap (`4096×4096` passes, `5120×1440` fails → not area-limited); `vtenc_h265_hw` accepts ≥`8192×4320`; software WebM encoders have no cap.

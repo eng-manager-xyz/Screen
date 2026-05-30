@@ -141,6 +141,11 @@
   - [Editor panel composition](./ui/chunks/card-with-dope-sheet.md)
   - [Editor mock — full composition](./ui/chunks/editor-mock.md)
 
+# `edit` — non-destructive editor (M-EDIT)
+
+- [Overview](./editor/overview.md)
+  - [The edit model — ED.1](./editor/chunks/ed1-edit-model.md)
+
 # Milestones
 
 - [M0 — wisp renderer](./milestones/m0.md)

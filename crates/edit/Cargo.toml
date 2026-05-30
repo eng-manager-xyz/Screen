@@ -1,0 +1,26 @@
+[package]
+name = "edit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Pure, serializable non-destructive edit model for the Screen recorder's editor: timeline segments (trim/split/speed), zoom regions, background/cursor/crop config, and project↔source frame mapping. No wgpu / GStreamer / Leptos — serde + math + tests only."
+
+[lints]
+workspace = true
+
+[lib]
+name = "edit"
+path = "src/lib.rs"
+
+# `edit` is the testable spine of the editor (M-EDIT / ED.1). It is
+# deliberately dependency-light: only serde for the project file
+# format. The animation/render boundary (wisp-animation `Ease`,
+# `Transform`) is crossed in `app`/`wisp` at ED.13/ED.16, NOT here —
+# keeping this crate free of wgpu / GStreamer / winit so the edit
+# model stays unit-testable without a GPU.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
