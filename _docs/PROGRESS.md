@@ -6,6 +6,28 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.17 (AUT-352) — auto-zoom from click telemetry
+- **Date:** 2026-05-30
+- **Status:** ✅ done (generator) — `video-editing-v2` (PR #65). The assistant editor's continuity log.
+
+### What shipped
+
+- **`crates/edit/src/telemetry.rs`** (new) — `ClickEvent { frame, x, y }` + `auto_zoom_segments(clicks, fps, &AutoZoomConfig)`: clusters clicks by time gap (~1 s), and turns each cluster into a `ZoomSegment` that opens ~0.3 s before the first click, holds `hold_time_ms` past the last, targets the cluster centroid at `max_zoom`. Sub-0.5 s windows dropped; adjacent windows clamped non-overlapping; disabled/empty → no zooms. Pure; 5 unit tests (clustering, centroid, single, distant non-overlap, sort-before-cluster, disabled). Feeds the ED.16 engine + ED.12 lane unchanged.
+
+### Verification
+
+- `cargo clippy -p edit --all-targets -- -D warnings` — clean. `cargo nextest -p edit` — 5 telemetry tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed17-auto-zoom.md` (the assistant editor's continuity log).
+
+### Notes
+
+- **Generates concrete `Manual`-at-centroid targets** (not `Auto`), so the regions punch into the click immediately under the existing engine (vs. `Auto`'s frame-centre fallback) and are fully editable — a deliberate, documented deviation from the spec's literal "mode:Auto" for working behavior today.
+- **Deferred (the other half):** the per-OS click-log *capture* during recording (macOS `CGEventTap` first) — explicitly flagged as a capture follow-up in the milestone doc — and the import-time wiring that runs the generator on a captured log. The generator (the testable core) is done.
+
+### Issues filed: none
+
+---
+
 ## ED.15 (AUT-350) — crop + aspect reframe
 - **Date:** 2026-05-30
 - **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The hard matte + pan-and-scan, as values.

@@ -39,6 +39,7 @@ pub mod ops;
 pub mod project;
 pub mod segment;
 pub mod style;
+pub mod telemetry;
 pub mod zoom;
 pub mod zoom_anim;
 

@@ -159,6 +159,7 @@
   - [Per-segment speed — ED.14](./editor/chunks/ed14-speed.md)
   - [Crop + aspect reframe — ED.15](./editor/chunks/ed15-crop-aspect.md)
   - [The zoom engine — ED.16](./editor/chunks/ed16-zoom-engine.md)
+  - [Auto-zoom from click telemetry — ED.17](./editor/chunks/ed17-auto-zoom.md)
 
 # Milestones
 

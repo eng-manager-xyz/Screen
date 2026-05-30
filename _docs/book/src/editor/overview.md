@@ -30,6 +30,7 @@ export. Each chunk retraces one step:
 | Step- / skip-printing — slow & fast motion | **ED.14** per-segment speed |
 | The hard matte + pan-and-scan | **ED.15** crop + aspect |
 | The rostrum camera's slow push-in | **ED.16** zoom engine |
+| The assistant editor's continuity log | **ED.17** auto-zoom from clicks |
 | The optical printer baking it to a print | **ED.20–21** export |
 
 ```admonish tip title="Why frame it this way"
@@ -95,3 +96,4 @@ sixty years on.
 - [Per-segment speed — ED.14](./chunks/ed14-speed.md)
 - [Crop + aspect reframe — ED.15](./chunks/ed15-crop-aspect.md)
 - [The zoom engine — ED.16](./chunks/ed16-zoom-engine.md)
+- [Auto-zoom from click telemetry — ED.17](./chunks/ed17-auto-zoom.md)
