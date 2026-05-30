@@ -21,6 +21,10 @@ use crate::editor_ipc;
 /// clip was opened, so the old undo stack no longer applies. Pure.
 #[must_use]
 pub fn resolve_history(existing: Option<History>, current: &EditProject) -> History {
+    // Exact path comparison (not canonicalized — `fs::canonicalize` isn't
+    // available on wasm, and the backend passes a stable path per clip). A
+    // differently-spelled path to the same file just starts a fresh undo
+    // stack, which is safe.
     match existing {
         Some(history) if history.project().source.path == current.source.path => history,
         _ => History::new(current.clone()),

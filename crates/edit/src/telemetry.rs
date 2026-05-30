@@ -91,10 +91,14 @@ pub fn auto_zoom_segments(
         if end.saturating_sub(start) < min_len {
             continue;
         }
-        let n = f32::from(u16::try_from(cluster.len()).unwrap_or(u16::MAX));
-        let (sx, sy) = cluster
+        // Accumulate the count as f32 inside the fold so the centroid
+        // divisor needs no integer cast (and no overflow cap on huge
+        // clusters). `n >= 1.0` because the cluster is non-empty.
+        let (sx, sy, n) = cluster
             .iter()
-            .fold((0.0f32, 0.0f32), |(ax, ay), c| (ax + c.x, ay + c.y));
+            .fold((0.0f32, 0.0f32, 0.0f32), |(ax, ay, an), c| {
+                (ax + c.x, ay + c.y, an + 1.0)
+            });
         out.push(ZoomSegment {
             id: ZoomId(u32::try_from(i).unwrap_or(u32::MAX)),
             start,

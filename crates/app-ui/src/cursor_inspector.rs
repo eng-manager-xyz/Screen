@@ -3,7 +3,7 @@
 //! The cursor controls: how big the pointer renders, how much its motion is
 //! smoothed, whether clicks throw a ripple, whether it hides while idle, and
 //! whether clicks drive auto-zoom (ED.17). All of it edits one
-//! [`CursorConfig`](edit::style::CursorConfig) on the project. The composited
+//! [`CursorConfig`] on the project. The composited
 //! cursor **overlay** — a smoothed, scaled pointer with click ripples — is a
 //! `wisp` layer driven by the captured cursor track, and lands with the
 //! render-integration pass (it needs the same per-OS telemetry capture ED.17

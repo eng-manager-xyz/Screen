@@ -203,7 +203,9 @@ impl EditProject {
             }
             TrimEdge::End => {
                 let lo = seg.source_start + 1;
-                seg.source_end = to.max(lo).min(frame_count.max(lo));
+                // Clamp into `[lo, frame_count]`; the old `frame_count.max(lo)`
+                // upper bound let `source_end` run past the source.
+                seg.source_end = to.max(lo).min(frame_count);
             }
         }
         Ok(())
@@ -616,6 +618,21 @@ mod tests {
         };
         p.apply(&EditOp::SetCursor { cursor: cur }).unwrap();
         assert_eq!(p.cursor, cur);
+        p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn trim_end_clamps_within_source() {
+        let mut p = project(); // 900-frame source, one segment [0, 900)
+        // Trimming the out-point past the source clamps to frame_count
+        // (regression: the old upper bound let it run past the source).
+        p.apply(&EditOp::Trim {
+            index: 0,
+            edge: TrimEdge::End,
+            to: 99_999,
+        })
+        .unwrap();
+        assert_eq!(p.segments[0].source_end, 900);
         p.check_invariants().unwrap();
     }
 }

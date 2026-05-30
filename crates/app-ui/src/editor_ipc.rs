@@ -123,6 +123,8 @@ pub enum TransportAction {
         /// New total project length in frames.
         frames: u64,
     },
+    /// No-op — read the current status (mirrors the backend variant).
+    Status,
 }
 
 #[wasm_bindgen]

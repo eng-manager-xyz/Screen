@@ -25,6 +25,27 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-10: `resolve_history` compares source paths exactly (not canonically)
+- **Filed:** 2026-05-30
+- **By:** ED.20 (adversarial review of ED.11–19)
+- **Severity:** closed-wontfix
+- **Affects:** `crates/app-ui/src/editor_edits.rs` (`resolve_history`)
+- **Description:**
+  `resolve_history` decides whether to reuse the running undo stack by
+  comparing `history.project().source.path == current.source.path` with plain
+  `PathBuf` equality. Two differently-spelled paths to the same file
+  (`/x/a.mp4` vs `/x/./a.mp4`) compare unequal, so reopening the clip via a
+  different spelling would start a fresh undo stack. Surfaced by the ED.11–19
+  adversarial review.
+- **Resolution:** closed-wontfix (2026-05-30). `std::fs::canonicalize` is
+  unavailable on `wasm32` (app-ui is wasm), and the Tauri backend passes a
+  single stable path per clip, so the divergent-spelling case doesn't arise
+  in practice. The fallback (a fresh, empty undo stack) is safe — no data
+  loss, no crash. Documented inline in `resolve_history`. Revisit only if a
+  real reopen path proves non-stable.
+
+---
+
 ## ISS-09: lift-delete (leave-gap) needs a timeline gap item
 - **Filed:** 2026-05-30
 - **By:** ED.2 (AUT-337)

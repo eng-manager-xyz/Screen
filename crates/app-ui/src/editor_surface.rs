@@ -218,6 +218,12 @@ fn handle_editor_keydown(
             if let (Some(p), Some(h)) = (project, history) {
                 let sel = selection.and_then(|s| s.get_untracked());
                 crate::editor_edits::ripple_delete_selected(p, h, sel);
+                // The deleted clip is gone, so the old index would now point
+                // at a different segment — clear it so a later edit can't
+                // target the wrong clip.
+                if let Some(s) = selection {
+                    s.set(None);
+                }
             }
         }
         _ => {}
