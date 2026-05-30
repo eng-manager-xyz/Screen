@@ -165,6 +165,7 @@ pub fn EditorSurface() -> impl IntoView {
     let project = use_context::<RwSignal<Option<EditProject>>>();
     let status = use_context::<RwSignal<EditorStatus>>()
         .unwrap_or_else(|| RwSignal::new(EditorStatus::default()));
+    let history = use_context::<StoredValue<Option<edit::History>>>();
     view! {
         <section
             class="app-surface app-surface--editor"
@@ -198,6 +199,24 @@ pub fn EditorSurface() -> impl IntoView {
                             a: s.in_frame.min(s.current_frame),
                             b: s.current_frame + 1,
                         });
+                    }
+                    // ED.11 — the razor: split the clip under the playhead.
+                    "s" | "S" => {
+                        ev.prevent_default();
+                        if let (Some(p), Some(h)) = (project, history) {
+                            crate::editor_edits::split_at(p, h, status.get_untracked().current_frame);
+                        }
+                    }
+                    // ED.11 — the trim bin: undo / redo (⌘Z / ⌘⇧Z).
+                    "z" | "Z" if ev.meta_key() || ev.ctrl_key() => {
+                        ev.prevent_default();
+                        if let (Some(p), Some(h)) = (project, history) {
+                            if ev.shift_key() {
+                                crate::editor_edits::redo(p, h);
+                            } else {
+                                crate::editor_edits::undo(p, h);
+                            }
+                        }
                     }
                     _ => {}
                 }

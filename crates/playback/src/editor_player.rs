@@ -159,6 +159,24 @@ impl EditorPlayer {
         self.out_frame = self.duration_frames;
     }
 
+    /// Update the project length after an edit changed it (split / ripple
+    /// delete / undo). If the range was untrimmed (out at the old end) the
+    /// out-point tracks the new length; otherwise it's clamped. The
+    /// playhead is re-clamped into the new range.
+    pub fn set_duration(&mut self, duration_frames: u64) {
+        let was_full = self.out_frame >= self.duration_frames;
+        self.duration_frames = duration_frames;
+        self.in_frame = self.in_frame.min(duration_frames.saturating_sub(1));
+        self.out_frame = if was_full {
+            duration_frames
+        } else {
+            self.out_frame
+                .clamp(self.in_frame + 1, duration_frames.max(self.in_frame + 1))
+        };
+        let clamped = self.current_frame();
+        self.driver.seek(self.frame_to_elapsed(clamped));
+    }
+
     /// In-point (inclusive).
     #[must_use]
     pub const fn in_frame(&self) -> u64 {
@@ -399,5 +417,23 @@ mod tests {
         assert!((p.progress() - 0.5).abs() < 0.02, "got {}", p.progress());
         p.seek(99);
         assert!(p.progress() > 0.95);
+    }
+
+    #[test]
+    fn set_duration_tracks_full_range_and_clamps_playhead() {
+        let mut p = EditorPlayer::new(FPS, 900);
+        p.seek(800);
+        // Shrink (e.g. ripple delete): playhead clamps, untrimmed out tracks.
+        p.set_duration(500);
+        assert_eq!(p.duration_frames(), 500);
+        assert_eq!(p.out_frame(), 500);
+        assert_eq!(p.current_frame(), 499);
+        // Grow (e.g. undo): the full range tracks back up.
+        p.set_duration(900);
+        assert_eq!(p.out_frame(), 900);
+        // With an explicit trim, set_duration clamps the out-point.
+        p.set_in_out(10, 400);
+        p.set_duration(200);
+        assert!(p.out_frame() <= 200 && p.out_frame() > p.in_frame());
     }
 }

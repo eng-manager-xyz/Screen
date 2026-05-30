@@ -87,3 +87,4 @@ sixty years on.
 - [Timeline ruler + coordinate system — ED.8](./chunks/ed8-timeline-ruler.md)
 - [Video track + clip selection — ED.9](./chunks/ed9-filmstrip.md)
 - [Audio waveform lane — ED.10](./chunks/ed10-waveform.md)
+- [Splitting + undo/redo — ED.11](./chunks/ed11-editing.md)

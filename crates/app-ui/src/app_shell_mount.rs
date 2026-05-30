@@ -60,6 +60,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let editor_peaks = RwSignal::new(Vec::<crate::waveform::WaveBucket>::new());
     provide_context(editor_peaks);
 
+    // ED.11 — the edit history (undo/redo stacks + current project state),
+    // resolved against the loaded clip on first edit.
+    let editor_history = StoredValue::new(None::<edit::History>);
+    provide_context(editor_history);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.
