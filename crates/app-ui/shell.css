@@ -1017,3 +1017,71 @@
   border-color: var(--accent, #4fc3f7);
   color: var(--fg, #fff);
 }
+
+/* ── Framing inspector (ED.15: aspect + crop) ───────────────────────── */
+.framing-inspector {
+  padding: 12px;
+  color: var(--fg, #e8eaed);
+}
+.aspect-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.aspect-preset {
+  padding: 4px 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: var(--surface-2, #25282d);
+  color: var(--fg, #e8eaed);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.aspect-preset:hover {
+  border-color: var(--accent, #4fc3f7);
+}
+.aspect-preset--active {
+  background: color-mix(in srgb, var(--accent, #4fc3f7) 28%, transparent);
+  border-color: var(--accent, #4fc3f7);
+  color: var(--fg, #fff);
+}
+.crop-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.crop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.crop-field-label {
+  font-size: 10px;
+  color: var(--fg-muted, #8a909a);
+}
+.crop-field-input {
+  width: 100%;
+  padding: 3px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: var(--surface-2, #25282d);
+  color: var(--fg, #e8eaed);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.crop-reset {
+  margin-top: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--fg-muted, #b6bcc6);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.crop-reset:hover {
+  border-color: var(--accent, #4fc3f7);
+  color: var(--fg, #fff);
+}

@@ -262,6 +262,7 @@ pub fn EditorSurface() -> impl IntoView {
                             </div>
                         })
                         inspector=ToChildren::to_children(move || view! {
+                            <crate::framing_inspector::FramingInspector />
                             <crate::clip_inspector::ClipInspector />
                         })
                         timeline=ToChildren::to_children(move || view! {

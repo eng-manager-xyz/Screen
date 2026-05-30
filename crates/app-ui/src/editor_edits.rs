@@ -146,6 +146,29 @@ pub fn set_speed(
     });
 }
 
+/// Set the crop rectangle (a full-frame rect clears the crop). The op
+/// sanitizes the rect to a valid in-frame sub-rect.
+pub fn set_crop(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    rect: edit::style::CropRect,
+) {
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::SetCrop { rect });
+    });
+}
+
+/// Set the output aspect ratio (reframes the export canvas).
+pub fn set_aspect(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    ratio: edit::style::AspectRatio,
+) {
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::SetAspect { ratio });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {

@@ -10,6 +10,7 @@
 
 use crate::project::EditProject;
 use crate::segment::{Frame, TimelineSegment};
+use crate::style::{AspectRatio, CropRect};
 use crate::zoom::{ZoomId, ZoomSegment};
 
 /// Which edge of a segment a [`EditOp::Trim`] moves.
@@ -75,6 +76,16 @@ pub enum EditOp {
         /// New window end (project frame).
         end: Frame,
     },
+    /// Set the crop rectangle. A full-frame rect clears the crop.
+    SetCrop {
+        /// Normalized crop rect (`[0, 1]` of the source frame).
+        rect: CropRect,
+    },
+    /// Set the output aspect ratio (reframes the export canvas).
+    SetAspect {
+        /// New aspect ratio.
+        ratio: AspectRatio,
+    },
 }
 
 /// Why an [`EditOp`] could not be applied.
@@ -134,6 +145,14 @@ impl EditProject {
             }
             EditOp::RemoveZoom { id } => self.apply_remove_zoom(id),
             EditOp::MoveZoom { id, start, end } => self.apply_move_zoom(id, start, end),
+            EditOp::SetCrop { rect } => {
+                self.apply_set_crop(rect);
+                Ok(())
+            }
+            EditOp::SetAspect { ratio } => {
+                self.aspect = ratio;
+                Ok(())
+            }
         }
     }
 
@@ -254,6 +273,27 @@ impl EditProject {
         Ok(())
     }
 
+    fn apply_set_crop(&mut self, rect: CropRect) {
+        // A full-frame crop is stored as "no crop" so the export fast-path
+        // can skip the videocrop element entirely.
+        if rect.is_full() {
+            self.crop = None;
+            return;
+        }
+        // Sanitize to a valid in-frame sub-rect (non-zero extent, fully
+        // inside `[0, 1]`) — the UI can submit any field value.
+        let x = rect.x.clamp(0.0, 1.0 - 1e-3);
+        let y = rect.y.clamp(0.0, 1.0 - 1e-3);
+        let width = rect.width.clamp(1e-3, 1.0 - x);
+        let height = rect.height.clamp(1e-3, 1.0 - y);
+        self.crop = Some(CropRect {
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+
     /// Check the project's structural invariants. Used by tests (and a
     /// useful debugging aid): segments are non-empty and within the
     /// source; the zoom list is sorted, each zoom is non-empty, and every
@@ -292,6 +332,18 @@ impl EditProject {
                     "zoom {i} id {} >= next_zoom_id {}",
                     z.id.0, self.next_zoom_id
                 ));
+            }
+        }
+        if let Some(c) = self.crop {
+            let in_unit = |v: f32| (-1e-4..=1.0 + 1e-4).contains(&v);
+            if !(in_unit(c.x)
+                && in_unit(c.y)
+                && c.width > 0.0
+                && c.height > 0.0
+                && c.x + c.width <= 1.0 + 1e-4
+                && c.y + c.height <= 1.0 + 1e-4)
+            {
+                return Err(format!("crop rect out of bounds: {c:?}"));
             }
         }
         Ok(())
@@ -470,5 +522,51 @@ mod tests {
         let starts: Vec<_> = p.zooms.iter().map(|z| z.start).collect();
         assert_eq!(starts, vec![100, 200, 300]);
         p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn set_aspect_changes_ratio() {
+        let mut p = project();
+        assert_eq!(p.aspect, AspectRatio::Wide);
+        p.apply(&EditOp::SetAspect {
+            ratio: AspectRatio::Vertical,
+        })
+        .unwrap();
+        assert_eq!(p.aspect, AspectRatio::Vertical);
+        p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn set_crop_stores_subrect_and_clears_on_full() {
+        let mut p = project();
+        assert!(p.crop.is_none());
+        let rect = CropRect {
+            x: 0.1,
+            y: 0.1,
+            width: 0.8,
+            height: 0.8,
+        };
+        p.apply(&EditOp::SetCrop { rect }).unwrap();
+        assert_eq!(p.crop, Some(rect));
+        p.check_invariants().unwrap();
+        // A full-frame crop clears it.
+        p.apply(&EditOp::SetCrop {
+            rect: CropRect::full(),
+        })
+        .unwrap();
+        assert!(p.crop.is_none());
+    }
+
+    #[test]
+    fn out_of_bounds_crop_fails_invariants() {
+        let mut p = project();
+        // 0.5 + 0.8 > 1.0 — runs off the right edge.
+        p.crop = Some(CropRect {
+            x: 0.5,
+            y: 0.0,
+            width: 0.8,
+            height: 1.0,
+        });
+        assert!(p.check_invariants().is_err());
     }
 }

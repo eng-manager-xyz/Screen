@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.15 (AUT-350) — crop + aspect reframe
+- **Date:** 2026-05-30
+- **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The hard matte + pan-and-scan, as values.
+
+### What shipped
+
+- **`crates/edit/src/ops.rs`** — new `EditOp::SetCrop { rect }` + `SetAspect { ratio }` (mirroring `SetSpeed`). `apply_set_crop` **sanitizes** the rect to a valid in-frame sub-rect (non-zero extent, inside `[0,1]`) and stores a full-frame crop as `None` (export fast-path skips `videocrop`). `check_invariants` rejects an out-of-bounds crop. 3 new ops tests.
+- **`crates/app-ui/src/framing_inspector.rs`** (new) — `FramingInspector`: aspect-ratio presets (16:9 / 9:16 / 1:1 / 4:3) + four numeric crop-% fields + reset, all undoable through `History`. Pure tested helpers: `parse_crop_pct` (clamp + non-numeric→0), `crop_pct_label`, `crop_to_array`/`crop_from_array` round-trip, `ASPECTS`. 4 tests.
+- **`crates/app-ui/src/editor_edits.rs`** — `set_crop` / `set_aspect` helpers.
+- **`crates/app-ui/src/{editor_surface.rs,lib.rs}`** + **`shell.css`** — the inspector slot now renders `FramingInspector` above `ClipInspector`; styled aspect presets + crop grid + reset.
+
+### Verification
+
+- `cargo clippy -p edit -p app-ui --all-targets -- -D warnings` (native) + app-ui `--target wasm32-unknown-unknown` (wasm) — clean. `cargo nextest` — 3 ops + 4 framing tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed15-crop-aspect.md` (the hard matte + pan-and-scan).
+
+### Notes
+
+- **Authoring only.** `AspectRatio::canvas_dims` becomes the export canvas; the crop becomes a screen-sprite sub-rect. The **visible reframe** (preview reshaping + export `videocrop`) lands with the render-integration / export pass (ED.20/21) via `render_framed`'s crop-then-zoom transform — per `_docs/milestone-3-editor-export-plan.md`. The 25/50/75 % grid guides are a preview overlay deferred to that pass.
+
+### Issues filed: none
+
+---
+
 ## ED.14 (AUT-349) — per-segment speed (timescale)
 - **Date:** 2026-05-30
 - **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). Step-/skip-printing as a value.

@@ -131,6 +131,7 @@ pub mod editor_edits;
 pub mod editor_ipc;
 pub mod editor_surface;
 pub mod filmstrip;
+pub mod framing_inspector;
 pub mod mic_ipc;
 pub mod mic_picker;
 pub mod recorder_controls;
