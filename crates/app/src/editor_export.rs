@@ -21,11 +21,13 @@
 //! that render-integration step (and its visual verification) lands next.
 //! This chunk is the frame-accurate timeline walk the whole export rests on.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use decode::EditorVideoStream;
 use edit::EditProject;
+use media::encode::{EncoderConfig, LiveGstreamerEncoder, OutputFormat, VideoEncoder};
 
 use crate::editor_preview::EditorPreview;
 use crate::recording_compose::ComposedFrame;
@@ -101,4 +103,55 @@ impl ExportFrameGenerator {
             source_frame,
         })
     }
+}
+
+/// Export an entire edited project to a single video file (ED.21).
+///
+/// Drives the [`ExportFrameGenerator`] frame by frame into a fresh
+/// [`LiveGstreamerEncoder`] (reused unchanged from the live recorder), then
+/// finalizes the container. Synchronous and long-running — call it from a
+/// blocking task. `cancel` is polled once per frame (for the export UI,
+/// ED.22) and `on_progress(done, total)` reports after each frame.
+///
+/// The output is composed at the **source** clip's dimensions; the cinematic
+/// visual transforms (zoom / crop / background) and the per-segment audio
+/// retime land with the render-integration + audio follow-ups, so this is a
+/// faithful, retimed, video-only export today.
+///
+/// # Errors
+///
+/// Returns a message if the source can't be opened, the encoder can't start,
+/// a frame fails to encode, or `cancel` fired mid-export.
+pub fn export_edited_project(
+    project: EditProject,
+    source: &Path,
+    output_path: PathBuf,
+    format: OutputFormat,
+    cancel: &AtomicBool,
+    mut on_progress: impl FnMut(u64, u64),
+) -> Result<PathBuf, String> {
+    let total = project.project_duration();
+    let mut config = EncoderConfig::for_output(output_path, format);
+    config.width = project.source.width;
+    config.height = project.source.height;
+    config.framerate = project.project_fps;
+
+    let mut generator = ExportFrameGenerator::new(project, source)?;
+    let mut encoder =
+        LiveGstreamerEncoder::new(config).map_err(|e| format!("start encoder: {e}"))?;
+
+    let mut done = 0u64;
+    while let Some(ef) = generator.next_frame() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("export cancelled".to_owned());
+        }
+        encoder
+            .push_video_frame(&ef.frame.bytes, ef.pts)
+            .map_err(|e| format!("encode frame {done}: {e}"))?;
+        done += 1;
+        on_progress(done, total);
+    }
+    Box::new(encoder)
+        .finalize()
+        .map_err(|e| format!("finalize export: {e}"))
 }

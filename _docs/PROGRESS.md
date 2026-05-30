@@ -6,6 +6,28 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.21 (AUT-356) — end-to-end edited export
+- **Date:** 2026-05-30
+- **Status:** ✅ done (video export) — `video-editing-v2` (PR #65). The answer print.
+
+### What shipped
+
+- **`crates/app/src/editor_export.rs`** — `export_edited_project(project, source, output_path, format, cancel, on_progress)`: drives `ExportFrameGenerator` into a fresh `LiveGstreamerEncoder` (the live recorder's encoder, **reused unchanged**) and finalizes a real `.mp4`. Synchronous; polls `cancel` + calls `on_progress(done, total)` once per frame (the ED.22 hooks). Encoder dims = source dims, framerate = `project_fps`.
+- **`crates/app/tests/edited_export_e2e.rs`** (new, gst+wgpu guarded) — exports a 2×-speed project to a temp `.mp4`, then **decodes it back** with `EditorVideoStream`: asserts a valid container at the source dimensions whose frame count equals the retimed (halved) duration (±2 for GOP rounding) and is shorter than the source. Added to the `.config/nextest.toml` gst serialization group.
+
+### Verification
+
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean. The e2e export test passes solo (gst). `just gate` — green.
+- mdBook: `editor/chunks/ed21-export.md` (the answer print).
+
+### Notes
+
+- **Video-only + retimed today.** Trim/split/speed are baked into the frame stream → a correct, playable `.mp4`, verified by decoding it back (not a brittle byte golden). Two additive passes complete it, both layering onto this same generator→encoder spine: the **per-segment audio retime** (a second `GStreamer` leg via a unit-testable `build_edited_audio_args`, per `_docs/milestone-3-editor-export-plan.md`) and the **cinematic visual transforms** (zoom/crop/background from render-integration). >4K-source reframe (`fit_within_encoder_limits` + compose-at-canvas) rides with that visual pass too.
+
+### Issues filed: none
+
+---
+
 ## ED.20 (AUT-355) — deferred export frame generator
 - **Date:** 2026-05-30
 - **Status:** ✅ done (frame-accurate timeline walk) — `video-editing-v2` (PR #65). The optical printer.
