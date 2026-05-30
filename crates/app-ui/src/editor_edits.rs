@@ -133,6 +133,19 @@ pub fn remove_zoom(
     });
 }
 
+/// Set segment `index`'s playback speed (`timescale`). This changes the
+/// project length, so `run` re-syncs the backend clock via `SetDuration`.
+pub fn set_speed(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    index: usize,
+    timescale: f64,
+) {
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::SetSpeed { index, timescale });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {

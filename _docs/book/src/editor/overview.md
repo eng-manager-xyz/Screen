@@ -27,6 +27,7 @@ export. Each chunk retraces one step:
 | The mag track running beside the picture | **ED.10** audio waveform |
 | The razor + tape splice | **ED.11** split / ripple / undo |
 | The exposure sheet — moves planned per frame | **ED.12** zoom lane |
+| Step- / skip-printing — slow & fast motion | **ED.14** per-segment speed |
 | The rostrum camera's slow push-in | **ED.16** zoom engine |
 | The optical printer baking it to a print | **ED.20–21** export |
 
@@ -90,4 +91,5 @@ sixty years on.
 - [Audio waveform lane — ED.10](./chunks/ed10-waveform.md)
 - [Splitting, ripple-delete + undo/redo — ED.11](./chunks/ed11-editing.md)
 - [The zoom lane — ED.12](./chunks/ed12-zoom-lane.md)
+- [Per-segment speed — ED.14](./chunks/ed14-speed.md)
 - [The zoom engine — ED.16](./chunks/ed16-zoom-engine.md)

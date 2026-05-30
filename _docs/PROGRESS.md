@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.14 (AUT-349) — per-segment speed (timescale)
+- **Date:** 2026-05-30
+- **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). Step-/skip-printing as a value.
+
+### What shipped
+
+- **`crates/app-ui/src/clip_inspector.rs`** (new) — `ClipInspector` fills the `EditorShell`'s right-hand inspector slot (previously empty). Pure, tested helpers: `SPEED_PRESETS` (0.5×…4×), `speed_label` (drops a whole number's trailing `.0`), `is_active_speed` (tolerance), `selected_segment_speed`. The panel shows the selected clip's speed + presets; choosing one retimes that segment.
+- **`crates/app-ui/src/editor_edits.rs`** — `set_speed(project, history, index, timescale)` via `EditOp::SetSpeed`. Speed is duration-changing, so `run` re-syncs the backend clock through `SetDuration`; the filmstrip re-flows via the same `project_len = source_span / timescale` math (already proven by `filmstrip::speed_segment_width_reflects_project_length`).
+- **`crates/app-ui/src/{editor_surface.rs,lib.rs}`** + **`shell.css`** — wired the inspector slot into `EditorShell`; styled the inspector + speed presets. Also extracted the editor-surface keydown handler into a `handle_editor_keydown` helper (the inspector slot tipped the `#[component]` body past clippy's `too_many_lines`; the extraction is cleaner anyway).
+
+### Verification
+
+- `cargo clippy -p app-ui --all-targets -- -D warnings` (native) + `--target wasm32-unknown-unknown` (wasm) — both clean. `cargo nextest -p app-ui` — 3 `clip_inspector` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed14-speed.md` (the optical printer's step-/skip-printing).
+
+### Notes
+
+- **Preview re-times for free** — the variable-rate clock (ED.4) already maps project→source through `timescale` via `source_time`, so a sped-up clip decodes its source frames faster with no new code. ED.14's editor side is purely the authoring control. **Audio resample + pitch-correction ride with the export pass (ED.21)** — the source is a single muxed mp4, no raw audio scratch to retime at edit time (per the export plan, `_docs/milestone-3-editor-export-plan.md`).
+
+### Issues filed: none
+
+---
+
 ## ED.12 (AUT-347) — the zoom lane (author cinematic push-ins)
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2` (PR #65). The exposure sheet, as a timeline lane.

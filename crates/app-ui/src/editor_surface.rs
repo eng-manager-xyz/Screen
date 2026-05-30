@@ -156,10 +156,78 @@ fn EditorTransportBar() -> impl IntoView {
     }
 }
 
+/// Handle a keydown on the editor surface: transport (Space / arrows /
+/// I·O) and edit (S split, ⌘Z undo·redo, Delete ripple) shortcuts.
+fn handle_editor_keydown(
+    ev: &web_sys::KeyboardEvent,
+    project: Option<RwSignal<Option<EditProject>>>,
+    history: Option<StoredValue<Option<edit::History>>>,
+    selection: Option<RwSignal<Option<usize>>>,
+    status: RwSignal<EditorStatus>,
+) {
+    match ev.key().as_str() {
+        " " | "Spacebar" => {
+            ev.prevent_default();
+            editor_ipc::editor_transport(&TransportAction::TogglePlay);
+        }
+        "ArrowLeft" => {
+            ev.prevent_default();
+            let delta = if ev.shift_key() { -5 } else { -1 };
+            editor_ipc::editor_transport(&TransportAction::Step { delta });
+        }
+        "ArrowRight" => {
+            ev.prevent_default();
+            let delta = if ev.shift_key() { 5 } else { 1 };
+            editor_ipc::editor_transport(&TransportAction::Step { delta });
+        }
+        "i" | "I" => {
+            let s = status.get_untracked();
+            editor_ipc::editor_transport(&TransportAction::SetInOut {
+                a: s.current_frame,
+                b: s.out_frame.max(s.current_frame + 1),
+            });
+        }
+        "o" | "O" => {
+            let s = status.get_untracked();
+            editor_ipc::editor_transport(&TransportAction::SetInOut {
+                a: s.in_frame.min(s.current_frame),
+                b: s.current_frame + 1,
+            });
+        }
+        // ED.11 — the razor: split the clip under the playhead.
+        "s" | "S" => {
+            ev.prevent_default();
+            if let (Some(p), Some(h)) = (project, history) {
+                crate::editor_edits::split_at(p, h, status.get_untracked().current_frame);
+            }
+        }
+        // ED.11 — the trim bin: undo / redo (⌘Z / ⌘⇧Z).
+        "z" | "Z" if ev.meta_key() || ev.ctrl_key() => {
+            ev.prevent_default();
+            if let (Some(p), Some(h)) = (project, history) {
+                if ev.shift_key() {
+                    crate::editor_edits::redo(p, h);
+                } else {
+                    crate::editor_edits::undo(p, h);
+                }
+            }
+        }
+        // ED.11 — ripple-delete the selected clip (close the gap).
+        "Delete" | "Backspace" => {
+            ev.prevent_default();
+            if let (Some(p), Some(h)) = (project, history) {
+                let sel = selection.and_then(|s| s.get_untracked());
+                crate::editor_edits::ripple_delete_selected(p, h, sel);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The editor surface. Reads the loaded [`EditProject`] + the playhead
 /// [`EditorStatus`] from context and renders the [`EditorShell`] with a
 /// wired transport. Keyboard: Space = play/pause, ←/→ step (Shift = 5),
-/// I/O set in/out.
+/// I/O set in/out, S split, ⌘Z undo·redo, Delete ripple-delete.
 #[component]
 pub fn EditorSurface() -> impl IntoView {
     let project = use_context::<RwSignal<Option<EditProject>>>();
@@ -171,65 +239,7 @@ pub fn EditorSurface() -> impl IntoView {
         <section
             class="app-surface app-surface--editor"
             tabindex="0"
-            on:keydown=move |ev| {
-                match ev.key().as_str() {
-                    " " | "Spacebar" => {
-                        ev.prevent_default();
-                        editor_ipc::editor_transport(&TransportAction::TogglePlay);
-                    }
-                    "ArrowLeft" => {
-                        ev.prevent_default();
-                        let delta = if ev.shift_key() { -5 } else { -1 };
-                        editor_ipc::editor_transport(&TransportAction::Step { delta });
-                    }
-                    "ArrowRight" => {
-                        ev.prevent_default();
-                        let delta = if ev.shift_key() { 5 } else { 1 };
-                        editor_ipc::editor_transport(&TransportAction::Step { delta });
-                    }
-                    "i" | "I" => {
-                        let s = status.get_untracked();
-                        editor_ipc::editor_transport(&TransportAction::SetInOut {
-                            a: s.current_frame,
-                            b: s.out_frame.max(s.current_frame + 1),
-                        });
-                    }
-                    "o" | "O" => {
-                        let s = status.get_untracked();
-                        editor_ipc::editor_transport(&TransportAction::SetInOut {
-                            a: s.in_frame.min(s.current_frame),
-                            b: s.current_frame + 1,
-                        });
-                    }
-                    // ED.11 — the razor: split the clip under the playhead.
-                    "s" | "S" => {
-                        ev.prevent_default();
-                        if let (Some(p), Some(h)) = (project, history) {
-                            crate::editor_edits::split_at(p, h, status.get_untracked().current_frame);
-                        }
-                    }
-                    // ED.11 — the trim bin: undo / redo (⌘Z / ⌘⇧Z).
-                    "z" | "Z" if ev.meta_key() || ev.ctrl_key() => {
-                        ev.prevent_default();
-                        if let (Some(p), Some(h)) = (project, history) {
-                            if ev.shift_key() {
-                                crate::editor_edits::redo(p, h);
-                            } else {
-                                crate::editor_edits::undo(p, h);
-                            }
-                        }
-                    }
-                    // ED.11 — ripple-delete the selected clip (close the gap).
-                    "Delete" | "Backspace" => {
-                        ev.prevent_default();
-                        if let (Some(p), Some(h)) = (project, history) {
-                            let sel = selection.and_then(|s| s.get_untracked());
-                            crate::editor_edits::ripple_delete_selected(p, h, sel);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            on:keydown=move |ev| handle_editor_keydown(&ev, project, history, selection, status)
         >
             {move || {
                 let vm = match project {
@@ -250,6 +260,9 @@ pub fn EditorSurface() -> impl IntoView {
                                     }}
                                 </p>
                             </div>
+                        })
+                        inspector=ToChildren::to_children(move || view! {
+                            <crate::clip_inspector::ClipInspector />
                         })
                         timeline=ToChildren::to_children(move || view! {
                             <crate::timeline_view::TimelineRuler />

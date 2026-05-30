@@ -156,6 +156,7 @@
   - [Audio waveform lane — ED.10](./editor/chunks/ed10-waveform.md)
   - [Splitting, ripple-delete + undo/redo — ED.11](./editor/chunks/ed11-editing.md)
   - [The zoom lane — ED.12](./editor/chunks/ed12-zoom-lane.md)
+  - [Per-segment speed — ED.14](./editor/chunks/ed14-speed.md)
   - [The zoom engine — ED.16](./editor/chunks/ed16-zoom-engine.md)
 
 # Milestones

@@ -968,3 +968,52 @@
 .waveform-bar {
   background: color-mix(in srgb, var(--accent, #4fc3f7) 55%, transparent);
 }
+
+/* ── Clip inspector (ED.14: speed; ED.18/19 grow this panel) ────────── */
+.clip-inspector {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--fg, #e8eaed);
+}
+.clip-inspector-empty {
+  color: var(--fg-muted, #8a909a);
+  font-size: 12px;
+  margin: 0;
+}
+.clip-inspector-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted, #8a909a);
+}
+.clip-inspector-current {
+  margin: 0 0 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--fg, #e8eaed);
+}
+.clip-speed-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.clip-speed-preset {
+  padding: 4px 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: var(--surface-2, #25282d);
+  color: var(--fg, #e8eaed);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.clip-speed-preset:hover {
+  border-color: var(--accent, #4fc3f7);
+}
+.clip-speed-preset--active {
+  background: color-mix(in srgb, var(--accent, #4fc3f7) 28%, transparent);
+  border-color: var(--accent, #4fc3f7);
+  color: var(--fg, #fff);
+}
