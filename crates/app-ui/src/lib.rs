@@ -139,3 +139,4 @@ pub mod screen_picker;
 pub mod settings_ipc;
 pub mod system_audio_ipc;
 pub mod system_audio_picker;
+pub mod timeline_view;

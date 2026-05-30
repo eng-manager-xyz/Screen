@@ -151,6 +151,7 @@
   - [Editor surface + handoff — ED.5](./editor/chunks/ed5-editor-surface.md)
   - [Editor preview canvas — ED.6](./editor/chunks/ed6-preview.md)
   - [Playback transport — ED.7](./editor/chunks/ed7-transport.md)
+  - [Timeline ruler + coordinate system — ED.8](./editor/chunks/ed8-timeline-ruler.md)
 
 # Milestones
 

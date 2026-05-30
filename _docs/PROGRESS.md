@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.8 (AUT-343) — timeline ruler + frame↔pixel coordinate system
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. The timeline's shared coordinate system + a fit-to-width ruler with a live playhead + click-to-seek. First chunk of Phase D (timeline + dopesheet).
+
+### What shipped
+
+- **`crates/app-ui/src/timeline_view.rs`** — `TimelineViewport`: the pure frame↔pixel map (`frame_to_px`/`px_to_frame` round-trip, `frame_to_fraction` for responsive percent positioning), `zoom_at(factor, anchor_px)` (holds the anchor frame fixed — playhead stays put on zoom), `pan_px` (clamped to the clip), and `ruler_ticks` (labeled ticks at a "nice" 1/2/5/…s interval, frame-correct at every zoom). 7 unit tests. Plus `TimelineRuler` — a fit-to-width ("global progress") ruler component: tick labels + reactive playhead + click-to-seek, rendered above the transport.
+- **`crates/app-ui/src/{lib.rs,editor_surface.rs}`** — `pub mod timeline_view`; the ruler renders in the editor timeline slot. **Cargo.toml** — web-sys `MouseEvent` + `Element` (for click-seek geometry).
+
+### Verification
+
+- `cargo clippy -p app-ui --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p app-ui` — 7 `timeline_view` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed8-timeline-ruler.md` (the frame↔pixel contract + zoom-keeps-anchor rationale).
+
+### Notes
+
+- All testable timeline behavior lives in `TimelineViewport` and is verified at multiple zooms. Binding **wheel-zoom / drag-pan gestures** to it is a thin follow-on (the math is done + tested); the fit-to-width ruler doubles as the global-progress bar the ticket asks for and is the useful default until gesture-binding lands.
+
+### Issues filed: none
+
+---
+
 ## ED.7 (AUT-342) — playback transport wired to the editor clock
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. Full basic playback: play/pause, step, scrub, in/out, speed, `MM:SS.ff` timecode + keyboard.

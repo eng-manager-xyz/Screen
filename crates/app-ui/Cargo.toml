@@ -52,7 +52,7 @@ js-sys = "0.3"
 # system-audio picker so SCK's updateContentFilter doesn't rebuild
 # the stream 5 times when the user clicks 5 checkboxes quickly.
 gloo-timers = "0.3"
-web-sys = { version = "0.3", features = ["CustomEvent", "Window", "Location", "History", "Storage", "EventTarget", "Event", "HtmlVideoElement", "HtmlMediaElement", "HtmlCanvasElement", "HtmlSelectElement", "CanvasRenderingContext2d", "ImageData", "Document", "console", "KeyboardEvent", "HtmlInputElement"] }
+web-sys = { version = "0.3", features = ["CustomEvent", "Window", "Location", "History", "Storage", "EventTarget", "Event", "HtmlVideoElement", "HtmlMediaElement", "HtmlCanvasElement", "HtmlSelectElement", "CanvasRenderingContext2d", "ImageData", "Document", "console", "KeyboardEvent", "HtmlInputElement", "MouseEvent", "Element"] }
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 # M-AUDIO-SYS.2 / AUT-282 — system_audio_picker persists a
