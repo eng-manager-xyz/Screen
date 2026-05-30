@@ -126,6 +126,8 @@ mod app_shell_mount;
 pub mod camera_ipc;
 pub mod camera_picker;
 pub mod camera_preview;
+pub mod editor_ipc;
+pub mod editor_surface;
 pub mod mic_ipc;
 pub mod mic_picker;
 pub mod recorder_controls;

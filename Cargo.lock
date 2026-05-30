@@ -196,6 +196,7 @@ name = "app-ui"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "edit",
  "gloo-timers",
  "icondata",
  "js-sys",
@@ -6304,6 +6305,7 @@ version = "0.1.0"
 dependencies = [
  "block2 0.6.2",
  "decode",
+ "edit",
  "image",
  "media",
  "objc2 0.6.4",

@@ -148,6 +148,7 @@
   - [Edit operations + undo/redo — ED.2](./editor/chunks/ed2-edit-ops.md)
   - [Random-access decode — ED.3](./editor/chunks/ed3-random-access-decode.md)
   - [Playback clock — ED.4](./editor/chunks/ed4-playback-clock.md)
+  - [Editor surface + handoff — ED.5](./editor/chunks/ed5-editor-surface.md)
 
 # Milestones
 

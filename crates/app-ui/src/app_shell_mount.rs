@@ -22,6 +22,18 @@ use ui_storybook::fixtures::shell::{sample_nav_items, sample_user_avatar, sample
 pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let active = RwSignal::new(initial);
 
+    // ED.5 / M-EDIT — the loaded editor project, shared with the editor
+    // surface via context. The Record→Edit handoff (`open_in_editor`)
+    // pushes a project here; an effect jumps to the editor when one loads.
+    let editor_project = RwSignal::new(None::<edit::EditProject>);
+    provide_context(editor_project);
+    crate::editor_ipc::install_editor_project_listener(editor_project);
+    Effect::new(move |_| {
+        if editor_project.get().is_some() {
+            active.set(AppSection::Editor);
+        }
+    });
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.
@@ -161,10 +173,7 @@ fn EditorOrLater(active: RwSignal<AppSection>) -> impl IntoView {
             when=move || matches!(active.get(), AppSection::Editor)
             fallback=move || view! { <CursorOrPrefs active=active /> }
         >
-            <section class="app-surface app-surface--editor">
-                <h1>"Editor"</h1>
-                <p>"Editor shell + timeline. Future tickets: AUT-136 / AUT-139."</p>
-            </section>
+            <crate::editor_surface::EditorSurface />
         </Show>
     }
 }

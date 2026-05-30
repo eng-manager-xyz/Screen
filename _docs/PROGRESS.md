@@ -6,6 +6,31 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.5 (AUT-340) — activate the editor surface + Record→Edit handoff
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. `?surface=editor` now renders the real `EditorShell` driven by a loaded `EditProject`, and the handoff mechanism that loads a recording is wired end-to-end. First UI-integration chunk of M-EDIT.
+
+### What shipped
+
+- **`crates/app/src/editor_command.rs`** — `open_in_editor(path) -> Result<EditProject, String>` Tauri command: probe with `gst-discoverer-1.0`, build a default `EditProject::from_recording`. Pure `project_from_metadata` + `fps_round` split out and unit-tested (no gst). Registered in both `generate_handler!` arms (`crates/app/src/main.rs`).
+- **`crates/app-ui/src/editor_ipc.rs`** — `screen_open_in_editor` invoke binding (`__screenOpenInEditor` in `index.html`) + `install_editor_project_listener`: an `editor-project` `CustomEvent` listener that deserializes straight into `edit::EditProject` (app-ui now deps the wasm-clean `edit` crate — no mirror type).
+- **`crates/app-ui/src/editor_surface.rs`** — `EditorSurface` component: reads the loaded project from context, maps it to `EditorShellView` (title/subtitle/toolbar/enable), renders `ui_storybook`'s `EditorShell`. Pure `shell_view_for` mapping unit-tested (empty + loaded).
+- **`crates/app-ui/src/app_shell_mount.rs`** — `SurfacePane` now dispatches `AppSection::Editor` → `EditorSurface` (was a stub); `AppShellRoot` owns the `RwSignal<Option<EditProject>>`, provides it via context, installs the listener, and an `Effect` jumps to the editor when a project loads.
+
+### Verification
+
+- `cargo clippy -p screen-app -p app-ui --all-targets -- -D warnings` — clean.
+- `cargo nextest` — `editor_command` (project-build + fps-round edge cases) + `editor_surface` (empty/loaded view mapping) tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed5-editor-surface.md` (handoff sequence diagram + the no-mirror-type rationale).
+
+### Notes
+
+- The **receiving** mechanism is complete (command → `editor-project` event → context signal → surface, with auto-jump-to-editor). The user-facing "Open in Editor" **trigger button** on the recorder save panel is deferred to **ED.24** (recordings Library), where browse + re-open naturally lives. The canvas/timeline/inspector slots are intentionally minimal here — filled by ED.6 / ED.7 / ED.8 / ED.18.
+
+### Issues filed: none
+
+---
+
 ## ED.4 (AUT-339) — frame-indexed variable-rate playback clock (`EditorPlayer`)
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. The editor's time authority: seek/step/rate/in-out/loop, built on `wisp_animation::Driver` so the playhead and the zoom engine (ED.16) share one clock.

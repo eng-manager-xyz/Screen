@@ -32,6 +32,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 use screen_app::audio::{MicCaptureHandle, MicCaptureState};
 use screen_app::commands::{self, BubbleState, TrayState};
+use screen_app::editor_command;
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
 use screen_app::recording::RecordingState;
@@ -158,6 +159,7 @@ fn main() {
                     commands::get_output_dir,
                     commands::set_output_dir,
                     commands::recording_pending_export,
+                    editor_command::open_in_editor,
                     commands::export_recording,
                     commands::discard_recording,
                     commands::latest_camera_frame_bgra,
@@ -214,6 +216,7 @@ fn main() {
                     commands::get_output_dir,
                     commands::set_output_dir,
                     commands::recording_pending_export,
+                    editor_command::open_in_editor,
                     commands::export_recording,
                     commands::discard_recording,
                     commands::latest_camera_frame_bgra,

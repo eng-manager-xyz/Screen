@@ -30,6 +30,7 @@ tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png",
 playback = { path = "../playback" }
 decode = { path = "../decode" }
 media = { path = "../media" }
+edit = { path = "../edit" }
 wisp = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

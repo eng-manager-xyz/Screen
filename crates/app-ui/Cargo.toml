@@ -35,6 +35,10 @@ leptos_icons = "0.7"
 # glyphs, so gate to the `lucide` set.
 icondata = { version = "0.7", default-features = false, features = ["lucide"] }
 ui-storybook = { path = "../ui-storybook", default-features = false, features = ["csr"] }
+# ED.5 / M-EDIT — the pure edit model. `edit` is serde-only (no wgpu /
+# GStreamer), so it compiles to wasm32 cleanly and the `open_in_editor`
+# command's payload deserializes straight into `edit::EditProject`.
+edit = { path = "../edit" }
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
