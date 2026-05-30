@@ -103,3 +103,4 @@ sixty years on.
 - [Inspector Cursor tab — ED.19](./chunks/ed19-cursor.md)
 - [Deferred export frame generator — ED.20](./chunks/ed20-export-generator.md)
 - [End-to-end edited export — ED.21](./chunks/ed21-export.md)
+- [Export progress + cancel — ED.22](./chunks/ed22-export-ui.md)

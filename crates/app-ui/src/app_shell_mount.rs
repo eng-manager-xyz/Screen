@@ -69,6 +69,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let editor_zoom_selection = RwSignal::new(None::<edit::zoom::ZoomId>);
     provide_context(editor_zoom_selection);
 
+    // ED.22 — export lifecycle state, fed by the export event bridge.
+    let editor_export = RwSignal::new(crate::editor_ipc::ExportUiState::Idle);
+    provide_context(editor_export);
+    crate::editor_ipc::install_editor_export_listeners(editor_export);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

@@ -160,3 +160,126 @@ pub fn install_editor_status_listener(status: RwSignal<EditorStatus>) {
         window.add_event_listener_with_callback("editor-status", closure.as_ref().unchecked_ref());
     closure.forget();
 }
+
+// ── ED.22: export progress + cancel ─────────────────────────────────────
+
+/// Progress payload from the backend `editor-export-progress` event.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+pub struct ExportProgress {
+    /// Frames composed + encoded so far.
+    pub done: u64,
+    /// Total frames in the export.
+    pub total: u64,
+}
+
+/// UI-facing export state, driven by the export event bridge.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum ExportUiState {
+    /// No export in flight.
+    #[default]
+    Idle,
+    /// Export running: `done` of `total` frames.
+    Running {
+        /// Frames done.
+        done: u64,
+        /// Total frames.
+        total: u64,
+    },
+    /// Export finished — output at `path`.
+    Done {
+        /// Output file path.
+        path: String,
+    },
+    /// Export failed (or was cancelled).
+    Error {
+        /// Failure message.
+        message: String,
+    },
+}
+
+/// Progress as a whole percent `0..=100` (0 when `total` is 0).
+#[must_use]
+pub fn export_percent(done: u64, total: u64) -> u32 {
+    if total == 0 {
+        return 0;
+    }
+    u32::try_from(done.saturating_mul(100) / total)
+        .unwrap_or(100)
+        .min(100)
+}
+
+#[wasm_bindgen]
+extern "C" {
+    /// Start an edited export. Resolves to the output path (re-dispatched as
+    /// `editor-export-done`); rejects as `editor-export-error`.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenEditorExport", catch)]
+    fn screen_editor_export_js(project: JsValue, format: JsValue) -> Result<JsValue, JsValue>;
+
+    /// Request cancellation of the in-flight export.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenEditorExportCancel", catch)]
+    fn screen_editor_export_cancel_js() -> Result<JsValue, JsValue>;
+}
+
+/// Start exporting `project` to `format` (e.g. `"mp4"`). Progress + result
+/// arrive as events (see [`install_editor_export_listeners`]).
+pub fn editor_export(project: &EditProject, format: &str) {
+    if let Ok(js) = serde_wasm_bindgen::to_value(project) {
+        let _ = screen_editor_export_js(js, JsValue::from_str(format));
+    }
+}
+
+/// Request cancellation of the in-flight export.
+pub fn editor_export_cancel() {
+    let _ = screen_editor_export_cancel_js();
+}
+
+fn on_custom_event(name: &str, mut handler: impl FnMut(CustomEvent) + 'static) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+        if let Ok(custom) = event.dyn_into::<CustomEvent>() {
+            handler(custom);
+        }
+    }) as Box<dyn FnMut(_)>);
+    let _ = window.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref());
+    closure.forget();
+}
+
+/// Install the export event listeners (progress / done / error), each
+/// pushing into `state`. App-lifetime; closures leaked via `forget`.
+pub fn install_editor_export_listeners(state: RwSignal<ExportUiState>) {
+    on_custom_event("editor-export-progress", move |custom| {
+        if let Ok(p) = serde_wasm_bindgen::from_value::<ExportProgress>(custom.detail()) {
+            state.set(ExportUiState::Running {
+                done: p.done,
+                total: p.total,
+            });
+        }
+    });
+    on_custom_event("editor-export-done", move |custom| {
+        let path = custom.detail().as_string().unwrap_or_default();
+        state.set(ExportUiState::Done { path });
+    });
+    on_custom_event("editor-export-error", move |custom| {
+        let message = custom
+            .detail()
+            .as_string()
+            .unwrap_or_else(|| "export failed".to_owned());
+        state.set(ExportUiState::Error { message });
+    });
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::export_percent;
+
+    #[test]
+    fn percent_is_clamped_and_zero_safe() {
+        assert_eq!(export_percent(0, 0), 0);
+        assert_eq!(export_percent(0, 200), 0);
+        assert_eq!(export_percent(100, 200), 50);
+        assert_eq!(export_percent(200, 200), 100);
+        assert_eq!(export_percent(999, 200), 100); // clamped
+    }
+}

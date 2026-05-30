@@ -268,6 +268,7 @@ pub fn EditorSurface() -> impl IntoView {
                             </div>
                         })
                         inspector=ToChildren::to_children(move || view! {
+                            <crate::export_bar::ExportBar />
                             <crate::style_inspector::StyleInspector />
                             <crate::cursor_inspector::CursorInspector />
                             <crate::framing_inspector::FramingInspector />

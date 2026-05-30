@@ -42,6 +42,12 @@
               detail: event.payload
             }));
           });
+          // ED.22 — editor export progress, streamed during an export.
+          window.__TAURI__.event.listen("editor-export-progress", (event) => {
+            window.dispatchEvent(new CustomEvent("editor-export-progress", {
+              detail: event.payload
+            }));
+          });
           // Drag-state events (M-POLISH.1). Payload-less — the visual
           // toggle lives entirely in Leptos signal-land.
           window.__TAURI__.event.listen("file-drag-enter", () => {
@@ -82,6 +88,18 @@
               window.dispatchEvent(new CustomEvent("editor-status", { detail: status }));
           })
           .catch((e) => console.error("editor_transport failed", e));
+
+      // ED.22 — editor export. Progress streams as `editor-export-progress`
+      // events; the invoke resolves to the output path (→ `editor-export-done`)
+      // or rejects (→ `editor-export-error`).
+      window.__screenEditorExport = (project, format) =>
+        window.__TAURI__?.core?.invoke("editor_export", { project, format })
+          .then((path) =>
+            window.dispatchEvent(new CustomEvent("editor-export-done", { detail: path })))
+          .catch((e) =>
+            window.dispatchEvent(new CustomEvent("editor-export-error", { detail: String(e) })));
+      window.__screenEditorExportCancel = () =>
+        window.__TAURI__?.core?.invoke("editor_export_cancel");
 
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the

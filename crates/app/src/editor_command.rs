@@ -11,10 +11,12 @@
 )]
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use decode::gstreamer_pipe::GstreamerPipeStream;
 use edit::{ClipRef, EditProject};
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 
 use crate::editor_session::{EditorSession, EditorSessionState};
 
@@ -93,6 +95,93 @@ pub fn open_in_editor(
     Ok(project)
 }
 
+/// Shared cooperative cancel flag for an in-flight editor export (ED.22).
+/// `editor_export` resets + polls it; `editor_export_cancel` raises it.
+#[derive(Default)]
+pub struct EditorExportState(pub Arc<AtomicBool>);
+
+/// `editor-export-progress` event payload.
+#[derive(Clone, serde::Serialize)]
+struct ExportProgress {
+    done: u64,
+    total: u64,
+}
+
+/// Derive the export output path for `source` + `format`: alongside the
+/// recordings folder, named `<source-stem>-edited.<ext>` so it never
+/// clobbers the source recording. Pure (no I/O) for testability.
+#[must_use]
+pub fn edited_export_path(output_dir: &Path, source: &Path, extension: &str) -> PathBuf {
+    let stem = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("export");
+    output_dir.join(format!("{stem}-edited.{extension}"))
+}
+
+/// Export the edited `project` to an `.mp4`, streaming `editor-export-progress`
+/// events and honoring [`editor_export_cancel`]. Returns the output path.
+///
+/// Runs the compose + encode on the blocking pool so the webview stays
+/// responsive; progress is throttled to ~100 events over the export.
+///
+/// # Errors
+///
+/// Returns a message if the source can't be opened, the encoder fails, or
+/// the export was cancelled.
+#[tauri::command]
+pub async fn editor_export(
+    app: tauri::AppHandle,
+    project: EditProject,
+    format: Option<String>,
+) -> Result<String, String> {
+    use media::encode::OutputFormat;
+
+    let format = format
+        .as_deref()
+        .and_then(OutputFormat::from_slug)
+        .unwrap_or_default();
+    // Resolve state by handle (an async command can't hold a `State<'_>`
+    // borrow across `.await`); reset the cancel flag for this run.
+    let cancel = Arc::clone(&app.state::<EditorExportState>().0);
+    cancel.store(false, Ordering::Relaxed);
+
+    let source = project.source.path.clone();
+    let dir = crate::recorder_settings::resolved_output_dir(&app);
+    let out = edited_export_path(&dir, &source, format.extension());
+
+    let app_emit = app.clone();
+    let out_job = out.clone();
+    let job = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
+        crate::recording_paths::ensure_parent_dir(&out_job)
+            .map_err(|err| format!("failed to create output dir: {err}"))?;
+        crate::editor_export::export_edited_project(
+            project,
+            &source,
+            out_job,
+            format,
+            &cancel,
+            |done, total| {
+                let step = (total / 100).max(1);
+                if done % step == 0 || done == total {
+                    let _ = app_emit.emit("editor-export-progress", ExportProgress { done, total });
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|err| format!("export task failed to join: {err}"))?;
+
+    let path = job?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Request cancellation of an in-flight [`editor_export`].
+#[tauri::command]
+pub fn editor_export_cancel(state: State<'_, EditorExportState>) {
+    state.0.store(true, Ordering::Relaxed);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +196,15 @@ mod tests {
         assert_eq!(p.segments.len(), 1);
         assert_eq!(p.project_duration(), 600);
         assert!(p.zooms.is_empty());
+    }
+
+    #[test]
+    fn edited_export_path_names_alongside_source() {
+        let out = edited_export_path(Path::new("/out"), Path::new("/rec/clip.mp4"), "mp4");
+        assert_eq!(out, PathBuf::from("/out/clip-edited.mp4"));
+        // Missing stem falls back to a stable name.
+        let fallback = edited_export_path(Path::new("/out"), Path::new("/"), "mp4");
+        assert_eq!(fallback, PathBuf::from("/out/export-edited.mp4"));
     }
 
     #[test]

@@ -1154,3 +1154,64 @@
 .cursor-toggle input {
   accent-color: var(--accent, #4fc3f7);
 }
+
+/* ── Export bar (ED.22: start / progress / cancel) ──────────────────── */
+.export-bar {
+  padding: 12px;
+  border-bottom: 1px solid var(--border, #2c3036);
+  color: var(--fg, #e8eaed);
+}
+.export-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.export-btn {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent, #4fc3f7);
+  color: #06121a;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-btn:hover {
+  filter: brightness(1.08);
+}
+.export-progress {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2, #25282d);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.export-progress-fill {
+  height: 100%;
+  background: var(--accent, #4fc3f7);
+  transition: width 0.1s linear;
+}
+.export-pct {
+  min-width: 36px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--fg-muted, #b6bcc6);
+}
+.export-cancel {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--fg-muted, #b6bcc6);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-cancel:hover {
+  border-color: var(--accent, #4fc3f7);
+  color: var(--fg, #fff);
+}
+.export-status {
+  font-size: 11px;
+  color: var(--fg-muted, #b6bcc6);
+}

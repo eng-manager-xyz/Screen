@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.22 (AUT-357) — export progress + cancel UI
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). The footage counter + stop button.
+
+### What shipped
+
+- **`crates/app/src/editor_command.rs`** — `EditorExportState(Arc<AtomicBool>)` cancel flag; `editor_export(app, project, format)` async command (runs `export_edited_project` on the blocking pool, derives the output path beside the recordings folder via the pure tested `edited_export_path`, emits `editor-export-progress` throttled to ~100 events); `editor_export_cancel` raises the flag. Registered in both `main.rs` handler arms + `.manage()`.
+- **`crates/app-ui/src/editor_ipc.rs`** — `ExportProgress` / `ExportUiState` types, `editor_export` / `editor_export_cancel` bindings, `install_editor_export_listeners` (progress/done/error → `ExportUiState`), and the pure tested `export_percent`.
+- **`crates/app-ui/src/export_bar.rs`** (new) — `ExportBar`: Export button when idle, progress bar + Cancel while running, output path / error when done. **`index.html`** bridges `editor-export-progress` + the `__screenEditorExport`/`Cancel` invokes. **`app_shell_mount.rs`** provides `ExportUiState` + installs the listeners; **`editor_surface.rs`** renders the bar atop the inspector. Styled in `shell.css`.
+- Also fixed the ED.20 `editor_export` module-doc `Self::spawn_count` rustdoc warning (`Self` is invalid at module scope).
+
+### Verification
+
+- `cargo clippy -p screen-app -p app-ui --all-targets -- -D warnings` (native) + app-ui wasm — clean. `export_percent` + `edited_export_path` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed22-export-ui.md` (the print run + footage counter).
+
+### Notes
+
+- **Pure wiring** — the `cancel`/`on_progress` hooks were built into `export_edited_project` in ED.21, so this added no change to the generator→encoder spine: just the command, the event bridge, and the reactive bar. Cancel surfaces as an `Error { "export cancelled" }` state (the export returns `Err` on the flag); the user can re-export immediately.
+
+### Issues filed: none
+
+---
+
 ## ED.21 (AUT-356) — end-to-end edited export
 - **Date:** 2026-05-30
 - **Status:** ✅ done (video export) — `video-editing-v2` (PR #65). The answer print.

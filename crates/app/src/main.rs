@@ -97,7 +97,8 @@ fn main() {
         .manage(MicCaptureState::default())
         .manage(MicCaptureHandle::default())
         .manage(RecordingState::default())
-        .manage(EditorSessionState::default());
+        .manage(EditorSessionState::default())
+        .manage(editor_command::EditorExportState::default());
     // System-audio + screen-capture states are macOS-only — both
     // depend on ScreenCaptureKit.
     #[cfg(target_os = "macos")]
@@ -162,6 +163,8 @@ fn main() {
                     commands::set_output_dir,
                     commands::recording_pending_export,
                     editor_command::open_in_editor,
+                    editor_command::editor_export,
+                    editor_command::editor_export_cancel,
                     editor_session::editor_transport,
                     commands::export_recording,
                     commands::discard_recording,
@@ -220,6 +223,8 @@ fn main() {
                     commands::set_output_dir,
                     commands::recording_pending_export,
                     editor_command::open_in_editor,
+                    editor_command::editor_export,
+                    editor_command::editor_export_cancel,
                     editor_session::editor_transport,
                     commands::export_recording,
                     commands::discard_recording,

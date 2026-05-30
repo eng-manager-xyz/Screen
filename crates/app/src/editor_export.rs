@@ -14,7 +14,7 @@
 //! It is **forward-only**: project frames are visited in order, and our edit
 //! ops never reorder the timeline, so the source frames it requests are
 //! monotonic non-decreasing — the decode stream never re-spawns (cheap,
-//! and asserted by the golden test via [`Self::spawn_count`]).
+//! and asserted by the golden test via [`ExportFrameGenerator::spawn_count`]).
 //!
 //! The cinematic *visual* edits — zoom punch-ins, crop reframe, and the
 //! background framing — apply as a transform on the composed screen sprite;
