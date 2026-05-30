@@ -65,6 +65,10 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let editor_history = StoredValue::new(None::<edit::History>);
     provide_context(editor_history);
 
+    // ED.12 — which zoom region is selected on the zoom lane.
+    let editor_zoom_selection = RwSignal::new(None::<edit::zoom::ZoomId>);
+    provide_context(editor_zoom_selection);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

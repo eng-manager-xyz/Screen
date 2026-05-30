@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.12 (AUT-347) — the zoom lane (author cinematic push-ins)
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). The exposure sheet, as a timeline lane.
+
+### What shipped
+
+- **`crates/app-ui/src/zoom_lane.rs`** (new) — `zoom_spans(project)` (pure, tested): each `ZoomSegment` → a fraction-of-duration `ZoomBlock { id, start_fraction, width_fraction, amount, label }`, the *same* layout math as the filmstrip so the zoom lane stays pixel-aligned with video + audio. `ZoomLane` component renders selectable blocks + a "+ Zoom" affordance; click selects, × removes.
+- **`crates/app-ui/src/editor_edits.rs`** — `add_zoom_default(project, history, at)` drops a default ~1.5 s, 1.6× region at the playhead via `EditOp::AddZoom`; `remove_zoom(project, history, id)` via `EditOp::RemoveZoom`. Both undoable through the shared `History`.
+- **`crates/app-ui/src/{app_shell_mount.rs,editor_surface.rs,lib.rs}`** — zoom-selection context (`RwSignal<Option<ZoomId>>`); the lane renders between the video filmstrip and the audio waveform.
+- **`crates/app-ui/shell.css`** — a full editor-timeline styling pass: the lanes become positioning contexts (so the fraction-positioned blocks lay out), with styled ruler/ticks/playhead, selectable filmstrip clips, accent-tinted zoom blocks + add/remove affordances, and the waveform baseline/bars. Fixes the absolute-layout gap left by ED.8–10 and styles all lanes coherently.
+
+### Verification
+
+- `cargo clippy -p app-ui --all-targets -- -D warnings` (native) + `--target wasm32-unknown-unknown` (wasm) — both clean. `cargo nextest -p app-ui` — `zoom_spans` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed12-zoom-lane.md` (the rostrum operator's exposure sheet; authoring-vs-rendering split).
+
+### Notes
+
+- **Authoring only** — the lane mutates `project.zooms`; the visible push-in is the ED.16 engine's job at render time. **Drag-to-move / edge-retime** of a block joins the deferred gesture pass alongside clip-edge trim. The authoring verbs shipped are add / select / remove.
+
+### Issues filed: none
+
+---
+
 ## ED.16 (AUT-351) — the zoom engine (cinematic push-in)
 - **Date:** 2026-05-30
 - **Status:** ✅ done (pure engine) — `video-editing-v2` (PR #65). The rostrum camera, in software.

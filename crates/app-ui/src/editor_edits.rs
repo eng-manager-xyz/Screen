@@ -95,6 +95,44 @@ pub fn ripple_delete_selected(
     });
 }
 
+/// Add a default ~1.5 s zoom (1.6× centre) starting at project frame `at`,
+/// clamped to the timeline. No-op if the window would be empty. `AddZoom`
+/// assigns the region a fresh id.
+pub fn add_zoom_default(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    at: u64,
+) {
+    let Some(current) = project.get_untracked() else {
+        return;
+    };
+    let duration = current.project_duration();
+    if duration == 0 {
+        return;
+    }
+    let start = at.min(duration.saturating_sub(1));
+    let window = (u64::from(current.project_fps) * 3 / 2).max(1); // ~1.5 s
+    let end = (start + window).min(duration);
+    if end <= start {
+        return;
+    }
+    let zoom = edit::zoom::ZoomSegment::manual(edit::zoom::ZoomId(0), start, end, 1.6);
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::AddZoom { zoom });
+    });
+}
+
+/// Remove the zoom region with the given id.
+pub fn remove_zoom(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    id: edit::zoom::ZoomId,
+) {
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::RemoveZoom { id });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {
