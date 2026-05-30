@@ -4,7 +4,7 @@
 //! fill) plus the padding, corner radius, and drop shadow that lift the
 //! recording off it — the produced, on-a-nice-desktop framing every modern
 //! screen recorder ships. All of it drives one
-//! [`BackgroundConfig`](edit::style::BackgroundConfig) on the project,
+//! [`BackgroundConfig`] on the project,
 //! re-derived at render time; the *visible* framing (the drawn padding /
 //! rounded canvas / shadow) lands with the render-integration / export pass
 //! (ED.20 / ED.21). This chunk is the authoring side, undoable through the

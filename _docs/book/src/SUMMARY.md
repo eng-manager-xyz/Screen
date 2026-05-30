@@ -161,6 +161,7 @@
   - [The zoom engine — ED.16](./editor/chunks/ed16-zoom-engine.md)
   - [Auto-zoom from click telemetry — ED.17](./editor/chunks/ed17-auto-zoom.md)
   - [Inspector Style tab — ED.18](./editor/chunks/ed18-style.md)
+  - [Inspector Cursor tab — ED.19](./editor/chunks/ed19-cursor.md)
 
 # Milestones
 

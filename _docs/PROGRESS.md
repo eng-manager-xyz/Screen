@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.19 (AUT-354) — inspector Cursor tab
+- **Date:** 2026-05-30
+- **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The cursor's dressing room.
+
+### What shipped
+
+- **`crates/edit/src/ops.rs`** — `EditOp::SetCursor { cursor }` (`CursorConfig` is `Copy`, so a plain field assign — rides the ED.18 by-reference `apply` for free). +1 ops test.
+- **`crates/app-ui/src/cursor_inspector.rs`** (new) — `CursorInspector`: size (clamped 25–400 % via `clamp_size_pct`) + smoothing numeric fields, and toggles for click-ripples, hide-when-static, and auto-zoom-on-clicks (the switch that gates the ED.17 generator). Each commits `SetCursor` through `History`. Tested helper `clamp_size_pct`.
+- **`crates/app-ui/src/editor_edits.rs`** — `set_cursor` helper. **`{editor_surface.rs,lib.rs}`** + **`shell.css`** — `CursorInspector` added to the inspector (after Style); styled toggles. Also cleared the ED.18 `style_inspector` rustdoc redundant-link warning.
+
+### Verification
+
+- `cargo clippy -p edit -p app-ui --all-targets -- -D warnings` (native) + app-ui `--target wasm32-unknown-unknown` — clean. `cargo nextest` — 1 ops + 1 inspector test pass. `just gate` — green.
+- mdBook: `editor/chunks/ed19-cursor.md` (grooming the lone performer).
+
+### Notes
+
+- **Authoring only** for size/smoothing/ripples/hide-static — the composited cursor **overlay** (`wisp` layer driven by the captured cursor track) needs the same per-OS telemetry capture ED.17 awaits, so it lands with the render-integration pass. The **auto-zoom-on-clicks toggle is live today** (it gates the already-built ED.17 generator).
+
+### Issues filed: none
+
+---
+
 ## ED.18 (AUT-353) — inspector Style tab (background framing)
 - **Date:** 2026-05-30
 - **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The presentation mount.

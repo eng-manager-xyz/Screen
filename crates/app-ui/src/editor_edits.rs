@@ -180,6 +180,17 @@ pub fn set_background(
     });
 }
 
+/// Set the cursor styling config (size / smoothing / ripples / etc.).
+pub fn set_cursor(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    cursor: edit::style::CursorConfig,
+) {
+    run(project, history, move |hist| {
+        let _ = hist.apply(&EditOp::SetCursor { cursor });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {

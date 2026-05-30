@@ -10,7 +10,7 @@
 
 use crate::project::EditProject;
 use crate::segment::{Frame, TimelineSegment};
-use crate::style::{AspectRatio, BackgroundConfig, CropRect};
+use crate::style::{AspectRatio, BackgroundConfig, CropRect, CursorConfig};
 use crate::zoom::{ZoomId, ZoomSegment};
 
 /// Which edge of a segment a [`EditOp::Trim`] moves.
@@ -91,6 +91,11 @@ pub enum EditOp {
         /// New background config.
         config: BackgroundConfig,
     },
+    /// Set the cursor styling (size / smoothing / ripples / hide-static).
+    SetCursor {
+        /// New cursor config.
+        cursor: CursorConfig,
+    },
 }
 
 /// Why an [`EditOp`] could not be applied.
@@ -162,6 +167,10 @@ impl EditProject {
             }
             EditOp::SetBackground { config } => {
                 self.background = config.clone();
+                Ok(())
+            }
+            EditOp::SetCursor { cursor } => {
+                self.cursor = *cursor;
                 Ok(())
             }
         }
@@ -593,6 +602,20 @@ mod tests {
         p.apply(&EditOp::SetBackground { config: bg.clone() })
             .unwrap();
         assert_eq!(p.background, bg);
+        p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn set_cursor_replaces_config() {
+        let mut p = project();
+        let cur = CursorConfig {
+            size_pct: 220,
+            smoothing: 40,
+            click_ripples: false,
+            ..CursorConfig::default()
+        };
+        p.apply(&EditOp::SetCursor { cursor: cur }).unwrap();
+        assert_eq!(p.cursor, cur);
         p.check_invariants().unwrap();
     }
 }
