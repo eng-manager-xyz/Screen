@@ -169,6 +169,17 @@ pub fn set_aspect(
     });
 }
 
+/// Set the background framing config (backdrop + padding / radius / shadow).
+pub fn set_background(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    config: edit::style::BackgroundConfig,
+) {
+    run(project, history, move |hist| {
+        let _ = hist.apply(&EditOp::SetBackground { config });
+    });
+}
+
 /// Undo the last edit (the trim bin — nothing is lost).
 pub fn undo(project: RwSignal<Option<EditProject>>, history: StoredValue<Option<History>>) {
     run(project, history, |hist| {

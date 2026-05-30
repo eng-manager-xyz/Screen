@@ -3,7 +3,7 @@
 //! Screen recorders earn their "cinematic" feel by punching in where the
 //! user is *working* — and the user tells you where that is every time they
 //! click. This module turns a recorded click log into
-//! [`ZoomSegment`](crate::zoom::ZoomSegment)s: clicks close together in time
+//! [`ZoomSegment`]s: clicks close together in time
 //! form one cluster, and each cluster becomes a zoom that opens just before
 //! the first click, holds through the last, and targets the cluster's
 //! centroid. The result is an ordinary, fully-editable list of zooms (the

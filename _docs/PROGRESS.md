@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.18 (AUT-353) — inspector Style tab (background framing)
+- **Date:** 2026-05-30
+- **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The presentation mount.
+
+### What shipped
+
+- **`crates/edit/src/ops.rs`** — new `EditOp::SetBackground { config }`. Because `BackgroundConfig` is **not `Copy`** (owns a wallpaper `String`), converted `EditProject::apply` from `match *op` to a by-reference `match op` (deref the Copy bindings; `clone()` the config) — future-proofs any non-Copy op. +1 ops test. Also fixed the ED.17 telemetry rustdoc `redundant_explicit_links` warning.
+- **`crates/app-ui/src/style_inspector.rs`** (new) — `StyleInspector`: backdrop **swatches** (gradient + flat presets) rendered via `source_css` (the same CSS the live canvas backdrop will use) + numeric **padding / corner-radius / shadow** fields; each commits `SetBackground` through `History`. Pure tested helpers: `background_presets`, `source_css`, `is_active_source`, `parse_u32_field`. 4 tests.
+- **`crates/app-ui/src/editor_edits.rs`** — `set_background` helper. **`{editor_surface.rs,lib.rs}`** + **`shell.css`** — `StyleInspector` now leads the inspector (above Framing + Clip), styled swatches + fields.
+
+### Verification
+
+- `cargo clippy -p edit -p app-ui --all-targets -- -D warnings` (native) + app-ui `--target wasm32-unknown-unknown` — clean. `cargo nextest` — 1 ops + 4 inspector tests pass + 59 edit tests. `just gate` — green.
+- mdBook: `editor/chunks/ed18-style.md` (the presentation mount).
+
+### Notes
+
+- **Authoring + preview-of-swatches only.** The *visible* framing (drawn backdrop, padding, rounded canvas, drop shadow) composites in the render-integration / export pass (ED.20/21). Wallpaper backdrops need bundled assets (deferred) — swatches cover gradients + flat fills.
+
+### Issues filed: none
+
+---
+
 ## ED.17 (AUT-352) — auto-zoom from click telemetry
 - **Date:** 2026-05-30
 - **Status:** ✅ done (generator) — `video-editing-v2` (PR #65). The assistant editor's continuity log.

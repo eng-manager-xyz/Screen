@@ -10,7 +10,7 @@
 
 use crate::project::EditProject;
 use crate::segment::{Frame, TimelineSegment};
-use crate::style::{AspectRatio, CropRect};
+use crate::style::{AspectRatio, BackgroundConfig, CropRect};
 use crate::zoom::{ZoomId, ZoomSegment};
 
 /// Which edge of a segment a [`EditOp::Trim`] moves.
@@ -86,6 +86,11 @@ pub enum EditOp {
         /// New aspect ratio.
         ratio: AspectRatio,
     },
+    /// Set the background framing (backdrop + padding / radius / shadow).
+    SetBackground {
+        /// New background config.
+        config: BackgroundConfig,
+    },
 }
 
 /// Why an [`EditOp`] could not be applied.
@@ -134,23 +139,29 @@ impl EditProject {
     /// Returns [`EditError`] for an out-of-range segment index, an empty
     /// range, an unknown zoom id, or a split past the end of the timeline.
     pub fn apply(&mut self, op: &EditOp) -> Result<(), EditError> {
-        match *op {
-            EditOp::Split { at } => self.apply_split(at),
-            EditOp::Trim { index, edge, to } => self.apply_trim(index, edge, to),
-            EditOp::RippleDelete { start, end } => self.apply_ripple_delete(start, end),
-            EditOp::SetSpeed { index, timescale } => self.apply_set_speed(index, timescale),
+        // Matched by reference so non-`Copy` payloads (e.g. `SetBackground`,
+        // which owns a wallpaper `String`) bind without moving out of `*op`.
+        match op {
+            EditOp::Split { at } => self.apply_split(*at),
+            EditOp::Trim { index, edge, to } => self.apply_trim(*index, *edge, *to),
+            EditOp::RippleDelete { start, end } => self.apply_ripple_delete(*start, *end),
+            EditOp::SetSpeed { index, timescale } => self.apply_set_speed(*index, *timescale),
             EditOp::AddZoom { zoom } => {
-                self.apply_add_zoom(zoom);
+                self.apply_add_zoom(*zoom);
                 Ok(())
             }
-            EditOp::RemoveZoom { id } => self.apply_remove_zoom(id),
-            EditOp::MoveZoom { id, start, end } => self.apply_move_zoom(id, start, end),
+            EditOp::RemoveZoom { id } => self.apply_remove_zoom(*id),
+            EditOp::MoveZoom { id, start, end } => self.apply_move_zoom(*id, *start, *end),
             EditOp::SetCrop { rect } => {
-                self.apply_set_crop(rect);
+                self.apply_set_crop(*rect);
                 Ok(())
             }
             EditOp::SetAspect { ratio } => {
-                self.aspect = ratio;
+                self.aspect = *ratio;
+                Ok(())
+            }
+            EditOp::SetBackground { config } => {
+                self.background = config.clone();
                 Ok(())
             }
         }
@@ -568,5 +579,20 @@ mod tests {
             height: 1.0,
         });
         assert!(p.check_invariants().is_err());
+    }
+
+    #[test]
+    fn set_background_replaces_config() {
+        let mut p = project();
+        let bg = BackgroundConfig {
+            padding: 96,
+            corner_radius: 20,
+            shadow: 40,
+            ..BackgroundConfig::default()
+        };
+        p.apply(&EditOp::SetBackground { config: bg.clone() })
+            .unwrap();
+        assert_eq!(p.background, bg);
+        p.check_invariants().unwrap();
     }
 }
