@@ -149,6 +149,7 @@
   - [Random-access decode — ED.3](./editor/chunks/ed3-random-access-decode.md)
   - [Playback clock — ED.4](./editor/chunks/ed4-playback-clock.md)
   - [Editor surface + handoff — ED.5](./editor/chunks/ed5-editor-surface.md)
+  - [Editor preview canvas — ED.6](./editor/chunks/ed6-preview.md)
 
 # Milestones
 

@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.6 (AUT-341) — editor preview canvas: compose the frame at the playhead
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. The compose-at-playhead pump, reusing the recorder's compositor for preview/export parity by construction.
+
+### What shipped
+
+- **`crates/app/src/editor_preview.rs`** — `EditorPreview` wraps the proven `RecordingCompose` but is sourced from a seekable `EditorVideoStream` at `EditorPlayer::current_frame()` instead of live capture slots. `render_frame(bgra)` composes a single source frame; `render_at(stream, player)` pulls the playhead frame and composes it. The recorded clip is pre-composited, so it shows full-frame (the scene's cam channel stays idle, 2×2 placeholder texture).
+- **`crates/app/src/lib.rs`** — `pub mod editor_preview`.
+
+### Verification
+
+- `cargo clippy -p screen-app --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p screen-app` — 2 wgpu tests pass on real Metal (source frame → correctly-sized composed BGRA; wrong-sized frame dropped). `just gate` — green.
+- mdBook: `editor/chunks/ed6-preview.md` (preview→compose→window flow + the one-compose-path parity rationale).
+
+### Notes
+
+- **Scope split (deliberate):** this chunk is the pump. (1) The **cinematic framing** — gradient background, padding, rounded corners, drop shadow — lands with its inspector controls in **ED.18**; it needs careful work against wisp's batch-by-type renderer (Graphics-paints-after-Sprites; per-subtree drop-shadow filtering), so it earns its own chunk rather than being rushed here. (2) The live **winit preview window** follows the `preview` crate pattern and is manually verified (it can't render headless in `just gate`). The key win banked here: preview and export (ED.20) share **one** `RecordingCompose` path.
+
+### Issues filed: none
+
+---
+
 ## ED.5 (AUT-340) — activate the editor surface + Record→Edit handoff
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. `?surface=editor` now renders the real `EditorShell` driven by a loaded `EditProject`, and the handoff mechanism that loads a recording is wired end-to-end. First UI-integration chunk of M-EDIT.
