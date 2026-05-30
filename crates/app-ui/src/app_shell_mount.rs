@@ -74,6 +74,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     provide_context(editor_export);
     crate::editor_ipc::install_editor_export_listeners(editor_export);
 
+    // ED.23 — last-saved `.screenproj` path, set by the `editor-saved` event.
+    let editor_saved = RwSignal::new(None::<String>);
+    provide_context(editor_saved);
+    crate::editor_ipc::install_editor_saved_listener(editor_saved);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

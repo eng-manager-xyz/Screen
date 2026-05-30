@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.23 (AUT-358) — project persistence (.screenproj)
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). The decision list, filed in the can.
+
+### What shipped
+
+- **`crates/edit/src/persist.rs`** (new) — `to_screenproj` / `from_screenproj` over `serde_json` (pretty-printed). The whole `.screenproj` format. **Lossless round-trip** proven without the filesystem: a split + speed + zoom project serializes and deserializes `==` identical. 3 tests (round-trip, malformed-json, pretty+versioned). `serde_json` promoted from dev- to regular dep of `edit` (wasm-safe → `edit` stays wasm-clean).
+- **`crates/app/src/editor_command.rs`** — `screenproj_path` (pure, tested: source ext → `.screenproj`); `editor_save_project(project)` writes `<recording>.screenproj` beside the source + returns the path; `editor_load_project(path)` reads + parses. Registered in both `main.rs` handler arms.
+- **`crates/app-ui`** — `editor_save_project` binding + `install_editor_saved_listener`; **Save** button added to `ExportBar` (beside Export) showing the written path; `index.html` `__screenEditorSaveProject` helper + `editor-saved` bridge; saved-path signal provided in `AppShellRoot`. Styled in `shell.css`.
+
+### Verification
+
+- `cargo clippy -p edit -p screen-app -p app-ui --all-targets -- -D warnings` (native) + app-ui wasm — clean. `cargo nextest -p edit` — persist round-trip + path tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed23-persistence.md` (the EDL filed in the can).
+
+### Notes
+
+- The `editor_load_project` command is backend-ready; its UI (open a saved project from a list) lands with the recordings library (ED.24). `SCHEMA_VERSION` on the file enables future migration.
+
+### Issues filed: none
+
+---
+
 ## ED.22 (AUT-357) — export progress + cancel UI
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2` (PR #65). The footage counter + stop button.

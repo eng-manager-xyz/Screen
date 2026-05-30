@@ -165,6 +165,7 @@
   - [Deferred export frame generator — ED.20](./editor/chunks/ed20-export-generator.md)
   - [End-to-end edited export — ED.21](./editor/chunks/ed21-export.md)
   - [Export progress + cancel — ED.22](./editor/chunks/ed22-export-ui.md)
+  - [Project persistence — `.screenproj` — ED.23](./editor/chunks/ed23-persistence.md)
 
 # Milestones
 

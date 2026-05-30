@@ -19,6 +19,7 @@ export. Each chunk retraces one step:
 |---|---|
 | The reel of negative — frames held to the light | **ED.9** video filmstrip |
 | Edit by decision list, never cut the negative | **ED.1** `EditProject` |
+| The decision list filed in the can (EDL) | **ED.23** `.screenproj` |
 | The trim bin — nothing is ever lost | **ED.2** undo / redo |
 | The Moviola / Steenbeck flatbed — scrub *both* ways | **ED.3** random-access decode |
 | SMPTE timecode — every frame has an address | **ED.4** frame-indexed clock |
@@ -104,3 +105,4 @@ sixty years on.
 - [Deferred export frame generator — ED.20](./chunks/ed20-export-generator.md)
 - [End-to-end edited export — ED.21](./chunks/ed21-export.md)
 - [Export progress + cancel — ED.22](./chunks/ed22-export-ui.md)
+- [Project persistence — `.screenproj` — ED.23](./chunks/ed23-persistence.md)

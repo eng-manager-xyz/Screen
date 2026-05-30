@@ -15,11 +15,13 @@ use crate::editor_ipc::{self, ExportUiState, export_percent};
 
 type ProjectSignal = Option<RwSignal<Option<EditProject>>>;
 
-/// Idle / done / error view: the Export button plus an optional status line.
+/// Idle / done / error view: Export + Save buttons plus optional status +
+/// last-saved lines.
 fn idle_view(
     project: ProjectSignal,
     state: RwSignal<ExportUiState>,
     status: Option<String>,
+    saved: Option<String>,
 ) -> AnyView {
     view! {
         <div class="export-bar-row">
@@ -39,7 +41,20 @@ fn idle_view(
             >
                 "Export mp4"
             </button>
+            <button
+                class="export-save"
+                on:click=move |_| {
+                    if let Some(p) = project
+                        && let Some(proj) = p.get_untracked()
+                    {
+                        editor_ipc::editor_save_project(&proj);
+                    }
+                }
+            >
+                "Save"
+            </button>
             {status.map(|msg| view! { <span class="export-status">{msg}</span> })}
+            {saved.map(|path| view! { <span class="export-status">{format!("Saved: {path}")}</span> })}
         </div>
     }
     .into_any()
@@ -68,17 +83,21 @@ pub fn ExportBar() -> impl IntoView {
     let project = use_context::<RwSignal<Option<EditProject>>>();
     let state = use_context::<RwSignal<ExportUiState>>()
         .unwrap_or_else(|| RwSignal::new(ExportUiState::Idle));
+    let saved = use_context::<RwSignal<Option<String>>>();
     view! {
         <div class="export-bar">
             <h3 class="clip-inspector-title">"Export"</h3>
-            {move || match state.get() {
-                ExportUiState::Idle => idle_view(project, state, None),
-                ExportUiState::Running { done, total } => running_view(done, total),
-                ExportUiState::Done { path } => {
-                    idle_view(project, state, Some(format!("✓ Exported: {path}")))
-                }
-                ExportUiState::Error { message } => {
-                    idle_view(project, state, Some(format!("✗ {message}")))
+            {move || {
+                let saved_now = saved.and_then(|s| s.get());
+                match state.get() {
+                    ExportUiState::Idle => idle_view(project, state, None, saved_now),
+                    ExportUiState::Running { done, total } => running_view(done, total),
+                    ExportUiState::Done { path } => {
+                        idle_view(project, state, Some(format!("✓ Exported: {path}")), saved_now)
+                    }
+                    ExportUiState::Error { message } => {
+                        idle_view(project, state, Some(format!("✗ {message}")), saved_now)
+                    }
                 }
             }}
         </div>

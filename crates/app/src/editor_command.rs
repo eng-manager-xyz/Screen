@@ -182,6 +182,38 @@ pub fn editor_export_cancel(state: State<'_, EditorExportState>) {
     state.0.store(true, Ordering::Relaxed);
 }
 
+/// The `.screenproj` path for a `source` recording: the source path with its
+/// extension swapped, so the project file sits beside the recording. Pure.
+#[must_use]
+pub fn screenproj_path(source: &Path) -> PathBuf {
+    source.with_extension(edit::persist::SCREENPROJ_EXTENSION)
+}
+
+/// Save `project` to its `.screenproj` (beside the source recording);
+/// returns the written path.
+///
+/// # Errors
+///
+/// Returns a message if serialization or the file write fails.
+#[tauri::command]
+pub fn editor_save_project(project: EditProject) -> Result<String, String> {
+    let path = screenproj_path(&project.source.path);
+    let json = edit::persist::to_screenproj(&project)?;
+    std::fs::write(&path, json).map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Load an editor project from a `.screenproj` `path`.
+///
+/// # Errors
+///
+/// Returns a message if the file can't be read or parsed.
+#[tauri::command]
+pub fn editor_load_project(path: String) -> Result<EditProject, String> {
+    let json = std::fs::read_to_string(&path).map_err(|err| format!("read {path}: {err}"))?;
+    edit::persist::from_screenproj(&json)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +228,14 @@ mod tests {
         assert_eq!(p.segments.len(), 1);
         assert_eq!(p.project_duration(), 600);
         assert!(p.zooms.is_empty());
+    }
+
+    #[test]
+    fn screenproj_path_swaps_extension() {
+        assert_eq!(
+            screenproj_path(Path::new("/rec/clip.mp4")),
+            PathBuf::from("/rec/clip.screenproj")
+        );
     }
 
     #[test]

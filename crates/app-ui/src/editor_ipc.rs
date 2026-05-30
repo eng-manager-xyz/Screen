@@ -270,6 +270,29 @@ pub fn install_editor_export_listeners(state: RwSignal<ExportUiState>) {
     });
 }
 
+#[wasm_bindgen]
+extern "C" {
+    /// Save the current project to its `.screenproj` (ED.23). The written
+    /// path is re-dispatched as an `editor-saved` event.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenEditorSaveProject", catch)]
+    fn screen_editor_save_project_js(project: JsValue) -> Result<JsValue, JsValue>;
+}
+
+/// Save `project` to its `.screenproj`. The written path arrives as an
+/// `editor-saved` event (see [`install_editor_saved_listener`]).
+pub fn editor_save_project(project: &EditProject) {
+    if let Ok(js) = serde_wasm_bindgen::to_value(project) {
+        let _ = screen_editor_save_project_js(js);
+    }
+}
+
+/// Install an `editor-saved` listener pushing the written path into `saved`.
+pub fn install_editor_saved_listener(saved: RwSignal<Option<String>>) {
+    on_custom_event("editor-saved", move |custom| {
+        saved.set(custom.detail().as_string());
+    });
+}
+
 #[cfg(test)]
 mod export_tests {
     use super::export_percent;

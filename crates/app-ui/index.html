@@ -101,6 +101,14 @@
       window.__screenEditorExportCancel = () =>
         window.__TAURI__?.core?.invoke("editor_export_cancel");
 
+      // ED.23 — save the project to its `.screenproj`; the written path
+      // comes back as an `editor-saved` CustomEvent.
+      window.__screenEditorSaveProject = (project) =>
+        window.__TAURI__?.core?.invoke("editor_save_project", { project })
+          .then((path) =>
+            window.dispatchEvent(new CustomEvent("editor-saved", { detail: path })))
+          .catch((e) => console.error("editor_save_project failed", e));
+
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the
       // `crate::camera_ipc` extern declarations.

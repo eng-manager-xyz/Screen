@@ -36,6 +36,7 @@
 pub mod clip;
 pub mod history;
 pub mod ops;
+pub mod persist;
 pub mod project;
 pub mod segment;
 pub mod style;

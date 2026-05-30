@@ -1215,3 +1215,15 @@
   font-size: 11px;
   color: var(--fg-muted, #b6bcc6);
 }
+.export-save {
+  padding: 5px 12px;
+  font-size: 13px;
+  background: var(--surface-2, #25282d);
+  color: var(--fg, #e8eaed);
+  border: 1px solid var(--border, #3a3f47);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-save:hover {
+  border-color: var(--accent, #4fc3f7);
+}
