@@ -101,7 +101,7 @@ impl BaselineChart {
             let py0 = map_y(y0);
             let py1 = map_y(y1);
             // Colour by average side of baseline.
-            let mean = (y0 + y1) * 0.5;
+            let mean = f32::midpoint(y0, y1);
             let color = if mean >= self.baseline {
                 self.above_color
             } else {

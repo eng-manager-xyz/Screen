@@ -74,7 +74,7 @@ impl Funnel {
         }
         let n = self.stages.len();
         let stage_h = plot_h / usize_to_f32(n);
-        let centre_x = (plot_left + plot_right) * 0.5;
+        let centre_x = f32::midpoint(plot_left, plot_right);
 
         for (i, stage) in self.stages.iter().enumerate() {
             let band_w = stage.count / max_count * plot_w;

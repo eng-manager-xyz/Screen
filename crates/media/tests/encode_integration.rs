@@ -295,6 +295,80 @@ fn live_encoder_video_only_moves_intermediate_to_output() {
     cleanup_artifacts(&output_path);
 }
 
+/// AUT-334 regression — on a 5K display (5120×2880) the recorder used
+/// to feed `vtenc_h264_hw` a 5120-wide frame, which fails caps
+/// negotiation (`not-negotiated (-4)`), breaks the feed pipe after the
+/// first frame, and discards the entire recording (empty
+/// `~/Movies/Screen/`). The app now clamps capture dims via
+/// [`media::encode::fit_within_encoder_limits`]; this drives the
+/// *clamped* config through the real `vtenc_h264_hw` encoder and
+/// asserts a non-empty, discoverable mp4 at the clamped resolution.
+#[test]
+fn live_encoder_encodes_clamped_5k_to_nonempty_mp4() {
+    if !is_available() {
+        eprintln!("gst-launch-1.0 not on PATH — skipping");
+        return;
+    }
+    if !gst_discoverer_available() {
+        eprintln!("gst-discoverer-1.0 not on PATH — skipping");
+        return;
+    }
+
+    // The exact transform the app applies to a 5K display's native dims.
+    let (w, h) = media::encode::fit_within_encoder_limits(5120, 2880, OutputFormat::Mp4H264Aac);
+    assert!(
+        w <= 4096 && h <= 4096,
+        "clamp must bring a 5K display within the vtenc_h264_hw 4096 cap, got {w}x{h}"
+    );
+    assert_eq!((w, h), (4096, 2304), "5120x2880 (16:9) clamps to 4096x2304");
+
+    let output_path =
+        std::env::temp_dir().join(format!("live_encode_5k_{}.mp4", std::process::id()));
+    cleanup_artifacts(&output_path);
+
+    let mut encoder = LiveGstreamerEncoder::new(EncoderConfig {
+        output_path: output_path.clone(),
+        width: w,
+        height: h,
+        framerate: FRAMERATE,
+        sample_rate: SAMPLE_RATE,
+        channels: CHANNELS,
+        format: OutputFormat::Mp4H264Aac,
+    })
+    .expect("live encoder constructs + spawns at the clamped 4K dims");
+
+    // A few solid-grey frames at the clamped resolution — the exact
+    // path that produced `not-negotiated` + a 0-byte file before the fix
+    // (at 5120 wide). One reused buffer keeps the allocation bounded.
+    let frame = vec![0x80u8; (w as usize) * (h as usize) * 4];
+    let interval = Duration::from_micros(1_000_000 / u64::from(FRAMERATE));
+    for i in 0..3 {
+        encoder
+            .push_video_frame(&frame, interval * i)
+            .expect("push 4K frame to live stdin (would fail at 5120 wide)");
+    }
+
+    let final_path = Box::new(encoder).finalize().expect("finalize succeeds");
+    assert_eq!(final_path, output_path);
+    assert!(output_path.exists(), "clamped mp4 should exist on disk");
+    let len = std::fs::metadata(&output_path)
+        .expect("stat clamped mp4")
+        .len();
+    assert!(
+        len > 0,
+        "clamped mp4 must be non-empty (was 0 bytes pre-fix)"
+    );
+
+    let stdout = discover(&output_path);
+    assert!(stdout.contains("video #"), "no video stream:\n{stdout}");
+    assert!(
+        stdout.contains("4096"),
+        "expected 4096-wide video:\n{stdout}"
+    );
+
+    cleanup_artifacts(&output_path);
+}
+
 /// Run `gst-discoverer-1.0` and return its stdout (asserting success).
 fn discover(path: &Path) -> String {
     let probe = Command::new("gst-discoverer-1.0")

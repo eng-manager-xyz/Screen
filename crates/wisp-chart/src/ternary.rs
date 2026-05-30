@@ -80,7 +80,7 @@ impl TernaryPlot {
         let max_h = viewport_px.y - pad * 2.0;
         let side = max_w.min(max_h / (3.0_f32.sqrt() * 0.5));
         let height = side * 3.0_f32.sqrt() * 0.5;
-        let bottom_y = pad + (max_h + height) * 0.5;
+        let bottom_y = pad + f32::midpoint(max_h, height);
         let top_y = bottom_y - height;
         let v_a = Vec2::new(centre_x - side * 0.5, bottom_y);
         let v_b = Vec2::new(centre_x + side * 0.5, bottom_y);

@@ -39,7 +39,7 @@ fn read_pixel(bytes: &[u8], x: u32, y: u32) -> [u8; 4] {
 /// Convert NDC `[-1, 1]` to pixel coords. `+Y` in NDC is up; pixel
 /// `+Y` is down — so y flips.
 fn ndc_to_px(x: f32, y: f32) -> (u32, u32) {
-    let px = ((x + 1.0) * 0.5 * W as f32).clamp(0.0, (W - 1) as f32);
+    let px = (f32::midpoint(x, 1.0) * W as f32).clamp(0.0, (W - 1) as f32);
     let py = ((1.0 - y) * 0.5 * H as f32).clamp(0.0, (H - 1) as f32);
     (px as u32, py as u32)
 }

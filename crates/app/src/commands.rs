@@ -1891,7 +1891,8 @@ pub fn start_recording(
     // per-channel streams too.
     let scratch_path = scratch_file_path(&app, session_id)?;
     // M-QUAL.2 — encode at the native screen resolution resolved
-    // above (matches the SCK capture caps + the compose canvas).
+    // above (matches the SCK capture caps + the compose canvas), capped
+    // to the H.264 hardware-encoder limit for >4K displays (AUT-334).
     // Camera-only / non-macOS keep the 1920×1080 `for_output` default.
     #[cfg(target_os = "macos")]
     let encoder_config = media::encode::EncoderConfig {
@@ -2465,6 +2466,30 @@ fn start_screen_for_session(
     // M-QUAL.2 — capture at the display's true Retina resolution
     // (resolve before `source` is moved into the config).
     let native_dims = media::sck_video::resolve_native_screen_dims(&source);
+    // AUT-334 — the live recording scratch is always H.264 (M-SAVE.1),
+    // and Apple's `vtenc_h264_hw` rejects caps negotiation the instant
+    // either edge exceeds 4096 px (→ broken pipe → discarded scratch →
+    // empty output dir on 5K/6K/8K displays). Clamp the whole recording
+    // to the encoder's max here: the SCK capture buffer, the compose
+    // canvas, and the encoder caps all derive from the returned dims, so
+    // a single aspect-preserving clamp keeps every stage 1:1 and legal.
+    // Uniform downscale → no skew; the camera bubble stays circular.
+    // No-op on ≤4K displays (native pass-through).
+    let dims = media::encode::fit_within_encoder_limits(
+        native_dims.0,
+        native_dims.1,
+        media::encode::OutputFormat::Mp4H264Aac,
+    );
+    if dims != native_dims {
+        tracing::info!(
+            native_width = native_dims.0,
+            native_height = native_dims.1,
+            encode_width = dims.0,
+            encode_height = dims.1,
+            "screen native resolution exceeds the H.264 hardware encoder limit; \
+             downscaling the recording to fit (aspect preserved)"
+        );
+    }
     // M-PIX.2 — plumb the shared screen frame slot from
     // RecordingState into the SCK delegate so it writes BGRA bytes
     // there for the encoder feed thread.
@@ -2479,13 +2504,13 @@ fn start_screen_for_session(
         .map(|id| vec![id])
         .unwrap_or_default();
     let mut config = ScreenCaptureConfig::for_source(source);
-    config.width = native_dims.0;
-    config.height = native_dims.1;
+    config.width = dims.0;
+    config.height = dims.1;
     config.excluded_window_ids = excluded_window_ids;
     state
         .start_with_frame_slot(config, frame_slot)
         .map_err(|e| e.to_string())?;
-    Ok(native_dims)
+    Ok(dims)
 }
 
 #[cfg(target_os = "macos")]

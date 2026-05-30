@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## AUT-334 — recordings on >4K (5K/6K/8K) displays no longer produce an empty output dir
+- **Date:** 2026-05-29
+- **Status:** ✅ done — `video-editing`. A 5K display (5120×2880) recorded → stopped and **nothing** landed in `~/Movies/Screen/`. Root cause: M-QUAL.2 native-resolution capture fed the screen's full backing-pixel resolution straight into the live H.264 scratch encoder. Apple's `vtenc_h264_hw` rejects caps negotiation the instant *either* edge exceeds 4096 px (`not-negotiated (-4)` → the feed thread's first `push_video_frame` hits a broken pipe → `stop_recording` discards the scratch). Empirically probed on this M1 (GStreamer 1.26.8): the limit is a strict **per-axis** cap (`4096×4096` passes, `5120×1440` fails → not area-limited); `vtenc_h265_hw` accepts ≥`8192×4320`; software WebM encoders have no cap.
+
+### What shipped
+
+- **`crates/media/src/encode.rs`** — `OutputFormat::max_encode_edge()` (H.264 → `Some(4096)`, H.265 → `Some(8192)`, WebM → `None`) + `fit_within_encoder_limits(w, h, format)`: an **aspect-preserving** integer clamp that scales both edges by the same factor `max_edge / max(w, h)`, floored to even. No skew, no stretch. Real >4K displays (all 16:9) clamp to exactly `4096×2304`; ≤4K passes through unchanged. 7 unit tests + a doctest.
+- **`crates/app/src/commands.rs`** — `start_screen_for_session` clamps the resolved native dims via `fit_within_encoder_limits(.., Mp4H264Aac)` (the live scratch is always H.264) before setting the SCK config and returning. Because the SCK capture buffer, compose canvas, and encoder caps all derive from this one returned tuple, a single clamp keeps every stage 1:1 and encoder-legal — preserving the pipeline's all-equal invariant. Logs an `info!` when a clamp fires (so a >4K user sees a downscale line instead of a silent failure). No-op on ≤4K.
+- **`crates/media/tests/encode_integration.rs`** — `live_encoder_encodes_clamped_5k_to_nonempty_mp4` (macOS + gst-guarded): drives `fit_within_encoder_limits(5120, 2880, H264)` → `(4096, 2304)` through the real `vtenc_h264_hw` encoder and asserts a non-empty, discoverable mp4 — the direct regression for the empty-output bug.
+
+### Verification
+
+- `just gate` — **green** (see verification run).
+- The camera bubble stays circular: its half-extents are ratio-based (M-QUAL.5), and an aspect-preserving clamp leaves the canvas `w:h` ratio unchanged.
+- Picking the H.265 export format raises the ceiling to 8192, so full 5K is retained automatically for that codec.
+
+### Notes
+
+- Chose to clamp at the capture site (Option: keep all stages equal) over GPU-downscaling only the render target (would introduce an untested `screen_dims ≠ render_dims` combination). Lowest-risk: the data-flow shape is unchanged, only the magnitude of the dims.
+
+### Issues filed: none
+
+---
+
 ## Cleanup — remove dead batch `GstreamerEncoder` (code review)
 - **Date:** 2026-05-26
 - **Status:** ✅ done — `feat/recording-quality`. A code-review pass over the M-QUAL work. The batch `GstreamerEncoder` (raw-BGRA-to-scratch + single `gst-launch` at finalize) was the original M-EXPORT.1 impl; M-QUAL.1's `LiveGstreamerEncoder` superseded it for all production paths (recording streams compressed video to encode-pipeline stdin). The batch impl had no remaining callers outside its own tests — dead code carrying a parallel pipeline-builder. Removed it so there's a single `VideoEncoder` impl.
