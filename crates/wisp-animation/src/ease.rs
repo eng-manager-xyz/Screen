@@ -174,7 +174,7 @@ impl Ease {
                     0.5 * r * r * ((C2 + 1.0) * r - C2)
                 } else {
                     let r = 2.0 * t - 2.0;
-                    0.5 * (r * r * ((C2 + 1.0) * r + C2) + 2.0)
+                    f32::midpoint(r * r * ((C2 + 1.0) * r + C2), 2.0)
                 }
             }
             Self::InElastic => {
@@ -218,7 +218,7 @@ impl Ease {
                 if t < 0.5 {
                     (1.0 - out_bounce(1.0 - 2.0 * t)) * 0.5
                 } else {
-                    (1.0 + out_bounce(2.0 * t - 1.0)) * 0.5
+                    f32::midpoint(1.0, out_bounce(2.0 * t - 1.0))
                 }
             }
             Self::InSine => 1.0 - (t * std::f32::consts::FRAC_PI_2).cos(),
@@ -261,7 +261,7 @@ impl Ease {
                     0.5 * (1.0 - (1.0 - r * r).max(0.0).sqrt())
                 } else {
                     let r = 2.0 * t - 2.0;
-                    0.5 * ((1.0 - r * r).max(0.0).sqrt() + 1.0)
+                    f32::midpoint((1.0 - r * r).max(0.0).sqrt(), 1.0)
                 }
             }
             Self::CubicBezier(x1, y1, x2, y2) => cubic_bezier_eval(x1, y1, x2, y2, t),
@@ -346,7 +346,7 @@ fn cubic_bezier_eval(x1: f32, y1: f32, x2: f32, y2: f32, t: f32) -> f32 {
         } else {
             lo = mid;
         }
-        mid = (lo + hi) * 0.5;
+        mid = f32::midpoint(lo, hi);
     }
     sample_curve_y(mid)
 }
