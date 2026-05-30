@@ -34,12 +34,16 @@
 //! renderer should decode. See [`segment`] for the arithmetic.
 
 pub mod clip;
+pub mod history;
+pub mod ops;
 pub mod project;
 pub mod segment;
 pub mod style;
 pub mod zoom;
 
 pub use clip::ClipRef;
+pub use history::History;
+pub use ops::{EditError, EditOp, TrimEdge};
 pub use project::{DEFAULT_PROJECT_FPS, EditProject, SCHEMA_VERSION};
 pub use segment::{Frame, TimelineSegment};
 pub use style::{

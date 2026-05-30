@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.2 (AUT-337) — edit-operation command stack + undo/redo over `EditProject`
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. The undoable command layer on the ED.1 model. Still pure (`crates/edit`); adds `proptest` as a dev-dep.
+
+### What shipped
+
+- **`crates/edit/src/ops.rs`** — `EditOp { Split, Trim, RippleDelete, SetSpeed, AddZoom, RemoveZoom, MoveZoom }`, `TrimEdge`, `EditError`, and `impl EditProject { apply(&op), check_invariants() }` (the ops live in an `impl` block so the committed `project.rs` is untouched). Split cuts the segment under a project frame (boundary = no-op); ripple-delete trims partial segments + drops covered ones so the timeline closes by concatenation; speed/zoom ops sanitize input and keep the zoom list sorted. 10 unit tests.
+- **`crates/edit/src/history.rs`** — `History` (bounded undo/redo). `apply` runs the op on a **clone** and commits only if the project changed, so `apply` + `undo` == identity is correct-by-construction (no per-op inverse derivation) and no-ops never pollute the stack. 4 unit tests + 3 `proptest` properties (single-op apply→undo identity; op sequences preserve invariants; undo-all returns to start).
+
+### Verification
+
+- `cargo clippy -p edit --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p edit` — **38/38 pass** (incl. proptest). `just gate` — green.
+- mdBook: `editor/chunks/ed2-edit-ops.md` (class + sequence diagrams of the snapshot-undo design).
+
+### Notes
+
+- **Lift-delete deferred** → ISS-09: leaving a black gap needs a timeline gap item the segment model lacks; ripple-delete is the primary delete (ED.11 maps both delete keys to ripple for now).
+
+### Issues filed: ISS-09 (lift-delete gap model).
+
+---
+
 ## ED.1 (AUT-336) — `crates/edit`: the non-destructive edit model + project↔source frame mapping
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. First chunk of M-EDIT (the Record→Edit→Export editor). New **pure** crate `crates/edit` — the testable spine. No wgpu / GStreamer / Leptos; serde + math + tests only.
