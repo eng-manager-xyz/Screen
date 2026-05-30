@@ -5178,6 +5178,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wgpu",
+ "wisp-animation",
 ]
 
 [[package]]

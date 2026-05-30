@@ -32,6 +32,9 @@ use wisp::Texture;
 use wisp::VideoTexture;
 use wisp::application::Application;
 
+pub mod editor_player;
+pub use editor_player::EditorPlayer;
+
 /// Transport state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PlayState {

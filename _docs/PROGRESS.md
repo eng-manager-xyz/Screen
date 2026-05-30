@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.4 (AUT-339) — frame-indexed variable-rate playback clock (`EditorPlayer`)
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. The editor's time authority: seek/step/rate/in-out/loop, built on `wisp_animation::Driver` so the playhead and the zoom engine (ED.16) share one clock.
+
+### What shipped
+
+- **`crates/playback/src/editor_player.rs`** — `EditorPlayer` wraps a `Driver`: `play`/`pause`/`toggle_play`, `seek(frame)` (exact), `step(±n)` (pauses), `set_rate`, `set_in_out`/`clear_in_out`, `set_looping`, `tick(dt)`, `current_frame()`, `progress()`, and `driver()` (so ED.16 samples zoom Tracks against the same clock). Frame = `floor(elapsed·fps + ε)` clamped to `[in, out)`; end-of-range loops to the in-point or clamps+pauses. `EditorPlayer::fixed` gives one-frame-per-tick deterministic stepping for export.
+- **`crates/playback/{lib.rs,Cargo.toml}`** — `pub mod editor_player` + re-export; added `wisp-animation` dep (already in the tree via `wisp`).
+
+### Verification
+
+- `cargo clippy -p playback --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p playback` — **12/12 `editor_player` tests pass** (deterministic, no GPU): rate scaling, exact seek, frame-step, in/out clamp, loop-wrap, clamp-and-pause-at-end, play-from-end restart, fixed-step determinism, progress. `just gate` — green.
+- mdBook: `editor/chunks/ed4-playback-clock.md` (play/pause state diagram + the shared-clock rationale).
+
+### Notes
+
+- Kept `EditorPlayer` a **pure clock** (no decoder dependency) so it's unit-testable with `Driver::fixed` and has no GPU/gst in its test path. Frame delivery (pull `EditorVideoStream::frame(current_frame)`) is wired at the preview/export call sites (ED.6/ED.20). Reverse playback (negative rate) is out of scope — `Driver` clamps rate ≥ 0 (matches M-ANIM.4 deferral).
+
+### Issues filed: none
+
+---
+
 ## ED.3 (AUT-338) — random-access decode: `EditorVideoStream` seek + frame cache
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. The media-layer blocker: the editor can now pull any frame by index, not just stream forward.
