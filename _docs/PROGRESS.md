@@ -6,6 +6,35 @@ Use the template at the bottom for new entries.
 
 ---
 
+## In-concert check — ED.1–ED.8 editor pipeline integration test
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (commit `3472f0b`). `crates/app/tests/editor_pipeline.rs` (gst+wgpu guarded): drives `EditorSession` seek → `EditProject::source_time` → `EditorVideoStream` decode → `EditorPreview` compose → correctly-sized BGRA across several playhead positions + a play/tick advance. Proves ED.1/3/4/6/7 interlock (not just pass in isolation). 1626 tests green.
+
+---
+
+## ED.9 (AUT-344) — video track filmstrip + clip selection
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`.
+
+### What shipped
+
+- **`crates/app-ui/src/filmstrip.rs`** — `segment_spans` (pure): each `TimelineSegment` → a proportional `start_fraction`/`width_fraction` of the project (width tracks **project** length, so a 2× clip is half-width — stays in sync with the ruler after a speed change). `VideoFilmstrip` component: renders the spans as selectable clip blocks with duration labels; clicking sets the selected-clip `RwSignal<Option<usize>>` (drives the inspector, ED.18). Re-flows automatically as splits/trims change the segment list. 3 unit tests.
+- **`crates/app-ui/src/{lib.rs,app_shell_mount.rs,editor_surface.rs}`** — `pub mod filmstrip`; the selected-clip signal provided in `AppShellRoot`; the video lane rendered in the timeline slot (ruler · filmstrip · transport).
+
+### Verification
+
+- `cargo clippy -p app-ui --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p app-ui` — 3 `filmstrip` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed9-filmstrip.md`.
+
+### Notes
+
+- Per-clip **thumbnail images** (decode + CPU-downscale a strip) ride with the render-integration pass; this chunk nails the responsive segment layout + selection that the inspector + edit ops hang off.
+
+### Issues filed: none
+
+---
+
 ## ED.8 (AUT-343) — timeline ruler + frame↔pixel coordinate system
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. The timeline's shared coordinate system + a fit-to-width ruler with a live playhead + click-to-seek. First chunk of Phase D (timeline + dopesheet).

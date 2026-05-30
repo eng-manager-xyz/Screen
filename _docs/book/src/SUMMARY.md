@@ -152,6 +152,7 @@
   - [Editor preview canvas — ED.6](./editor/chunks/ed6-preview.md)
   - [Playback transport — ED.7](./editor/chunks/ed7-transport.md)
   - [Timeline ruler + coordinate system — ED.8](./editor/chunks/ed8-timeline-ruler.md)
+  - [Video track + clip selection — ED.9](./editor/chunks/ed9-filmstrip.md)
 
 # Milestones
 

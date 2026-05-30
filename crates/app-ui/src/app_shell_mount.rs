@@ -50,6 +50,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     })
     .forget();
 
+    // ED.9 — the selected clip index, shared with the video filmstrip and
+    // (ED.18) the inspector.
+    let editor_selection = RwSignal::new(None::<usize>);
+    provide_context(editor_selection);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

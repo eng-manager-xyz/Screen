@@ -225,6 +225,7 @@ pub fn EditorSurface() -> impl IntoView {
                         })
                         timeline=ToChildren::to_children(move || view! {
                             <crate::timeline_view::TimelineRuler />
+                            <crate::filmstrip::VideoFilmstrip />
                             <EditorTransportBar />
                         })
                     />
