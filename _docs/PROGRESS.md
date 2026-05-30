@@ -6,6 +6,29 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.16 (AUT-351) — the zoom engine (cinematic push-in)
+- **Date:** 2026-05-30
+- **Status:** ✅ done (pure engine) — `video-editing-v2` (PR #65). The rostrum camera, in software.
+
+### What shipped
+
+- **`crates/edit/src/zoom_anim.rs`** (new) — the GPU-free zoom engine. `ZoomTransform { scale, center_x, center_y }` (scale-about-a-focal-point); `zoom_at(seg, frame, ramp_frames)` ramps identity → `amount` → identity over a `ZoomSegment`'s `[start, end)` window with its ease, ramp clamped to half the window (no overlap; short zooms degrade to a triangle); `active_zoom_at(project, frame)` picks the active window's transform (ramp derived from `project_fps`); `default_ramp_frames(fps)` ≈ 0.6 s floored at 1 frame. 10 unit tests.
+- **`crates/edit/src/zoom.rs`** — `EditEase::eval(t)`: pure easing evaluator (Linear / In·Out·InOut Cubic / InOutSine), clamped, every curve pinned to `f(0)=0, f(1)=1`. 3 tests (endpoints, monotonicity, midpoints).
+
+### Verification
+
+- `cargo clippy -p edit --all-targets -- -D warnings` — clean (`u32`-hop `frac` avoids `cast_precision_loss`). `cargo nextest -p edit` — 50 tests pass (incl. 13 new). `just gate` — green.
+- mdBook: `editor/chunks/ed16-zoom-engine.md` (the rostrum push-in; three-phase profile table + pipeline diagram).
+
+### Notes
+
+- **Math chunk** — per CLAUDE.md, the GPU-free engine is exempt from the storybook-asset rule (the *rendered* push-in is the renderable feature). Applying the `ZoomTransform` to the composed `wisp` frame (visible push-in in preview + exported mp4) lands with the **render-integration pass** alongside export (ED.20–21). Engine + render share one code path so preview matches export — the founding "never cut the negative" rule applied to motion.
+- Built ED.16 ahead of ED.12–15 (lane UI / dopesheet / speed / crop) because it is the pure, testable keystone the export path depends on; the lane UI that *creates* zoom segments (ED.12) drives this engine next.
+
+### Issues filed: none
+
+---
+
 ## ED.11 (AUT-346) — timeline editing: split + ripple-delete + undo/redo
 - **Date:** 2026-05-30
 - **Status:** ✅ done (keyboard editing core) — `video-editing-v2` (PR #65). The cutting room now cuts.

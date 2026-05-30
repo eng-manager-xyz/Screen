@@ -40,6 +40,33 @@ pub enum EditEase {
     InOutSine,
 }
 
+impl EditEase {
+    /// Evaluate the curve at normalized time `t`, returning eased progress.
+    /// `t` is clamped to `0.0..=1.0`; every curve maps `0.0 → 0.0` and
+    /// `1.0 → 1.0`. The zoom engine (ED.16) feeds this the ramp fraction.
+    #[must_use]
+    pub fn eval(self, t: f64) -> f64 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            Self::Linear => t,
+            Self::InCubic => t * t * t,
+            Self::OutCubic => {
+                let u = 1.0 - t;
+                1.0 - u * u * u
+            }
+            Self::InOutCubic => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    let u = -2.0 * t + 2.0;
+                    1.0 - (u * u * u) / 2.0
+                }
+            }
+            Self::InOutSine => -((std::f64::consts::PI * t).cos() - 1.0) / 2.0,
+        }
+    }
+}
+
 /// Where a zoom targets.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -153,5 +180,42 @@ mod tests {
         assert!(z.is_empty());
         assert_eq!(z.len(), 0);
         assert!(!z.contains(50));
+    }
+
+    #[test]
+    fn ease_endpoints_are_zero_and_one() {
+        for ease in [
+            EditEase::Linear,
+            EditEase::InCubic,
+            EditEase::OutCubic,
+            EditEase::InOutCubic,
+            EditEase::InOutSine,
+        ] {
+            assert!(ease.eval(0.0).abs() < 1e-9, "{ease:?} f(0)=0");
+            assert!((ease.eval(1.0) - 1.0).abs() < 1e-9, "{ease:?} f(1)=1");
+            // Clamped outside the unit interval.
+            assert!(ease.eval(-1.0).abs() < 1e-9);
+            assert!((ease.eval(2.0) - 1.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn ease_is_monotonic_nondecreasing() {
+        for ease in [EditEase::Linear, EditEase::InOutCubic, EditEase::InOutSine] {
+            let mut prev = ease.eval(0.0);
+            for i in 1..=20 {
+                let t = f64::from(i) / 20.0;
+                let v = ease.eval(t);
+                assert!(v + 1e-9 >= prev, "{ease:?} non-decreasing at t={t}");
+                prev = v;
+            }
+        }
+    }
+
+    #[test]
+    fn inout_curves_cross_half_at_midpoint() {
+        assert!((EditEase::InOutCubic.eval(0.5) - 0.5).abs() < 1e-9);
+        assert!((EditEase::InOutSine.eval(0.5) - 0.5).abs() < 1e-9);
+        assert!((EditEase::Linear.eval(0.5) - 0.5).abs() < 1e-9);
     }
 }

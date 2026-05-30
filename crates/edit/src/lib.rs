@@ -40,6 +40,7 @@ pub mod project;
 pub mod segment;
 pub mod style;
 pub mod zoom;
+pub mod zoom_anim;
 
 pub use clip::ClipRef;
 pub use history::History;
