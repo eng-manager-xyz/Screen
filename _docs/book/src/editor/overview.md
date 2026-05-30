@@ -25,7 +25,7 @@ export. Each chunk retraces one step:
 | The jog/shuttle wheel, J-K-L | **ED.7** transport |
 | The footage counter on the bench | **ED.8** timeline ruler |
 | The mag track running beside the picture | **ED.10** audio waveform |
-| The razor + tape splice | **ED.11** split / trim *(next)* |
+| The razor + tape splice | **ED.11** split / ripple / undo |
 | The rostrum camera's slow push-in | **ED.16** zoom engine *(the marquee)* |
 | The optical printer baking it to a print | **ED.20–21** export |
 
@@ -87,4 +87,4 @@ sixty years on.
 - [Timeline ruler + coordinate system — ED.8](./chunks/ed8-timeline-ruler.md)
 - [Video track + clip selection — ED.9](./chunks/ed9-filmstrip.md)
 - [Audio waveform lane — ED.10](./chunks/ed10-waveform.md)
-- [Splitting + undo/redo — ED.11](./chunks/ed11-editing.md)
+- [Splitting, ripple-delete + undo/redo — ED.11](./chunks/ed11-editing.md)

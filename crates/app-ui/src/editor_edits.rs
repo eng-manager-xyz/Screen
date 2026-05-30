@@ -14,6 +14,8 @@
 use edit::{EditOp, EditProject, History};
 use leptos::prelude::*;
 
+use crate::editor_ipc;
+
 /// Reuse the existing edit history if it belongs to `current` (same source
 /// clip), otherwise start fresh. A different source path means a different
 /// clip was opened, so the old undo stack no longer applies. Pure.
@@ -38,8 +40,13 @@ fn run(
     };
     let mut hist = resolve_history(history.get_value(), &current);
     edit(&mut hist);
-    project.set(Some(hist.project().clone()));
+    let edited = hist.project().clone();
+    let duration = edited.project_duration();
+    project.set(Some(edited));
     history.set_value(Some(hist));
+    // Keep the backend clock's range in step with the (possibly changed)
+    // timeline length — a no-op for split, the point of it for ripple/undo.
+    editor_ipc::editor_transport(&editor_ipc::TransportAction::SetDuration { frames: duration });
 }
 
 /// Split the clip under the playhead into two (the razor).
@@ -50,6 +57,41 @@ pub fn split_at(
 ) {
     run(project, history, |hist| {
         let _ = hist.apply(&EditOp::Split { at });
+    });
+}
+
+/// The selected clip's `[start, end)` range in **project** frames. Pure.
+#[must_use]
+pub fn segment_project_range(project: &EditProject, index: usize) -> Option<(u64, u64)> {
+    let mut acc = 0u64;
+    for (i, seg) in project.segments.iter().enumerate() {
+        let len = seg.project_len();
+        if i == index {
+            return Some((acc, acc + len));
+        }
+        acc += len;
+    }
+    None
+}
+
+/// Ripple-delete the selected clip — remove it and close the gap (the
+/// downstream clips slide left; the timeline shortens).
+pub fn ripple_delete_selected(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    selected: Option<usize>,
+) {
+    let Some(index) = selected else {
+        return;
+    };
+    let Some(current) = project.get_untracked() else {
+        return;
+    };
+    let Some((start, end)) = segment_project_range(&current, index) else {
+        return;
+    };
+    run(project, history, |hist| {
+        let _ = hist.apply(&EditOp::RippleDelete { start, end });
     });
 }
 
@@ -104,5 +146,17 @@ mod tests {
         let resolved = resolve_history(None, &p);
         assert!(!resolved.can_undo());
         assert_eq!(resolved.project().segments.len(), 1);
+    }
+
+    #[test]
+    fn segment_range_is_cumulative_project_frames() {
+        let mut p = project("/tmp/a.mp4");
+        p.segments = vec![
+            edit::TimelineSegment::new(0, 300),
+            edit::TimelineSegment::new(300, 900),
+        ];
+        assert_eq!(segment_project_range(&p, 0), Some((0, 300)));
+        assert_eq!(segment_project_range(&p, 1), Some((300, 900)));
+        assert_eq!(segment_project_range(&p, 2), None);
     }
 }

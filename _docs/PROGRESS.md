@@ -6,24 +6,25 @@ Use the template at the bottom for new entries.
 
 ---
 
-## ED.11 (AUT-346) — timeline editing: split at playhead + undo/redo
+## ED.11 (AUT-346) — timeline editing: split + ripple-delete + undo/redo
 - **Date:** 2026-05-30
-- **Status:** ✅ done (split + undo/redo increment) — `video-editing-v2` (PR #65). The cutting room now cuts.
+- **Status:** ✅ done (keyboard editing core) — `video-editing-v2` (PR #65). The cutting room now cuts.
 
 ### What shipped
 
-- **`crates/playback/src/editor_player.rs`** — `EditorPlayer::set_duration(frames)`: keeps the clock's range in step after an edit changes the project length (tracks the out-point if untrimmed, else clamps; re-clamps the playhead). The duration-sync primitive for the imminent ripple/trim. +1 test.
-- **`crates/app-ui/src/editor_edits.rs`** — `resolve_history` (pure, tested): reuses the running `edit::History` when it belongs to the open clip (undo stack survives) or starts fresh on a new clip. `split_at` / `undo` / `redo` run an op through the (ED.2 proptest-verified) `History` and sync the reactive project signal the filmstrip reads. 3 unit tests.
-- **`crates/app-ui/src/{editor_surface.rs,app_shell_mount.rs,lib.rs}`** — `S` splits at the playhead; `⌘Z` / `⌘⇧Z` undo/redo (keydown). The edit `History` lives in an `AppShellRoot` context; the filmstrip re-flows automatically (one clip → two).
+- **`crates/playback/src/editor_player.rs`** — `EditorPlayer::set_duration(frames)`: keeps the clock's range in step after a duration-changing edit (tracks the out-point if untrimmed, else clamps; re-clamps the playhead). +1 test.
+- **`crates/app-ui/src/editor_edits.rs`** — `resolve_history` (pure): reuses the running `edit::History` when it belongs to the open clip (undo stack survives) or starts fresh on a new clip. `segment_project_range` (pure): selected-clip index → `[start, end)` project frames. `split_at` / `ripple_delete_selected` / `undo` / `redo` run an op through the (ED.2 proptest-verified) `History`, sync the reactive project signal the filmstrip reads, **and push the new project length to the backend clock** via the new `SetDuration` transport action. 4 unit tests (3 `resolve_history` + `segment_project_range`).
+- **`crates/app/src/editor_session.rs`** — `TransportAction::SetDuration { frames }` + apply arm (calls `player.set_duration`). Mirrored in **`crates/app-ui/src/editor_ipc.rs`**.
+- **`crates/app-ui/src/{editor_surface.rs,app_shell_mount.rs,lib.rs}`** — `S` splits at the playhead; `Delete`/`Backspace` ripple-deletes the selected clip (closes the gap); `⌘Z` / `⌘⇧Z` undo/redo. The edit `History` lives in an `AppShellRoot` context; the filmstrip re-flows automatically.
 
 ### Verification
 
-- `cargo clippy -p playback -p app-ui --all-targets -- -D warnings` — clean. `cargo nextest` — 3 `editor_edits` + 1 `set_duration` tests pass. `just gate` — green.
-- mdBook: `editor/chunks/ed11-editing.md` (the razor + the trim bin).
+- `cargo clippy -p playback -p app-ui --all-targets -- -D warnings` — clean. `cargo nextest` — 4 `editor_edits`/`set_duration` tests pass + full suite green. `just gate` — green.
+- mdBook: `editor/chunks/ed11-editing.md` (the razor, the ripple, the trim bin).
 
 ### Notes
 
-- **Scope:** split is duration-preserving, so this increment needs no clock change at runtime; it ships split + undo/redo cleanly. **Ripple-delete + edge-trim** (duration-*changing*) are the next increment — they use the `set_duration` primitive (already landed + tested) + a `SetDuration` transport action. The toolbar Split button goes live once the `EditorShell` shell component accepts action callbacks; the razor is the `S` key for now.
+- **Scope:** ships the keyboard editing core — split + ripple-delete + undo/redo, with the playback clock kept in sync via `SetDuration` after every edit (no-op for split, load-bearing for ripple/undo). **Deferred to a follow-up gesture pass:** edge-trim *drag* and magnetic snapping (mouse-gesture-heavy), and making the toolbar Split button live (needs the `EditorShell` component to accept action callbacks). Tracked under AUT-346.
 
 ### Issues filed: none
 

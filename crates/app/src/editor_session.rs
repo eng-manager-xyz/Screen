@@ -89,6 +89,12 @@ pub enum TransportAction {
         /// Loop flag.
         looping: bool,
     },
+    /// Update the project length after an edit changed it (ED.11 ripple /
+    /// trim) so the clock's range tracks the new timeline.
+    SetDuration {
+        /// New total project length in frames.
+        frames: u64,
+    },
     /// No-op — just read the current status.
     Status,
 }
@@ -122,6 +128,7 @@ impl EditorSession {
             TransportAction::SetInOut { a, b } => self.player.set_in_out(a, b),
             TransportAction::ClearInOut => self.player.clear_in_out(),
             TransportAction::SetLooping { looping } => self.player.set_looping(looping),
+            TransportAction::SetDuration { frames } => self.player.set_duration(frames),
             TransportAction::Status => {}
         }
         self.status()

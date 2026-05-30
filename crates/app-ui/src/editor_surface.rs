@@ -166,6 +166,7 @@ pub fn EditorSurface() -> impl IntoView {
     let status = use_context::<RwSignal<EditorStatus>>()
         .unwrap_or_else(|| RwSignal::new(EditorStatus::default()));
     let history = use_context::<StoredValue<Option<edit::History>>>();
+    let selection = use_context::<RwSignal<Option<usize>>>();
     view! {
         <section
             class="app-surface app-surface--editor"
@@ -216,6 +217,14 @@ pub fn EditorSurface() -> impl IntoView {
                             } else {
                                 crate::editor_edits::undo(p, h);
                             }
+                        }
+                    }
+                    // ED.11 — ripple-delete the selected clip (close the gap).
+                    "Delete" | "Backspace" => {
+                        ev.prevent_default();
+                        if let (Some(p), Some(h)) = (project, history) {
+                            let sel = selection.and_then(|s| s.get_untracked());
+                            crate::editor_edits::ripple_delete_selected(p, h, sel);
                         }
                     }
                     _ => {}

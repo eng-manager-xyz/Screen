@@ -118,6 +118,11 @@ pub enum TransportAction {
         /// Loop flag.
         looping: bool,
     },
+    /// Update the project length after a duration-changing edit (ripple).
+    SetDuration {
+        /// New total project length in frames.
+        frames: u64,
+    },
 }
 
 #[wasm_bindgen]

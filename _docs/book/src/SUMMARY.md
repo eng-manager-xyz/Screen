@@ -154,7 +154,7 @@
   - [Timeline ruler + coordinate system — ED.8](./editor/chunks/ed8-timeline-ruler.md)
   - [Video track + clip selection — ED.9](./editor/chunks/ed9-filmstrip.md)
   - [Audio waveform lane — ED.10](./editor/chunks/ed10-waveform.md)
-  - [Splitting + undo/redo — ED.11](./editor/chunks/ed11-editing.md)
+  - [Splitting, ripple-delete + undo/redo — ED.11](./editor/chunks/ed11-editing.md)
 
 # Milestones
 
