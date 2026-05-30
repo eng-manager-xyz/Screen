@@ -6,6 +6,46 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.20 (AUT-355) — deferred export frame generator
+- **Date:** 2026-05-30
+- **Status:** ✅ done (frame-accurate timeline walk) — `video-editing-v2` (PR #65). The optical printer.
+
+### What shipped
+
+- **`crates/app/src/editor_export.rs`** (new) — `ExportFrameGenerator`: walks project frames `0..project_duration`, maps each to its source frame via `EditProject::source_time` (trim/split/speed honored), decodes via `EditorVideoStream`, composes through the **same** `EditorPreview` path the live preview uses, and emits `ExportFrame { frame, pts, source_frame }`. PTS uses the live encoder's `feed_real_capture` formula so timestamps line up. **Forward-only** (no decoder re-spawn).
+- **`crates/app/tests/editor_export_golden.rs`** (new, gst+wgpu guarded) — drives a 2×-speed project end to end: asserts it emits exactly `project_duration` frames, each at the correct source frame + clip dims, with monotonic PTS, and `spawn_count() == 1` (forward-only invariant locked). Added to the `.config/nextest.toml` gst serialization group.
+
+### Verification
+
+- `cargo clippy -p edit -p app-ui -p screen-app --all-targets -- -D warnings` (native) + app-ui wasm — clean. The golden test passes solo (gst). `just gate` — green.
+- mdBook: `editor/chunks/ed20-export-generator.md` (the optical printer).
+
+### Notes
+
+- **Frame selection now; visual transforms next.** Trim/split/speed are baked into the frame *selection* and verified deterministically (no GPU-visual check needed). The cinematic *visual* edits — zoom punch-ins, crop reframe, background framing — apply as a transform on the composed screen sprite (`RecordingScene` exposes `screen_sprite_id` + `stage_mut`); that render-integration step lands next, where the crop-then-zoom NDC math (and the +y-flip footgun) gets visual verification a headless golden frame can't give. ED.21 feeds this generator to the encoder.
+
+### Issues filed: none
+
+---
+
+## Review fixes — ED.11–19 adversarial audit
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). Bug-hunt before the export build.
+
+### What
+
+Ran a 6-agent read-only adversarial review over the editor edit-path (ED.11–19) before building export. Five confirmed findings; fixed four, documented one:
+
+- **`edit/telemetry.rs`** — centroid divisor capped cluster size at `u16::MAX`; now accumulates the count as `f32` in the fold (correct for any size, no cast). [high]
+- **`edit/ops.rs` `apply_trim`** — `TrimEdge::End` clamp used `.min(frame_count.max(lo))`, which could push `source_end` past the source; now `.min(frame_count)`. +`trim_end_clamps_within_source` regression test. [high]
+- **`app-ui/editor_surface.rs`** — selection index went stale after ripple-delete (a later edit could hit the wrong clip); now clears the selection after a ripple. [high]
+- **`app-ui/editor_ipc.rs`** — UI `TransportAction` mirror was missing the backend's `Status` variant; added for fidelity. [high]
+- **`app-ui/editor_edits.rs` `resolve_history`** — exact (non-canonical) path compare; documented as intentional (`fs::canonicalize` is unavailable on wasm; a differently-spelled path just starts a fresh, safe undo stack). See ISSUES.md. [medium → won't-fix]
+
+### Verification: native + wasm clippy clean; edit tests (incl. new trim regression) pass; `just gate` green.
+
+---
+
 ## ED.19 (AUT-354) — inspector Cursor tab
 - **Date:** 2026-05-30
 - **Status:** ✅ done (editor side) — `video-editing-v2` (PR #65). The cursor's dressing room.

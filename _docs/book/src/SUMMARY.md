@@ -162,6 +162,7 @@
   - [Auto-zoom from click telemetry — ED.17](./editor/chunks/ed17-auto-zoom.md)
   - [Inspector Style tab — ED.18](./editor/chunks/ed18-style.md)
   - [Inspector Cursor tab — ED.19](./editor/chunks/ed19-cursor.md)
+  - [Deferred export frame generator — ED.20](./editor/chunks/ed20-export-generator.md)
 
 # Milestones
 

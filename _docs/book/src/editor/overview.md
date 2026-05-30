@@ -33,7 +33,7 @@ export. Each chunk retraces one step:
 | The assistant editor's continuity log | **ED.17** auto-zoom from clicks |
 | The presentation mount — mat, float, backdrop | **ED.18** style / background |
 | Grooming the lone performer | **ED.19** cursor styling |
-| The optical printer baking it to a print | **ED.20–21** export |
+| The optical printer baking it to a print | **ED.20** frame generator · ED.21 export |
 
 ```admonish tip title="Why frame it this way"
 The same reason the theatre metaphor earns its keep: when a feature maps
@@ -101,3 +101,4 @@ sixty years on.
 - [Auto-zoom from click telemetry — ED.17](./chunks/ed17-auto-zoom.md)
 - [Inspector Style tab — ED.18](./chunks/ed18-style.md)
 - [Inspector Cursor tab — ED.19](./chunks/ed19-cursor.md)
+- [Deferred export frame generator — ED.20](./chunks/ed20-export-generator.md)
