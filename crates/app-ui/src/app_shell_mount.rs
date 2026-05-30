@@ -55,6 +55,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let editor_selection = RwSignal::new(None::<usize>);
     provide_context(editor_selection);
 
+    // ED.10 — audio waveform peak buckets (populated when the source audio
+    // is decoded; empty renders a quiet baseline).
+    let editor_peaks = RwSignal::new(Vec::<crate::waveform::WaveBucket>::new());
+    provide_context(editor_peaks);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

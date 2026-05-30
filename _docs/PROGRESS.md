@@ -6,6 +6,27 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.10 (AUT-345) — audio waveform lane
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65).
+
+### What shipped
+
+- **`crates/app-ui/src/waveform.rs`** — `downsample_peaks(samples, buckets)`: reduces samples to one min/max `WaveBucket` envelope per bucket (the peak-pair representation every scrubbable waveform uses). Pure + tested (envelope capture, empty inputs, more-buckets-than-samples, single bucket). `AudioWaveform` lane component renders the envelope bars beneath the video track (quiet baseline until audio is decoded). Wired into the timeline slot + a peaks context signal in `AppShellRoot`.
+
+### Verification
+
+- `cargo clippy -p app-ui --all-targets -- -D warnings` — clean. `cargo nextest` — 4 `waveform` tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed10-waveform.md` — **also elevated `editor/overview.md`** with the cutting-room historical narrative (Moviola/Steenbeck flatbed → razor-and-tape splice → SMPTE timecode → non-linear editing) + a cutting-room→code mapping table covering every chunk, matching the book's theatre-metaphor voice.
+
+### Notes
+
+- Audio sample **decode** (GStreamer) joins the render-integration cluster (with the native preview window + clip thumbnails); the envelope contract (samples in → peaks out) is locked + tested, so lighting the lane is just feeding it.
+
+### Issues filed: none
+
+---
+
 ## In-concert check — ED.1–ED.8 editor pipeline integration test
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2` (commit `3472f0b`). `crates/app/tests/editor_pipeline.rs` (gst+wgpu guarded): drives `EditorSession` seek → `EditProject::source_time` → `EditorVideoStream` decode → `EditorPreview` compose → correctly-sized BGRA across several playhead positions + a play/tick advance. Proves ED.1/3/4/6/7 interlock (not just pass in isolation). 1626 tests green.
