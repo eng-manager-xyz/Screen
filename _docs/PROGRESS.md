@@ -6,6 +6,30 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.3 (AUT-338) — random-access decode: `EditorVideoStream` seek + frame cache
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. The media-layer blocker: the editor can now pull any frame by index, not just stream forward.
+
+### What shipped
+
+- **`crates/decode/src/editor_stream.rs`** — `EditorVideoStream` wraps the forward-only `GstreamerPipeStream` with `frame(index)` / `seek_to_frame` / `seek_to_time`, a hand-rolled LRU `FrameCache` (default 300 frames ≈ 10 s @ 30 fps), and `spawn_count` diagnostics. Forward seeks keep the live pipe; backward seeks re-spawn from 0 and decode up to the target (re-stamping `frame_index`/`pts` against our own clock). Out-of-range clamps to the last frame.
+- **`crates/decode/src/lib.rs`** — `pub mod editor_stream` + `pub use editor_stream::EditorVideoStream`.
+- **`crates/decode/tests/editor_seek.rs`** — 4 gst-guarded integration tests against the committed `sample.mp4` fixture: **seek == forward-decode byte-for-byte**, cache hit avoids re-spawn (`spawn_count` unchanged), time→frame mapping, out-of-range clamp.
+
+### Verification
+
+- `cargo clippy -p decode --all-targets -- -D warnings` — clean.
+- `cargo nextest run -p decode` — **18/18 pass** (incl. all 4 seek tests, run for real on this gst-equipped box). `just gate` — green.
+- mdBook: `editor/chunks/ed3-random-access-decode.md` (seek/cache flowchart + the CLI-no-seek constraint).
+
+### Notes
+
+- **CLI constraint:** `gst-launch-1.0` has no `-ss`, so there's no true keyframe seek; the honest v1 is forward-decode + cache. Export (sequential) never re-spawns; scrubbing nearby frames is cache-served. A `gstreamer-rs` `ACCURATE` seek is the future one-site swap behind the `EditorVideoStream` API (matches the M-DEC.3+ direction). No new crate deps (cache hand-rolled).
+
+### Issues filed: none
+
+---
+
 ## ED.2 (AUT-337) — edit-operation command stack + undo/redo over `EditProject`
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. The undoable command layer on the ED.1 model. Still pure (`crates/edit`); adds `proptest` as a dev-dep.

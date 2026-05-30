@@ -32,8 +32,11 @@
 //! assert_eq!(frame.bgra.len(), (64 * 36 * 4) as usize);
 //! ```
 
+pub mod editor_stream;
 pub mod gstreamer_pipe;
 pub mod mock;
+
+pub use editor_stream::EditorVideoStream;
 
 /// One decoded frame in BGRA8 layout, the canonical wgpu input format for
 /// per-frame texture uploads.

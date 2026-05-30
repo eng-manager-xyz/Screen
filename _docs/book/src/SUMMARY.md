@@ -146,6 +146,7 @@
 - [Overview](./editor/overview.md)
   - [The edit model — ED.1](./editor/chunks/ed1-edit-model.md)
   - [Edit operations + undo/redo — ED.2](./editor/chunks/ed2-edit-ops.md)
+  - [Random-access decode — ED.3](./editor/chunks/ed3-random-access-decode.md)
 
 # Milestones
 
