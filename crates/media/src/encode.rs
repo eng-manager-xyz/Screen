@@ -102,6 +102,28 @@ impl OutputFormat {
             _ => None,
         }
     }
+
+    /// Maximum encodable edge length (px) for this format's hardware
+    /// video encoder, or `None` when the encoder imposes no hard
+    /// dimension cap.
+    ///
+    /// Empirically probed on Apple Silicon (M1, GStreamer 1.26.8):
+    /// VideoToolbox's `vtenc_h264_hw` rejects caps negotiation
+    /// (`not-negotiated (-4)`, then the pipeline refuses to preroll)
+    /// the instant *either* edge exceeds 4096 — the H.264 Level 5.2
+    /// frame-side ceiling. It is a *per-axis* cap, not a pixel-area
+    /// cap (`4096×4096` succeeds while the smaller `5120×1440` fails).
+    /// `vtenc_h265_hw` accepts at least `8192×4320` (HEVC Level 6).
+    /// The software WebM encoders (`vp9enc` / `svtav1enc`) have no
+    /// hard cap — they only get slower. See AUT-334.
+    #[must_use]
+    pub const fn max_encode_edge(self) -> Option<u32> {
+        match self {
+            Self::Mp4H264Aac => Some(4096),
+            Self::Mp4H265Aac => Some(8192),
+            Self::WebmVp9Opus | Self::WebmAv1Opus => None,
+        }
+    }
 }
 
 /// Encoder configuration. Width + height + framerate are the video
@@ -141,6 +163,56 @@ impl EncoderConfig {
             format,
         }
     }
+}
+
+/// Clamp `(width, height)` so neither edge exceeds `format`'s hardware
+/// encoder limit ([`OutputFormat::max_encode_edge`]), **preserving the
+/// aspect ratio** and keeping both edges even (H.264 / HEVC require
+/// mod-2 dimensions).
+///
+/// Returns the input — even-rounded — unchanged when it already fits,
+/// or when the format has no hard cap (the software WebM encoders).
+/// When a clamp is needed, both edges are scaled by the *same* factor
+/// `max_edge / max(width, height)`, so the frame is shrunk uniformly
+/// and never stretched or squished: the screen content keeps its shape
+/// and the camera bubble stays a perfect circle. Integer arithmetic
+/// throughout (`u64` intermediate) — deterministic, no float casts.
+///
+/// This is the fix for AUT-334: a 5K display fed `vtenc_h264_hw` a
+/// 5120-wide frame, which fails caps negotiation and discards the
+/// whole recording. The live scratch is always H.264, so the recorder
+/// clamps capture dims to the H.264 limit before any pipeline starts.
+///
+/// # Examples
+///
+/// ```
+/// use media::encode::{fit_within_encoder_limits, OutputFormat};
+/// // 5K and 6K displays (both 16:9) clamp to exactly 4096×2304 for H.264:
+/// assert_eq!(fit_within_encoder_limits(5120, 2880, OutputFormat::Mp4H264Aac), (4096, 2304));
+/// assert_eq!(fit_within_encoder_limits(6016, 3384, OutputFormat::Mp4H264Aac), (4096, 2304));
+/// // Already within the limit → unchanged:
+/// assert_eq!(fit_within_encoder_limits(3840, 2160, OutputFormat::Mp4H264Aac), (3840, 2160));
+/// // H.265's higher ceiling keeps full 5K:
+/// assert_eq!(fit_within_encoder_limits(5120, 2880, OutputFormat::Mp4H265Aac), (5120, 2880));
+/// ```
+#[must_use]
+pub fn fit_within_encoder_limits(width: u32, height: u32, format: OutputFormat) -> (u32, u32) {
+    let to_even = |v: u32| (v & !1u32).max(2);
+    let Some(max_edge) = format.max_encode_edge() else {
+        return (to_even(width), to_even(height));
+    };
+    let longest = width.max(height);
+    if longest <= max_edge {
+        return (to_even(width), to_even(height));
+    }
+    // Uniform downscale: the longest edge becomes exactly `max_edge`,
+    // the shorter edge shrinks by the same ratio. `u64` intermediate
+    // avoids overflow for 8K-class inputs; `try_from` keeps it cast-free.
+    let scale = |v: u32| -> u32 {
+        let scaled = u64::from(v) * u64::from(max_edge) / u64::from(longest);
+        to_even(u32::try_from(scaled).unwrap_or(max_edge))
+    };
+    (scale(width), scale(height))
 }
 
 /// Failure modes for the encoder.
@@ -1214,5 +1286,107 @@ mod tests {
         cfg.width = 0;
         let result = LiveGstreamerEncoder::new(cfg);
         assert!(matches!(result, Err(EncodeError::InvalidConfig(_))));
+    }
+
+    // ---- AUT-334 — encoder-limit clamp (aspect-preserving) ----
+
+    #[test]
+    fn max_encode_edge_is_codec_specific() {
+        assert_eq!(OutputFormat::Mp4H264Aac.max_encode_edge(), Some(4096));
+        assert_eq!(OutputFormat::Mp4H265Aac.max_encode_edge(), Some(8192));
+        assert_eq!(OutputFormat::WebmVp9Opus.max_encode_edge(), None);
+        assert_eq!(OutputFormat::WebmAv1Opus.max_encode_edge(), None);
+    }
+
+    #[test]
+    fn fit_within_limits_passes_through_when_within_h264_cap() {
+        // ≤4096 on both edges → unchanged (even inputs stay identical).
+        for (w, h) in [
+            (1920, 1080),
+            (3840, 2160),
+            (4096, 2160),
+            (4096, 2304),
+            (4096, 4096),
+        ] {
+            assert_eq!(
+                fit_within_encoder_limits(w, h, OutputFormat::Mp4H264Aac),
+                (w, h),
+                "{w}x{h} is within the H.264 cap and must pass through"
+            );
+        }
+    }
+
+    #[test]
+    fn fit_within_limits_downscales_real_over_4k_displays_to_4096x2304() {
+        // Every real >4K display is 16:9 (5K / 6K / 8K), so each clamps
+        // to exactly 4096×2304 with zero aspect drift.
+        for (w, h) in [(5120, 2880), (6016, 3384), (7680, 4320)] {
+            let (cw, ch) = fit_within_encoder_limits(w, h, OutputFormat::Mp4H264Aac);
+            assert!(cw <= 4096 && ch <= 4096, "{w}x{h} -> {cw}x{ch} exceeds cap");
+            assert_eq!(cw % 2, 0, "width must be even");
+            assert_eq!(ch % 2, 0, "height must be even");
+            assert_eq!((cw, ch), (4096, 2304), "{w}x{h} should clamp to 4096x2304");
+        }
+    }
+
+    #[test]
+    fn fit_within_limits_clamps_longest_edge_and_keeps_ratio() {
+        // Ultrawide (21:9), portrait, and a tall sliver — the longest
+        // edge becomes exactly 4096; the other shrinks by the same
+        // factor. Even-flooring may drift the shorter edge by <1px;
+        // assert the aspect skew stays sub-pixel via cross-multiply.
+        for (w, h) in [(5120, 2160), (2880, 5120), (5120, 1440)] {
+            let (cw, ch) = fit_within_encoder_limits(w, h, OutputFormat::Mp4H264Aac);
+            assert!(cw <= 4096 && ch <= 4096, "{w}x{h} -> {cw}x{ch} exceeds cap");
+            assert_eq!(cw.max(ch), 4096, "longest edge scales to the 4096 cap");
+            assert_eq!(cw % 2, 0);
+            assert_eq!(ch % 2, 0);
+            // |w·ch − h·cw| is the aspect error scaled by the source's
+            // longest edge; keep it under ~2px of drift.
+            let drift = (i64::from(w) * i64::from(ch) - i64::from(h) * i64::from(cw)).abs();
+            assert!(
+                drift <= 2 * i64::from(w.max(h)),
+                "{w}x{h} -> {cw}x{ch} skews the aspect ratio"
+            );
+        }
+    }
+
+    #[test]
+    fn fit_within_limits_h265_keeps_5k_and_caps_at_8192() {
+        // HEVC's 8192 ceiling keeps full 5K and 8K; only >8192 clamps.
+        assert_eq!(
+            fit_within_encoder_limits(5120, 2880, OutputFormat::Mp4H265Aac),
+            (5120, 2880)
+        );
+        assert_eq!(
+            fit_within_encoder_limits(8192, 4320, OutputFormat::Mp4H265Aac),
+            (8192, 4320)
+        );
+        let (cw, ch) = fit_within_encoder_limits(10240, 4320, OutputFormat::Mp4H265Aac);
+        assert!(cw <= 8192 && ch <= 8192);
+        assert_eq!(cw, 8192, "longest edge clamps to the HEVC 8192 cap");
+    }
+
+    #[test]
+    fn fit_within_limits_never_clamps_software_webm() {
+        // libvpx / SVT-AV1 accept any size (no negotiation cap).
+        assert_eq!(
+            fit_within_encoder_limits(5120, 2880, OutputFormat::WebmVp9Opus),
+            (5120, 2880)
+        );
+        assert_eq!(
+            fit_within_encoder_limits(7680, 4320, OutputFormat::WebmAv1Opus),
+            (7680, 4320)
+        );
+    }
+
+    #[test]
+    fn fit_within_limits_evens_odd_input() {
+        // Odd dims shouldn't occur post-`sanitize_dims`, but the encoder
+        // requires mod-2, so the clamp floors to even defensively.
+        let (cw, ch) = fit_within_encoder_limits(4097, 2161, OutputFormat::Mp4H264Aac);
+        assert!(cw <= 4096 && ch <= 4096);
+        assert_eq!(cw % 2, 0);
+        assert_eq!(ch % 2, 0);
     }
 }

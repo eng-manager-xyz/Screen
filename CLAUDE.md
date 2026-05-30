@@ -830,6 +830,27 @@ fine on lavapipe — **don't guard them**.
   Retina), which is what made native-resolution capture (M-QUAL.2)
   viable. Drain the child's stderr on a side thread so a chatty
   pipeline can't deadlock on a full stderr pipe.
+- **`vtenc_h264_hw` caps EACH edge at 4096 px — clamp capture/encode
+  dims aspect-preserving for >4K displays.** Apple's VideoToolbox HW
+  H.264 encoder rejects caps negotiation (`not-negotiated (-4)` → the
+  pipeline won't preroll → the feed thread's first `push_video_frame`
+  hits a `BrokenPipe` → the scratch is discarded → empty output dir)
+  the instant width OR height exceeds 4096 (the H.264 Level 5.2
+  frame-side ceiling). It is a strict *per-axis* cap, NOT a pixel-area
+  cap — empirically `4096×4096` (16.8 Mpx) encodes fine while the
+  smaller `5120×1440` (7.4 Mpx) fails. `vtenc_h265_hw` accepts
+  ≥`8192×4320` (HEVC Level 6); software encoders (`vp9enc`,
+  `svtav1enc`) have no hard cap. M-QUAL.2's native-resolution capture
+  fed the raw 5K (5120×2880) display straight in and silently lost
+  every recording on 5K/6K/8K panels (AUT-334). Fix: clamp recording
+  dims via `media::encode::fit_within_encoder_limits(w, h, format)`
+  (keyed on `OutputFormat::max_encode_edge`) **before** any pipeline
+  starts, scaling both edges by the same `max_edge / max(w, h)` factor
+  (no skew; the ratio-based camera-bubble extents stay circular). Do it
+  at the single point where capture/canvas/encoder dims are derived
+  (`start_screen_for_session`) so all three stay equal. Any new
+  vtenc-backed format (H.265, future AV1-HW) must register its edge cap
+  in `max_encode_edge` — don't assume 4096 is universal.
 - **`gst-discoverer-1.0` for metadata, `gst-launch-1.0` for the stream.**
   Discover before launch; the launch pipeline can't carry caps in a way
   the consumer can read out, so `width × height × 4` for `read_exact`
