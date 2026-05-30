@@ -33,6 +33,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 use screen_app::audio::{MicCaptureHandle, MicCaptureState};
 use screen_app::commands::{self, BubbleState, TrayState};
 use screen_app::editor_command;
+use screen_app::editor_session::{self, EditorSessionState};
 use screen_app::player_session::{PlayerSession, PlayerStatus, SessionState};
 use screen_app::preview::{CameraPipelineHandle, PreviewDiagnostics, PreviewState};
 use screen_app::recording::RecordingState;
@@ -95,7 +96,8 @@ fn main() {
         .manage(CameraPipelineHandle::default())
         .manage(MicCaptureState::default())
         .manage(MicCaptureHandle::default())
-        .manage(RecordingState::default());
+        .manage(RecordingState::default())
+        .manage(EditorSessionState::default());
     // System-audio + screen-capture states are macOS-only — both
     // depend on ScreenCaptureKit.
     #[cfg(target_os = "macos")]
@@ -160,6 +162,7 @@ fn main() {
                     commands::set_output_dir,
                     commands::recording_pending_export,
                     editor_command::open_in_editor,
+                    editor_session::editor_transport,
                     commands::export_recording,
                     commands::discard_recording,
                     commands::latest_camera_frame_bgra,
@@ -217,6 +220,7 @@ fn main() {
                     commands::set_output_dir,
                     commands::recording_pending_export,
                     editor_command::open_in_editor,
+                    editor_session::editor_transport,
                     commands::export_recording,
                     commands::discard_recording,
                     commands::latest_camera_frame_bgra,

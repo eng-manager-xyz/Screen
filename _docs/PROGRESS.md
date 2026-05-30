@@ -6,6 +6,34 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.7 (AUT-342) — playback transport wired to the editor clock
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2`. Full basic playback: play/pause, step, scrub, in/out, speed, `MM:SS.ff` timecode + keyboard.
+
+### What shipped
+
+- **`crates/app/src/editor_session.rs`** — backend `EditorSession` wrapping `EditorPlayer` + a serde `EditorStatusView`. All transport collapses into **one** enum-dispatched `editor_transport(action)` command (`TransportAction`: Play/Pause/TogglePlay/Tick/Seek/Step/SetRate/SetInOut/ClearInOut/Status) → returns the new status. `EditorSessionState` Tauri state. 5 unit tests of the transport logic.
+- **`crates/app/src/editor_command.rs`** — `open_in_editor` now also spins up the `EditorSession` for the opened clip.
+- **`crates/app/src/main.rs`** — `.manage(EditorSessionState)` + register `editor_transport`.
+- **`crates/app-ui/src/editor_ipc.rs`** — `EditorStatus` (Deserialize mirror), `TransportAction` (Serialize mirror), `editor_transport` wrapper, `install_editor_status_listener`.
+- **`crates/app-ui/src/editor_surface.rs`** — `format_timecode` (`MM:SS.ff`, unit-tested) + `EditorTransportBar` (play/step/jump/scrubber/speed) in the timeline slot + keyboard (Space, ←/→ ±1/±5, I/O). Fine-grained reactive: only the timecode + scrubber re-render as the playhead advances.
+- **`crates/app-ui/src/app_shell_mount.rs`** — owns the `EditorStatus` signal, installs the listener, and runs the **single** app-lifetime 33 ms host-injected tick loop (advances the backend clock while playing).
+- **`crates/app-ui/index.html`** — `__screenEditorTransport` helper. **Cargo.toml** — web-sys `KeyboardEvent` + `HtmlInputElement`.
+
+### Verification
+
+- `cargo clippy -p screen-app -p app-ui --all-targets -- -D warnings` — clean.
+- `cargo nextest` — 5 `editor_session` + 3 `editor_surface` (incl. timecode) tests pass. `just gate` — green.
+- mdBook: `editor/chunks/ed7-transport.md` (transport sequence + host-injects-dt rationale + keyboard map).
+
+### Notes
+
+- The clock is backend-owned (`EditorSession`); the webview drives ticking via the host-injects-dt model (`Driver`'s design), so play visibly advances the timecode + scrubber with **no backend thread or Tauri-event bridge**. When the native preview window (ED.6's manual surface) lands, it drives the same tick + renders frames. **Phase C (surface · preview · transport) is complete.**
+
+### Issues filed: none
+
+---
+
 ## ED.6 (AUT-341) — editor preview canvas: compose the frame at the playhead
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2`. The compose-at-playhead pump, reusing the recorder's compositor for preview/export parity by construction.

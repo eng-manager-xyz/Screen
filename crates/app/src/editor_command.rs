@@ -5,10 +5,18 @@
 //! editor UI to load. The heavy lifting — the edit model itself — lives in
 //! the pure `edit` crate; this is the thin Tauri wrapper.
 
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State<'_, T> into #[command] fns by value; it is borrowed, not moved"
+)]
+
 use std::path::{Path, PathBuf};
 
 use decode::gstreamer_pipe::GstreamerPipeStream;
 use edit::{ClipRef, EditProject};
+use tauri::State;
+
+use crate::editor_session::{EditorSession, EditorSessionState};
 
 /// Build a default editor project from a recording's probed metadata.
 ///
@@ -61,15 +69,28 @@ fn fps_round(frame_rate: f32) -> u32 {
 /// Returns the probe error string if the file can't be read (missing
 /// `GStreamer`, unreadable media).
 #[tauri::command]
-pub fn open_in_editor(path: String) -> Result<EditProject, String> {
+pub fn open_in_editor(
+    path: String,
+    state: State<'_, EditorSessionState>,
+) -> Result<EditProject, String> {
     let meta = GstreamerPipeStream::probe(Path::new(&path)).map_err(|err| err.to_string())?;
-    Ok(project_from_metadata(
+    let project = project_from_metadata(
         PathBuf::from(path),
         meta.width,
         meta.height,
         meta.frame_rate,
         meta.frame_count.unwrap_or(0),
-    ))
+    );
+    // Spin up the playhead session for this clip (ED.7 transport drives it).
+    let mut guard = state
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *guard = Some(EditorSession::new(
+        project.project_fps,
+        project.project_duration(),
+    ));
+    Ok(project)
 }
 
 #[cfg(test)]

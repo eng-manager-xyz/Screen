@@ -34,6 +34,22 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
         }
     });
 
+    // ED.7 — the playhead status from the backend editor session, plus a
+    // perpetual host-injected tick that advances the clock while playing.
+    // Created once here (the app root), so editor-surface re-mounts can't
+    // spawn duplicate tick loops; leaked because it has app lifetime.
+    let editor_status = RwSignal::new(crate::editor_ipc::EditorStatus::default());
+    provide_context(editor_status);
+    crate::editor_ipc::install_editor_status_listener(editor_status);
+    gloo_timers::callback::Interval::new(33, move || {
+        if editor_status.get_untracked().playing {
+            crate::editor_ipc::editor_transport(&crate::editor_ipc::TransportAction::Tick {
+                dt_ms: 33,
+            });
+        }
+    })
+    .forget();
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.

@@ -73,6 +73,16 @@
             window.dispatchEvent(new CustomEvent("editor-project", { detail: project })))
           .catch((e) => console.error("open_in_editor failed", e));
 
+      // ED.7 — editor transport. The command returns the new playhead
+      // status, which we re-emit as `editor-status` for the Leptos listener.
+      window.__screenEditorTransport = (action) =>
+        window.__TAURI__?.core?.invoke("editor_transport", { action })
+          .then((status) => {
+            if (status)
+              window.dispatchEvent(new CustomEvent("editor-status", { detail: status }));
+          })
+          .catch((e) => console.error("editor_transport failed", e));
+
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the
       // `crate::camera_ipc` extern declarations.

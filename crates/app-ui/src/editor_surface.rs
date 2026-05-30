@@ -1,15 +1,17 @@
-//! `EditorSurface` — the live editor surface (ED.5 / M-EDIT).
+//! `EditorSurface` — the live editor surface (ED.5/ED.7 / M-EDIT).
 //!
-//! Replaces the `?surface=editor` placeholder with the real
-//! [`EditorShell`] chrome, driven by the loaded [`EditProject`] from a
-//! Leptos context signal. The canvas / timeline / inspector slots are
-//! filled by later chunks (preview ED.6, transport ED.7, timeline ED.8,
-//! inspector ED.18); this chunk activates the surface and the
-//! Record→Edit handoff.
+//! Renders the real [`EditorShell`] chrome driven by the loaded
+//! [`EditProject`], with a wired transport bar (ED.7) in the timeline slot:
+//! play/pause, frame-step, jump-to-ends, a scrubber, a speed selector, a
+//! `MM:SS.ff` timecode, and keyboard shortcuts — all driving the backend
+//! editor session over [`crate::editor_ipc`]. The canvas / inspector slots
+//! are filled by later chunks (preview ED.6, inspector ED.18).
 
 use edit::EditProject;
 use leptos::prelude::*;
 use ui_storybook::components::editor::{EditorShell, EditorShellView, ToolbarActionView};
+
+use crate::editor_ipc::{self, EditorStatus, TransportAction};
 
 /// The editor toolbar action set (matches the reference design). When no
 /// clip is loaded every action is disabled.
@@ -59,6 +61,17 @@ fn clip_subtitle(project: &EditProject) -> String {
     )
 }
 
+/// Format a frame index as `MM:SS.ff` (ff = frame within the second).
+#[must_use]
+pub fn format_timecode(frame: u64, fps: u32) -> String {
+    let fps = u64::from(fps.max(1));
+    let total_secs = frame / fps;
+    let mins = total_secs / 60;
+    let secs = total_secs % 60;
+    let frames = frame % fps;
+    format!("{mins:02}:{secs:02}.{frames:02}")
+}
+
 /// Map the loaded project (or its absence) to the shell view-model.
 fn shell_view_for(project: Option<&EditProject>) -> EditorShellView {
     match project {
@@ -81,13 +94,115 @@ fn shell_view_for(project: Option<&EditProject>) -> EditorShellView {
     }
 }
 
-/// The editor surface. Reads the loaded [`EditProject`] from context (set
-/// by the `open_in_editor` handoff) and renders the [`EditorShell`].
+/// Transport bar (ED.7) — bound to the backend editor session via
+/// [`crate::editor_ipc`]. Fine-grained reactive: only the timecode, the
+/// play glyph, and the scrubber value re-render as the playhead advances.
+#[component]
+fn EditorTransportBar() -> impl IntoView {
+    let status = use_context::<RwSignal<EditorStatus>>()
+        .unwrap_or_else(|| RwSignal::new(EditorStatus::default()));
+    view! {
+        <div class="editor-transport" role="group" aria-label="Playback transport">
+            <button class="transport-btn" title="Jump to start"
+                on:click=move |_| editor_ipc::editor_transport(&TransportAction::Seek { frame: 0 })>
+                "⏮"
+            </button>
+            <button class="transport-btn" title="Step back"
+                on:click=move |_| editor_ipc::editor_transport(&TransportAction::Step { delta: -1 })>
+                "‹"
+            </button>
+            <button class="transport-btn transport-play" title="Play / pause (Space)"
+                on:click=move |_| editor_ipc::editor_transport(&TransportAction::TogglePlay)>
+                {move || if status.get().playing { "⏸" } else { "▶" }}
+            </button>
+            <button class="transport-btn" title="Step forward"
+                on:click=move |_| editor_ipc::editor_transport(&TransportAction::Step { delta: 1 })>
+                "›"
+            </button>
+            <button class="transport-btn" title="Jump to end"
+                on:click=move |_| editor_ipc::editor_transport(&TransportAction::Seek {
+                    frame: status.get_untracked().duration_frames.saturating_sub(1),
+                })>
+                "⏭"
+            </button>
+            <span class="transport-timecode">
+                {move || format_timecode(status.get().current_frame, status.get().fps)}
+                " / "
+                {move || format_timecode(status.get().duration_frames.saturating_sub(1), status.get().fps)}
+            </span>
+            <input
+                type="range"
+                class="transport-scrub"
+                min="0"
+                prop:max=move || status.get().duration_frames.saturating_sub(1).to_string()
+                prop:value=move || status.get().current_frame.to_string()
+                on:input=move |ev| {
+                    if let Ok(frame) = event_target_value(&ev).parse::<u64>() {
+                        editor_ipc::editor_transport(&TransportAction::Seek { frame });
+                    }
+                }
+            />
+            <select class="transport-rate" title="Playback speed"
+                on:change=move |ev| {
+                    if let Ok(rate) = event_target_value(&ev).parse::<f32>() {
+                        editor_ipc::editor_transport(&TransportAction::SetRate { rate });
+                    }
+                }>
+                <option value="0.5">"0.5×"</option>
+                <option value="1" selected=true>"1×"</option>
+                <option value="2">"2×"</option>
+            </select>
+        </div>
+    }
+}
+
+/// The editor surface. Reads the loaded [`EditProject`] + the playhead
+/// [`EditorStatus`] from context and renders the [`EditorShell`] with a
+/// wired transport. Keyboard: Space = play/pause, ←/→ step (Shift = 5),
+/// I/O set in/out.
 #[component]
 pub fn EditorSurface() -> impl IntoView {
     let project = use_context::<RwSignal<Option<EditProject>>>();
+    let status = use_context::<RwSignal<EditorStatus>>()
+        .unwrap_or_else(|| RwSignal::new(EditorStatus::default()));
     view! {
-        <section class="app-surface app-surface--editor">
+        <section
+            class="app-surface app-surface--editor"
+            tabindex="0"
+            on:keydown=move |ev| {
+                match ev.key().as_str() {
+                    " " | "Spacebar" => {
+                        ev.prevent_default();
+                        editor_ipc::editor_transport(&TransportAction::TogglePlay);
+                    }
+                    "ArrowLeft" => {
+                        ev.prevent_default();
+                        let delta = if ev.shift_key() { -5 } else { -1 };
+                        editor_ipc::editor_transport(&TransportAction::Step { delta });
+                    }
+                    "ArrowRight" => {
+                        ev.prevent_default();
+                        let delta = if ev.shift_key() { 5 } else { 1 };
+                        editor_ipc::editor_transport(&TransportAction::Step { delta });
+                    }
+                    "i" | "I" => {
+                        let s = status.get_untracked();
+                        editor_ipc::editor_transport(&TransportAction::SetInOut {
+                            a: s.current_frame,
+                            b: s.out_frame.max(s.current_frame + 1),
+                        });
+                    }
+                    "o" | "O" => {
+                        let s = status.get_untracked();
+                        editor_ipc::editor_transport(&TransportAction::SetInOut {
+                            a: s.in_frame.min(s.current_frame),
+                            b: s.current_frame + 1,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        >
             {move || {
                 let vm = match project {
                     Some(signal) => shell_view_for(signal.get().as_ref()),
@@ -101,13 +216,14 @@ pub fn EditorSurface() -> impl IntoView {
                             <div class="editor-canvas-empty">
                                 <p class="editor-canvas-hint">
                                     {if loaded {
-                                        "Preview & timeline come online next."
+                                        "Preview renders here."
                                     } else {
                                         "Finish a recording to start editing it here."
                                     }}
                                 </p>
                             </div>
                         })
+                        timeline=ToChildren::to_children(move || view! { <EditorTransportBar /> })
                     />
                 }
             }}
@@ -152,11 +268,20 @@ mod tests {
             Some("1920×1080 · 30 fps · 0:30")
         );
         assert!(v.toolbar_actions.iter().all(|a| !a.disabled));
-        // The aspect chip starts selected (matches the design).
         assert!(
             v.toolbar_actions
                 .iter()
                 .any(|a| a.id == "aspect" && a.selected)
         );
+    }
+
+    #[test]
+    fn timecode_formats_mm_ss_ff() {
+        assert_eq!(format_timecode(0, 30), "00:00.00");
+        assert_eq!(format_timecode(75, 30), "00:02.15"); // 2s + 15 frames
+        assert_eq!(format_timecode(1800, 30), "01:00.00"); // 60s
+        assert_eq!(format_timecode(29, 30), "00:00.29");
+        // fps 0 is treated as 1 (no div-by-zero).
+        assert_eq!(format_timecode(5, 0), "00:05.00");
     }
 }
