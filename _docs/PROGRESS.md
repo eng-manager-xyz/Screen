@@ -6,6 +6,59 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Aggressive review cleanup + 3 live-recording bug fixes (user-reported)
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`. Commits `fff3f1f`, `e8b2fad`, `9c2e263`, `ab25a89`.
+
+### What
+
+Ran an aggressive multi-agent review of the whole M-EDIT editor track (52
+verified findings, 1 rejected; 10 "scaffolding-keep" items protected so the
+cleanup never deleted ED.16–21 groundwork). Landed the safe, high-confidence
+wins; deferred the runtime/visual-judgment ones to ISS-11..ISS-13.
+
+- **Batch 1 (`fff3f1f`) — backend correctness + export hot-path:** zoom scale
+  clamp ≥1.0; `EditError::WouldEmptyTimeline` + non-empty invariant;
+  `EditProject::segment_offsets`/`segment_project_range` as the single
+  accumulation site; export opens a 1-frame cache (was 300 → ~2.5 GB resident
+  at 1080p); editor-export single-run guard so a second export can't race the
+  file; `open_in_editor` async (spawn_blocking probe); dead `seek_to_frame`
+  alias removed; drag/drop `eprintln!`→`tracing`.
+- **Batch 2 (`e8b2fad`) — UI:** waveform-lane render bug (`.waveform-bar` had
+  no position/width → blank lane; + tiling test); log rejected `EditOp`s
+  instead of swallowing; delete orphan JS wrapper + 4 `console.log`s;
+  `.tray-popover-stub` dead CSS; monospace → `var(--font-mono)`.
+
+Then three live-recording bugs reported from running the app, all root-caused
+from `/tmp/screen-app.log` + reproduced against real scratch files:
+
+- **2× fast recordings (`9c2e263`):** native-res capture can't sustain 30 fps
+  (log: ~10 fps actual) and the live encoder timestamps by frame *count*
+  (`rawvideoparse framerate=F/1` ignores pts), so under-delivery plays fast.
+  Fix: cap recording to a 1920×1080 box (`media::encode::cap_recording_dims`,
+  applied in `start_screen_for_session`) + wall-clock CFR safety-fill in
+  `feed_real_capture` (`cfr_catchup_frames` duplicates the last frame to lock
+  count to elapsed). Both unit-tested. Deliberate tradeoff (user-chosen):
+  reliable 1080p over fast/half-lost native-Retina.
+- **No export button when audio is on (`9c2e263`):** finalize re-demuxes the
+  H.264 scratch to mux audio, but `vtenc_h264_hw` default B-frame reordering
+  yields no-PTS buffers → mp4mux "Could not multiplex stream / Buffer has no
+  PTS" → scratch discarded → no pending export (audio-off escapes via the
+  rename path). Fix: `allow-frame-reordering=false` on the vtenc encoders.
+  Verified against `scratch-9`: remux `exit 1 → 0`.
+- **Legacy UI on the recording tab (`ab25a89`):** removed the `<details>`
+  "Debug · legacy controls" block + the now-dead `recorder_controls.rs` /
+  `camera_diagnostics.rs` modules, leaving the full `RecorderPage`; `dist/`
+  rebuilt. No recording functionality lost (the bubble follows the camera
+  toggle in `RecorderPage`).
+
+### Verified
+`just gate` green for each batch. `media` `encode_integration` (incl. the
+video+audio finalize path) + the bug-C remux verified on real scratch data.
+`app-ui` native + wasm32 clippy green.
+
+---
+
 ## CI fix — edited-export e2e skips headless-macOS vtenc BrokenPipe
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2` (PR #65). Caught at PR-watch time.
