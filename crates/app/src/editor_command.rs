@@ -300,7 +300,8 @@ mod tests {
         assert_eq!(entries.len(), 2, "only .mp4 files become entries");
         assert_eq!(entries[0].name, "rec-2026-02-01", "newest first");
         assert!(entries[0].has_project, "Feb has a sibling .screenproj");
-        assert_eq!(entries[0].path, "/out/rec-2026-02-01.mp4");
+        // Path-separator-agnostic (Windows joins with `\`).
+        assert!(entries[0].path.ends_with("rec-2026-02-01.mp4"));
         assert_eq!(entries[1].name, "rec-2026-01-01");
         assert!(!entries[1].has_project);
     }

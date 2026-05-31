@@ -48,6 +48,7 @@ impl Default for BackgroundSource {
 /// Background framing: the backdrop plus the padding / rounding / shadow
 /// that lift the screen capture off it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BackgroundConfig {
     /// The backdrop fill.
     #[serde(default)]
@@ -79,6 +80,7 @@ impl Default for BackgroundConfig {
 /// Auto-zoom detection settings (ED.17 generates `Auto` zoom regions
 /// using these thresholds).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AutoZoomConfig {
     /// Whether to auto-generate zoom regions from cursor/click telemetry.
     pub detect_from_cursor: bool,
@@ -101,6 +103,7 @@ impl Default for AutoZoomConfig {
 /// Cursor styling and smoothing (ED.19 renders a cursor overlay driven
 /// by these settings + the captured cursor track).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CursorConfig {
     /// Cursor size as a percentage of its native size, e.g. `180`.
     pub size_pct: u32,
@@ -270,5 +273,22 @@ mod tests {
         let (w, h) = AspectRatio::Classic.canvas_dims(1001);
         assert_eq!(w % 2, 0);
         assert_eq!(h % 2, 0);
+    }
+
+    #[test]
+    fn config_partial_json_fills_missing_fields_from_default() {
+        // ED.23 forward-compat: container `#[serde(default)]` fills any
+        // missing field from the struct's (design-meaningful) Default.
+        let bg: BackgroundConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(bg, BackgroundConfig::default());
+        let cur: CursorConfig = serde_json::from_str(r#"{"size_pct": 200}"#).unwrap();
+        assert_eq!(cur.size_pct, 200);
+        assert_eq!(
+            cur.smoothing,
+            CursorConfig::default().smoothing,
+            "missing field defaulted, not zeroed"
+        );
+        let az: AutoZoomConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(az, AutoZoomConfig::default());
     }
 }

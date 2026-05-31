@@ -11,7 +11,7 @@
 //! The file carries a [`SCHEMA_VERSION`](crate::project::SCHEMA_VERSION) so a
 //! future format change can migrate rather than mis-parse.
 
-use crate::project::EditProject;
+use crate::project::{EditProject, SCHEMA_VERSION};
 
 /// File extension for a saved editor project.
 pub const SCREENPROJ_EXTENSION: &str = "screenproj";
@@ -32,7 +32,15 @@ pub fn to_screenproj(project: &EditProject) -> Result<String, String> {
 ///
 /// Returns a message if the JSON is malformed or doesn't match the schema.
 pub fn from_screenproj(json: &str) -> Result<EditProject, String> {
-    serde_json::from_str(json).map_err(|e| format!("parse project: {e}"))
+    let project: EditProject =
+        serde_json::from_str(json).map_err(|e| format!("parse project: {e}"))?;
+    if project.schema_version != SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported .screenproj schema version {} (this build reads {SCHEMA_VERSION})",
+            project.schema_version
+        ));
+    }
+    Ok(project)
 }
 
 #[cfg(test)]
@@ -92,5 +100,16 @@ mod tests {
         let json = to_screenproj(&p).unwrap();
         assert!(json.contains('\n'), "pretty-printed (multi-line)");
         assert!(json.contains("schema_version"));
+    }
+
+    #[test]
+    fn rejects_a_future_schema_version() {
+        let p =
+            EditProject::from_recording(ClipRef::new(PathBuf::from("/tmp/a.mp4"), 64, 64, 30, 10));
+        let json = to_screenproj(&p).unwrap();
+        assert!(from_screenproj(&json).is_ok(), "current version loads");
+        // A newer on-disk version is refused (explicit error, not mis-parse).
+        let bumped = json.replace("\"schema_version\": 1", "\"schema_version\": 999");
+        assert!(from_screenproj(&bumped).is_err(), "future version rejected");
     }
 }

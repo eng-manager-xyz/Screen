@@ -151,6 +151,13 @@ pub fn export_edited_project(
         done += 1;
         on_progress(done, total);
     }
+    // The generator stops early (without a per-frame error) only if a source
+    // decode failed mid-walk — don't finalize a truncated file as success.
+    if done < total {
+        return Err(format!(
+            "export ended early at {done}/{total} frames (source decode failed?)"
+        ));
+    }
     Box::new(encoder)
         .finalize()
         .map_err(|e| format!("finalize export: {e}"))

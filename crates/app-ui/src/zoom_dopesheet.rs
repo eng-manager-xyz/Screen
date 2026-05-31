@@ -4,7 +4,7 @@
 //! curve laid out as keyframes (identity → full → identity), plus a row of
 //! easing presets. The default and one-click favorite is **Easy Ease**
 //! (`InOutCubic`) — accelerate off the wide shot, settle into the detail.
-//! The keyframe model is the pure [`zoom_keyframes`](edit::zoom_anim::zoom_keyframes)
+//! The keyframe model is the pure [`zoom_keyframes`]
 //! (the `Track`-shaped view of the engine's ramp); choosing an ease commits
 //! a `SetZoomEase` through the shared [`edit::History`]. The marker plot is
 //! authoring/inspection; the eased motion itself renders via the ED.16

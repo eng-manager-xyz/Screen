@@ -6,6 +6,26 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Review fixes — ED.13 + ED.20–24 adversarial audit
+- **Date:** 2026-05-30
+- **Status:** ✅ done — `video-editing-v2` (PR #65). Hardening the export/persistence surface before merge.
+
+### What
+
+A 6-agent read-only adversarial review over the export/persistence/library/dopesheet surface surfaced 6 confirmed findings; all fixed:
+
+- **`app/editor_export.rs`** — export could finalize a **truncated** file as `Ok` if a source decode failed mid-walk (the generator returns `None` for both "done" and "decode failed"). Now guards `done == total` after the loop and errors on early stop. [high]
+- **`edit/style.rs`** — `BackgroundConfig` / `CursorConfig` / `AutoZoomConfig` now carry **container** `#[serde(default)]`, so a partial `.screenproj` fills missing fields from each struct's design-meaningful `Default` (padding 64, cursor 180 %, …) rather than failing to load — the forward-compat the format promised. +test. [high ×3]
+- **`edit/persist.rs`** — `from_screenproj` now **validates `schema_version`** and refuses a newer on-disk version with an explicit error (vs. silently mis-parsing). +test. [high]
+- **`app/editor_command.rs`** — the `recording_entries` test asserted a `/`-separated path; now `ends_with` (would have failed Windows CI). [low]
+- **`app-ui/zoom_dopesheet.rs`** — cleared a `redundant_explicit_links` rustdoc warning from ED.13.
+
+### Verification: native + wasm clippy clean; edit/app tests (incl. the new serde-default + schema-version + path tests) pass; `just gate` green. The truncation guard is defensive (the gst e2e export test exercises the `done == total` happy path).
+
+### Issues filed: none
+
+---
+
 ## ED.13 (AUT-348) — dopesheet keyframes + Easy Ease
 - **Date:** 2026-05-30
 - **Status:** ✅ done (keyframe model + ease authoring) — `video-editing-v2` (PR #65). The animator's dope sheet. **Final M-EDIT rubric chunk.**
