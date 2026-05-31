@@ -410,6 +410,18 @@ impl RecordingScene {
             node.container_mut().visible = visible;
         }
     }
+
+    /// Set the screen sprite's local transform. The recorder leaves this at
+    /// the base fill-NDC transform (`position 0`, `scale 2`); the editor
+    /// (ED.16/ED.15) writes a per-frame crop-then-zoom transform here so the
+    /// composed frame punches in / reframes. The screen sprite is anchored
+    /// centre, so a `scale` of `2 * z` magnifies the source by `z` about the
+    /// frame centre, and `position` shifts the focal point in NDC.
+    pub fn set_screen_transform(&mut self, transform: Transform) {
+        if let Some(node) = self.stage.get_mut(self.screen_sprite) {
+            node.container_mut().transform = transform;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -462,6 +474,29 @@ mod tests {
         assert_eq!(scene.stage().len(), 4);
         assert_eq!(scene.screen_dims().width, 128);
         assert_eq!(scene.cam_dims().height, 64);
+    }
+
+    #[test]
+    fn set_screen_transform_updates_the_screen_sprite() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        // A zoom-style transform (4× = 2× the base fill scale, shifted).
+        let t = Transform {
+            scale: Vec2::splat(4.0),
+            position: Vec2::new(0.5, -0.25),
+            ..Transform::IDENTITY
+        };
+        scene.set_screen_transform(t);
+        let node = scene
+            .stage()
+            .get(scene.screen_sprite_id())
+            .expect("screen sprite node");
+        assert_eq!(node.container().transform, t);
     }
 
     #[test]

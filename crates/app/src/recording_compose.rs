@@ -185,6 +185,14 @@ impl RecordingCompose {
         })
     }
 
+    /// Set the screen sprite's local transform — the editor's crop-then-zoom
+    /// framing (ED.15/ED.16). The recorder never calls this, so its screen
+    /// stays at the base fill transform. Apply before [`Self::compose_frame`]
+    /// so it lands on that frame.
+    pub fn set_screen_transform(&mut self, transform: wisp::Transform) {
+        self.scene.set_screen_transform(transform);
+    }
+
     /// Output dimensions in pixels.
     #[must_use]
     pub fn dimensions(&self) -> (u32, u32) {

@@ -53,11 +53,25 @@ the target. An `Auto` target punches into the centre until click telemetry
 zoom list and returns the active window's transform, or identity.
 ```
 
-```admonish note title="Engine now, pixels next"
-ED.16 is the GPU-free engine — a math chunk, fully unit-tested (identity
-outside the window, full amount across the hold, monotonic bounded ramps,
-half-window clamp). Applying the `ZoomTransform` to the composed `wisp`
-frame — the visible push-in in the preview canvas and the exported mp4 —
-lands with the render-integration pass alongside export (ED.20–21), which
-is where a moving hero asset earns its place.
+## From transform to pixels
+
+The `ZoomTransform` now drives real pixels. `EditorPreview::render_framed`
+writes a single **crop-then-zoom** affine into the screen sprite's
+transform and composes through the recorder's proven `wisp` path, so the
+export generator and the live preview punch in through the *same* code —
+preview/export parity by construction. The screen sprite is centre-anchored
+at scale 2 (it fills NDC `[-1, 1]`); a `ZoomTransform` of scale `z` becomes
+sprite scale `2 · z` with the focal point pinned in place via
+`position += focal_ndc · (1 − z)`, where `focal_ndc = (2·fx − 1, −(2·fy − 1))`
+— the `−` on `y` is wisp's `+y`-up convention (the decoded top-down frame is
+flipped bottom-up at upload). Crop composes underneath: the sub-rect is
+pre-scaled `2/w, 2/h` and recentred, then the zoom rides on top.
+
+```admonish warning title="The +y flip is where this goes wrong"
+Sign errors in the focal `y` term silently mirror the zoom vertically. The
+transform math is unit-tested (centre-2× → scale 4, no shift; a corner zoom
+pins the focal edge; a quadrant crop fills the frame; sub-1.0 amounts clamp
+to no-zoom) and a golden render asserts a 2× zoom *magnifies* the focal
+region ~4× in area — but the flip itself was confirmed **by eye** against a
+four-quadrant + centre-marker test pattern before this shipped.
 ```

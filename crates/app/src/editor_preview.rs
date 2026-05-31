@@ -20,11 +20,65 @@
 use std::sync::{Arc, Mutex};
 
 use decode::EditorVideoStream;
+use edit::style::CropRect;
+use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
 use wisp::recording::StreamDimensions;
+use wisp::{Transform, Vec2};
 
 use crate::recording::FrameSlot;
 use crate::recording_compose::{ComposedFrame, RecordingCompose};
+
+/// Base scale that fills the NDC `[-1, 1]` viewport: the screen sprite is
+/// anchored centre with a `[0, 1]²` local rect, so a scale of `2` maps the
+/// full source frame onto `[-1, 1]`.
+const FILL_SCALE: f64 = 2.0;
+
+/// Build the screen-sprite transform that applies `crop` then `zoom`.
+///
+/// The base screen sprite maps a normalized source point `(u, v)` to NDC
+/// `(2u − 1, −(2v − 1))` (centre-anchored, scale 2; the `−` on `v` is wisp's
+/// `+y`-up convention — the decoded top-down frame is flipped bottom-up at
+/// upload). This composes two affines into the single transform the sprite
+/// carries:
+///
+/// 1. **Crop** `[x, y, w, h]` → fill the sub-rect: scale `2/w, 2/h` and
+///    recentre so the crop centre lands at NDC `(0, 0)`.
+/// 2. **Zoom** by `z` about the focal NDC point `(2·fx − 1, −(2·fy − 1))`,
+///    keeping that point fixed: `pos += focal · (1 − z)`.
+///
+/// Composed `zoom ∘ crop`: `scale = z · crop_scale`,
+/// `pos = z · crop_pos + zoom_pos`. Pure — no GPU, exhaustively testable.
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "screen-space NDC transform components are small; the f64→f32 narrowing for the wisp Vec2 is intentional and well within f32 precision"
+)]
+fn framed_transform(zoom: ZoomTransform, crop: CropRect) -> Transform {
+    // Crop arm: fill sub-rect [x, x+w] × [y, y+h]. `CropRect` is sanitized
+    // to a non-zero in-frame rect, but clamp defensively against /0.
+    let w = f64::from(crop.width).max(1e-3);
+    let h = f64::from(crop.height).max(1e-3);
+    let crop_scale = (FILL_SCALE / w, FILL_SCALE / h);
+    let crop_pos = (
+        (1.0 - 2.0 * f64::from(crop.x)) / w - 1.0,
+        (2.0 * f64::from(crop.y) - 1.0) / h + 1.0,
+    );
+
+    // Zoom arm: magnify by `z` about the focal NDC point, keeping it fixed.
+    let z = zoom.scale.max(1.0);
+    let focal = (2.0 * zoom.center_x - 1.0, -(2.0 * zoom.center_y - 1.0));
+    let zoom_pos = (focal.0 * (1.0 - z), focal.1 * (1.0 - z));
+
+    Transform {
+        scale: Vec2::new((z * crop_scale.0) as f32, (z * crop_scale.1) as f32),
+        position: Vec2::new(
+            (z * crop_pos.0 + zoom_pos.0) as f32,
+            (z * crop_pos.1 + zoom_pos.1) as f32,
+        ),
+        ..Transform::IDENTITY
+    }
+}
 
 /// Composes the editor preview frame for a clip of `width × height`.
 pub struct EditorPreview {
@@ -77,6 +131,24 @@ impl EditorPreview {
             .compose_frame(&self.cam_slot, &self.screen_slot)
     }
 
+    /// Compose a source frame with the editor's **framing** applied — the
+    /// `crop`/aspect reframe (ED.15) and `zoom` punch-in (ED.16) are written
+    /// into the screen sprite's transform, then the frame composes through
+    /// the same path as [`Self::render_frame`]. This is the export
+    /// generator's entry point (ED.20), so preview and export agree
+    /// frame-for-frame. `bgra` is top-down packed BGRA8 of `width*height*4`.
+    #[must_use]
+    pub fn render_framed(
+        &mut self,
+        bgra: Vec<u8>,
+        zoom: ZoomTransform,
+        crop: CropRect,
+    ) -> Option<ComposedFrame> {
+        self.compose
+            .set_screen_transform(framed_transform(zoom, crop));
+        self.render_frame(bgra)
+    }
+
     /// Compose the frame at the player's current playhead, pulling it from
     /// the seekable stream. Returns `None` past the end of the stream.
     #[must_use]
@@ -120,5 +192,121 @@ mod tests {
         // A byte count that doesn't match 64×64×4 is dropped by the
         // compositor → no composed frame.
         assert!(preview.render_frame(vec![0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn framed_transform_is_base_fill_with_no_zoom_no_crop() {
+        let t = framed_transform(ZoomTransform::identity(), CropRect::full());
+        assert!((t.scale.x - 2.0).abs() < 1e-5 && (t.scale.y - 2.0).abs() < 1e-5);
+        assert!(t.position.x.abs() < 1e-5 && t.position.y.abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_zoom_at_centre_magnifies_in_place() {
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 0.5,
+            center_y: 0.5,
+        };
+        let t = framed_transform(z, CropRect::full());
+        // 2× the base fill (→ 4) about the centred focal → no translation.
+        assert!((t.scale.x - 4.0).abs() < 1e-5 && (t.scale.y - 4.0).abs() < 1e-5);
+        assert!(t.position.x.abs() < 1e-5 && t.position.y.abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_zoom_pins_the_focal_corner() {
+        // 2× at top-right (1, 0): focal NDC (1, 1) stays fixed →
+        // pos = (1, 1) · (1 − 2) = (−1, −1).
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 1.0,
+            center_y: 0.0,
+        };
+        let t = framed_transform(z, CropRect::full());
+        assert!((t.scale.x - 4.0).abs() < 1e-5);
+        assert!((t.position.x + 1.0).abs() < 1e-5, "right edge pinned");
+        assert!((t.position.y + 1.0).abs() < 1e-5, "top edge pinned");
+    }
+
+    #[test]
+    fn framed_transform_crop_fills_the_subrect() {
+        // Top-left quadrant [0, 0, 0.5, 0.5] fills the frame: scale
+        // 2 / 0.5 = 4 each; the quadrant maps [0, 0.5] → [−1, 1] (pos (1, −1)).
+        let crop = CropRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.5,
+            height: 0.5,
+        };
+        let t = framed_transform(ZoomTransform::identity(), crop);
+        assert!((t.scale.x - 4.0).abs() < 1e-5 && (t.scale.y - 4.0).abs() < 1e-5);
+        assert!((t.position.x - 1.0).abs() < 1e-5);
+        assert!((t.position.y + 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_clamps_sub_one_zoom_to_no_zoom() {
+        // A sub-1.0 amount can't shrink (clamped in zoom_at; defended here).
+        let z = ZoomTransform {
+            scale: 0.5,
+            center_x: 0.5,
+            center_y: 0.5,
+        };
+        let t = framed_transform(z, CropRect::full());
+        assert!((t.scale.x - 2.0).abs() < 1e-5, "clamped to base fill");
+    }
+
+    /// Golden render: a centred white marker on a dark field, composed with
+    /// and without a 2× centre zoom. The zoom must *magnify* (not shrink or
+    /// vanish), so the marker covers ~4× the pixels (2× linear → 4× area).
+    /// A coarse pixel count is robust to driver AA / sub-pixel variation.
+    #[test]
+    fn render_framed_zoom_magnifies_the_focal_region() {
+        const S: usize = 128;
+        let pattern = {
+            let mut b = vec![0u8; S * S * 4];
+            for y in 0..S {
+                for x in 0..S {
+                    let i = (y * S + x) * 4;
+                    if x.abs_diff(S / 2) < 8 && y.abs_diff(S / 2) < 8 {
+                        b[i] = 255;
+                        b[i + 1] = 255;
+                        b[i + 2] = 255;
+                    }
+                    b[i + 3] = 255;
+                }
+            }
+            b
+        };
+        let dim = u32::try_from(S).expect("S fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let white = |f: &ComposedFrame| {
+            f.bytes
+                .chunks_exact(4)
+                .filter(|p| p[0] > 240 && p[1] > 240 && p[2] > 240)
+                .count()
+        };
+        let none = pv
+            .render_framed(pattern.clone(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        let zoomed = pv
+            .render_framed(
+                pattern,
+                ZoomTransform {
+                    scale: 2.0,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                },
+                CropRect::full(),
+            )
+            .expect("compose");
+        let (a, z) = (white(&none), white(&zoomed));
+        assert!(a > 0 && z > 0, "marker visible in both ({a}, {z})");
+        // 2× linear ⇒ ~4× area; allow [3×, 5×] for AA + clamping.
+        assert!(
+            z >= 3 * a && z <= 5 * a,
+            "2× zoom should ~4× the marker area (got {a} → {z})"
+        );
     }
 }

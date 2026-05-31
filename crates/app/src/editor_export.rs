@@ -16,10 +16,12 @@
 //! monotonic non-decreasing — the decode stream never re-spawns (cheap,
 //! and asserted by the golden test via [`ExportFrameGenerator::spawn_count`]).
 //!
-//! The cinematic *visual* edits — zoom punch-ins, crop reframe, and the
-//! background framing — apply as a transform on the composed screen sprite;
-//! that render-integration step (and its visual verification) lands next.
-//! This chunk is the frame-accurate timeline walk the whole export rests on.
+//! The cinematic *visual* edits apply as a transform on the composed screen
+//! sprite: the zoom punch-in (ED.16) + the crop / aspect reframe (ED.15) are
+//! written into the screen sprite each frame via
+//! [`EditorPreview::render_framed`](crate::editor_preview::EditorPreview::render_framed).
+//! Background framing (ED.18) layers on next. This chunk is the
+//! frame-accurate timeline walk the whole export rests on.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,6 +29,8 @@ use std::time::Duration;
 
 use decode::EditorVideoStream;
 use edit::EditProject;
+use edit::style::CropRect;
+use edit::zoom_anim::active_zoom_at;
 use media::encode::{EncoderConfig, LiveGstreamerEncoder, OutputFormat, VideoEncoder};
 
 use crate::editor_preview::EditorPreview;
@@ -99,7 +103,13 @@ impl ExportFrameGenerator {
         let f = self.next;
         let source_frame = self.project.source_time(f)?;
         let decoded = self.stream.frame(source_frame)?;
-        let frame = self.preview.render_frame(decoded.bgra)?;
+        // Apply the cinematic framing for this project frame: the zoom
+        // punch-in sampled from the active region (ED.16) + the crop/aspect
+        // reframe (ED.15). Same call the live preview uses → preview/export
+        // parity by construction.
+        let zoom = active_zoom_at(&self.project, f);
+        let crop = self.project.crop.unwrap_or_else(CropRect::full);
+        let frame = self.preview.render_framed(decoded.bgra, zoom, crop)?;
         let fps = u64::from(self.project.project_fps.max(1));
         let pts = Duration::from_micros(f * (1_000_000 / fps));
         self.next += 1;
@@ -119,10 +129,11 @@ impl ExportFrameGenerator {
 /// blocking task. `cancel` is polled once per frame (for the export UI,
 /// ED.22) and `on_progress(done, total)` reports after each frame.
 ///
-/// The output is composed at the **source** clip's dimensions; the cinematic
-/// visual transforms (zoom / crop / background) and the per-segment audio
-/// retime land with the render-integration + audio follow-ups, so this is a
-/// faithful, retimed, video-only export today.
+/// The output is composed at the **source** clip's dimensions. The zoom
+/// punch-ins (ED.16) and crop / aspect reframe (ED.15) are baked into each
+/// frame by the generator (via `render_framed`); background framing (ED.18)
+/// and the per-segment audio retime (ED.21) land in their own chunks — so
+/// this is a faithful, retimed, framed (video-only) export today.
 ///
 /// # Errors
 ///
