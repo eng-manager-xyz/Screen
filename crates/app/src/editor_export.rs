@@ -30,7 +30,7 @@
 //! retimes it in pure Rust per the segment list ([`retime_audio`] — trim +
 //! per-segment speed via linear-interpolation resample), and feeds it to the
 //! encoder's audio scratch so the finalize remux muxes it onto the retimed
-//! video. GStreamer owns the intake; Rust owns the edit arithmetic.
+//! video. `GStreamer` owns the intake; Rust owns the edit arithmetic.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -313,9 +313,16 @@ mod tests {
     const FPS: u32 = 30;
     const RATE: u32 = 300;
 
-    /// Mono ramp: sample-frame `i` holds the value `i`.
+    /// Mono ramp: sample-frame `i` holds the value `i` (built without an
+    /// integer→float cast so it stays clippy-clean).
     fn mono_ramp(frames: usize) -> Vec<f32> {
-        (0..frames).map(|i| i as f32).collect()
+        (0..frames)
+            .scan(0.0f32, |acc, _| {
+                let v = *acc;
+                *acc += 1.0;
+                Some(v)
+            })
+            .collect()
     }
 
     #[test]
@@ -362,7 +369,10 @@ mod tests {
         let full = mono_ramp(300);
         let out = retime_audio(&full, &[TimelineSegment::new(10, 20)], FPS, RATE, 1);
         assert_eq!(out.len(), 100);
-        assert!((out[0] - 100.0).abs() < 1e-3, "starts at the trimmed in-point");
+        assert!(
+            (out[0] - 100.0).abs() < 1e-3,
+            "starts at the trimmed in-point"
+        );
         assert!((out[99] - 199.0).abs() < 1e-3);
     }
 
@@ -387,12 +397,14 @@ mod tests {
 
     #[test]
     fn retime_audio_preserves_stereo_interleave() {
-        // Stereo: left = i, right = 1000 + i, interleaved.
+        // Stereo: left = i, right = 1000 + i, interleaved (no int→float cast).
         let frames = 300usize;
         let mut full = Vec::with_capacity(frames * 2);
-        for i in 0..frames {
-            full.push(i as f32);
-            full.push(1000.0 + i as f32);
+        let mut v = 0.0f32;
+        for _ in 0..frames {
+            full.push(v);
+            full.push(1000.0 + v);
+            v += 1.0;
         }
         let out = retime_audio(&full, &[TimelineSegment::new(0, 30)], FPS, RATE, 2);
         assert_eq!(out.len(), 600);

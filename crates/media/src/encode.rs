@@ -1389,8 +1389,7 @@ mod tests {
         // ED.21: the edited-export audio intake decodes the source's audio to
         // raw interleaved F32LE on stdout at the encoder's caps, so the
         // per-segment retime can slice it in Rust.
-        let args =
-            build_audio_decode_args(Path::new("/tmp/source.mp4"), 48_000, 2);
+        let args = build_audio_decode_args(Path::new("/tmp/source.mp4"), 48_000, 2);
         assert_eq!(args.first().map(String::as_str), Some("-q"));
         assert!(args.iter().any(|a| a == "location=/tmp/source.mp4"));
         assert!(args.iter().any(|a| a == "decodebin"));
