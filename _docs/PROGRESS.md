@@ -6,6 +6,37 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Record→Edit loop: editor drop zone + post-recording Edit action (user-requested)
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`. Commits `bd358f9`, `cff4de4`.
+
+### What
+
+ED.5 wired `open_in_editor` (the IPC) but not the UX to reach it — the editor
+tab couldn't load a clip beyond the library, and there was no Record→Edit
+handoff. Two user-requested pieces, both routing through `screen_open_in_editor`
+→ the `editor-project` event → the existing app-root effect that switches to
+the Editor tab:
+
+- **Drop a video to edit (`bd358f9`):** a global `file-dropped` listener
+  (`editor_ipc::install_file_drop_to_editor_listener`) opens a dropped video
+  in the editor; dropping a video anywhere in the app opens it for editing. A
+  drag-over highlight (`file-drag-enter/leave` → `editor_drag_active` context)
+  + a drop zone fill the editor's empty canvas. `looks_like_video` gates
+  non-video drops to a no-op (unit-tested).
+- **Export / Edit / Delete (`cff4de4`):** the post-stop Save panel gains an
+  **Edit** action (between Discard and Export) — it saves the recording as MP4
+  (the editable intermediate, also landed in the recordings folder) via
+  `export_recording`, then opens it in the editor. Editing the throwaway
+  scratch directly would risk losing the take when the scratch is cleaned, so
+  save-then-edit is the safe path. `SavePanel` gains an `on_edit` callback
+  (Choosing-state callbacks grouped into `ChoosingCallbacks` to stay under the
+  arg-count lint); story SSR snapshot + book assets regenerated.
+
+Both gated green; `dist/` rebuilt so the running app picks them up.
+
+---
+
 ## Aggressive review cleanup + 3 live-recording bug fixes (user-reported)
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2`. Commits `fff3f1f`, `e8b2fad`, `9c2e263`, `ab25a89`.
