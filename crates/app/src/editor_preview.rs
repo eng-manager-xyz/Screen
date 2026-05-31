@@ -20,10 +20,10 @@
 use std::sync::{Arc, Mutex};
 
 use decode::EditorVideoStream;
-use edit::style::{BackgroundConfig, BackgroundSource, CropRect};
+use edit::style::{BackgroundConfig, BackgroundSource, CropRect, CursorConfig};
 use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
-use wisp::recording::StreamDimensions;
+use wisp::recording::{CursorRipple, StreamDimensions};
 use wisp::{Color, MaskShape, Rect, Transform, Vec2};
 
 use crate::recording::FrameSlot;
@@ -33,6 +33,11 @@ use crate::recording_compose::{ComposedFrame, RecordingCompose};
 /// anchored centre with a `[0, 1]²` local rect, so a scale of `2` maps the
 /// full source frame onto `[-1, 1]`.
 const FILL_SCALE: f64 = 2.0;
+
+/// Cursor pointer half-extent in NDC at 100 % size and 1× zoom (ED.19). The
+/// pointer grows with `size_pct` and with the zoom (it's part of the
+/// magnified content).
+const CURSOR_BASE_HALF: f32 = 0.05;
 
 /// Build the screen-sprite transform that applies `crop` then `zoom`.
 ///
@@ -266,6 +271,67 @@ impl EditorPreview {
         let (k_x, k_y) = self.pad;
         self.compose
             .set_screen_transform(framed_transform_padded(zoom, crop, k_x, k_y));
+        self.render_frame(bgra)
+    }
+
+    /// Like [`Self::render_framed`], plus the cursor overlay (ED.19). `cursor`
+    /// is the smoothed normalized position at this frame
+    /// ([`edit::telemetry::cursor_at`]); `ripples` are the active click
+    /// ripples (`(x, y, age)` from [`edit::telemetry::ripples_at`]). Both the
+    /// pointer and each ripple are mapped through the **same** screen
+    /// transform as the frame, so the cursor stays glued to its pixel through
+    /// zoom / crop / padding. `cursor = None` hides the overlay (e.g. before
+    /// any sample, or a `hide_static` gap the caller decides).
+    #[must_use]
+    pub fn render_framed_with_cursor(
+        &mut self,
+        bgra: Vec<u8>,
+        zoom: ZoomTransform,
+        crop: CropRect,
+        cursor: Option<(f32, f32)>,
+        ripples: &[(f32, f32, f32)],
+        cfg: &CursorConfig,
+    ) -> Option<ComposedFrame> {
+        let (k_x, k_y) = self.pad;
+        let t = framed_transform_padded(zoom, crop, k_x, k_y);
+        self.compose.set_screen_transform(t);
+
+        // Map a normalized source point (top-left origin) through the same
+        // transform the screen sprite carries — `pos + scale · (local)` with
+        // the `+y`-up flip on the local `y` (matching `framed_transform`).
+        let map = |x: f32, y: f32| {
+            Vec2::new(
+                t.position.x + t.scale.x * (x - 0.5),
+                t.position.y + t.scale.y * -(y - 0.5),
+            )
+        };
+
+        if let Some((cx, cy)) = cursor {
+            // Pointer half-size: base × size_pct, grown by the transform's
+            // scale (base scale is 2, so `scale.y / 2` is the z·k_y zoom
+            // factor) — the cursor magnifies with the punch-in.
+            let size_factor = f32::from(u16::try_from(cfg.size_pct).unwrap_or(180)) / 100.0;
+            // Base sprite scale is 2 (`FILL_SCALE`), so `scale.y / 2` is the
+            // z·k_y zoom factor — the pointer magnifies with the punch-in.
+            let zoom_scale = (t.scale.y / 2.0).abs();
+            let half = CURSOR_BASE_HALF * size_factor * zoom_scale;
+            let rings: Vec<CursorRipple> = if cfg.click_ripples {
+                ripples
+                    .iter()
+                    .map(|&(rx, ry, age)| CursorRipple {
+                        center: map(rx, ry),
+                        radius: half * (1.0 + 3.0 * age),
+                        alpha: (1.0 - age) * 0.35,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            self.compose.set_cursor(map(cx, cy), half, &rings);
+            self.compose.set_cursor_visible(true);
+        } else {
+            self.compose.set_cursor_visible(false);
+        }
         self.render_frame(bgra)
     }
 
@@ -543,6 +609,100 @@ mod tests {
         assert!(
             !(red > 230 && green > 230 && blue > 230),
             "not the white screen"
+        );
+    }
+
+    /// GPU: the cursor overlay (ED.19) draws a pointer and — the load-bearing
+    /// decision — *rides the screen transform*: the same source point lands
+    /// further from centre under a zoom (glued to its pixel), not pinned in
+    /// output space. Detected via the pointer's white inner triangle on a
+    /// mid-grey screen. Single-bind-group graphics — no blur, no lavapipe
+    /// guard.
+    #[test]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "SIDE = 128, so every pixel count / coordinate is a small integer exact in f64"
+    )]
+    fn render_framed_with_cursor_rides_the_zoom() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let cfg = CursorConfig::default();
+        let gray = || vec![128u8; SIDE * SIDE * 4];
+
+        // The pointer's white inner triangle — count + centroid of white px.
+        let white = |f: &ComposedFrame| -> (usize, f64, f64) {
+            let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
+            for row in 0..SIDE {
+                for col in 0..SIDE {
+                    let i = (row * SIDE + col) * 4;
+                    if f.bytes[i] > 220 && f.bytes[i + 1] > 220 && f.bytes[i + 2] > 220 {
+                        n += 1;
+                        sx += col as f64;
+                        sy += row as f64;
+                    }
+                }
+            }
+            if n == 0 {
+                (0, 0.0, 0.0)
+            } else {
+                (n, sx / n as f64, sy / n as f64)
+            }
+        };
+
+        // No cursor → a flat grey frame has no white pointer pixels.
+        let none = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform::identity(),
+                CropRect::full(),
+                None,
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        assert_eq!(white(&none).0, 0, "no pointer drawn when position is None");
+
+        // Cursor at the top-left quadrant (0.25, 0.25) at 1×.
+        let one = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform::identity(),
+                CropRect::full(),
+                Some((0.25, 0.25)),
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        let (n1, cx1, cy1) = white(&one);
+        assert!(n1 > 4, "pointer visible at 1× ({n1} white px)");
+
+        // Same source point under a 2× centre zoom → it rides toward the
+        // corner (further from centre), proving the cursor is glued to its
+        // pixel rather than pinned in output space.
+        let two = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform {
+                    scale: 2.0,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                },
+                CropRect::full(),
+                Some((0.25, 0.25)),
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        let (n2, cx2, cy2) = white(&two);
+        assert!(n2 > 4, "pointer visible at 2× ({n2} white px)");
+
+        let center = (SIDE as f64) / 2.0;
+        let d1 = (cx1 - center).hypot(cy1 - center);
+        let d2 = (cx2 - center).hypot(cy2 - center);
+        assert!(
+            d2 > d1,
+            "cursor rides the zoom toward the corner (1×→{d1:.1}, 2×→{d2:.1} from centre)"
         );
     }
 

@@ -5,6 +5,7 @@ mod s_audio_histogram;
 mod s_blur_filter;
 mod s_clip_rounded;
 mod s_color_matrix;
+mod s_cursor_overlay;
 mod s_dim_outside;
 mod s_drop_shadow;
 mod s_editor_background;
@@ -69,6 +70,7 @@ pub fn all_stories() -> Vec<Story> {
         s_blur_filter::story(),
         s_drop_shadow::story(),
         s_editor_background::story(),
+        s_cursor_overlay::story(),
         s_motion_blur::story(),
         s_color_matrix::story(),
         s_mesh_perspective::story(),

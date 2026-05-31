@@ -89,6 +89,21 @@ impl Default for CamLayout {
     }
 }
 
+/// One click ripple to draw under the cursor (ED.19): an expanding,
+/// fading ring centered at a click, in output NDC. The app derives these
+/// from the click log (`edit::telemetry::ripples_at`) — `center` is already
+/// mapped through the screen transform, `radius` grows with age, `alpha`
+/// fades `1 → 0`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CursorRipple {
+    /// Ring center in NDC.
+    pub center: Vec2,
+    /// Ring radius in NDC units.
+    pub radius: f32,
+    /// Ring opacity, `0.0..=1.0`.
+    pub alpha: f32,
+}
+
 /// Dimensions for one of the composed input streams. Used at
 /// [`RecordingScene::new`] time to allocate the backing
 /// [`VideoTexture`]s; subsequent `set_*_frame` calls must pass a
@@ -160,6 +175,11 @@ pub struct RecordingScene {
     /// the recorder never touches it, so its scene stays a plain
     /// three-node screen + cam stage.
     backdrop: Option<NodeId>,
+    /// Editor-only cursor-overlay node (a `Graphics` pointer + click ripples,
+    /// drawn over the framed screen). Lazily created on the first
+    /// [`Self::set_cursor`] call; the recorder never touches it (its live
+    /// capture already has a cursor baked into the screen frame).
+    cursor: Option<NodeId>,
 }
 
 impl std::fmt::Debug for RecordingScene {
@@ -286,6 +306,7 @@ impl RecordingScene {
             cam_container: cam_container_id,
             cam_sprite: cam_sprite_id,
             backdrop: None,
+            cursor: None,
         }
     }
 
@@ -501,6 +522,69 @@ impl RecordingScene {
             node.container_mut().visible = visible;
         }
     }
+
+    /// Lazily insert (or fetch) the cursor-overlay `Graphics` node. It carries
+    /// a full-NDC clip so it renders in the advanced-dispatch Phase 2 (over
+    /// the framed, also-dispatched screen sprite), and is added after the
+    /// screen so it composites on top. Editor-only — never created for a
+    /// recording scene.
+    fn cursor_graphics_mut(&mut self) -> &mut Graphics {
+        if self.cursor.is_none() {
+            let root = self.stage.root();
+            let mut g = Graphics::new();
+            g.container.clip = Some(MaskShape::rect(Rect::new(-1.0, -1.0, 2.0, 2.0)));
+            let id = self.stage.add_child(root, g).expect("Stage root is alive");
+            self.cursor = Some(id);
+        }
+        let id = self.cursor.expect("cursor node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("cursor node is always a Graphics"),
+        }
+    }
+
+    /// Draw the cursor overlay (ED.19): expanding click ripples under a
+    /// dark-outlined white pointer at `pointer_ndc`, with the pointer sized by
+    /// `half` (NDC half-extent). All coordinates are output NDC — the app maps
+    /// the captured normalized position through the screen transform so the
+    /// pointer stays glued to its pixel through zoom/crop/padding. Makes the
+    /// overlay visible. Editor-only.
+    pub fn set_cursor(&mut self, pointer_ndc: Vec2, half: f32, ripples: &[CursorRipple]) {
+        let g = self.cursor_graphics_mut();
+        g.primitives.clear();
+        g.stroke(None);
+        // Ripples first (under the pointer): expanding, fading discs.
+        for r in ripples {
+            g.fill(Fill::Solid(Color::rgba(1.0, 1.0, 1.0, r.alpha)));
+            g.draw_ellipse(r.center, Vec2::splat(r.radius));
+        }
+        // Pointer triangle (CCW), scaled by `half` about its hot-spot tip. A
+        // dark, slightly-larger triangle behind a white one reads on any
+        // backdrop.
+        let arrow = |s: f32| {
+            let scale = half * s;
+            [
+                pointer_ndc + Vec2::new(0.0, 0.0) * scale,
+                pointer_ndc + Vec2::new(0.0, -1.7) * scale,
+                pointer_ndc + Vec2::new(1.15, -1.05) * scale,
+            ]
+        };
+        g.fill(Fill::Solid(Color::rgb_u8(20, 20, 20)));
+        g.draw_polygon(&arrow(1.3));
+        g.fill(Fill::Solid(Color::WHITE));
+        g.draw_polygon(&arrow(1.0));
+        g.container.visible = true;
+    }
+
+    /// Toggle the cursor overlay's visibility. No-op if no cursor has been set
+    /// (the recorder path).
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        if let Some(id) = self.cursor
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -559,6 +643,7 @@ mod tests {
         // the recorder never calls them — so a recording scene is
         // bit-identical to pre-ED.18.
         assert!(scene.backdrop.is_none(), "no backdrop until set_background");
+        assert!(scene.cursor.is_none(), "no cursor overlay until set_cursor");
         assert!(
             scene
                 .stage()
@@ -569,6 +654,39 @@ mod tests {
                 .is_none(),
             "screen sprite is un-clipped in the recorder path"
         );
+    }
+
+    #[test]
+    fn set_cursor_adds_one_overlay_node_and_toggles() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        let ripples = [CursorRipple {
+            center: Vec2::new(0.2, -0.3),
+            radius: 0.1,
+            alpha: 0.5,
+        }];
+        scene.set_cursor(Vec2::new(0.1, 0.2), 0.08, &ripples);
+        // One new node (the cursor Graphics).
+        assert_eq!(scene.stage().len(), before + 1);
+        let id = scene.cursor.expect("cursor created");
+        assert!(scene.stage().get(id).unwrap().container().visible);
+        // The node carries a full-NDC clip so it dispatches over the screen.
+        assert!(
+            scene.stage().get(id).unwrap().container().clip.is_some(),
+            "cursor node dispatches (clip set) so it composites on top"
+        );
+        // A second call reuses the node — no leak.
+        scene.set_cursor(Vec2::new(-0.4, 0.5), 0.06, &[]);
+        assert_eq!(scene.stage().len(), before + 1, "cursor node reused");
+        // Toggle off.
+        scene.set_cursor_visible(false);
+        assert!(!scene.stage().get(id).unwrap().container().visible);
     }
 
     #[test]

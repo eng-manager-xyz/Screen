@@ -19,7 +19,7 @@
 
 use wisp::application::{AppConfig, Application};
 use wisp::color::Color;
-use wisp::recording::{CamLayout, RecordingScene, StreamDimensions};
+use wisp::recording::{CamLayout, CursorRipple, RecordingScene, StreamDimensions};
 use wisp::render::Renderer;
 use wisp::texture::render_texture::RenderTexture;
 
@@ -209,6 +209,17 @@ impl RecordingCompose {
     /// Paint the editor backdrop as a flat color (ED.18).
     pub fn set_background_color(&mut self, color: Color) {
         self.scene.set_background_color(color);
+    }
+
+    /// Draw the editor cursor overlay (ED.19) — pointer at `pointer_ndc`
+    /// sized by `half`, with click `ripples`. The recorder never calls this.
+    pub fn set_cursor(&mut self, pointer_ndc: wisp::Vec2, half: f32, ripples: &[CursorRipple]) {
+        self.scene.set_cursor(pointer_ndc, half, ripples);
+    }
+
+    /// Toggle the editor cursor overlay's visibility (ED.19).
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        self.scene.set_cursor_visible(visible);
     }
 
     /// Output dimensions in pixels.

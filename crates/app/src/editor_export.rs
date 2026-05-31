@@ -122,7 +122,27 @@ impl ExportFrameGenerator {
         // parity by construction.
         let zoom = active_zoom_at(&self.project, f);
         let crop = self.project.crop.unwrap_or_else(CropRect::full);
-        let frame = self.preview.render_framed(decoded.bgra, zoom, crop)?;
+        // Cursor overlay (ED.19): when the project carries a captured cursor
+        // track, draw the smoothed pointer + click ripples; otherwise the
+        // plain framed path (no overlay).
+        let frame = if let Some(track) = self.project.cursor_track.as_deref() {
+            let cfg = self.project.cursor;
+            let cursor = edit::telemetry::cursor_at(track, f, cfg.smoothing);
+            // Ripple window ≈ 0.4 s.
+            let ripple_frames = (self.project.project_fps * 2 / 5).max(1);
+            let clicks = self.project.clicks.as_deref().unwrap_or(&[]);
+            let ripples = edit::telemetry::ripples_at(clicks, f, ripple_frames);
+            self.preview.render_framed_with_cursor(
+                decoded.bgra,
+                zoom,
+                crop,
+                cursor,
+                &ripples,
+                &cfg,
+            )?
+        } else {
+            self.preview.render_framed(decoded.bgra, zoom, crop)?
+        };
         let fps = u64::from(self.project.project_fps.max(1));
         let pts = Duration::from_micros(f * (1_000_000 / fps));
         self.next += 1;

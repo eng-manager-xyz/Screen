@@ -26,12 +26,34 @@ one field, and commits a `SetCursor` through the shared `History`. Because
 by-reference `apply` refactor [ED.18](./ed18-style.md) introduced for the
 non-`Copy` background config carries it for free.
 
-```admonish note title="Authoring now; the overlay with the cursor track"
-The composited cursor — a smoothed, scaled pointer with click ripples drawn
-as a `wisp` overlay — needs the recorded **cursor track** to drive it, which
-comes from the same per-OS telemetry capture [ED.17](./ed17-auto-zoom.md) is
-waiting on. So this chunk authors the settings; the visible overlay lands
-with the render-integration pass once capture exists. The auto-zoom toggle,
-though, is live today: it gates the [generator](./ed17-auto-zoom.md) that's
-already built and tested.
+## The overlay at render
+
+The composited cursor is a single `wisp` `Graphics` node drawn over the
+framed screen by
+[`EditorPreview::render_framed_with_cursor`](../../api/screen_app/editor_preview/struct.EditorPreview.html),
+driven by the recorded **cursor track** (`EditProject::cursor_track`):
+
+- a scaled, dark-outlined white **pointer** (two stacked `draw_polygon`
+  triangles, sized by `size_pct`),
+- expanding, fading **click ripples** (`draw_ellipse` discs) at each recent
+  click, radius growing + alpha decaying across a ~0.4 s window
+  ([`ripples_at`](../../api/edit/telemetry/fn.ripples_at.html)),
+- **smoothing** as a pure EMA over the track
+  ([`cursor_at`](../../api/edit/telemetry/fn.cursor_at.html)).
+
+```admonish important title="The cursor rides the zoom"
+The captured position is normalized to the *source* frame, so the overlay is
+mapped through the **same** crop / zoom / padding transform as the screen
+sprite — the pointer stays glued to the exact pixel it was over and magnifies
+*with* the auto-zoom punch-in, rather than drifting off the button it
+clicked. A GPU test asserts the same source point lands further from centre
+under a zoom (rides-the-transform, not output-space pinning).
+```
+
+```admonish note title="The track comes from capture (ED.17)"
+The overlay renders from a recorded **or synthetic** track (and is tested
+with a synthetic one, so it's gate-green without real capture). The recorded
+track is produced by the per-OS telemetry capture in
+[ED.17](./ed17-auto-zoom.md). A bitmap cursor glyph and the `hide_static`
+gap are follow-up polish; the auto-zoom toggle is already live.
 ```
