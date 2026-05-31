@@ -70,6 +70,18 @@ fn percent(part: usize, total: usize) -> f64 {
     part as f64 / total as f64 * 100.0
 }
 
+/// The horizontal `(left%, width%)` of bucket `index` of `count`, tiling the
+/// lane edge-to-edge (bar `i` spans `[i/count, (i+1)/count]`). Computing the
+/// width as the gap to the next bucket avoids cumulative rounding and lands
+/// the final bar exactly at 100%. Pure — the regression guard for the
+/// "bars render blank because they have no width" bug.
+#[must_use]
+fn bar_geometry(index: usize, count: usize) -> (f64, f64) {
+    let left = percent(index, count);
+    let right = percent(index + 1, count);
+    (left, (right - left).max(0.0))
+}
+
 /// The audio lane: the waveform envelope beneath the video track. Reads the
 /// peak buckets from context; renders a quiet baseline until the audio is
 /// decoded (render-integration).
@@ -89,10 +101,10 @@ pub fn AudioWaveform() -> impl IntoView {
                     .into_iter()
                     .enumerate()
                     .map(|(index, bucket)| {
-                        let left = percent(index, count);
+                        let (left, width) = bar_geometry(index, count);
                         // Signal is normalized to [-1, 1] → amplitude in [0, 2].
                         let height = (f64::from(bucket.amplitude()) / 2.0 * 100.0).clamp(2.0, 100.0);
-                        let style = format!("left:{left:.3}%;height:{height:.1}%");
+                        let style = format!("left:{left:.3}%;width:{width:.3}%;height:{height:.1}%");
                         view! { <span class="waveform-bar" style=style></span> }
                     })
                     .collect_view()
@@ -133,6 +145,26 @@ mod tests {
         assert_eq!(peaks.len(), 8);
         // Every bucket still has a valid (finite) envelope.
         assert!(peaks.iter().all(|b| b.min.is_finite() && b.max.is_finite()));
+    }
+
+    #[test]
+    fn bars_tile_the_lane_edge_to_edge() {
+        // Each bar's [left, left+width] must abut the next with no gap, and
+        // the last bar must reach 100% — a zero/absent width is the blank-
+        // lane bug (an inline `left`/`height` on a width-less inline span
+        // renders nothing).
+        let count = 7;
+        let mut cursor = 0.0;
+        for index in 0..count {
+            let (left, width) = bar_geometry(index, count);
+            assert!(
+                (left - cursor).abs() < 1e-9,
+                "bar {index} abuts the previous"
+            );
+            assert!(width > 0.0, "bar {index} has a non-zero width");
+            cursor = left + width;
+        }
+        assert!((cursor - 100.0).abs() < 1e-9, "bars fill the lane to 100%");
     }
 
     #[test]

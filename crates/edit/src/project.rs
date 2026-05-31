@@ -102,6 +102,31 @@ impl EditProject {
             .sum()
     }
 
+    /// Walk the segments with their cumulative **project-frame** start
+    /// offset: yields `(index, project_start, segment)`.
+    ///
+    /// This is the single accumulation site for the segment→project-time
+    /// walk — [`locate`](Self::locate), [`segment_project_range`](Self::segment_project_range),
+    /// and the UI's timeline lanes all derive from it instead of
+    /// re-implementing the running sum.
+    pub fn segment_offsets(&self) -> impl Iterator<Item = (usize, Frame, &TimelineSegment)> + '_ {
+        let mut acc: Frame = 0;
+        self.segments.iter().enumerate().map(move |(index, seg)| {
+            let start = acc;
+            acc += seg.project_len();
+            (index, start, seg)
+        })
+    }
+
+    /// The `[start, end)` **project-frame** range occupied by segment
+    /// `index`, or `None` if the index is out of range.
+    #[must_use]
+    pub fn segment_project_range(&self, index: usize) -> Option<(Frame, Frame)> {
+        self.segment_offsets()
+            .nth(index)
+            .map(|(_, start, seg)| (start, start + seg.project_len()))
+    }
+
     /// Locate a project frame: returns `(segment index, source frame)`,
     /// or `None` if the frame is at/past the end of the timeline.
     ///
@@ -111,15 +136,9 @@ impl EditProject {
     /// a source frame via that segment's `timescale`.
     #[must_use]
     pub fn locate(&self, project_frame: Frame) -> Option<(usize, Frame)> {
-        let mut acc: Frame = 0;
-        for (index, seg) in self.segments.iter().enumerate() {
-            let len = seg.project_len();
-            if project_frame < acc + len {
-                return Some((index, seg.source_frame_at(project_frame - acc)));
-            }
-            acc += len;
-        }
-        None
+        self.segment_offsets()
+            .find(|(_, start, seg)| project_frame < start + seg.project_len())
+            .map(|(index, start, seg)| (index, seg.source_frame_at(project_frame - start)))
     }
 
     /// Map a project frame to the **source** frame the renderer should
@@ -179,6 +198,27 @@ mod tests {
         assert_eq!(proj.source_time(749), Some(899));
         // Past the end of the timeline.
         assert_eq!(proj.source_time(750), None);
+    }
+
+    #[test]
+    fn segment_offsets_and_ranges_are_the_canonical_walk() {
+        let mut proj = EditProject::from_recording(sample_clip());
+        // [0,300) real → project [0,300); [300,600) 2× → project [300,450);
+        // [600,900) real → project [450,750).
+        proj.segments = vec![
+            TimelineSegment::new(0, 300),
+            TimelineSegment::with_speed(300, 600, 2.0),
+            TimelineSegment::new(600, 900),
+        ];
+        let offsets: Vec<_> = proj
+            .segment_offsets()
+            .map(|(i, start, seg)| (i, start, seg.project_len()))
+            .collect();
+        assert_eq!(offsets, vec![(0, 0, 300), (1, 300, 150), (2, 450, 300)]);
+        assert_eq!(proj.segment_project_range(0), Some((0, 300)));
+        assert_eq!(proj.segment_project_range(1), Some((300, 450)));
+        assert_eq!(proj.segment_project_range(2), Some((450, 750)));
+        assert_eq!(proj.segment_project_range(3), None);
     }
 
     #[test]

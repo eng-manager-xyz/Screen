@@ -6,6 +6,120 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Editor drop-zone smoke gates — the full ED.1–24 feature set on a dropped clip
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`.
+
+### What
+
+`crates/app/tests/editor_dropzone_smoke.rs` — a **set** of integration smoke
+gates proving the Record→Edit promise: a video dropped into the editor (the
+`open_in_editor` / drop-zone path → `project_from_metadata`) supports the whole
+editor feature set. Since every edit operation is pure, the bulk run on every
+platform; only the genuine media-stack gates are gst/wgpu-guarded (macOS is the
+truth runner where all execute).
+
+- **5 pure gates (run everywhere):** drop → full-length editable project;
+  timeline split/trim/speed + undo/redo (ED.2/8/11/14); zoom lane + dopesheet
+  keyframes + Easy-Ease + zoom-animation sampling (ED.12/13/16); framing
+  crop/aspect/background/cursor + `.screenproj` round-trip (ED.15/18/19/23);
+  auto-zoom from a click log → editable zooms (ED.17).
+- **2 gst + wgpu gates (macOS truth runner; guarded elsewhere):** the real
+  `EditorVideoStream` probe-load (ED.3), and the export-frame generator walking
+  the edited timeline into composed BGRA (ED.20/21).
+
+Added `editor_dropzone_smoke` to the `.config/nextest.toml` gstreamer
+serialization group (the gst/wgpu gates spawn subprocesses + open a device).
+Used the Rust LSP to confirm the `History` API + `edit` re-exports; rust-analyzer
+crashed on the large nightly workspace, so `cargo check`/clippy was the
+authoritative verification.
+
+---
+
+## Record→Edit loop: editor drop zone + post-recording Edit action (user-requested)
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`. Commits `bd358f9`, `cff4de4`.
+
+### What
+
+ED.5 wired `open_in_editor` (the IPC) but not the UX to reach it — the editor
+tab couldn't load a clip beyond the library, and there was no Record→Edit
+handoff. Two user-requested pieces, both routing through `screen_open_in_editor`
+→ the `editor-project` event → the existing app-root effect that switches to
+the Editor tab:
+
+- **Drop a video to edit (`bd358f9`):** a global `file-dropped` listener
+  (`editor_ipc::install_file_drop_to_editor_listener`) opens a dropped video
+  in the editor; dropping a video anywhere in the app opens it for editing. A
+  drag-over highlight (`file-drag-enter/leave` → `editor_drag_active` context)
+  + a drop zone fill the editor's empty canvas. `looks_like_video` gates
+  non-video drops to a no-op (unit-tested).
+- **Export / Edit / Delete (`cff4de4`):** the post-stop Save panel gains an
+  **Edit** action (between Discard and Export) — it saves the recording as MP4
+  (the editable intermediate, also landed in the recordings folder) via
+  `export_recording`, then opens it in the editor. Editing the throwaway
+  scratch directly would risk losing the take when the scratch is cleaned, so
+  save-then-edit is the safe path. `SavePanel` gains an `on_edit` callback
+  (Choosing-state callbacks grouped into `ChoosingCallbacks` to stay under the
+  arg-count lint); story SSR snapshot + book assets regenerated.
+
+Both gated green; `dist/` rebuilt so the running app picks them up.
+
+---
+
+## Aggressive review cleanup + 3 live-recording bug fixes (user-reported)
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`. Commits `fff3f1f`, `e8b2fad`, `9c2e263`, `ab25a89`.
+
+### What
+
+Ran an aggressive multi-agent review of the whole M-EDIT editor track (52
+verified findings, 1 rejected; 10 "scaffolding-keep" items protected so the
+cleanup never deleted ED.16–21 groundwork). Landed the safe, high-confidence
+wins; deferred the runtime/visual-judgment ones to ISS-11..ISS-13.
+
+- **Batch 1 (`fff3f1f`) — backend correctness + export hot-path:** zoom scale
+  clamp ≥1.0; `EditError::WouldEmptyTimeline` + non-empty invariant;
+  `EditProject::segment_offsets`/`segment_project_range` as the single
+  accumulation site; export opens a 1-frame cache (was 300 → ~2.5 GB resident
+  at 1080p); editor-export single-run guard so a second export can't race the
+  file; `open_in_editor` async (spawn_blocking probe); dead `seek_to_frame`
+  alias removed; drag/drop `eprintln!`→`tracing`.
+- **Batch 2 (`e8b2fad`) — UI:** waveform-lane render bug (`.waveform-bar` had
+  no position/width → blank lane; + tiling test); log rejected `EditOp`s
+  instead of swallowing; delete orphan JS wrapper + 4 `console.log`s;
+  `.tray-popover-stub` dead CSS; monospace → `var(--font-mono)`.
+
+Then three live-recording bugs reported from running the app, all root-caused
+from `/tmp/screen-app.log` + reproduced against real scratch files:
+
+- **2× fast recordings (`9c2e263`):** native-res capture can't sustain 30 fps
+  (log: ~10 fps actual) and the live encoder timestamps by frame *count*
+  (`rawvideoparse framerate=F/1` ignores pts), so under-delivery plays fast.
+  Fix: cap recording to a 1920×1080 box (`media::encode::cap_recording_dims`,
+  applied in `start_screen_for_session`) + wall-clock CFR safety-fill in
+  `feed_real_capture` (`cfr_catchup_frames` duplicates the last frame to lock
+  count to elapsed). Both unit-tested. Deliberate tradeoff (user-chosen):
+  reliable 1080p over fast/half-lost native-Retina.
+- **No export button when audio is on (`9c2e263`):** finalize re-demuxes the
+  H.264 scratch to mux audio, but `vtenc_h264_hw` default B-frame reordering
+  yields no-PTS buffers → mp4mux "Could not multiplex stream / Buffer has no
+  PTS" → scratch discarded → no pending export (audio-off escapes via the
+  rename path). Fix: `allow-frame-reordering=false` on the vtenc encoders.
+  Verified against `scratch-9`: remux `exit 1 → 0`.
+- **Legacy UI on the recording tab (`ab25a89`):** removed the `<details>`
+  "Debug · legacy controls" block + the now-dead `recorder_controls.rs` /
+  `camera_diagnostics.rs` modules, leaving the full `RecorderPage`; `dist/`
+  rebuilt. No recording functionality lost (the bubble follows the camera
+  toggle in `RecorderPage`).
+
+### Verified
+`just gate` green for each batch. `media` `encode_integration` (incl. the
+video+audio finalize path) + the bug-C remux verified on real scratch data.
+`app-ui` native + wasm32 clippy green.
+
+---
+
 ## CI fix — edited-export e2e skips headless-macOS vtenc BrokenPipe
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2` (PR #65). Caught at PR-watch time.

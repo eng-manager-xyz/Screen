@@ -102,8 +102,9 @@ pub struct ZoomSegment {
     /// One past the last project frame the zoom affects (exclusive).
     pub end: Frame,
     /// Zoom factor at the hold. `1.0` = no zoom, `1.6` = 1.6× punch-in.
-    /// Always `>= 1.0` in practice (a zoom out is unusual for a screen
-    /// recording); the renderer clamps.
+    /// A zoom out is unusual for a screen recording, so the zoom engine
+    /// ([`crate::zoom_anim::zoom_at`]) clamps the produced scale to
+    /// `>= 1.0` — an `amount < 1.0` reads as no zoom rather than a shrink.
     pub amount: f64,
     /// What the zoom targets.
     #[serde(default)]

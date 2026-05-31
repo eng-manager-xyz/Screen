@@ -283,39 +283,39 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     //     successful drop so the active visual doesn't stick.
     //   - file-dropped:    payload is the dropped path.
     //
-    // Diagnostic eprintln on every drag-related event so a
-    // misbehaving dev environment shows up in stderr — once the
-    // chain is verified end-to-end the prints can drop to
-    // `tracing::trace!` (or come out entirely).
+    // Drag-related events route through `tracing` (the binary installs a
+    // subscriber at startup): the lifecycle lines at `debug!`, emit
+    // failures at `warn!` — matching `spawn_tick_thread`'s convention and
+    // keeping release stderr (and dropped local paths) quiet.
     if let WindowEvent::DragDrop(drag) = event {
         match drag {
             DragDropEvent::Enter { paths, .. } => {
-                eprintln!(
-                    "tauri: DragDropEvent::Enter ({} path(s)) — emitting file-drag-enter",
-                    paths.len()
+                tracing::debug!(
+                    paths = paths.len(),
+                    "DragDropEvent::Enter — emitting file-drag-enter"
                 );
                 if let Err(err) = window.emit("file-drag-enter", ()) {
-                    eprintln!("failed to emit file-drag-enter event: {err}");
+                    tracing::warn!("failed to emit file-drag-enter event: {err}");
                 }
             }
             DragDropEvent::Leave => {
-                eprintln!("tauri: DragDropEvent::Leave — emitting file-drag-leave");
+                tracing::debug!("DragDropEvent::Leave — emitting file-drag-leave");
                 if let Err(err) = window.emit("file-drag-leave", ()) {
-                    eprintln!("failed to emit file-drag-leave event: {err}");
+                    tracing::warn!("failed to emit file-drag-leave event: {err}");
                 }
             }
             DragDropEvent::Drop { paths, .. } => {
-                eprintln!("tauri: DragDropEvent::Drop ({} path(s))", paths.len());
+                tracing::debug!(paths = paths.len(), "DragDropEvent::Drop");
                 if let Some(path) = paths.first() {
                     let payload = path.to_string_lossy().into_owned();
-                    eprintln!("tauri: emitting file-dropped → {payload}");
+                    tracing::debug!("emitting file-dropped → {payload}");
                     if let Err(err) = window.emit("file-dropped", payload) {
-                        eprintln!("failed to emit file-dropped event: {err}");
+                        tracing::warn!("failed to emit file-dropped event: {err}");
                     }
                 }
                 // Reset the drag visual after a successful drop.
                 if let Err(err) = window.emit("file-drag-leave", ()) {
-                    eprintln!("failed to emit file-drag-leave event: {err}");
+                    tracing::warn!("failed to emit file-drag-leave event: {err}");
                 }
             }
             _ => {} // DragDropEvent is non_exhaustive (Over, future variants).

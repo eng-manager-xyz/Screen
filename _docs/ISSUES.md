@@ -25,6 +25,44 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-13: review — assorted deferred polish/robustness items
+- **Filed:** 2026-05-31
+- **By:** user (aggressive editor-track review)
+- **Severity:** deferral / tech-debt
+- **Affects:** `app-ui` (editor surface, inspectors, library, export bar), `wisp` render-texture, `decode` editor stream
+- **Status:** open
+- **Description:** Verified review findings not yet actioned, each low-to-medium value and best done with the user's eyes / a profiler:
+  (1) `use_context().unwrap_or_else(|| RwSignal::new(...))` silently mints orphan signals on a missing provider — prefer `expect_context` for always-provided editor signals (team call: fail-loud vs degrade).
+  (2) Editor keyboard shortcuts require the surface `<section>` to hold focus — move to a window/document listener that early-returns on input/select/textarea targets.
+  (3) Editor canvas + recordings-library lack loading / load-error states (failed/slow open looks like a hang / empty-forever).
+  (4) Export cancel and a real encoder error surface the same string + are styled as failure — add a distinct `Cancelled` state.
+  (5) `wisp` `read_pixels` allocates a fresh staging buffer + Vec every composed frame — cache the MAP_READ staging buffer (needs the wisp test+story+snapshot+chapter gate).
+  (6) Backward scrub past the 300-frame cache re-spawns gst + re-decodes from 0 (latent — scrub-preview not yet wired to a command); the real fix is the planned `gstreamer-rs` ACCURATE seek.
+  (7) `VideoFrame.bgra` could be `Arc<Vec<u8>>` to share one allocation between cache store + return (~20 call sites).
+- **Resolution:** (open)
+
+## ISS-12: review — editor/recorder shell ignores the theme system (undefined design tokens)
+- **Filed:** 2026-05-31
+- **By:** user (aggressive editor-track review)
+- **Severity:** tech-debt (visual)
+- **Affects:** `crates/app-ui/shell.css`
+- **Status:** open
+- **Description:** `shell.css` references 8 design tokens that don't exist in `:root` (`--surface-1` ×16, `--surface-2` ×24, `--accent-soft`, `--bg-elev-1/2/3`, `--border-subtle`, `--danger-strong`), each with a hardcoded hex fallback — so the whole editor + recorder shell renders off hardcoded dark hex and ignores the theme system in `ui-storybook/assets/style.css`. The fix is to map each onto a real theme token (e.g. `--surface-1` → `--surface-elevated`), but several target values differ from the current hex, so it **needs a human visual check** — deferred to do with the user rather than guess values blind.
+- **Resolution:** (open)
+
+## ISS-11: review — editor UX-perf re-architectures (re-render scope + tick storm)
+- **Filed:** 2026-05-31
+- **By:** user (aggressive editor-track review)
+- **Severity:** deferral (perf) / tech-debt
+- **Affects:** `crates/app-ui/{app_shell_mount,editor_surface,timeline_view,filmstrip,zoom_lane}.rs`
+- **Status:** open
+- **Description:** Four UX-perf wins that change runtime render/timing behavior and so need a running-app check (can't verify in a headless gate) — deliberately not shipped blind:
+  (1) the whole `EditorShell` (5 inspectors + 6 lanes) re-mounts on every project edit — hoist it out of the project-subscribing closure and drive only the chrome via a `Memo` keyed on stable clip identity;
+  (2) a 30 Hz Tauri tick IPC storm runs during playback even when idle — gate the `gloo` interval to editor-active-and-playing;
+  (3) ruler ticks regenerate + rebuild all tick DOM ~30×/s — key a `Memo` on `(duration, fps)`;
+  (4) filmstrip / zoom lanes rebuild the whole lane DOM on every edit — keyed `<For>` over a `Memo<Vec<...>>` (will shift SSR baselines).
+- **Resolution:** (open)
+
 ## ISS-10: `resolve_history` compares source paths exactly (not canonically)
 - **Filed:** 2026-05-30
 - **By:** ED.20 (adversarial review of ED.11–19)

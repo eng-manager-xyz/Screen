@@ -60,7 +60,13 @@ impl ExportFrameGenerator {
     /// Returns a message if the source can't be opened or the wgpu compose
     /// pipeline can't be created.
     pub fn new(project: EditProject, source: &Path) -> Result<Self, String> {
-        let stream = EditorVideoStream::open(source).map_err(|e| format!("open source: {e}"))?;
+        // Export is a strictly-forward, monotonic walk (`source_time` is
+        // non-decreasing across project frames), so a single-frame cache is
+        // sufficient — it still serves the repeated source frame a slow-
+        // motion segment requests, while the default 300-frame LRU would
+        // pin ~2.5 GB of decoded BGRA at 1080p for no benefit.
+        let stream = EditorVideoStream::open_with_cache(source, 1)
+            .map_err(|e| format!("open source: {e}"))?;
         let preview = EditorPreview::new(project.source.width, project.source.height)
             .map_err(|e| format!("init compose: {e}"))?;
         let total = project.project_duration();

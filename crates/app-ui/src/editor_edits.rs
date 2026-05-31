@@ -53,6 +53,17 @@ fn run(
     editor_ipc::editor_transport(&editor_ipc::TransportAction::SetDuration { frames: duration });
 }
 
+/// Apply an op to the history, logging a rejection rather than silently
+/// dropping it. A stale-id / out-of-range op is a legitimate no-op (e.g. a
+/// `RemoveZoom` whose target was already removed across an undo), but a
+/// swallowed `Err` is invisible — surfacing it to the console keeps wiring
+/// regressions debuggable.
+fn apply_logged(history: &mut History, op: &EditOp) {
+    if let Err(err) = history.apply(op) {
+        leptos::logging::warn!("edit op rejected: {err}");
+    }
+}
+
 /// Split the clip under the playhead into two (the razor).
 pub fn split_at(
     project: RwSignal<Option<EditProject>>,
@@ -60,22 +71,8 @@ pub fn split_at(
     at: u64,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::Split { at });
+        apply_logged(hist, &EditOp::Split { at });
     });
-}
-
-/// The selected clip's `[start, end)` range in **project** frames. Pure.
-#[must_use]
-pub fn segment_project_range(project: &EditProject, index: usize) -> Option<(u64, u64)> {
-    let mut acc = 0u64;
-    for (i, seg) in project.segments.iter().enumerate() {
-        let len = seg.project_len();
-        if i == index {
-            return Some((acc, acc + len));
-        }
-        acc += len;
-    }
-    None
 }
 
 /// Ripple-delete the selected clip — remove it and close the gap (the
@@ -91,11 +88,11 @@ pub fn ripple_delete_selected(
     let Some(current) = project.get_untracked() else {
         return;
     };
-    let Some((start, end)) = segment_project_range(&current, index) else {
+    let Some((start, end)) = current.segment_project_range(index) else {
         return;
     };
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::RippleDelete { start, end });
+        apply_logged(hist, &EditOp::RippleDelete { start, end });
     });
 }
 
@@ -122,7 +119,7 @@ pub fn add_zoom_default(
     }
     let zoom = edit::zoom::ZoomSegment::manual(edit::zoom::ZoomId(0), start, end, 1.6);
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::AddZoom { zoom });
+        apply_logged(hist, &EditOp::AddZoom { zoom });
     });
 }
 
@@ -133,7 +130,7 @@ pub fn remove_zoom(
     id: edit::zoom::ZoomId,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::RemoveZoom { id });
+        apply_logged(hist, &EditOp::RemoveZoom { id });
     });
 }
 
@@ -146,7 +143,7 @@ pub fn set_speed(
     timescale: f64,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::SetSpeed { index, timescale });
+        apply_logged(hist, &EditOp::SetSpeed { index, timescale });
     });
 }
 
@@ -158,7 +155,7 @@ pub fn set_crop(
     rect: edit::style::CropRect,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::SetCrop { rect });
+        apply_logged(hist, &EditOp::SetCrop { rect });
     });
 }
 
@@ -169,7 +166,7 @@ pub fn set_aspect(
     ratio: edit::style::AspectRatio,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::SetAspect { ratio });
+        apply_logged(hist, &EditOp::SetAspect { ratio });
     });
 }
 
@@ -180,7 +177,7 @@ pub fn set_background(
     config: edit::style::BackgroundConfig,
 ) {
     run(project, history, move |hist| {
-        let _ = hist.apply(&EditOp::SetBackground { config });
+        apply_logged(hist, &EditOp::SetBackground { config });
     });
 }
 
@@ -191,7 +188,7 @@ pub fn set_cursor(
     cursor: edit::style::CursorConfig,
 ) {
     run(project, history, move |hist| {
-        let _ = hist.apply(&EditOp::SetCursor { cursor });
+        apply_logged(hist, &EditOp::SetCursor { cursor });
     });
 }
 
@@ -203,7 +200,7 @@ pub fn set_zoom_ease(
     ease: edit::zoom::EditEase,
 ) {
     run(project, history, |hist| {
-        let _ = hist.apply(&EditOp::SetZoomEase { id, ease });
+        apply_logged(hist, &EditOp::SetZoomEase { id, ease });
     });
 }
 
@@ -258,17 +255,5 @@ mod tests {
         let resolved = resolve_history(None, &p);
         assert!(!resolved.can_undo());
         assert_eq!(resolved.project().segments.len(), 1);
-    }
-
-    #[test]
-    fn segment_range_is_cumulative_project_frames() {
-        let mut p = project("/tmp/a.mp4");
-        p.segments = vec![
-            edit::TimelineSegment::new(0, 300),
-            edit::TimelineSegment::new(300, 900),
-        ];
-        assert_eq!(segment_project_range(&p, 0), Some((0, 300)));
-        assert_eq!(segment_project_range(&p, 1), Some((300, 900)));
-        assert_eq!(segment_project_range(&p, 2), None);
     }
 }

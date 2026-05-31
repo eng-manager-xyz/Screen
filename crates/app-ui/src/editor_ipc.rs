@@ -327,6 +327,42 @@ pub fn install_recordings_listener(entries: RwSignal<Vec<RecordingEntry>>) {
     });
 }
 
+// ── Drop-to-edit ─────────────────────────────────────────────────────────
+
+/// Whether `path` has a recognized video extension. The editor drop
+/// listener ignores non-video drops so dropping an unrelated file is a
+/// no-op rather than a failed `gst-discoverer` probe.
+#[must_use]
+pub(crate) fn looks_like_video(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    [".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
+/// Install a `file-dropped` listener that opens a dropped **video** in the
+/// editor: it calls [`screen_open_in_editor`], whose `editor-project` reply
+/// loads the project and (via the app-root effect) switches to the Editor
+/// tab. Dropping a video anywhere in the app surface opens it for editing.
+/// App-lifetime; the closure is leaked via `forget`.
+pub fn install_file_drop_to_editor_listener() {
+    on_custom_event("file-dropped", move |custom| {
+        if let Some(path) = custom.detail().as_string()
+            && looks_like_video(&path)
+        {
+            let _ = screen_open_in_editor(&path);
+        }
+    });
+}
+
+/// Install `file-drag-enter` / `file-drag-leave` listeners that drive
+/// `active` — the editor drop zone reads it to show a drag-over highlight.
+/// App-lifetime; closures leaked via `forget`.
+pub fn install_drag_active_listeners(active: RwSignal<bool>) {
+    on_custom_event("file-drag-enter", move |_| active.set(true));
+    on_custom_event("file-drag-leave", move |_| active.set(false));
+}
+
 #[cfg(test)]
 mod export_tests {
     use super::export_percent;
@@ -338,5 +374,23 @@ mod export_tests {
         assert_eq!(export_percent(100, 200), 50);
         assert_eq!(export_percent(200, 200), 100);
         assert_eq!(export_percent(999, 200), 100); // clamped
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use super::looks_like_video;
+
+    #[test]
+    fn recognizes_video_extensions_case_insensitively() {
+        assert!(looks_like_video("/recordings/Screen-2026-05-31.mp4"));
+        assert!(looks_like_video("/x/clip.MOV"));
+        assert!(looks_like_video("/x/a.WebM"));
+        assert!(looks_like_video("/x/b.mkv"));
+        // Non-video / extension-less drops are ignored.
+        assert!(!looks_like_video("/x/notes.txt"));
+        assert!(!looks_like_video("/x/image.png"));
+        assert!(!looks_like_video("/x/screenshot.mp4.txt"));
+        assert!(!looks_like_video("/x/noext"));
     }
 }

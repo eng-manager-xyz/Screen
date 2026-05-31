@@ -215,6 +215,55 @@ pub fn fit_within_encoder_limits(width: u32, height: u32, format: OutputFormat) 
     (scale(width), scale(height))
 }
 
+/// Longer-edge bound of the recording resolution cap (the "1080p" cap).
+pub const RECORDING_MAX_LONG_EDGE: u32 = 1920;
+/// Shorter-edge bound of the recording resolution cap.
+pub const RECORDING_MAX_SHORT_EDGE: u32 = 1080;
+
+/// Cap capture/encode dims to a 1080p box (`1920×1080`), aspect-preserving
+/// and orientation-agnostic: the longer edge is bounded to
+/// [`RECORDING_MAX_LONG_EDGE`] and the shorter to [`RECORDING_MAX_SHORT_EDGE`],
+/// both edges scaled by the *same* factor (never stretched — the camera
+/// bubble stays circular) and rounded down to even (H.264 chroma
+/// subsampling). Dims already inside the box are returned unchanged (never
+/// upscaled), only evened. Integer arithmetic throughout.
+///
+/// Recording at native Retina resolution is too heavy for the live
+/// compose → GPU read-back → encode loop to sustain the configured frame
+/// rate; the encoder timestamps frames by *count* at that rate, so an
+/// under-delivering loop makes the recording play fast. Capping to 1080p
+/// keeps the pipeline comfortably real-time regardless of monitor, which
+/// is the deliberate tradeoff (reliable 1080p over a fast, half-lost 5K).
+///
+/// # Examples
+///
+/// ```
+/// use media::encode::cap_recording_dims;
+/// assert_eq!(cap_recording_dims(5120, 2880), (1920, 1080)); // 5K 16:9 → 1080p
+/// assert_eq!(cap_recording_dims(3840, 2160), (1920, 1080)); // 4K 16:9 → 1080p
+/// assert_eq!(cap_recording_dims(2880, 1800), (1728, 1080)); // 16:10 → fits the box
+/// assert_eq!(cap_recording_dims(1920, 1080), (1920, 1080)); // already 1080p
+/// assert_eq!(cap_recording_dims(1280, 720), (1280, 720));   // smaller → unchanged
+/// assert_eq!(cap_recording_dims(1080, 1920), (1080, 1920)); // portrait → long edge 1920
+/// ```
+#[must_use]
+pub fn cap_recording_dims(width: u32, height: u32) -> (u32, u32) {
+    let to_even = |v: u32| (v & !1u32).max(2);
+    let long = width.max(height);
+    let short = width.min(height);
+    if long <= RECORDING_MAX_LONG_EDGE && short <= RECORDING_MAX_SHORT_EDGE {
+        return (to_even(width), to_even(height));
+    }
+    // Uniform downscale fitting BOTH bounds — pick the tighter ratio so
+    // neither edge exceeds its cap. `u64` intermediate avoids overflow.
+    let scale = |v: u32| -> u32 {
+        let by_long = u64::from(v) * u64::from(RECORDING_MAX_LONG_EDGE) / u64::from(long);
+        let by_short = u64::from(v) * u64::from(RECORDING_MAX_SHORT_EDGE) / u64::from(short);
+        to_even(u32::try_from(by_long.min(by_short)).unwrap_or(RECORDING_MAX_SHORT_EDGE))
+    };
+    (scale(width), scale(height))
+}
+
 /// Failure modes for the encoder.
 #[derive(Debug, thiserror::Error)]
 pub enum EncodeError {
@@ -594,7 +643,13 @@ pub fn build_live_video_args(
         "!".to_string(),
     ];
     for elem in &video_encoder_elements {
-        args.push((*elem).to_string());
+        // An encoder entry may carry properties (e.g. `vtenc_h264_hw
+        // allow-frame-reordering=false`); push each whitespace-separated
+        // token as its own argv item so gst-launch parses them as an
+        // element + its properties rather than one bogus element name.
+        for token in elem.split_whitespace() {
+            args.push(token.to_string());
+        }
         args.push("!".to_string());
     }
     args.push(mux_to_parser(config.format).to_string());
@@ -920,8 +975,21 @@ fn encoder_and_mux_elements(
     os: &str,
 ) -> Result<(Vec<&'static str>, &'static str), EncodeError> {
     let pair = match (format, os) {
-        (OutputFormat::Mp4H264Aac, "macos") => (vec!["vtenc_h264_hw"], "mp4mux"),
-        (OutputFormat::Mp4H265Aac, "macos") => (vec!["vtenc_h265_hw"], "mp4mux"),
+        // `allow-frame-reordering=false` disables B-frames so PTS == DTS.
+        // The live scratch is re-demuxed at finalize to mux in the audio
+        // track, and VideoToolbox's default B-frame reordering produces
+        // buffers that demux with no PTS — mp4mux then rejects them
+        // ("Could not multiplex stream / Buffer has no PTS"), silently
+        // failing the finalize of EVERY recording that has audio (the
+        // video-only path escapes it by renaming the scratch, not
+        // re-muxing). B-frames are negligible for screen content and add
+        // encode latency, so disabling them is the right call regardless.
+        (OutputFormat::Mp4H264Aac, "macos") => {
+            (vec!["vtenc_h264_hw allow-frame-reordering=false"], "mp4mux")
+        }
+        (OutputFormat::Mp4H265Aac, "macos") => {
+            (vec!["vtenc_h265_hw allow-frame-reordering=false"], "mp4mux")
+        }
         (OutputFormat::WebmVp9Opus, "macos") => (vec!["vp9enc"], "webmmux"),
         (OutputFormat::WebmAv1Opus, "macos") => (vec!["svtav1enc"], "webmmux"),
         (OutputFormat::Mp4H264Aac, "windows") => (vec!["mfh264enc"], "mp4mux"),
@@ -1186,6 +1254,28 @@ mod tests {
         assert!(args.iter().any(|a| a == "location=/tmp/inter.scratch"));
         // No audio leg in the live pipeline — audio is muxed at finalize.
         assert!(!args.iter().any(|a| a == "audioconvert"));
+    }
+
+    #[test]
+    fn live_h264_disables_frame_reordering_so_the_scratch_remuxes() {
+        // macOS vtenc must disable B-frame reordering: the live H.264
+        // scratch is re-demuxed at finalize to mux in audio, and reordered
+        // frames demux with no PTS → mp4mux rejects them, failing the
+        // finalize of every audio recording. The encoder element + its
+        // property must each be their own argv token.
+        if std::env::consts::OS != "macos" {
+            return;
+        }
+        let cfg = test_config(OutputFormat::Mp4H264Aac);
+        let args = build_live_video_args(&cfg, Path::new("/tmp/v.scratch")).expect("macos");
+        assert!(
+            args.iter().any(|a| a == "vtenc_h264_hw"),
+            "encoder element is its own token"
+        );
+        assert!(
+            args.iter().any(|a| a == "allow-frame-reordering=false"),
+            "B-frame reordering off so the scratch demuxes with PTS for the finalize remux"
+        );
     }
 
     #[test]

@@ -206,16 +206,6 @@ impl EditorVideoStream {
         self.cache.get(index)
     }
 
-    /// Seek to `index` and return that frame. Alias for [`frame`](Self::frame)
-    /// with seeking semantics.
-    #[allow(
-        clippy::must_use_candidate,
-        reason = "seek may be called purely to position the stream"
-    )]
-    pub fn seek_to_frame(&mut self, index: u64) -> Option<VideoFrame> {
-        self.frame(index)
-    }
-
     /// Seek to the frame nearest `time` and return it.
     #[allow(
         clippy::must_use_candidate,

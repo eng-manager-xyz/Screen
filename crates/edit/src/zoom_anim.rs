@@ -104,7 +104,10 @@ pub fn zoom_at(seg: &ZoomSegment, frame: Frame, ramp_frames: Frame) -> ZoomTrans
     } else {
         1.0
     };
-    let scale = 1.0 + (seg.amount - 1.0) * progress;
+    // Clamp to `>= 1.0`: a zoom is a push-in, never a shrink. An
+    // `amount < 1.0` (only reachable via a raw `AddZoom` / deserialized
+    // project) reads as no zoom rather than an undocumented zoom-out.
+    let scale = (1.0 + (seg.amount - 1.0) * progress).max(1.0);
     ZoomTransform {
         scale,
         center_x,
@@ -146,7 +149,9 @@ pub fn zoom_keyframes(seg: &ZoomSegment, ramp_frames: Frame) -> Vec<ZoomKeyframe
         return Vec::new();
     }
     let ramp = ramp_frames.min(seg.len() / 2);
-    let amount = seg.amount;
+    // Match `zoom_at`'s clamp so the dopesheet curve never shows a
+    // zoom-out for a sub-1.0 amount.
+    let amount = seg.amount.max(1.0);
     let in_peak = seg.start + ramp;
     let out_peak = seg.end.saturating_sub(ramp);
     let mut kfs = vec![ZoomKeyframe {
@@ -285,6 +290,23 @@ mod tests {
         assert!((kfs[2].scale - 2.0).abs() < 1e-9);
         assert_eq!(kfs[3].frame, 200);
         assert!((kfs[3].scale - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sub_one_amount_never_zooms_out() {
+        // A zoom is a push-in; an amount < 1.0 (reachable only via a raw
+        // AddZoom / deserialized project) must clamp to no-zoom, never a
+        // shrink — in both the animation and the dopesheet view.
+        let z = ZoomSegment::manual(ZoomId(4), 0, 100, 0.5);
+        for f in 0..100 {
+            assert!(
+                zoom_at(&z, f, 10).scale >= 1.0 - 1e-9,
+                "scale never below 1.0 at frame {f}"
+            );
+        }
+        for kf in zoom_keyframes(&z, 10) {
+            assert!(kf.scale >= 1.0 - 1e-9, "keyframe scale never below 1.0");
+        }
     }
 
     #[test]

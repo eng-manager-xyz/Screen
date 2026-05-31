@@ -628,6 +628,25 @@ impl EncoderHandle {
     }
 }
 
+/// How many video frames a constant-frame-rate stream should have emitted
+/// by `elapsed` (at `frame_interval`), minus those already `pushed` — i.e.
+/// the number to push this tick to keep the encoder's frame count locked
+/// to wall-clock. The live encoder timestamps frames by *count* at a fixed
+/// rate, so a compose pump that can't sustain that rate must duplicate the
+/// last frame to fill the deficit, or the recording plays fast. Bounded by
+/// `max_burst` so a long stall can't emit an unbounded catch-up burst.
+fn cfr_catchup_frames(
+    elapsed: Duration,
+    frame_interval: Duration,
+    pushed: u64,
+    max_burst: u64,
+) -> u64 {
+    let interval_us = frame_interval.as_micros().max(1);
+    // Frames due by now, counting frame 0 at t=0: floor(elapsed/interval)+1.
+    let due = u64::try_from(elapsed.as_micros() / interval_us).unwrap_or(u64::MAX);
+    due.saturating_add(1).saturating_sub(pushed).min(max_burst)
+}
+
 /// Real-capture feed loop (M-PIX.6) — pulls composed frames from
 /// [`crate::recording_compose::RecordingCompose`] + mixed audio
 /// from the shared [`SharedAudioMixer`] until cancel fires.
@@ -666,32 +685,62 @@ fn feed_real_capture(
             }
         };
 
-    let frame_interval = Duration::from_micros(1_000_000_u64 / u64::from(framerate.max(1)));
-    let started_at = Instant::now();
-    let mut next_pts_frames: u64 = 0;
+    let interval_us = 1_000_000_u64 / u64::from(framerate.max(1));
+    let frame_interval = Duration::from_micros(interval_us);
+    // Bound a single tick's catch-up to ~one second of frames so a long
+    // stall can't emit an unbounded duplicate burst.
+    let max_burst = u64::from(framerate.max(1));
+    // The wall-clock anchor starts at the FIRST composed frame so the
+    // pre-roll wait for the first capture isn't counted as a deficit.
+    let mut anchor: Option<Instant> = None;
+    let mut last_bytes: Option<Vec<u8>> = None;
     let mut frames_pushed: u64 = 0;
     let mut audio_chunks_pushed: u64 = 0;
 
     while !cancel.load(Ordering::Relaxed) {
-        let pts =
-            Duration::from_micros(next_pts_frames * (1_000_000_u64 / u64::from(framerate.max(1))));
-        // Compose this tick. None means no real content has arrived
-        // yet — skip the push so we don't pollute the .mp4 with
-        // clear-colour frames before the first capture lands.
-        let composed = compose.compose_frame(&camera_slot, &screen_slot);
-        if let Some(frame) = composed {
-            let mut guard = encoder
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let Some(ref mut enc) = *guard else { break };
-            if let Err(err) = enc.push_video_frame(&frame.bytes, pts) {
-                tracing::warn!(?err, "feed_real_capture: push_video_frame failed");
-                break;
+        // Compose the latest content. `compose_frame` returns None only
+        // before the first real frame lands (pre-roll); after that it
+        // composes the current slot contents every tick.
+        if let Some(frame) = compose.compose_frame(&camera_slot, &screen_slot) {
+            last_bytes = Some(frame.bytes);
+            if anchor.is_none() {
+                anchor = Some(Instant::now());
             }
-            frames_pushed = frames_pushed.saturating_add(1);
         }
 
-        // Pull any mixed audio for this tick.
+        // Constant-frame-rate fill: keep the pushed frame count locked to
+        // wall-clock by duplicating the last composed frame to cover any
+        // deficit (an unchanged frame encodes to a tiny P-frame). The live
+        // encoder timestamps frames by *count* at `framerate`, so a
+        // compose pump that can't sustain it would otherwise under-deliver
+        // and the recording would play fast.
+        if let (Some(start), Some(bytes)) = (anchor, last_bytes.as_ref()) {
+            let due = cfr_catchup_frames(start.elapsed(), frame_interval, frames_pushed, max_burst);
+            if due > 0 {
+                let mut guard = encoder
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let Some(ref mut enc) = *guard else { break };
+                let mut failed = false;
+                for _ in 0..due {
+                    let pts = Duration::from_micros(frames_pushed * interval_us);
+                    if let Err(err) = enc.push_video_frame(bytes, pts) {
+                        tracing::warn!(?err, "feed_real_capture: push_video_frame failed");
+                        failed = true;
+                        break;
+                    }
+                    frames_pushed = frames_pushed.saturating_add(1);
+                }
+                drop(guard);
+                if failed {
+                    break;
+                }
+            }
+        }
+
+        // Pull any mixed audio for this tick (real samples → real-time
+        // length; the CFR-filled video now matches it instead of running
+        // ahead).
         let audio_samples = {
             let mut mixer_guard = audio_mixer
                 .lock()
@@ -703,6 +752,7 @@ fn feed_real_capture(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(ref mut enc) = *guard {
+                let pts = Duration::from_micros(frames_pushed.saturating_sub(1) * interval_us);
                 if let Err(err) = enc.push_audio_chunk(&audio_samples, pts) {
                     tracing::warn!(
                         ?err,
@@ -714,11 +764,17 @@ fn feed_real_capture(
             }
         }
 
-        next_pts_frames = next_pts_frames.saturating_add(1);
-        let multiplier = u32::try_from(next_pts_frames).unwrap_or(u32::MAX);
-        let target = started_at + frame_interval * multiplier;
-        if let Some(sleep) = target.checked_duration_since(Instant::now()) {
-            std::thread::sleep(sleep);
+        // Sleep until the next frame is due (a no-op when behind — the
+        // next iteration's catch-up then fills the deficit). Pre-roll (no
+        // frame yet) polls the slots at the frame interval.
+        match anchor {
+            Some(start) => {
+                let target = start + Duration::from_micros(frames_pushed * interval_us);
+                if let Some(sleep) = target.checked_duration_since(Instant::now()) {
+                    std::thread::sleep(sleep);
+                }
+            }
+            None => std::thread::sleep(frame_interval),
         }
     }
     tracing::info!(
@@ -1392,5 +1448,23 @@ mod tests {
         let json = serde_json::to_string(&h).unwrap();
         let back: StreamHealth = serde_json::from_str(&json).unwrap();
         assert_eq!(back, h);
+    }
+
+    #[test]
+    fn cfr_catchup_locks_frame_count_to_wallclock() {
+        let fi = Duration::from_micros(1_000_000 / 30); // 30 fps
+        // At t=0, exactly one frame is due (frame 0).
+        assert_eq!(cfr_catchup_frames(Duration::ZERO, fi, 0, 100), 1);
+        // After 1 s at 30 fps, frames 0..=30 are due (31); one already
+        // pushed → 30 more this tick.
+        assert_eq!(cfr_catchup_frames(Duration::from_secs(1), fi, 1, 100), 30);
+        // A slow compose pump (only 5 pushed after 1 s) catches up toward
+        // the wall-clock target rather than under-delivering (→ fast video).
+        assert_eq!(cfr_catchup_frames(Duration::from_secs(1), fi, 5, 100), 26);
+        // A long stall is bounded by max_burst so it can't burst unbounded.
+        assert_eq!(cfr_catchup_frames(Duration::from_secs(10), fi, 0, 60), 60);
+        // Already at/ahead of target → nothing to push (paced keep-up case).
+        assert_eq!(cfr_catchup_frames(Duration::ZERO, fi, 1, 100), 0);
+        assert_eq!(cfr_catchup_frames(Duration::from_secs(1), fi, 31, 100), 0);
     }
 }

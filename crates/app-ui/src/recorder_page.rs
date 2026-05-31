@@ -528,6 +528,27 @@ pub fn RecorderPage() -> impl IntoView {
         });
     });
 
+    // "Edit" — save the recording as MP4 (the editable intermediate, also
+    // landed in the recordings folder) and open it in the editor. The
+    // `editor-project` reply trips the app-root effect that switches to the
+    // Editor tab. Forces MP4 regardless of the chosen export format: that
+    // choice is for the *final* export from the editor.
+    let on_edit = Callback::new(move |()| {
+        export_busy.set(true);
+        error_msg.set(None);
+        spawn_local(async move {
+            match export_recording(Some("mp4-h264"), None).await {
+                Ok(path) => {
+                    pending_export.set(None);
+                    saved_path.set(None);
+                    let _ = crate::editor_ipc::screen_open_in_editor(&path);
+                }
+                Err(err) => error_msg.set(Some(err)),
+            }
+            export_busy.set(false);
+        });
+    });
+
     let on_discard = Callback::new(move |()| {
         spawn_local(async move {
             discard_recording().await;
@@ -842,6 +863,7 @@ pub fn RecorderPage() -> impl IntoView {
                             on_change_folder=on_change_folder
                             on_format_change=on_format_change
                             on_discard=on_discard
+                            on_edit=on_edit
                             on_export=on_export
                             on_reveal=on_reveal
                             on_done=on_dismiss_saved
