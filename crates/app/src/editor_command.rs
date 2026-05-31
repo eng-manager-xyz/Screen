@@ -71,11 +71,17 @@ fn fps_round(frame_rate: f32) -> u32 {
 /// Returns the probe error string if the file can't be read (missing
 /// `GStreamer`, unreadable media).
 #[tauri::command]
-pub fn open_in_editor(
-    path: String,
-    state: State<'_, EditorSessionState>,
-) -> Result<EditProject, String> {
-    let meta = GstreamerPipeStream::probe(Path::new(&path)).map_err(|err| err.to_string())?;
+pub async fn open_in_editor(app: tauri::AppHandle, path: String) -> Result<EditProject, String> {
+    // Probe off the UI worker thread — `gst-discoverer-1.0` can stall on a
+    // large or remote clip, and the Record→Edit handoff promise shouldn't
+    // block the webview while it does.
+    let probe_path = path.clone();
+    let meta = tauri::async_runtime::spawn_blocking(move || {
+        GstreamerPipeStream::probe(Path::new(&probe_path)).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| format!("probe task failed to join: {err}"))??;
+
     let project = project_from_metadata(
         PathBuf::from(path),
         meta.width,
@@ -84,6 +90,9 @@ pub fn open_in_editor(
         meta.frame_count.unwrap_or(0),
     );
     // Spin up the playhead session for this clip (ED.7 transport drives it).
+    // Resolved by handle since the `.await` above rules out holding a
+    // `State<'_>` borrow across it.
+    let state = app.state::<EditorSessionState>();
     let mut guard = state
         .0
         .lock()
@@ -95,10 +104,47 @@ pub fn open_in_editor(
     Ok(project)
 }
 
-/// Shared cooperative cancel flag for an in-flight editor export (ED.22).
-/// `editor_export` resets + polls it; `editor_export_cancel` raises it.
+/// Shared state for the editor export command (ED.22): a cooperative
+/// cancel flag plus a single-run guard so a second export can't un-cancel
+/// the first and race the same output file.
 #[derive(Default)]
-pub struct EditorExportState(pub Arc<AtomicBool>);
+pub struct EditorExportState {
+    cancel: Arc<AtomicBool>,
+    running: Arc<AtomicBool>,
+}
+
+/// RAII guard releasing the single-export slot when an export finishes
+/// (on any return path, including error/panic).
+struct ExportRunGuard(Arc<AtomicBool>);
+
+impl Drop for ExportRunGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+impl EditorExportState {
+    /// Claim the single export slot, resetting the cancel flag for the new
+    /// run. Returns a guard that releases the slot on drop, or `None` if an
+    /// export is already in flight.
+    fn try_begin(&self) -> Option<ExportRunGuard> {
+        self.running
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        self.cancel.store(false, Ordering::Relaxed);
+        Some(ExportRunGuard(Arc::clone(&self.running)))
+    }
+
+    /// Raise the cancel flag for an in-flight export.
+    fn request_cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    /// A clone of the cancel flag for the export job to poll.
+    fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel)
+    }
+}
 
 /// `editor-export-progress` event payload.
 #[derive(Clone, serde::Serialize)]
@@ -142,9 +188,16 @@ pub async fn editor_export(
         .and_then(OutputFormat::from_slug)
         .unwrap_or_default();
     // Resolve state by handle (an async command can't hold a `State<'_>`
-    // borrow across `.await`); reset the cancel flag for this run.
-    let cancel = Arc::clone(&app.state::<EditorExportState>().0);
-    cancel.store(false, Ordering::Relaxed);
+    // borrow across `.await`). Claim the single export slot — `_guard`
+    // lives to the end of the command and releases it on drop; a second
+    // concurrent export is rejected rather than racing the same file.
+    let (cancel, _guard) = {
+        let st = app.state::<EditorExportState>();
+        let Some(guard) = st.try_begin() else {
+            return Err("an export is already in progress".to_owned());
+        };
+        (st.cancel_flag(), guard)
+    };
 
     let source = project.source.path.clone();
     let dir = crate::recorder_settings::resolved_output_dir(&app);
@@ -179,7 +232,7 @@ pub async fn editor_export(
 /// Request cancellation of an in-flight [`editor_export`].
 #[tauri::command]
 pub fn editor_export_cancel(state: State<'_, EditorExportState>) {
-    state.0.store(true, Ordering::Relaxed);
+    state.request_cancel();
 }
 
 /// The `.screenproj` path for a `source` recording: the source path with its
@@ -321,6 +374,34 @@ mod tests {
         // Missing stem falls back to a stable name.
         let fallback = edited_export_path(Path::new("/out"), Path::new("/"), "mp4");
         assert_eq!(fallback, PathBuf::from("/out/export-edited.mp4"));
+    }
+
+    #[test]
+    fn editor_export_state_allows_one_run_at_a_time() {
+        let st = EditorExportState::default();
+        let g1 = st.try_begin();
+        assert!(g1.is_some(), "first export claims the slot");
+        assert!(
+            st.try_begin().is_none(),
+            "a second export is rejected while one is in flight"
+        );
+        drop(g1);
+        assert!(
+            st.try_begin().is_some(),
+            "the slot is released once the first export finishes"
+        );
+    }
+
+    #[test]
+    fn begin_clears_a_stale_cancel_flag() {
+        let st = EditorExportState::default();
+        st.request_cancel();
+        assert!(st.cancel.load(Ordering::Relaxed));
+        let _g = st.try_begin().expect("claim slot");
+        assert!(
+            !st.cancel.load(Ordering::Relaxed),
+            "begin resets cancel so a prior cancel doesn't kill the new run"
+        );
     }
 
     #[test]

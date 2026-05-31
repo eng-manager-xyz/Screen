@@ -117,6 +117,9 @@ pub enum EditError {
     },
     /// A delete / move range was empty (`end <= start`).
     EmptyRange,
+    /// A ripple delete would remove every segment, leaving an empty
+    /// timeline. The timeline must always keep at least one segment.
+    WouldEmptyTimeline,
     /// No zoom with the requested id exists.
     ZoomNotFound(ZoomId),
     /// A project frame was at or past the end of the timeline.
@@ -130,6 +133,9 @@ impl std::fmt::Display for EditError {
                 write!(f, "segment index {index} out of range (len {len})")
             }
             Self::EmptyRange => write!(f, "range is empty (end <= start)"),
+            Self::WouldEmptyTimeline => {
+                write!(f, "ripple delete would remove the entire timeline")
+            }
             Self::ZoomNotFound(id) => write!(f, "no zoom with id {id:?}"),
             Self::PastEndOfTimeline(frame) => {
                 write!(f, "project frame {frame} is past the end of the timeline")
@@ -224,8 +230,9 @@ impl EditProject {
             return Err(EditError::EmptyRange);
         }
         let mut out: Vec<TimelineSegment> = Vec::with_capacity(self.segments.len() + 1);
-        let mut seg_start: Frame = 0;
-        for seg in &self.segments {
+        // Walk via the canonical segment-offset iterator (single source of
+        // the project-frame running sum).
+        for (_, seg_start, seg) in self.segment_offsets() {
             let seg_end = seg_start + seg.project_len();
             let overlaps = seg_start < d1 && seg_end > d0;
             if overlaps {
@@ -252,7 +259,11 @@ impl EditProject {
             } else {
                 out.push(*seg);
             }
-            seg_start = seg_end;
+        }
+        // The timeline must keep at least one segment — refuse a delete
+        // that would empty it (the project unchanged on error).
+        if out.is_empty() {
+            return Err(EditError::WouldEmptyTimeline);
         }
         self.segments = out;
         Ok(())
@@ -344,6 +355,9 @@ impl EditProject {
     /// Returns a human-readable description of the first violated
     /// invariant.
     pub fn check_invariants(&self) -> Result<(), String> {
+        if self.segments.is_empty() {
+            return Err("project has no segments (empty timeline)".to_string());
+        }
         for (i, s) in self.segments.iter().enumerate() {
             if s.source_start >= s.source_end {
                 return Err(format!("segment {i} is empty or inverted: {s:?}"));
@@ -485,6 +499,20 @@ mod tests {
         assert_eq!(p.segments.len(), 2);
         assert_eq!(p.segments[0], TimelineSegment::new(0, 300));
         assert_eq!(p.segments[1], TimelineSegment::new(600, 900));
+        p.check_invariants().unwrap();
+    }
+
+    #[test]
+    fn ripple_delete_entire_timeline_is_rejected() {
+        let mut p = project(); // one segment, project [0, 900)
+        // Deleting the whole timeline would leave zero segments — refused,
+        // and the project is left untouched.
+        assert_eq!(
+            p.apply(&EditOp::RippleDelete { start: 0, end: 900 }),
+            Err(EditError::WouldEmptyTimeline)
+        );
+        assert_eq!(p.segments.len(), 1);
+        assert_eq!(p.project_duration(), 900);
         p.check_invariants().unwrap();
     }
 
