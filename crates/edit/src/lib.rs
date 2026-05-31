@@ -52,4 +52,5 @@ pub use segment::{Frame, TimelineSegment};
 pub use style::{
     AspectRatio, AutoZoomConfig, BackgroundConfig, BackgroundSource, CropRect, CursorConfig,
 };
+pub use telemetry::{ClickEvent, CursorSample};
 pub use zoom::{EditEase, ZoomId, ZoomMode, ZoomSegment};

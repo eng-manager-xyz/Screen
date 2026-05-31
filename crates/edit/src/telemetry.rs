@@ -15,13 +15,19 @@
 //! (a per-platform surface, macOS first) is a separate follow-up; this is
 //! the generator that consumes it.
 
+use serde::{Deserialize, Serialize};
+
 use crate::segment::Frame;
 use crate::style::AutoZoomConfig;
 use crate::zoom::{EditEase, ZoomId, ZoomMode, ZoomSegment};
 
 /// A click captured during recording: a project frame plus a normalized
 /// position in the composed frame (`(0, 0)` top-left, `(1, 1)` bottom-right).
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// `Serialize`/`Deserialize` so a captured click log persists in the project
+/// document — it feeds both auto-zoom (ED.17) and the cursor click-ripple
+/// overlay (ED.19).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClickEvent {
     /// Project frame the click occurred at.
     pub frame: Frame,
@@ -33,6 +39,31 @@ pub struct ClickEvent {
 
 impl ClickEvent {
     /// A click at `frame` and normalized `(x, y)`.
+    #[must_use]
+    pub fn new(frame: Frame, x: f32, y: f32) -> Self {
+        Self { frame, x, y }
+    }
+}
+
+/// A cursor position sample at a project frame, normalized to the composed
+/// frame (`(0, 0)` top-left, `(1, 1)` bottom-right — the same convention as
+/// [`ClickEvent`]).
+///
+/// Captured by the macOS event tap during recording (ED.17, the `app` crate)
+/// and consumed by the cursor overlay renderer (ED.19). The `frame` is a
+/// **project** frame, so the overlay syncs to the playhead 1:1.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CursorSample {
+    /// Project frame this position was sampled at.
+    pub frame: Frame,
+    /// Horizontal position, `0.0..=1.0`.
+    pub x: f32,
+    /// Vertical position, `0.0..=1.0`.
+    pub y: f32,
+}
+
+impl CursorSample {
+    /// A cursor sample at `frame` and normalized `(x, y)`.
     #[must_use]
     pub fn new(frame: Frame, x: f32, y: f32) -> Self {
         Self { frame, x, y }
@@ -124,6 +155,64 @@ pub fn auto_zoom_segments(
     out
 }
 
+/// The smoothed cursor position at project `frame`, for the ED.19 overlay.
+///
+/// `track` is assumed sorted by frame (the capture produces it in frame
+/// order). Returns `None` for an empty track; clamps to the first sample for
+/// frames before the track starts. `smoothing` (`0..=100`) is an exponential
+/// moving average over the samples up to `frame` — `0` is the raw latest
+/// sample, higher values lag more (taming jitter, the way a fluid head tames
+/// handheld). Pure arithmetic, exhaustively testable.
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "`smoothing` is clamped to 0..=100 so the u32→f32 is exact"
+)]
+pub fn cursor_at(track: &[CursorSample], frame: Frame, smoothing: u32) -> Option<(f32, f32)> {
+    let first = track.first()?;
+    // alpha: 1.0 (no smoothing) → 0.08 (max lag).
+    let s = (smoothing.min(100) as f32) / 100.0;
+    let alpha = 1.0 - 0.92 * s;
+    let mut pos = (first.x, first.y);
+    let mut started = false;
+    for sample in track.iter().take_while(|s| s.frame <= frame) {
+        if started {
+            pos.0 += alpha * (sample.x - pos.0);
+            pos.1 += alpha * (sample.y - pos.1);
+        } else {
+            pos = (sample.x, sample.y);
+            started = true;
+        }
+    }
+    Some(pos)
+}
+
+/// Active click ripples at project `frame`, for the ED.19 overlay.
+///
+/// Each entry is `(x, y, age)` where `age` ramps `0.0` (at the click) →
+/// `1.0` (at the end of the `ripple_frames` window); the renderer expands +
+/// fades a ring across that age. Clicks outside the window are skipped.
+/// Returns empty when `ripple_frames == 0`. Pure.
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "the age numerator is < ripple_frames (a small per-window frame count) so the u64→f32 is exact"
+)]
+pub fn ripples_at(clicks: &[ClickEvent], frame: Frame, ripple_frames: u32) -> Vec<(f32, f32, f32)> {
+    if ripple_frames == 0 {
+        return Vec::new();
+    }
+    let span = u64::from(ripple_frames);
+    clicks
+        .iter()
+        .filter(|c| frame >= c.frame && frame - c.frame < span)
+        .map(|c| {
+            let age = (frame - c.frame) as f32 / span as f32;
+            (c.x, c.y, age)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +294,65 @@ mod tests {
         );
         assert_eq!(z.len(), 2);
         assert!(z[0].start < z[1].start);
+    }
+
+    #[test]
+    fn cursor_at_empty_track_is_none() {
+        assert!(cursor_at(&[], 10, 0).is_none());
+    }
+
+    #[test]
+    fn cursor_at_no_smoothing_is_the_latest_sample() {
+        let track = [
+            CursorSample::new(0, 0.1, 0.2),
+            CursorSample::new(10, 0.6, 0.7),
+        ];
+        // At frame 10 with smoothing 0 → the raw latest sample.
+        let (x, y) = cursor_at(&track, 10, 0).unwrap();
+        assert!((x - 0.6).abs() < 1e-6 && (y - 0.7).abs() < 1e-6);
+        // At frame 5, the latest sample at/before is frame 0.
+        let (x, y) = cursor_at(&track, 5, 0).unwrap();
+        assert!((x - 0.1).abs() < 1e-6 && (y - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cursor_at_before_track_clamps_to_first() {
+        let track = [CursorSample::new(10, 0.3, 0.4)];
+        let (x, y) = cursor_at(&track, 0, 50).unwrap();
+        assert!((x - 0.3).abs() < 1e-6 && (y - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cursor_at_smoothing_lags_behind_a_jump() {
+        // Position jumps 0 → 1 at frame 1; heavy smoothing must land between
+        // (lagging the jump), never overshoot past the raw target.
+        let track = [
+            CursorSample::new(0, 0.0, 0.0),
+            CursorSample::new(1, 1.0, 1.0),
+        ];
+        let (raw, _) = cursor_at(&track, 1, 0).unwrap();
+        assert!((raw - 1.0).abs() < 1e-6, "no smoothing reaches the jump");
+        let (lag, _) = cursor_at(&track, 1, 100).unwrap();
+        assert!(
+            lag > 0.0 && lag < 1.0,
+            "max smoothing lags between (got {lag})"
+        );
+    }
+
+    #[test]
+    fn ripples_at_ramps_age_across_the_window() {
+        let clicks = [ClickEvent::new(10, 0.5, 0.5)];
+        // At the click: age 0.
+        let r = ripples_at(&clicks, 10, 12);
+        assert_eq!(r.len(), 1);
+        assert!((r[0].2 - 0.0).abs() < 1e-6);
+        // Halfway: age 0.5.
+        assert!((ripples_at(&clicks, 16, 12)[0].2 - 0.5).abs() < 1e-6);
+        // Past the window: gone.
+        assert!(ripples_at(&clicks, 22, 12).is_empty());
+        // Before the click: gone.
+        assert!(ripples_at(&clicks, 5, 12).is_empty());
+        // Zero window: never any ripples.
+        assert!(ripples_at(&clicks, 10, 0).is_empty());
     }
 }
