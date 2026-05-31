@@ -25,6 +25,24 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-17: ED.17 — live cursor-capture wiring (record → editor) not yet connected
+- **Filed:** 2026-05-31
+- **By:** ED.17 (cursor capture)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/{commands.rs,recording.rs,editor_command.rs}`
+- **Status:** open
+- **Description:** The cursor-capture **mechanism** ships (`app::cursor_capture::CursorPoller` polls the global pointer with no permission; `samples_to_track` / `normalize_cursor_to_frame` are unit-tested), and the **consumer** ships (ED.19 renders `EditProject::cursor_track`). The live **wiring** between them is not connected: a recording doesn't yet start a `CursorPoller`, stop it, and attach the resulting track to the project at Record→Edit import. The integration is additive (a separate poller thread; it cannot affect the video/audio capture) but un-CI-verifiable (needs a real recording session), and has one real correctness dependency to get right: the poller must normalize against the captured **display bounds in points** (`CGDisplayBounds`, *not* the post-1080p-cap capture pixels), and handle multi-display origins (`normalize_cursor_to_frame` already takes a `(origin, w, h)` rect for this).
+- **Resolution:** When wired: add `cursor_poller: Mutex<Option<CursorPoller>>` to `RecordingState`; in `start_recording` start it with the captured display's point-bounds; in `stop_recording` `stop()` it, run `samples_to_track(samples, project_fps)`, and carry the track on `PendingExport`; in `open_in_editor` set `project.cursor_track = Some(track)`. Runtime-verify by recording + scrubbing the editor (the pointer rides the zoom). (open)
+
+## ISS-16: ED.17 — click capture (auto-zoom + ripples) needs a CGEventTap
+- **Filed:** 2026-05-31
+- **By:** ED.17 (cursor capture)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/cursor_capture.rs`
+- **Status:** open
+- **Description:** ED.17's **position** track ships via no-permission `CGEvent` polling, but the **click log** — which feeds the already-tested `auto_zoom_segments` and ED.19's click ripples — needs a `CGEventTap` (`objc2_core_graphics::CGEvent::tap_create`, listen-only). A tap requires the **Input-Monitoring** permission (prompts the user, cannot be granted in CI/headless) and a `CFRunLoop` callback on a worker thread (`objc2-core-foundation` is not yet a dep). The data model is ready: `EditProject::clicks: Option<Vec<ClickEvent>>` (serde-persisted) and `ripples_at` consume it.
+- **Resolution:** When implemented: add `objc2-core-foundation` (CFRunLoop/CFMachPort), create a listen-only tap for `kCGEventLeftMouseDown | kCGEventRightMouseDown`, run a private `CFRunLoop` on the poller thread, accumulate `ClickEvent`s (drain per feed-tick, never latest-wins), degrade gracefully (null tap → warn → no clicks, recording proceeds). Verify on a real macOS session with the permission granted. (open)
+
 ## ISS-15: ED.18 — `Wallpaper` background source has no asset pipeline
 - **Filed:** 2026-05-31
 - **By:** ED.18 (background-framing render integration)

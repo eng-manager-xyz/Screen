@@ -19,21 +19,25 @@ runners (the project's designed authority).
 
 | Chunk | Ticket | State |
 |---|---|---|
-| ED.16 zoom render | AUT-351 | ✅ committed `91ad85f`, **CI green** |
-| ED.18 background framing | AUT-353 | ✅ committed `6c9ddd9` + snapshot fix `7700175`; verified (recording:: 19/19, editor_preview:: 15/15, story fingerprint regenerated, PNG eyeballed); **CI re-running** |
-| ED.21 export audio | AUT-356 | ✅ committed `9157c1e` + `f666ae8`; verified end-to-end on a real Mac (retime_audio 6/6, audio_decode_args, **edited_export_e2e incl. real audio mux**); **CI re-running** |
-| ED.17 telemetry capture | AUT-352 | ⬜ next |
-| ED.19 cursor overlay | AUT-354 | ⬜ next |
+| ED.16 zoom render | AUT-351 | ✅ `91ad85f`, **CI green** |
+| ED.18 background framing | AUT-353 | ✅ `6c9ddd9` + snapshot `7700175`; **CI green** (recording:: 19/19, editor_preview:: 15/15, PNG eyeballed) |
+| ED.21 export audio | AUT-356 | ✅ `9157c1e`/`f666ae8`; **CI green** + e2e on a real Mac incl. **real audio mux** |
+| ED.19 cursor overlay | AUT-354 | ✅ `3da5729`; render verified (GPU test: pointer draws + **rides the zoom**; story + fingerprint + PNG), drives from `cursor_track` |
+| ED.17 telemetry capture | AUT-352 | 🟡 `3c4cba5` — capture **mechanism** + pure math shipped + tested (no-permission `CGEvent` poll); live wiring (ISS-17) + click-tap (ISS-16) are runtime follow-ups |
 
-**Remaining: ED.17 + ED.19.** ED.17 = macOS OS-level click capture
-(`CGEventTap`/objc2) feeding `edit::telemetry::ClickEvent` → the already-tested
-`auto_zoom_segments` generator (the *pure* half is done). ED.19 = cursor-overlay
-render driven by `CursorConfig` + a captured cursor track (needs ED.17's track).
+**ED.17 nuance (be honest at closeout).** The cursor-capture *mechanism*
+(`app::cursor_capture::CursorPoller`, no-permission `CGEvent` polling) +
+`normalize_cursor_to_frame` + `samples_to_track` ship + are unit-tested, and
+the data model + ED.19 consumer are done. NOT yet done: (a) the additive live
+record→editor wiring (ISS-17 — needs a real session to verify the
+display-bounds rect), (b) the click-tap for auto-zoom/ripples (ISS-16 —
+Input-Monitoring permission + `CFRunLoop`, can't run in CI). So AUT-352 is
+*advanced but not 100%*; closing it as Done would require those runtime pieces.
 
-**Closeout:** when ED.17 + ED.19 land and PR #67 CI is fully green, close
-AUT-351/352/353/354/356 and the epic AUT-335 — verify each ticket's "Done when"
-before closing (a few sub-criteria stay partial: ED.16 wants an animated MP4
-asset; ED.17 wants per-OS capture; ED.18 shadow/wallpaper are ISS-14/ISS-15;
+**Closeout:** ED.16/18/19/21 are genuinely done (CI green / verified) →
+closeable. ED.17 (AUT-352) stays open pending ISS-16/ISS-17. Verify each
+ticket's "Done when" before closing (partial sub-criteria: ED.16 wants an
+animated MP4 asset; ED.18 shadow/wallpaper are ISS-14/ISS-15;
 ED.21 pitch-preservation is a follow-up). Do NOT close on PR-pass alone.
 
 ### ED.21 verification (done on this machine, one binary at a time)
