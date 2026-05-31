@@ -21,6 +21,6 @@
 gstreamer = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = 'binary(editor_seek) | binary(gstreamer_integration) | binary(encode_integration) | binary(render_smoke) | binary(editor_pipeline) | binary(editor_export_golden) | binary(edited_export_e2e) | binary(player_session) | binary(commands)'
+filter = 'binary(editor_seek) | binary(gstreamer_integration) | binary(encode_integration) | binary(render_smoke) | binary(editor_pipeline) | binary(editor_export_golden) | binary(edited_export_e2e) | binary(editor_dropzone_smoke) | binary(player_session) | binary(commands)'
 test-group = 'gstreamer'
 retries = 1

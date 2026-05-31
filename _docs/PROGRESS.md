@@ -6,6 +6,36 @@ Use the template at the bottom for new entries.
 
 ---
 
+## Editor drop-zone smoke gates — the full ED.1–24 feature set on a dropped clip
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2`.
+
+### What
+
+`crates/app/tests/editor_dropzone_smoke.rs` — a **set** of integration smoke
+gates proving the Record→Edit promise: a video dropped into the editor (the
+`open_in_editor` / drop-zone path → `project_from_metadata`) supports the whole
+editor feature set. Since every edit operation is pure, the bulk run on every
+platform; only the genuine media-stack gates are gst/wgpu-guarded (macOS is the
+truth runner where all execute).
+
+- **5 pure gates (run everywhere):** drop → full-length editable project;
+  timeline split/trim/speed + undo/redo (ED.2/8/11/14); zoom lane + dopesheet
+  keyframes + Easy-Ease + zoom-animation sampling (ED.12/13/16); framing
+  crop/aspect/background/cursor + `.screenproj` round-trip (ED.15/18/19/23);
+  auto-zoom from a click log → editable zooms (ED.17).
+- **2 gst + wgpu gates (macOS truth runner; guarded elsewhere):** the real
+  `EditorVideoStream` probe-load (ED.3), and the export-frame generator walking
+  the edited timeline into composed BGRA (ED.20/21).
+
+Added `editor_dropzone_smoke` to the `.config/nextest.toml` gstreamer
+serialization group (the gst/wgpu gates spawn subprocesses + open a device).
+Used the Rust LSP to confirm the `History` API + `edit` re-exports; rust-analyzer
+crashed on the large nightly workspace, so `cargo check`/clippy was the
+authoritative verification.
+
+---
+
 ## Record→Edit loop: editor drop zone + post-recording Edit action (user-requested)
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2`. Commits `bd358f9`, `cff4de4`.
