@@ -6,6 +6,62 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ⏸️ PAUSE / RESUME — render-integration track (PR #67), moved to a stronger machine 2026-05-31
+
+The dev machine ran out of RAM (18-day uptime; ≈80 MB free, ~20 GB in the macOS
+compressor) so the full local `just gate` couldn't complete — `nextest`
+spawning 60+ large wgpu/`wisp-chart` debug binaries thrashed the page cache.
+Work was verified per-crate (the changed code's tests pass in isolation) and
+pushed; the heavy gate runs on CI / a stronger machine. **Resume here.**
+
+**Branch:** `editor-render-integration` → **PR #67**. Base `main`.
+
+**State of the 5 render-integration tickets:**
+
+| Chunk | Ticket | State |
+|---|---|---|
+| ED.16 zoom render | AUT-351 | ✅ committed `91ad85f`, **CI green** |
+| ED.18 background framing | AUT-353 | ⚠️ committed `6c9ddd9` + pushed; **CI red on ONE thing** — see (A) |
+| ED.21 export audio | AUT-356 | 🟡 committed (WIP — compiles + `cargo check --all-targets` clean; unit tests written but not *run* locally) — see (B) |
+| ED.17 telemetry capture | AUT-352 | ⬜ not started — see (C) |
+| ED.19 cursor overlay | AUT-354 | ⬜ not started — see (C) |
+
+**(A) ED.18 CI fix — DO THIS FIRST (one command, no code change):**
+`gate-wisp (macos-latest)` failed only because the new wisp-storybook story
+`editor-background-framing` adds an entry to the `story_fingerprints` insta
+snapshot, which wasn't regenerated. On the strong machine:
+```
+cargo nextest run -p wisp-storybook -E 'test(story_fingerprints)'   # writes .snap.new
+# Verify the diff is a PURE ADDITION of the "Background framing … (ED.18)" block
+# (existing entries MUST be unchanged — bucketed /8 fingerprints on Apple-Silicon Metal):
+diff crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap{,.new}
+cargo insta accept   # or: mv the .snap.new over the .snap
+```
+Commit the updated `.snap`. That should turn ED.18's gate-wisp green. Everything
+else in ED.18 is verified (recording:: 19/19, editor_preview:: 15/15, the PNG
+was eyeballed — gradient orients correctly).
+
+**(B) ED.21 — verify on the strong machine:** run the full `just gate`. The new
+pure tests (`media::encode::audio_decode_args_*`, `editor_export::retime_audio_*`)
+should pass; the gst e2e (`edited_export_e2e`) is skip-guarded on the headless
+runner's 480×270 vtenc quirk but runs on a real Mac. If green, ED.21 is done.
+
+**(C) ED.17 + ED.19 remain.** ED.17 = macOS OS-level click capture
+(`CGEventTap`/objc2) feeding `edit::telemetry::ClickEvent` → the already-tested
+`auto_zoom_segments` generator (the *pure* half is done). ED.19 = cursor-overlay
+render driven by `CursorConfig` + a captured cursor track (needs ED.17's track;
+GPU-heavy — verify on the strong machine). Design notes: ED.21 audio uses the
+"GStreamer owns intake, Rust owns the edit arithmetic" split (decode to raw
+F32LE → `retime_audio` → `push_audio_chunk` → existing `build_remux_args`);
+ED.18 research plan is in the session transcript.
+
+**Closeout:** when all 5 chunks are genuinely done + PR #67 CI is fully green,
+close AUT-351/352/353/354/356 and the epic AUT-335 — verify each ticket's "Done
+when" before closing (a few sub-criteria are partial: ED.16 wants an animated
+MP4 asset, ED.17 wants per-OS capture). Do NOT close on PR-pass alone.
+
+---
+
 ## ED.18 — background framing compose (backdrop · padding · rounded corners)
 - **Date:** 2026-05-31
 - **Status:** ✅ implemented + verified in isolation; full-workspace gate left to CI (PR #67) — see "Verification" note below.

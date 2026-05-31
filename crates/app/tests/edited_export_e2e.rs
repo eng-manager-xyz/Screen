@@ -102,5 +102,15 @@ fn edited_project_exports_a_valid_retimed_mp4() {
         "2× export ({out_frames}) is shorter than the source ({frame_count})"
     );
 
+    // ED.21 audio: if the source clip carries an audio track, the edited
+    // export must too (the retimed audio muxed onto the retimed video). If the
+    // fixture is video-only, there's nothing to assert.
+    if media::encode::scratch_has_audio(Path::new(FIXTURE)) {
+        assert!(
+            media::encode::scratch_has_audio(&out),
+            "edited export of an audio source must carry a retimed audio track"
+        );
+    }
+
     let _ = std::fs::remove_file(&out);
 }
