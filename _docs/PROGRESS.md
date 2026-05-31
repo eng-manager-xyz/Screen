@@ -6,59 +6,49 @@ Use the template at the bottom for new entries.
 
 ---
 
-## ⏸️ PAUSE / RESUME — render-integration track (PR #67), moved to a stronger machine 2026-05-31
+## 🔧 RESUME STATUS — render-integration track (PR #67)
 
-The dev machine ran out of RAM (18-day uptime; ≈80 MB free, ~20 GB in the macOS
-compressor) so the full local `just gate` couldn't complete — `nextest`
-spawning 60+ large wgpu/`wisp-chart` debug binaries thrashed the page cache.
-Work was verified per-crate (the changed code's tests pass in isolation) and
-pushed; the heavy gate runs on CI / a stronger machine. **Resume here.**
+The dev machine (16 GB, 18-day uptime) can't run the full-workspace `just gate`
+— `nextest` spawning 60+ large wgpu/`wisp-chart` debug binaries at once
+exhausts RAM and thrashes the page cache. Workaround that *does* work on this
+machine: **one test binary at a time** (`cargo test -p <crate> --test <name>` /
+`--lib <filter>`) loads fine. Each chunk is verified that way + via CI's clean
+runners (the project's designed authority).
 
 **Branch:** `editor-render-integration` → **PR #67**. Base `main`.
-
-**State of the 5 render-integration tickets:**
 
 | Chunk | Ticket | State |
 |---|---|---|
 | ED.16 zoom render | AUT-351 | ✅ committed `91ad85f`, **CI green** |
-| ED.18 background framing | AUT-353 | ⚠️ committed `6c9ddd9` + pushed; **CI red on ONE thing** — see (A) |
-| ED.21 export audio | AUT-356 | 🟡 committed (WIP — compiles + `cargo check --all-targets` clean; unit tests written but not *run* locally) — see (B) |
-| ED.17 telemetry capture | AUT-352 | ⬜ not started — see (C) |
-| ED.19 cursor overlay | AUT-354 | ⬜ not started — see (C) |
+| ED.18 background framing | AUT-353 | ✅ committed `6c9ddd9` + snapshot fix `7700175`; verified (recording:: 19/19, editor_preview:: 15/15, story fingerprint regenerated, PNG eyeballed); **CI re-running** |
+| ED.21 export audio | AUT-356 | ✅ committed `9157c1e` + `f666ae8`; verified end-to-end on a real Mac (retime_audio 6/6, audio_decode_args, **edited_export_e2e incl. real audio mux**); **CI re-running** |
+| ED.17 telemetry capture | AUT-352 | ⬜ next |
+| ED.19 cursor overlay | AUT-354 | ⬜ next |
 
-**(A) ED.18 CI fix — DO THIS FIRST (one command, no code change):**
-`gate-wisp (macos-latest)` failed only because the new wisp-storybook story
-`editor-background-framing` adds an entry to the `story_fingerprints` insta
-snapshot, which wasn't regenerated. On the strong machine:
-```
-cargo nextest run -p wisp-storybook -E 'test(story_fingerprints)'   # writes .snap.new
-# Verify the diff is a PURE ADDITION of the "Background framing … (ED.18)" block
-# (existing entries MUST be unchanged — bucketed /8 fingerprints on Apple-Silicon Metal):
-diff crates/wisp-storybook/tests/snapshots/story_fingerprints__story_fingerprints.snap{,.new}
-cargo insta accept   # or: mv the .snap.new over the .snap
-```
-Commit the updated `.snap`. That should turn ED.18's gate-wisp green. Everything
-else in ED.18 is verified (recording:: 19/19, editor_preview:: 15/15, the PNG
-was eyeballed — gradient orients correctly).
-
-**(B) ED.21 — verify on the strong machine:** run the full `just gate`. The new
-pure tests (`media::encode::audio_decode_args_*`, `editor_export::retime_audio_*`)
-should pass; the gst e2e (`edited_export_e2e`) is skip-guarded on the headless
-runner's 480×270 vtenc quirk but runs on a real Mac. If green, ED.21 is done.
-
-**(C) ED.17 + ED.19 remain.** ED.17 = macOS OS-level click capture
+**Remaining: ED.17 + ED.19.** ED.17 = macOS OS-level click capture
 (`CGEventTap`/objc2) feeding `edit::telemetry::ClickEvent` → the already-tested
 `auto_zoom_segments` generator (the *pure* half is done). ED.19 = cursor-overlay
-render driven by `CursorConfig` + a captured cursor track (needs ED.17's track;
-GPU-heavy — verify on the strong machine). Design notes: ED.21 audio uses the
-"GStreamer owns intake, Rust owns the edit arithmetic" split (decode to raw
-F32LE → `retime_audio` → `push_audio_chunk` → existing `build_remux_args`);
-ED.18 research plan is in the session transcript.
+render driven by `CursorConfig` + a captured cursor track (needs ED.17's track).
 
-**Closeout:** when all 5 chunks are genuinely done + PR #67 CI is fully green,
-close AUT-351/352/353/354/356 and the epic AUT-335 — verify each ticket's "Done
-when" before closing (a few sub-criteria are partial: ED.16 wants an animated
-MP4 asset, ED.17 wants per-OS capture). Do NOT close on PR-pass alone.
+**Closeout:** when ED.17 + ED.19 land and PR #67 CI is fully green, close
+AUT-351/352/353/354/356 and the epic AUT-335 — verify each ticket's "Done when"
+before closing (a few sub-criteria stay partial: ED.16 wants an animated MP4
+asset; ED.17 wants per-OS capture; ED.18 shadow/wallpaper are ISS-14/ISS-15;
+ED.21 pitch-preservation is a follow-up). Do NOT close on PR-pass alone.
+
+### ED.21 verification (done on this machine, one binary at a time)
+`retime_audio` 6/6 ✅, `media build_audio_decode_args` ✅, `edited_export_golden`
+(generator/retiming) ✅, **`edited_export_e2e` 2/2** ✅ — incl. the new
+`edited_export_muxes_retimed_source_audio`, which builds an audio-bearing
+source (stream-copy the known-good video + synthetic AAC) and proves the export
+carries a *retimed* audio track (`decode_source_audio_f32` → `retime_audio` →
+`push_audio_chunk` → remux). fmt + clippy (`screen-app --tests`, `media
+--all-targets`) clean. Audio approach: `GStreamer` decodes intake to raw F32LE;
+pure-Rust `retime_audio` does per-segment trim + speed (linear-interp resample,
+pitch follows tempo); the existing `build_remux_args` muxes it — no new mux
+pipeline. The originally-planned `build_edited_audio_args` (per-segment gst
+`speed`+`concat`) was replaced by this decode→Rust-retime→remux design: gst
+can't cleanly time-trim per branch, and this reuses the proven remux path.
 
 ---
 
