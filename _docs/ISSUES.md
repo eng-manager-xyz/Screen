@@ -25,6 +25,39 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-10: `resolve_history` compares source paths exactly (not canonically)
+- **Filed:** 2026-05-30
+- **By:** ED.20 (adversarial review of ED.11–19)
+- **Severity:** closed-wontfix
+- **Affects:** `crates/app-ui/src/editor_edits.rs` (`resolve_history`)
+- **Description:**
+  `resolve_history` decides whether to reuse the running undo stack by
+  comparing `history.project().source.path == current.source.path` with plain
+  `PathBuf` equality. Two differently-spelled paths to the same file
+  (`/x/a.mp4` vs `/x/./a.mp4`) compare unequal, so reopening the clip via a
+  different spelling would start a fresh undo stack. Surfaced by the ED.11–19
+  adversarial review.
+- **Resolution:** closed-wontfix (2026-05-30). `std::fs::canonicalize` is
+  unavailable on `wasm32` (app-ui is wasm), and the Tauri backend passes a
+  single stable path per clip, so the divergent-spelling case doesn't arise
+  in practice. The fallback (a fresh, empty undo stack) is safe — no data
+  loss, no crash. Documented inline in `resolve_history`. Revisit only if a
+  real reopen path proves non-stable.
+
+---
+
+## ISS-09: lift-delete (leave-gap) needs a timeline gap item
+- **Filed:** 2026-05-30
+- **By:** ED.2 (AUT-337)
+- **Severity:** deferral
+- **Affects:** `crates/edit` (ops / segment), ED.11 timeline editing
+- **Status:** open
+- **Description:**
+  ED.2 ships ripple-delete (close the gap) as the primary delete. The "lift" variant — delete a project range but leave a black gap in place — needs the timeline to represent gaps, which the current `Vec<TimelineSegment>` model can't (every segment references source media). Adding a `TimelineItem { Clip(TimelineSegment), Gap { project_len } }` (or a gap flag) would let `EditCompose` render black for gap spans and the export generator emit black frames. Ripple is the far more common screen-recorder delete, so lift-gap is deferred. ED.11 maps both `Delete` and `Shift+Delete` to ripple until then.
+- **Resolution:** (open)
+
+---
+
 ## ISS-08: increase camera + screen recording quality
 - **Filed:** 2026-05-26
 - **By:** user (next feature after `feat/export`)

@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 wisp = { workspace = true }
 decode = { path = "../decode" }
+wisp-animation = { path = "../wisp-animation", version = "0.1.0" }
 tracing = { workspace = true }
 
 [dev-dependencies]

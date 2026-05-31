@@ -2982,28 +2982,24 @@ kbd {
   pointer-events: none;
 }
 
-/* ───── Webcam bubble — design pass ────────────────────────────────
+/* ───── Webcam bubble — overlay-on-circle (M-QUAL.4) ───────────────
  *
- * `.bubble-root--design` overrides the M-BUBBLE.0 placeholder root
- * with the full Screenplay-style layout: a circular video surface in
- * the middle (canvas painted by CameraPreview), a PREVIEW chip in the
- * top-left of the circle, a small drag-handle + gear cluster
- * top-right, three control pills at the bottom, and a device caption
- * underneath. Sized for the 260×320 webcam-bubble window
- * (tauri.conf.json).
+ * No card: the circle IS the widget. `.bubble-root--design` is a
+ * transparent, drag-enabled window-filler that centers the
+ * `.bubble-stage` (the circle) with a floating device caption below
+ * it. The overlays (PREVIEW pill, icon cluster, control pill) are
+ * painted on top of the circle as siblings of the clipped feed.
+ * Sized for the 260×300 webcam-bubble window (tauri.conf.json).
  */
 .bubble-root--design {
-  /* Override the radial fill from .bubble-root above — design uses a
-   * transparent surface with only the inner circle visible. */
   background: transparent !important;
   border-radius: 0 !important;
-  /* Stack: overlay (chips/handles) → circle canvas → controls →
-   * caption. Use a column flex so the caption sits below the circle. */
   display: flex !important;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
   width: 100vw;
   height: 100vh;
   inset: 0;
@@ -3012,137 +3008,176 @@ kbd {
 }
 .bubble-root--design:active { cursor: grabbing; }
 
-/* Floating overlay sits over the circle's top edge — uses absolute
- * positioning so it doesn't displace the canvas. */
-.bubble-overlay {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: 6px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  pointer-events: none; /* children re-enable */
-  z-index: 2;
-}
-.bubble-preview-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(15, 15, 15, 0.78);
-  color: rgba(255, 255, 255, 0.92);
-  font: 600 10px/1 var(--font-sans);
-  letter-spacing: 0.08em;
-  pointer-events: auto;
-}
-.bubble-preview-chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.85);
-}
-.bubble-handle-cluster {
-  display: inline-flex;
-  gap: 6px;
-  pointer-events: auto;
-}
-.bubble-handle {
-  appearance: none;
-  background: rgba(15, 15, 15, 0.78);
-  border: none;
-  color: rgba(255, 255, 255, 0.92);
-  border-radius: 999px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font: 12px/1 var(--font-sans);
-}
-.bubble-handle:hover { background: rgba(15, 15, 15, 0.92); }
-.bubble-handle--drag { cursor: grab; }
-.bubble-handle-glyph { pointer-events: none; }
-
-/* The canvas wrap is the inner circle. Camera-preview renders its
- * own <canvas> inside; we mask that wrap into a circle via clip-path.
- * The mask here is acceptable because the canvas is not the final
- * recorded frame — wisp owns the recorded composition's mask. */
-.bubble-canvas-wrap {
-  margin-top: 4px;
+/* No card — the circle IS the widget. `.bubble-stage` is a relative
+ * box (= the circle's bounding square) that holds the clipped camera
+ * circle plus the overlays as siblings on top of it. overflow stays
+ * visible so the top-right icon cluster can hover at the circle edge. */
+.bubble-stage {
+  position: relative;
+  /* A hard 240×240 square → border-radius:50% is a perfect circle.
+   * `flex-shrink:0` stops the vertical flex column from squashing the
+   * height (which would make it an ellipse). NO `aspect-ratio` here:
+   * with explicit width+height it's redundant, and `aspect-ratio` on a
+   * flex item has WebKit sizing quirks that can yield a non-square box
+   * (the crooked-preview bug). */
+  box-sizing: border-box;
   width: 240px;
   height: 240px;
-  align-self: center;
+  flex-shrink: 0;
+}
+
+/* The clipped circular camera feed, filling the stage. Sibling
+ * overlays below sit ON it (not inside, so they aren't clipped). */
+.bubble-canvas-wrap {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 40%, #4a3b2a 0%, #2a1f15 70%, #1a1109 100%);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(0, 0, 0, 0.4);
+  /* No dark backing — the feed fills the circle, and before the first
+   * frame the circle is transparent (no black disc). */
+  background: transparent;
 }
-.bubble-canvas-wrap canvas {
+.bubble-canvas-wrap canvas,
+.bubble-canvas-wrap .camera-preview-surface,
+.bubble-canvas-wrap .camera-preview {
   width: 100%;
   height: 100%;
   display: block;
+  /* Let clicks fall THROUGH the camera feed to `.bubble-canvas-wrap`
+   * (a drag region) — Tauri starts a window drag only when the click
+   * *target* is itself a drag-region element, and the canvas covers
+   * the whole circle. Without this the bubble isn't draggable. */
+  pointer-events: none;
 }
 
-.bubble-controls {
+/* PREVIEW pill — overlaid near the top of the circle, centered. */
+.bubble-preview-chip {
   position: absolute;
-  /* Center the row at the bottom of the inner circle. The circle is
-   * 240px and the wrap is centered horizontally; the row sits a few
-   * pixels above the wrap's bottom edge. */
-  bottom: 70px;
-  left: 50%;
+  /* Sit inside the upper third of the circle (not on the narrow top
+   * arc, where the pill pokes out of the bubble), nudged right of dead
+   * center so it reads balanced over the feed. */
+  top: 16%;
+  left: 56%;
   transform: translateX(-50%);
+  z-index: 2;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
+  gap: 5px;
+  padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(15, 15, 15, 0.68);
-  z-index: 2;
+  background: rgba(12, 12, 14, 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.95);
+  font: 700 9px/1 var(--font-sans);
+  letter-spacing: 0.12em;
+  pointer-events: none;
 }
-.bubble-control {
-  appearance: none;
-  background: rgba(255, 255, 255, 0.18);
-  border: none;
-  color: rgba(255, 255, 255, 0.92);
+.bubble-preview-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 5px rgba(239, 68, 68, 0.85);
+}
+
+/* Pause + settings — top-right, hovering at the circle's upper-right
+ * edge (the stage corner sits just outside the inscribed circle). */
+.bubble-header-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
   border-radius: 999px;
-  width: 22px;
-  height: 22px;
+  background: rgba(12, 12, 14, 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.bubble-icon-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 3px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.85);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font: 9px/1 var(--font-sans);
   cursor: pointer;
+  line-height: 0;
 }
-.bubble-control:hover { background: rgba(255, 255, 255, 0.32); }
-.bubble-control--mute { background: rgba(0, 0, 0, 0.72); }
-.bubble-control-glyph { pointer-events: none; }
+.bubble-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.bubble-icon-btn svg { width: 15px; height: 15px; }
 
-.bubble-caption {
-  margin-top: 8px;
-  align-self: center;
+/* Three controls — overlaid near the bottom of the circle (~85% down),
+ * tightly grouped in a subtle dark pill for legibility over the feed. */
+.bubble-controls {
+  position: absolute;
+  bottom: 9%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(12, 12, 14, 0.6);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.bubble-control {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  line-height: 0;
+}
+.bubble-control:hover { background: rgba(255, 255, 255, 0.26); color: #fff; }
+.bubble-control svg { width: 13px; height: 13px; }
+.bubble-control--active { background: #fff; color: #161618; }
+.bubble-control--active:hover { background: #fff; color: #161618; }
+
+/* Caption — floating text below the circle on the page background (no
+ * card); the shadow keeps it legible over whatever is behind. */
+.bubble-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font: 11px/1.2 var(--font-sans);
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
-.bubble-caption-icon { font-size: 10px; }
-.bubble-caption-label { font-weight: 600; color: rgba(255, 255, 255, 0.92); }
-.bubble-caption-sep { opacity: 0.6; }
-.bubble-caption-corner {
-  /* Wrap onto a second line if the window is narrow. */
-  white-space: nowrap;
+.bubble-caption-icon {
+  display: inline-flex;
+  line-height: 0;
 }
+.bubble-caption-icon svg { width: 12px; height: 12px; }
+.bubble-caption-label { font-weight: 600; color: rgba(255, 255, 255, 0.9); }
+.bubble-caption-sep { opacity: 0.5; }
+.bubble-caption-corner { white-space: nowrap; }
 
 /* The bubble window's body is transparent so the borderless window's
  * corners are see-through. The dist/ HTML doesn't have a body class
  * hook, so we lean on `.bubble-root` being the first child to neutralise
  * the body's default rendering when present. */
+html:has(.bubble-root),
 body:has(.bubble-root) {
+  /* Both html AND body must be transparent — the base `html, body`
+   * rule paints `--bg` (#0a0a0b), and overriding only `body` left the
+   * `html` element painting an opaque near-black behind the circle
+   * (the "surrounding black" the bubble appeared to sit on). With both
+   * transparent the borderless window shows only the circle + label. */
   background: transparent !important;
   margin: 0;
   padding: 0;
@@ -3710,6 +3745,161 @@ body:has(.bubble-root) {
   flex-direction: column;
   gap: 8px;
   padding-top: 4px;
+}
+
+/* M-SAVE.3 — post-record Save panel (folder + format + Export/Discard). */
+.recorder-save-panel {
+  gap: 10px;
+}
+.recorder-save-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recorder-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+}
+.recorder-save-key {
+  flex-shrink: 0;
+  width: 52px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim, #8a8f98);
+}
+.recorder-save-folder {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text, #e6e6e6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* keep the filename (tail) visible when truncating */
+  text-align: left;
+}
+.recorder-save-change {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--accent, #4fc3f7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-change:hover:not(:disabled) {
+  border-color: var(--accent, #4fc3f7);
+}
+.recorder-save-format {
+  flex: 1 1 auto;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text, #e6e6e6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+}
+.recorder-save-discard,
+.recorder-save-export {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-save-discard {
+  background: transparent;
+  color: var(--text-dim, #8a8f98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.recorder-save-discard:hover:not(:disabled) {
+  color: var(--text, #e6e6e6);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.recorder-save-export {
+  background: var(--accent, #4fc3f7);
+  color: var(--bg, #0f1115);
+  border: 1px solid var(--accent, #4fc3f7);
+}
+.recorder-save-export:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.recorder-save-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.recorder-save-saved {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+}
+
+/* M-SAVE.4 — ⋯ "More options" menu (output-folder setting). */
+.recorder-overflow-wrap {
+  position: relative;
+}
+.recorder-overflow-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.recorder-overflow-key {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim, #8a8f98);
+}
+.recorder-overflow-folder {
+  font-size: 12px;
+  color: var(--text, #e6e6e6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.recorder-overflow-change {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--accent, #4fc3f7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-control, 8px);
+  cursor: pointer;
+}
+.recorder-overflow-change:hover {
+  border-color: var(--accent, #4fc3f7);
 }
 .recorder-page-action-bar .recorder-page-controls {
   display: grid;

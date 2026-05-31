@@ -628,6 +628,31 @@ captures macOS-specific install + skip facts only.
 - **e2e (Tier-2) tests are intentionally skipped.** `tauri-driver`
   + WKWebView support is incomplete upstream; the suite prints a
   clear skip message and exits 0 on macOS.
+- **The headless GitHub `macos-latest` runner's `vtenc_h264_hw` is
+  *stricter on macroblock alignment* than a real Mac's VideoToolbox.**
+  `media::encode_integration` HW-encodes 64×64 (and `to_even`'d
+  clamped-5K) frames fine on the runner, so vtenc is NOT unavailable
+  there — but feeding it the decode fixture's **480×270** (height 270
+  is not a multiple of 16) makes the pipeline accept frame 0 then die,
+  so the *next* `push_video_frame` returns `Broken pipe (os error
+  32)`. A real Mac's VideoToolbox and Ubuntu's encoder both pad/crop
+  non-aligned dims transparently; the headless runner doesn't. The
+  exported output is verified *valid* on local macOS + Ubuntu CI, so
+  this is an environment quirk, not a product or logic bug.
+  Consequence: an e2e test that drives `LiveGstreamerEncoder` to
+  completion at arbitrary source dims (e.g.
+  `crates/app/tests/edited_export_e2e.rs`) must **skip on an
+  encoder-pipe error** (`Broken pipe` / `not-negotiated` / `encoder
+  I/O`) — NOT panic — and rely on `encode_integration` (macOS) +
+  Ubuntu CI for encode coverage and `editor_export_golden` (macOS,
+  compose-only, no encode) for the generator/retiming signal. **Always
+  diff against `encode_integration` before blaming "vtenc unavailable"
+  — if it passes, vtenc works and the difference is yours (here: the
+  dims).** (Burned on the M-EDIT export e2e: macOS `gate-screen` was
+  red from ED.21 to PR-watch time because I trusted the *local* gate —
+  real-Mac vtenc handles 480×270 — instead of watching macOS CI.
+  Lesson within the lesson: local-gate-green ≠ CI-green; watch the
+  per-commit CI, don't conflate them.)
 
 ### CI — Ubuntu (`ubuntu-latest`)
 
@@ -998,6 +1023,7 @@ fine on lavapipe — **don't guard them**.
 - **New error variants need a caller** (CONVENTIONS § Error handling). `cargo` warns; clippy errors at `-D warnings`.
 - **`#[allow(clippy::*)]` requires `reason = "..."`** — no exceptions.
 - **Cargo cache can lie when nextest + workspace-check race.** Symptom: `cargo check --workspace --all-targets --all-features` reports `E0599 no variant, associated function, or constant named X` for a method/variant that *is* in the source file (and a per-crate `cargo check -p X` succeeds on the same source). Cause: `cargo nextest run -p crate --test foo` builds the test crate against an older dep snapshot and leaves a stale dep hash; the next workspace check picks up that snapshot. **Fix:** `cargo clean -p <crate>` and rerun. Add a renderer / library new-API change in one stable order: edit source → `cargo check -p <crate>` → run tests → run gate. Don't interleave nextest of an in-flight test against the new API with workspace checks.
+- **Don't run a background agent Workflow (or any extra `cargo`/subprocess load) concurrently with an in-flight `just gate`.** The gate's gst-integration tests (`crates/app/tests/editor_pipeline.rs`, the `decode` integration tests) spawn `gst-launch-1.0` subprocesses; under the added I/O + subprocess contention of a parallel workflow they flake with a *real-looking* decode panic (`expect("decode source frame")`) even though the code is correct — the same test passes in ~4 s when re-run solo. Burned this launching an `Explore` research workflow during the ED.12 gate (May 2026): the workflow was read-only and never touched the tree, but the concurrency alone was enough to flake the gst decode. **Rule:** run research/agent workflows BEFORE you start the gate or AFTER it finishes, never during. If a gate fails on a single gst test, re-run that test solo (`cargo nextest run -p screen-app --test <name>`) before assuming a regression.
 - **`target/` can balloon past 60 GB after pulling in axum/tokio/reqwest/tungstenite trees.** A full `just gate` on the dev-server crate set added ~50 GB on top of an already-warm cache and ran the laptop out of disk mid-link (`ENOSPC: clang -o ...rmeta`). Watch for `du -sh target` creeping past ~30 GB; `cargo clean -p <heaviest>` (`wisp-storybook` is one of the biggest) reclaims a couple of GB without nuking the workspace cache. If the harness itself starts erroring with `ENOSPC` on its task-output writes, only the user can recover — `cargo clean` from a real terminal.
 - **Integration tests that spawn a sibling `[[bin]]` MUST locate it via `env!("CARGO_BIN_EXE_<name>")`** — never hand-roll `target/debug/<name>` and never call `cargo build` from inside a `#[test]`. Cargo guarantees `CARGO_BIN_EXE_*` is set at integration-test compile time AND that the bin is built as a dep of the test run; the hand-rolled path is wrong on Windows (missing `.exe`), wrong when `CARGO_TARGET_DIR` is set, and the in-test `cargo build` shim races under nextest's per-binary parallelism (multiple tests grab the same package-cache + build-dir locks; a spawn can win against the unfinished build with `Os { code: 2, NotFound }`). Burned this on `mdbook-preprocessor-cross::preprocessor_protocol::supports_html_renderer` in CI on the Gantt branch (May 2026). **Reference pattern:** `crates/dev-server/tests/binary_smoke.rs::binary_path` — one line: `PathBuf::from(env!("CARGO_BIN_EXE_<name>"))`. Both other integration tests in `tools/` (`doc-gates/tests/cli.rs`, `mdbook-preprocessor-cross/tests/preprocessor_protocol.rs`) have been migrated to this pattern. Apply prophylactically to every new binary-spawning integration test.
 

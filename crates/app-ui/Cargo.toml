@@ -35,6 +35,10 @@ leptos_icons = "0.7"
 # glyphs, so gate to the `lucide` set.
 icondata = { version = "0.7", default-features = false, features = ["lucide"] }
 ui-storybook = { path = "../ui-storybook", default-features = false, features = ["csr"] }
+# ED.5 / M-EDIT — the pure edit model. `edit` is serde-only (no wgpu /
+# GStreamer), so it compiles to wasm32 cleanly and the `open_in_editor`
+# command's payload deserializes straight into `edit::EditProject`.
+edit = { path = "../edit" }
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
@@ -48,7 +52,7 @@ js-sys = "0.3"
 # system-audio picker so SCK's updateContentFilter doesn't rebuild
 # the stream 5 times when the user clicks 5 checkboxes quickly.
 gloo-timers = "0.3"
-web-sys = { version = "0.3", features = ["CustomEvent", "Window", "Location", "History", "Storage", "EventTarget", "Event", "HtmlVideoElement", "HtmlMediaElement", "HtmlCanvasElement", "HtmlSelectElement", "CanvasRenderingContext2d", "ImageData", "Document", "console"] }
+web-sys = { version = "0.3", features = ["CustomEvent", "Window", "Location", "History", "Storage", "EventTarget", "Event", "HtmlVideoElement", "HtmlMediaElement", "HtmlCanvasElement", "HtmlSelectElement", "CanvasRenderingContext2d", "ImageData", "Document", "console", "KeyboardEvent", "HtmlInputElement", "MouseEvent", "Element"] }
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 # M-AUDIO-SYS.2 / AUT-282 — system_audio_picker persists a

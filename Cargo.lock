@@ -196,6 +196,7 @@ name = "app-ui"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "edit",
  "gloo-timers",
  "icondata",
  "js-sys",
@@ -1619,6 +1620,15 @@ checksum = "bc4feb366740ded31a004a0e4452fbf84e80ef432ecf8314c485210229672fd1"
 dependencies = [
  "bytemuck",
  "emath",
+]
+
+[[package]]
+name = "edit"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5169,6 +5179,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wgpu",
+ "wisp-animation",
 ]
 
 [[package]]
@@ -6294,6 +6305,7 @@ version = "0.1.0"
 dependencies = [
  "block2 0.6.2",
  "decode",
+ "edit",
  "image",
  "media",
  "objc2 0.6.4",

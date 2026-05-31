@@ -22,6 +22,68 @@ use ui_storybook::fixtures::shell::{sample_nav_items, sample_user_avatar, sample
 pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     let active = RwSignal::new(initial);
 
+    // ED.5 / M-EDIT — the loaded editor project, shared with the editor
+    // surface via context. The Record→Edit handoff (`open_in_editor`)
+    // pushes a project here; an effect jumps to the editor when one loads.
+    let editor_project = RwSignal::new(None::<edit::EditProject>);
+    provide_context(editor_project);
+    crate::editor_ipc::install_editor_project_listener(editor_project);
+    Effect::new(move |_| {
+        if editor_project.get().is_some() {
+            active.set(AppSection::Editor);
+        }
+    });
+
+    // ED.7 — the playhead status from the backend editor session, plus a
+    // perpetual host-injected tick that advances the clock while playing.
+    // Created once here (the app root), so editor-surface re-mounts can't
+    // spawn duplicate tick loops; leaked because it has app lifetime.
+    let editor_status = RwSignal::new(crate::editor_ipc::EditorStatus::default());
+    provide_context(editor_status);
+    crate::editor_ipc::install_editor_status_listener(editor_status);
+    gloo_timers::callback::Interval::new(33, move || {
+        if editor_status.get_untracked().playing {
+            crate::editor_ipc::editor_transport(&crate::editor_ipc::TransportAction::Tick {
+                dt_ms: 33,
+            });
+        }
+    })
+    .forget();
+
+    // ED.9 — the selected clip index, shared with the video filmstrip and
+    // (ED.18) the inspector.
+    let editor_selection = RwSignal::new(None::<usize>);
+    provide_context(editor_selection);
+
+    // ED.10 — audio waveform peak buckets (populated when the source audio
+    // is decoded; empty renders a quiet baseline).
+    let editor_peaks = RwSignal::new(Vec::<crate::waveform::WaveBucket>::new());
+    provide_context(editor_peaks);
+
+    // ED.11 — the edit history (undo/redo stacks + current project state),
+    // resolved against the loaded clip on first edit.
+    let editor_history = StoredValue::new(None::<edit::History>);
+    provide_context(editor_history);
+
+    // ED.12 — which zoom region is selected on the zoom lane.
+    let editor_zoom_selection = RwSignal::new(None::<edit::zoom::ZoomId>);
+    provide_context(editor_zoom_selection);
+
+    // ED.22 — export lifecycle state, fed by the export event bridge.
+    let editor_export = RwSignal::new(crate::editor_ipc::ExportUiState::Idle);
+    provide_context(editor_export);
+    crate::editor_ipc::install_editor_export_listeners(editor_export);
+
+    // ED.23 — last-saved `.screenproj` path, set by the `editor-saved` event.
+    let editor_saved = RwSignal::new(None::<String>);
+    provide_context(editor_saved);
+    crate::editor_ipc::install_editor_saved_listener(editor_saved);
+
+    // ED.24 — recordings library entries, fed by the `recordings-listed` event.
+    let editor_recordings = RwSignal::new(Vec::<crate::editor_ipc::RecordingEntry>::new());
+    provide_context(editor_recordings);
+    crate::editor_ipc::install_recordings_listener(editor_recordings);
+
     // NavigationRail click → flip the signal + rewrite the URL so a
     // page-reload restores the last visited surface within the
     // current Tauri session.
@@ -147,8 +209,7 @@ fn NonRecorderSurfaces(active: RwSignal<AppSection>) -> impl IntoView {
             fallback=move || view! { <EditorOrLater active=active /> }
         >
             <section class="app-surface app-surface--library">
-                <h1>"Library"</h1>
-                <p>"Recordings grid + sidebar. Future tickets: AUT-134 / AUT-135."</p>
+                <crate::recordings_library::RecordingsLibrary active=active />
             </section>
         </Show>
     }
@@ -161,10 +222,7 @@ fn EditorOrLater(active: RwSignal<AppSection>) -> impl IntoView {
             when=move || matches!(active.get(), AppSection::Editor)
             fallback=move || view! { <CursorOrPrefs active=active /> }
         >
-            <section class="app-surface app-surface--editor">
-                <h1>"Editor"</h1>
-                <p>"Editor shell + timeline. Future tickets: AUT-136 / AUT-139."</p>
-            </section>
+            <crate::editor_surface::EditorSurface />
         </Show>
     }
 }
