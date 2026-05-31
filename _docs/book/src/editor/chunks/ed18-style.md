@@ -31,8 +31,38 @@ see.
 other edit payloads. Adding `SetBackground` meant flipping
 `EditProject::apply` from `match *op` (which copies each field out of the
 borrow) to `match op` (binding by reference, `clone()`-ing the config) — a
-small refactor that also clears the way for any future non-`Copy` op. The
-*visible* framing — the drawn backdrop, padding, rounded canvas, and shadow
-— composites in the render-integration / export pass (ED.20 / ED.21); this
-chunk authors the values and previews the backdrop.
+small refactor that also clears the way for any future non-`Copy` op.
+```
+
+## From config to pixels
+
+The Style panel authors the values; the renderer draws them. The framing is
+two layers, applied once when the config changes (the export sets it at
+generator construction; a live preview re-applies on edit) via
+[`EditorPreview::set_background`](../../api/screen_app/editor_preview/struct.EditorPreview.html):
+
+- **The backdrop** is a full-NDC `Graphics` rect on the recorder's scene — a
+  linear gradient (the default warm→cool diagonal), a flat color, or (later)
+  a wallpaper. It carries no clip, so it renders in the advanced-dispatch
+  **Phase 1**, behind everything.
+- **The screen** is the recording sprite given a `MaskShape::RoundedRect`
+  clip set to the *padded window*. The clip makes it a dispatched node — it
+  composites **over** the backdrop in **Phase 2**, with the rounded-corner
+  SDF cutting its alpha.
+
+The clip lives in fixed output NDC (screen space, not transform-aware), so
+the rounded window is a stable frame while the zoom punch-in (ED.16) tightens
+*inside* it. Padding folds into the same screen transform as a centered
+shrink — `scale *= k`, `position *= k`, with `k = 1 − 2·padding/axis` — so it
+composes exactly with crop and zoom (`pad ∘ zoom ∘ crop`). Because the
+recorder never calls `set_background_*` / `set_screen_clip`, its scene is
+unchanged: no backdrop node, no screen clip, a plain full-bleed compose.
+
+```admonish warning title="Shadow + inset + wallpaper are deferred (ISS-14 / ISS-15)"
+`shadow` and `inset` are authored and persisted but **not yet rendered** — a
+drop shadow needs a per-frame offscreen blur pre-pass (and is
+lavapipe-incompatible), so it lands behind its own GPU guard rather than
+slowing the headless gate. A `Wallpaper` source has no asset pipeline yet, so
+it falls back to the default gradient (with a `tracing::warn`) — loud, so a
+wallpaper project renders a framed backdrop rather than reading as a bug.
 ```

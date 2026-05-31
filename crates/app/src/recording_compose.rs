@@ -193,6 +193,24 @@ impl RecordingCompose {
         self.scene.set_screen_transform(transform);
     }
 
+    /// Set (or clear) the screen sprite's clip — the editor's rounded-corner
+    /// frame window (ED.18). The recorder never calls this, so its screen
+    /// stays full-bleed and un-clipped.
+    pub fn set_screen_clip(&mut self, shape: Option<wisp::MaskShape>) {
+        self.scene.set_screen_clip(shape);
+    }
+
+    /// Paint the editor backdrop as a linear gradient (ED.18). The recorder
+    /// never calls this, so its scene has no backdrop node.
+    pub fn set_background_gradient(&mut self, from: Color, to: Color, angle_deg: f32) {
+        self.scene.set_background_gradient(from, to, angle_deg);
+    }
+
+    /// Paint the editor backdrop as a flat color (ED.18).
+    pub fn set_background_color(&mut self, color: Color) {
+        self.scene.set_background_color(color);
+    }
+
     /// Output dimensions in pixels.
     #[must_use]
     pub fn dimensions(&self) -> (u32, u32) {

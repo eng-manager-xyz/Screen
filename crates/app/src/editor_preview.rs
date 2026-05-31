@@ -20,11 +20,11 @@
 use std::sync::{Arc, Mutex};
 
 use decode::EditorVideoStream;
-use edit::style::CropRect;
+use edit::style::{BackgroundConfig, BackgroundSource, CropRect};
 use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
 use wisp::recording::StreamDimensions;
-use wisp::{Transform, Vec2};
+use wisp::{Color, MaskShape, Rect, Transform, Vec2};
 
 use crate::recording::FrameSlot;
 use crate::recording_compose::{ComposedFrame, RecordingCompose};
@@ -80,6 +80,61 @@ fn framed_transform(zoom: ZoomTransform, crop: CropRect) -> Transform {
     }
 }
 
+/// [`framed_transform`] with a uniform **padding** inset folded in (ED.18).
+///
+/// Background framing lifts the screen off its backdrop by `padding` pixels.
+/// In NDC that's a centred shrink by `(k_x, k_y)` about the origin, and since
+/// both the base fill and the zoom focal-pin are about the origin, the inset
+/// is *exactly* a post-multiply: `scale *= k`, `position *= k`. With
+/// `k = (1, 1)` it reduces to [`framed_transform`].
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "padding factors are in (0, 1] and the transform components are small NDC values, well within f32 precision"
+)]
+fn framed_transform_padded(zoom: ZoomTransform, crop: CropRect, k_x: f64, k_y: f64) -> Transform {
+    let t = framed_transform(zoom, crop);
+    let (kx, ky) = (k_x as f32, k_y as f32);
+    Transform {
+        scale: Vec2::new(t.scale.x * kx, t.scale.y * ky),
+        position: Vec2::new(t.position.x * kx, t.position.y * ky),
+        ..t
+    }
+}
+
+/// Derive the rounded-corner frame window + corner radius (both NDC) and the
+/// per-axis padding shrink factor from the canvas dims and the config's
+/// pixel padding / corner radius (ED.18). Pure — unit-tested without a GPU.
+///
+/// `padding` px → NDC margin `2·padding/axis` (NDC spans `[-1, 1]` = 2 units
+/// per axis), so the screen shrinks to `[-k, k]` with `k = 1 − 2·padding/axis`.
+/// The window rect is that `[-k, k]²` region; `corner_radius` px → NDC
+/// `2·corner_radius/width` (isotropic in NDC).
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "NDC window extents (|·| ≤ 2) and the corner radius fraction are small, well within f32 precision"
+)]
+fn background_geometry(
+    width: u32,
+    height: u32,
+    padding: u32,
+    corner_radius: u32,
+) -> (Rect, f32, (f64, f64)) {
+    let w = f64::from(width.max(1));
+    let h = f64::from(height.max(1));
+    let k_x = (1.0 - 2.0 * f64::from(padding) / w).clamp(0.05, 1.0);
+    let k_y = (1.0 - 2.0 * f64::from(padding) / h).clamp(0.05, 1.0);
+    let window = Rect::new(
+        -(k_x as f32),
+        -(k_y as f32),
+        (2.0 * k_x) as f32,
+        (2.0 * k_y) as f32,
+    );
+    let corner_ndc = (2.0 * f64::from(corner_radius) / w) as f32;
+    (window, corner_ndc, (k_x, k_y))
+}
+
 /// Composes the editor preview frame for a clip of `width × height`.
 pub struct EditorPreview {
     compose: RecordingCompose,
@@ -89,6 +144,9 @@ pub struct EditorPreview {
     cam_slot: FrameSlot,
     width: u32,
     height: u32,
+    /// Per-axis padding shrink factor applied to the screen transform (ED.18).
+    /// `(1, 1)` until [`Self::set_background`] folds the config's padding in.
+    pad: (f64, f64),
 }
 
 impl EditorPreview {
@@ -111,7 +169,64 @@ impl EditorPreview {
             cam_slot: Arc::new(Mutex::new(None)),
             width,
             height,
+            pad: (1.0, 1.0),
         })
+    }
+
+    /// Apply the project's **background framing** (ED.18): the backdrop fill,
+    /// the padding inset, and the rounded-corner frame window. Call once when
+    /// the config changes — the export sets it once at generator construction;
+    /// a live preview re-applies it on edit. After this, the per-frame
+    /// [`Self::render_framed`] folds the stored padding factor into the screen
+    /// transform, the screen sprite is clipped to the rounded window, and the
+    /// backdrop renders behind it.
+    ///
+    /// Drop-shadow (`shadow`) and the inset border (`inset`) are not yet
+    /// rendered — see ISS-14. A `Wallpaper` source falls back to the default
+    /// gradient (no wallpaper asset pipeline yet — ISS-15).
+    pub fn set_background(&mut self, bg: &BackgroundConfig) {
+        let (window, corner_ndc, pad) =
+            background_geometry(self.width, self.height, bg.padding, bg.corner_radius);
+        self.pad = pad;
+        self.compose
+            .set_screen_clip(Some(MaskShape::rounded_rect(window, corner_ndc)));
+
+        match &bg.source {
+            BackgroundSource::Gradient {
+                from,
+                to,
+                angle_deg,
+            } => self.compose.set_background_gradient(
+                Color::rgb_u8(from[0], from[1], from[2]),
+                Color::rgb_u8(to[0], to[1], to[2]),
+                *angle_deg,
+            ),
+            BackgroundSource::Color { rgb } => self
+                .compose
+                .set_background_color(Color::rgb_u8(rgb[0], rgb[1], rgb[2])),
+            BackgroundSource::Wallpaper { name } => {
+                // No wallpaper asset pipeline yet (ISS-15) — fall back to the
+                // default gradient so a wallpaper project still renders a
+                // framed backdrop rather than black. Loud so it isn't taken
+                // for a rendering bug.
+                tracing::warn!(
+                    wallpaper = %name,
+                    "wallpaper backgrounds not yet supported — falling back to the default gradient"
+                );
+                if let BackgroundSource::Gradient {
+                    from,
+                    to,
+                    angle_deg,
+                } = BackgroundSource::default()
+                {
+                    self.compose.set_background_gradient(
+                        Color::rgb_u8(from[0], from[1], from[2]),
+                        Color::rgb_u8(to[0], to[1], to[2]),
+                        angle_deg,
+                    );
+                }
+            }
+        }
     }
 
     /// Compose a single source frame. `bgra` is top-down packed BGRA8 of
@@ -132,9 +247,13 @@ impl EditorPreview {
     }
 
     /// Compose a source frame with the editor's **framing** applied — the
-    /// `crop`/aspect reframe (ED.15) and `zoom` punch-in (ED.16) are written
-    /// into the screen sprite's transform, then the frame composes through
-    /// the same path as [`Self::render_frame`]. This is the export
+    /// `crop`/aspect reframe (ED.15), the `zoom` punch-in (ED.16), and the
+    /// background **padding** inset (ED.18) are written into the screen
+    /// sprite's transform, then the frame composes through the same path as
+    /// [`Self::render_frame`]. The backdrop + rounded-corner clip are set
+    /// once via [`Self::set_background`]; this only updates the per-frame
+    /// transform. The padding factor is `(1, 1)` until `set_background` runs,
+    /// so an un-styled call is the plain ED.16 transform. This is the export
     /// generator's entry point (ED.20), so preview and export agree
     /// frame-for-frame. `bgra` is top-down packed BGRA8 of `width*height*4`.
     #[must_use]
@@ -144,8 +263,9 @@ impl EditorPreview {
         zoom: ZoomTransform,
         crop: CropRect,
     ) -> Option<ComposedFrame> {
+        let (k_x, k_y) = self.pad;
         self.compose
-            .set_screen_transform(framed_transform(zoom, crop));
+            .set_screen_transform(framed_transform_padded(zoom, crop, k_x, k_y));
         self.render_frame(bgra)
     }
 
@@ -243,6 +363,187 @@ mod tests {
         assert!((t.scale.x - 4.0).abs() < 1e-5 && (t.scale.y - 4.0).abs() < 1e-5);
         assert!((t.position.x - 1.0).abs() < 1e-5);
         assert!((t.position.y + 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_padded_with_unit_factor_equals_unpadded() {
+        // k = (1, 1) ⇒ no inset ⇒ identical to framed_transform.
+        let z = ZoomTransform {
+            scale: 1.6,
+            center_x: 0.3,
+            center_y: 0.7,
+        };
+        let crop = CropRect {
+            x: 0.1,
+            y: 0.05,
+            width: 0.7,
+            height: 0.8,
+        };
+        let plain = framed_transform(z, crop);
+        let padded = framed_transform_padded(z, crop, 1.0, 1.0);
+        assert!((plain.scale.x - padded.scale.x).abs() < 1e-6);
+        assert!((plain.scale.y - padded.scale.y).abs() < 1e-6);
+        assert!((plain.position.x - padded.position.x).abs() < 1e-6);
+        assert!((plain.position.y - padded.position.y).abs() < 1e-6);
+    }
+
+    #[test]
+    fn framed_transform_padded_shrinks_about_the_centre() {
+        // No zoom / crop: base fill scale 2 → with k = 0.5 → scale 1, pos 0.
+        let t = framed_transform_padded(ZoomTransform::identity(), CropRect::full(), 0.5, 0.5);
+        assert!((t.scale.x - 1.0).abs() < 1e-6 && (t.scale.y - 1.0).abs() < 1e-6);
+        assert!(t.position.x.abs() < 1e-6 && t.position.y.abs() < 1e-6);
+    }
+
+    #[test]
+    fn framed_transform_padded_pins_the_focal_corner_inside_the_window() {
+        // 2× at top-right pins focal NDC (1, 1) → unpadded pos (−1, −1),
+        // scale 4. With k = 0.5 the pinned corner lands at the padded
+        // window corner: scale 2, pos (−0.5, −0.5).
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 1.0,
+            center_y: 0.0,
+        };
+        let t = framed_transform_padded(z, CropRect::full(), 0.5, 0.5);
+        assert!((t.scale.x - 2.0).abs() < 1e-6);
+        assert!(
+            (t.position.x + 0.5).abs() < 1e-6,
+            "right edge pinned to window"
+        );
+        assert!(
+            (t.position.y + 0.5).abs() < 1e-6,
+            "top edge pinned to window"
+        );
+    }
+
+    #[test]
+    fn background_geometry_matches_reference_defaults() {
+        // Reference design: padding 64, corner 14, on a 1920×1080 canvas.
+        let (window, corner, (k_x, k_y)) = background_geometry(1920, 1080, 64, 14);
+        // k_x = 1 − 128/1920 = 0.93333; k_y = 1 − 128/1080 = 0.88148.
+        assert!((k_x - 0.933_333).abs() < 1e-4);
+        assert!((k_y - 0.881_481).abs() < 1e-4);
+        assert!((window.min.x + 0.933_333).abs() < 1e-4);
+        assert!((window.min.y + 0.881_481).abs() < 1e-4);
+        assert!((window.size.x - 1.866_667).abs() < 1e-4);
+        assert!((window.size.y - 1.762_963).abs() < 1e-4);
+        // corner_ndc = 2·14/1920 = 0.014583.
+        assert!((corner - 0.014_583).abs() < 1e-5);
+    }
+
+    #[test]
+    fn background_geometry_clamps_pathological_padding() {
+        // Padding ≥ half the canvas would invert the screen — clamp to a
+        // small positive factor instead.
+        let (_w, _c, (k_x, k_y)) = background_geometry(128, 128, 200, 0);
+        assert!(
+            k_x >= 0.05 && k_y >= 0.05,
+            "padding clamped, screen survives"
+        );
+    }
+
+    /// GPU: a gradient backdrop + padding + rounded corners on a solid-white
+    /// "screen" frame. The centre stays white (screen visible); the corner
+    /// margin is the backdrop (rounded corners cut the white + padding reveals
+    /// the backdrop); and the backdrop is a real gradient (the margin colour
+    /// varies across the canvas, not a flat fill). Single-bind-group clip +
+    /// graphics — no blur — so it runs on every CI OS (no lavapipe guard).
+    #[test]
+    fn render_framed_with_gradient_background_frames_the_screen() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut preview = EditorPreview::new(dim, dim).expect("init wgpu");
+        let bg = BackgroundConfig {
+            source: BackgroundSource::Gradient {
+                from: [255, 138, 128],
+                to: [40, 53, 147],
+                angle_deg: 135.0,
+            },
+            padding: 16,
+            corner_radius: 24,
+            shadow: 0,
+            inset: 0,
+        };
+        preview.set_background(&bg);
+        let white = vec![255u8; SIDE * SIDE * 4];
+        let frame = preview
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        let pixel = |col: usize, row: usize| {
+            let base = (row * SIDE + col) * 4;
+            [
+                frame.bytes[base],
+                frame.bytes[base + 1],
+                frame.bytes[base + 2],
+            ] // B, G, R
+        };
+        let is_white = |bgr: [u8; 3]| bgr[0] > 230 && bgr[1] > 230 && bgr[2] > 230;
+        // Centre: the white screen shows through the rounded window.
+        assert!(
+            is_white(pixel(SIDE / 2, SIDE / 2)),
+            "centre is the white screen"
+        );
+        // Corners: padding margin + rounded-corner cut → backdrop, not white,
+        // and not black (the gradient drew).
+        let corners = [
+            pixel(3, 3),
+            pixel(3, SIDE - 4),
+            pixel(SIDE - 4, 3),
+            pixel(SIDE - 4, SIDE - 4),
+        ];
+        for bgr in corners {
+            assert!(
+                !is_white(bgr),
+                "corner is backdrop, not the white screen ({bgr:?})"
+            );
+            let lum = u16::from(bgr[0]) + u16::from(bgr[1]) + u16::from(bgr[2]);
+            assert!(lum > 30, "backdrop drew (not black) at a corner ({bgr:?})");
+        }
+        // It's a gradient, not a flat fill: the corner colours span a range.
+        let reds: Vec<i32> = corners.iter().map(|bgr| i32::from(bgr[2])).collect();
+        let spread = reds.iter().max().unwrap() - reds.iter().min().unwrap();
+        assert!(
+            spread > 15,
+            "backdrop varies across the canvas (gradient), spread={spread}"
+        );
+    }
+
+    /// GPU: a flat-colour backdrop. The margin equals the requested colour's
+    /// channel ordering (R-dominant here) and is neither white nor black.
+    #[test]
+    fn render_framed_with_color_background_fills_the_margin() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut preview = EditorPreview::new(dim, dim).expect("init wgpu");
+        preview.set_background(&BackgroundConfig {
+            source: BackgroundSource::Color { rgb: [210, 40, 70] },
+            padding: 16,
+            corner_radius: 8,
+            shadow: 0,
+            inset: 0,
+        });
+        let white = vec![255u8; SIDE * SIDE * 4];
+        let frame = preview
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        // A mid-edge margin pixel (outside the padded window, away from the
+        // rounded corners): the flat backdrop colour.
+        let base = ((SIDE / 2) * SIDE + 3) * 4; // row centre, col 3 → left margin
+        let (blue, green, red) = (
+            frame.bytes[base],
+            frame.bytes[base + 1],
+            frame.bytes[base + 2],
+        );
+        assert!(
+            red > green && red > blue,
+            "R-dominant fill (got B{blue} G{green} R{red})"
+        );
+        assert!(red > 60, "backdrop colour drew (not black)");
+        assert!(
+            !(red > 230 && green > 230 && blue > 230),
+            "not the white screen"
+        );
     }
 
     #[test]

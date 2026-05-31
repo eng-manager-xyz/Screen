@@ -25,6 +25,24 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-15: ED.18 — `Wallpaper` background source has no asset pipeline
+- **Filed:** 2026-05-31
+- **By:** ED.18 (background-framing render integration)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundSource::Wallpaper`)
+- **Status:** open
+- **Description:** `BackgroundSource::Wallpaper { name }` is in the data model and authored by the Style panel, but there is no bundled wallpaper asset set, no `name → bytes` resolver, and no loader anywhere in the workspace. ED.18 maps a `Wallpaper` source to the **default gradient** as a documented fallback (with a `tracing::warn` so it isn't mistaken for a render bug). The default project uses `Gradient`, so this doesn't block end-to-end rendering.
+- **Resolution:** When implemented: bundle a license-clean wallpaper set under `crates/app/assets/wallpapers/` (or similar), add a `name → wisp::Texture` resolver, and add the backdrop as a base `Sprite` (anchor 0.5, scale 2) — a non-clipped Phase-1 node, same layering guarantee as the gradient `Graphics`. (open)
+
+## ISS-14: ED.18 — drop-shadow + inset border are authored but not rendered
+- **Filed:** 2026-05-31
+- **By:** ED.18 (background-framing render integration)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundConfig.shadow` / `.inset`)
+- **Status:** open
+- **Description:** `BackgroundConfig.shadow` (0..=100) and `.inset` (px) are authored + persisted by the Style panel and round-trip in the project file, but ED.18 does **not** render them. Two compounding costs justify deferral: (1) a drop shadow needs a per-frame *offscreen blur pre-pass* — `Container` has no per-node filter field, so the shadow can't ride the live compose path; it requires drawing the rounded screen to an input RT, `Renderer::apply_filter(&DropShadowFilter{..})`, then compositing the result — a real per-frame full-canvas blur. (2) `DropShadowFilter` runs `filter::blur::run_blur_pass` → **lavapipe-incompatible**, so every test/story composing with a shadow must be `WISP_SKIP_GPU_FILTER_TESTS`-guarded on Ubuntu CI and any storybook id added to `LAVAPIPE_INCOMPATIBLE`. Shipping padding + rounded corners + gradient/color backdrop first keeps ED.18 single-bind-group (zero lavapipe exposure, fully testable on every CI OS).
+- **Resolution:** When implemented: `shadow == 0` → skip the filter entirely (no `run_blur_pass`, no guard); else `blur = f32::from(shadow)·k`, `color.a = f32::from(shadow)/100·0.6`, `offset = (0, −shadow_px)` (downward in +y-up). Inset border is cheapest as a rounded-rect stroke inside the screen's dispatched subtree. Both need the wisp test + story + snapshot + chapter gate + a lavapipe guard. (open)
+
 ## ISS-13: review — assorted deferred polish/robustness items
 - **Filed:** 2026-05-31
 - **By:** user (aggressive editor-track review)

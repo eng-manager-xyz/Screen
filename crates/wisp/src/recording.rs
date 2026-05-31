@@ -35,11 +35,13 @@ use glam::Vec2;
 
 use crate::application::Application;
 use crate::color::Color;
+use crate::math::Rect;
 use crate::render::{RenderStats, Renderer};
 use crate::scene::Stage;
 use crate::scene::clip::MaskShape;
 use crate::scene::container::Container;
-use crate::scene::node::NodeId;
+use crate::scene::graphics::{Fill, Graphics};
+use crate::scene::node::{Node, NodeId};
 use crate::scene::sprite::Sprite;
 use crate::scene::transform::Transform;
 use crate::texture::video_texture::VideoTexture;
@@ -153,6 +155,11 @@ pub struct RecordingScene {
     screen_sprite: NodeId,
     cam_container: NodeId,
     cam_sprite: NodeId,
+    /// Editor-only backdrop node (a full-NDC `Graphics` rect drawn behind
+    /// the screen). Lazily created on the first `set_background_*` call;
+    /// the recorder never touches it, so its scene stays a plain
+    /// three-node screen + cam stage.
+    backdrop: Option<NodeId>,
 }
 
 impl std::fmt::Debug for RecordingScene {
@@ -278,6 +285,7 @@ impl RecordingScene {
             screen_sprite: screen_sprite_id,
             cam_container: cam_container_id,
             cam_sprite: cam_sprite_id,
+            backdrop: None,
         }
     }
 
@@ -422,6 +430,77 @@ impl RecordingScene {
             node.container_mut().transform = transform;
         }
     }
+
+    /// Set (or clear) the screen sprite's clip — the editor's
+    /// rounded-corner *frame window* (ED.18). The shape is in fixed output
+    /// NDC (the clip is screen-space, not transform-aware), so the window
+    /// stays put while the screen transform punches in inside it. Setting a
+    /// clip makes the screen a dispatched node that composites *over* the
+    /// backdrop. The recorder leaves this `None` (full-bleed, no clip).
+    pub fn set_screen_clip(&mut self, shape: Option<MaskShape>) {
+        if let Some(node) = self.stage.get_mut(self.screen_sprite) {
+            node.container_mut().clip = shape;
+        }
+    }
+
+    /// Lazily insert (or fetch) the backdrop `Graphics` node. It is added as
+    /// a child of root with no clip, so it renders in the advanced-dispatch
+    /// Phase 1 (behind the clipped, dispatched screen sprite). The recorder
+    /// never calls a `set_background_*` method, so this node is never created
+    /// for a recording scene.
+    fn backdrop_graphics_mut(&mut self) -> &mut Graphics {
+        if self.backdrop.is_none() {
+            let root = self.stage.root();
+            let id = self
+                .stage
+                .add_child(root, Graphics::new())
+                .expect("Stage root is alive");
+            self.backdrop = Some(id);
+        }
+        let id = self.backdrop.expect("backdrop node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("backdrop node is always a Graphics"),
+        }
+    }
+
+    /// Paint the backdrop as a linear gradient between two colors at
+    /// `angle_deg` (0 = left→right, 90 = bottom→top), and make it visible.
+    /// Editor-only (the framed-screen look behind the rounded canvas).
+    pub fn set_background_gradient(&mut self, from: Color, to: Color, angle_deg: f32) {
+        let theta = angle_deg.to_radians();
+        // Endpoints in primitive-local coords ([-1, 1] for a full-NDC rect).
+        let dir = Vec2::new(theta.cos(), theta.sin());
+        let g = self.backdrop_graphics_mut();
+        g.primitives.clear();
+        g.fill(Fill::LinearGradient {
+            start: -dir,
+            end: dir,
+            color_a: from,
+            color_b: to,
+        });
+        g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
+        g.container.visible = true;
+    }
+
+    /// Paint the backdrop as a flat color fill, and make it visible.
+    pub fn set_background_color(&mut self, color: Color) {
+        let g = self.backdrop_graphics_mut();
+        g.primitives.clear();
+        g.fill(Fill::Solid(color));
+        g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
+        g.container.visible = true;
+    }
+
+    /// Toggle the backdrop's visibility. No-op if no backdrop has been set
+    /// (the recorder path).
+    pub fn set_background_visible(&mut self, visible: bool) {
+        if let Some(id) = self.backdrop
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -474,6 +553,81 @@ mod tests {
         assert_eq!(scene.stage().len(), 4);
         assert_eq!(scene.screen_dims().width, 128);
         assert_eq!(scene.cam_dims().height, 64);
+        // Recorder isolation (ED.18): a fresh scene has no backdrop node
+        // and the screen sprite is un-clipped (full-bleed). The editor's
+        // `set_background_*` / `set_screen_clip` are the only mutators, and
+        // the recorder never calls them — so a recording scene is
+        // bit-identical to pre-ED.18.
+        assert!(scene.backdrop.is_none(), "no backdrop until set_background");
+        assert!(
+            scene
+                .stage()
+                .get(scene.screen_sprite_id())
+                .unwrap()
+                .container()
+                .clip
+                .is_none(),
+            "screen sprite is un-clipped in the recorder path"
+        );
+    }
+
+    #[test]
+    fn set_background_gradient_adds_one_visible_backdrop_node() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        scene.set_background_gradient(
+            Color::rgb_u8(255, 138, 128),
+            Color::rgb_u8(40, 53, 147),
+            135.0,
+        );
+        // Exactly one new node (the backdrop Graphics).
+        assert_eq!(scene.stage().len(), before + 1);
+        let id = scene.backdrop.expect("backdrop created");
+        assert!(scene.stage().get(id).unwrap().container().visible);
+        // A second call reuses the node — no leak.
+        scene.set_background_color(Color::rgb_u8(10, 20, 30));
+        assert_eq!(scene.stage().len(), before + 1, "backdrop node is reused");
+        // Toggle visibility off.
+        scene.set_background_visible(false);
+        assert!(!scene.stage().get(id).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_screen_clip_sets_and_clears_the_screen_clip() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let window = Rect::new(-0.9, -0.9, 1.8, 1.8);
+        scene.set_screen_clip(Some(MaskShape::rounded_rect(window, 0.05)));
+        let clip = scene
+            .stage()
+            .get(scene.screen_sprite_id())
+            .unwrap()
+            .container()
+            .clip
+            .expect("clip set");
+        assert!(matches!(clip, MaskShape::RoundedRect { .. }));
+        scene.set_screen_clip(None);
+        assert!(
+            scene
+                .stage()
+                .get(scene.screen_sprite_id())
+                .unwrap()
+                .container()
+                .clip
+                .is_none(),
+            "clip cleared"
+        );
     }
 
     #[test]

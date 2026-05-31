@@ -6,6 +6,75 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ED.18 — background framing compose (backdrop · padding · rounded corners)
+- **Date:** 2026-05-31
+- **Status:** ✅ implemented + verified in isolation; full-workspace gate left to CI (PR #67) — see "Verification" note below.
+
+### What
+
+The cinematic "framed screen" look now renders at preview + export. ED.18's
+Style panel (already shipped) authors `BackgroundConfig`; this chunk makes the
+backdrop / padding / rounded-corner window **draw**. Two layers, mapped onto
+wisp's advanced-dispatch path:
+
+- **Backdrop** — `wisp::RecordingScene::set_background_gradient` /
+  `set_background_color` lazily add a full-NDC `Graphics` rect (gradient or
+  flat fill) as a non-clipped Phase-1 node, so it draws *behind* everything.
+- **Framed screen** — `set_screen_clip(Some(RoundedRect(window, radius)))`
+  clips the screen sprite to the padded frame window; the clip makes it a
+  dispatched Phase-2 node that composites *over* the backdrop, with the
+  rounded-corner SDF cutting its alpha.
+
+App side: `EditorPreview::set_background(&BackgroundConfig)` is the single
+`edit → wisp` translation site — it computes the px→NDC window + corner radius
++ per-axis padding factor `k = 1 − 2·padding/axis`, sets the clip + backdrop,
+and stores `k`. `render_framed` then folds `k` into the ED.16 transform
+(`framed_transform_padded`: `scale *= k`, `position *= k` — exact, since both
+the fill and the zoom focal-pin are about the NDC origin). The export
+generator calls `set_background` once at construction. The recorder never
+calls any `set_background_*` / `set_screen_clip`, so its scene is
+bit-identical (no backdrop node, no screen clip) — isolation by
+non-invocation, locked by a regression test.
+
+Deferred (filed): drop-shadow + inset border (ISS-14 — shadow needs a
+per-frame offscreen blur pre-pass and is lavapipe-incompatible) and the
+`Wallpaper` source (ISS-15 — no asset pipeline yet; falls back to the default
+gradient with a `tracing::warn`).
+
+### Tests / asset
+
+- `wisp` `recording.rs`: recorder-isolation regression (fresh scene has no
+  backdrop, screen clip `None`); `set_background_gradient` adds exactly one
+  reused node; `set_screen_clip` sets/clears. 19/19 `recording::` pass.
+- `app` `editor_preview.rs`: 5 pure tests (`framed_transform_padded` unit ==
+  unpadded, centre-shrink, focal-corner-pinned-to-window; `background_geometry`
+  reference defaults + pathological-padding clamp) + 2 GPU integration tests
+  (gradient backdrop frames a white screen — centre white, corners backdrop,
+  gradient varies; flat-colour fills the margin). Single-bind-group (no blur)
+  → runs on every CI OS, no lavapipe guard. 15/15 `editor_preview::` pass.
+- New wisp-storybook story `editor-background-framing` (covered by
+  `story_smoke`); PNG regenerated to
+  `_docs/wisp-book/src/assets/wisp/editor-background-framing.png` and
+  **verified by eye** — the default 135° gradient renders warm-coral
+  (bottom-right) → navy (top-left) correctly; the +y-flip risk the research
+  flagged did not materialize (no `dir.y` negation needed).
+- Chapter `ed18-style.md` extended with the "From config to pixels" section.
+
+### Verification
+
+fmt ✓, workspace `check` ✓, clippy (wisp + app + storybook, `--all-targets
+--all-features`) ✓, `recording::` 19/19 ✓, `editor_preview::` 15/15 ✓, gate's
+lenient `docs` ✓ (changed crates), all 5 `doc-gates` ✓. The full-workspace
+`nextest` could not complete **locally** — the dev machine hit RAM exhaustion
+(≈80 MB free, ~20 GB in the macOS compressor on an 18-day uptime, worsened by a
+concurrent unrelated build) and `nextest` spawning 60+ large wgpu/`wisp-chart`
+debug binaries thrashed the page cache. That is an environment failure on
+crates ED.18 does not touch; CI's clean runners (green for ED.16 on the same
+branch) are the authoritative full gate. **The Linear ticket (AUT-353) stays
+open until PR #67 CI is green.**
+
+---
+
 ## Editor drop-zone smoke gates — the full ED.1–24 feature set on a dropped clip
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2`.

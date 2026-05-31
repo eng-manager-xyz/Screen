@@ -19,9 +19,11 @@
 //! The cinematic *visual* edits apply as a transform on the composed screen
 //! sprite: the zoom punch-in (ED.16) + the crop / aspect reframe (ED.15) are
 //! written into the screen sprite each frame via
-//! [`EditorPreview::render_framed`](crate::editor_preview::EditorPreview::render_framed).
-//! Background framing (ED.18) layers on next. This chunk is the
-//! frame-accurate timeline walk the whole export rests on.
+//! [`EditorPreview::render_framed`](crate::editor_preview::EditorPreview::render_framed),
+//! and the background framing (ED.18) — the backdrop fill, padding inset, and
+//! rounded-corner frame window — is applied once at construction via
+//! [`EditorPreview::set_background`](crate::editor_preview::EditorPreview::set_background).
+//! This chunk is the frame-accurate timeline walk the whole export rests on.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,8 +73,12 @@ impl ExportFrameGenerator {
         // pin ~2.5 GB of decoded BGRA at 1080p for no benefit.
         let stream = EditorVideoStream::open_with_cache(source, 1)
             .map_err(|e| format!("open source: {e}"))?;
-        let preview = EditorPreview::new(project.source.width, project.source.height)
+        let mut preview = EditorPreview::new(project.source.width, project.source.height)
             .map_err(|e| format!("init compose: {e}"))?;
+        // Background framing (ED.18) is constant across the export — set the
+        // backdrop + rounded-corner clip + padding once, here, so the
+        // per-frame `render_framed` only updates the zoom/crop transform.
+        preview.set_background(&project.background);
         let total = project.project_duration();
         Ok(Self {
             project,
@@ -130,10 +136,10 @@ impl ExportFrameGenerator {
 /// ED.22) and `on_progress(done, total)` reports after each frame.
 ///
 /// The output is composed at the **source** clip's dimensions. The zoom
-/// punch-ins (ED.16) and crop / aspect reframe (ED.15) are baked into each
-/// frame by the generator (via `render_framed`); background framing (ED.18)
-/// and the per-segment audio retime (ED.21) land in their own chunks — so
-/// this is a faithful, retimed, framed (video-only) export today.
+/// punch-ins (ED.16), crop / aspect reframe (ED.15), and background framing
+/// (ED.18 — backdrop, padding, rounded corners) are all baked into each
+/// frame by the generator; the per-segment audio retime (ED.21) muxes on at
+/// finalize. Drop-shadow + inset border are deferred (ISS-04).
 ///
 /// # Errors
 ///
