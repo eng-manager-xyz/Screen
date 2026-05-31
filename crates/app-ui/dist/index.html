@@ -7,8 +7,8 @@
 
     
 <script type="module">
-import init, * as bindings from '/app-ui-8f78bebc4cb8db83.js';
-const wasm = await init({ module_or_path: '/app-ui-8f78bebc4cb8db83_bg.wasm' });
+import init, * as bindings from '/app-ui-4ad4db6c98ac5828.js';
+const wasm = await init({ module_or_path: '/app-ui-4ad4db6c98ac5828_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -41,9 +41,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     <script>
       window.addEventListener("DOMContentLoaded", () => {
         if (window.__TAURI__ && window.__TAURI__.event) {
-          console.log("[screen bridge] __TAURI__.event found — registering listeners");
           window.__TAURI__.event.listen("file-dropped", (event) => {
-            console.log("[screen bridge] file-dropped:", event.payload);
             window.dispatchEvent(new CustomEvent("file-dropped", {
               detail: event.payload
             }));
@@ -53,14 +51,18 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
               detail: event.payload
             }));
           });
+          // ED.22 — editor export progress, streamed during an export.
+          window.__TAURI__.event.listen("editor-export-progress", (event) => {
+            window.dispatchEvent(new CustomEvent("editor-export-progress", {
+              detail: event.payload
+            }));
+          });
           // Drag-state events (M-POLISH.1). Payload-less — the visual
           // toggle lives entirely in Leptos signal-land.
           window.__TAURI__.event.listen("file-drag-enter", () => {
-            console.log("[screen bridge] file-drag-enter");
             window.dispatchEvent(new CustomEvent("file-drag-enter"));
           });
           window.__TAURI__.event.listen("file-drag-leave", () => {
-            console.log("[screen bridge] file-drag-leave");
             window.dispatchEvent(new CustomEvent("file-drag-leave"));
           });
         } else {
@@ -74,6 +76,53 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
         window.__TAURI__?.core?.invoke("player_play");
       window.__screenPause = () =>
         window.__TAURI__?.core?.invoke("player_pause");
+
+      // ED.5 / M-EDIT — Record→Edit handoff. Invoke returns the built
+      // EditProject; we re-emit it as an `editor-project` CustomEvent the
+      // `crate::editor_ipc` listener picks up. Fire-and-forget from Rust.
+      window.__screenOpenInEditor = (path) =>
+        window.__TAURI__?.core?.invoke("open_in_editor", { path })
+          .then((project) =>
+            window.dispatchEvent(new CustomEvent("editor-project", { detail: project })))
+          .catch((e) => console.error("open_in_editor failed", e));
+
+      // ED.7 — editor transport. The command returns the new playhead
+      // status, which we re-emit as `editor-status` for the Leptos listener.
+      window.__screenEditorTransport = (action) =>
+        window.__TAURI__?.core?.invoke("editor_transport", { action })
+          .then((status) => {
+            if (status)
+              window.dispatchEvent(new CustomEvent("editor-status", { detail: status }));
+          })
+          .catch((e) => console.error("editor_transport failed", e));
+
+      // ED.22 — editor export. Progress streams as `editor-export-progress`
+      // events; the invoke resolves to the output path (→ `editor-export-done`)
+      // or rejects (→ `editor-export-error`).
+      window.__screenEditorExport = (project, format) =>
+        window.__TAURI__?.core?.invoke("editor_export", { project, format })
+          .then((path) =>
+            window.dispatchEvent(new CustomEvent("editor-export-done", { detail: path })))
+          .catch((e) =>
+            window.dispatchEvent(new CustomEvent("editor-export-error", { detail: String(e) })));
+      window.__screenEditorExportCancel = () =>
+        window.__TAURI__?.core?.invoke("editor_export_cancel");
+
+      // ED.23 — save the project to its `.screenproj`; the written path
+      // comes back as an `editor-saved` CustomEvent.
+      window.__screenEditorSaveProject = (project) =>
+        window.__TAURI__?.core?.invoke("editor_save_project", { project })
+          .then((path) =>
+            window.dispatchEvent(new CustomEvent("editor-saved", { detail: path })))
+          .catch((e) => console.error("editor_save_project failed", e));
+
+      // ED.24 — list recordings for the library; results re-dispatched as a
+      // `recordings-listed` CustomEvent the Leptos listener consumes.
+      window.__screenListRecordings = () =>
+        window.__TAURI__?.core?.invoke("list_recordings")
+          .then((entries) =>
+            window.dispatchEvent(new CustomEvent("recordings-listed", { detail: entries })))
+          .catch((e) => console.error("list_recordings failed", e));
 
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the
@@ -113,8 +162,6 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
         window.__TAURI__?.core?.invoke("open_settings_microphone") ?? Promise.resolve();
       window.__screenOpenSettingsScreenRecording = () =>
         window.__TAURI__?.core?.invoke("open_settings_screen_recording") ?? Promise.resolve();
-      window.__screenScreenRecordingPermissionStatus = () =>
-        window.__TAURI__?.core?.invoke("screen_recording_permission_status") ?? Promise.resolve("Granted");
       window.__screenRequestScreenRecordingPermission = () =>
         window.__TAURI__?.core?.invoke("request_screen_recording_permission") ?? Promise.resolve("Granted");
 
@@ -244,7 +291,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       window.__screenSetBubbleClickthrough = (enabled) =>
         window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
     </script>
-  <link rel="modulepreload" href="/app-ui-8f78bebc4cb8db83.js" crossorigin="anonymous"></head>
+  <link rel="modulepreload" href="/app-ui-4ad4db6c98ac5828.js" crossorigin="anonymous"></head>
   <body>
     <noscript>This is the Leptos UI. Run `trunk serve` from
       `crates/app-ui/` (or launch via `cd crates/app && cargo tauri dev`).</noscript>

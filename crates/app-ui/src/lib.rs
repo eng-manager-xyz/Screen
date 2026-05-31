@@ -34,7 +34,6 @@
 pub mod app;
 pub mod bubble;
 pub mod bubble_ipc;
-pub mod camera_diagnostics;
 #[cfg(feature = "tray-appshell-preview")]
 pub mod dev_appshell;
 pub mod player_ipc;
@@ -136,7 +135,6 @@ pub mod filmstrip;
 pub mod framing_inspector;
 pub mod mic_ipc;
 pub mod mic_picker;
-pub mod recorder_controls;
 pub mod recorder_page;
 pub mod recording_ipc;
 pub mod recordings_library;

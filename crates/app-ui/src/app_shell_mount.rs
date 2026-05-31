@@ -122,11 +122,11 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
     }
 }
 
-/// Render the placeholder content for the currently-active surface.
-///
-/// Real per-surface content (real recorder, library, editor, cursor
-/// studio, preferences) lives in dedicated tickets — this is the
-/// M-TRAY.4 stub that proves the routing works.
+/// Render the content for the currently-active surface. Record, Library,
+/// and Editor are live ([`RecorderPage`](crate::recorder_page::RecorderPage),
+/// [`RecordingsLibrary`](crate::recordings_library::RecordingsLibrary),
+/// [`EditorSurface`](crate::editor_surface::EditorSurface)); Cursor and
+/// Preferences are still placeholders.
 #[component]
 fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
     view! {
@@ -136,68 +136,8 @@ fn SurfacePane(active: RwSignal<AppSection>) -> impl IntoView {
         >
             <section class="app-surface app-surface--recorder">
                 <crate::recorder_page::RecorderPage />
-                <details class="app-surface-debug">
-                    <summary>"Debug · legacy controls"</summary>
-                    <crate::recorder_controls::RecorderControls />
-                    <crate::camera_diagnostics::CameraDiagnostics />
-                    <BubbleToggleButton />
-                    <BubbleClickthroughToggle />
-                </details>
             </section>
         </Show>
-    }
-}
-
-/// Toggle the floating webcam-bubble window (M-BUBBLE.0 / AUT-273).
-/// Pure presentational button — the Tauri-side state machine owns the
-/// shown/hidden flag, so this component intentionally doesn't track
-/// open/closed state. M-BUBBLE.3 (AUT-276) will subscribe to a Tauri
-/// event to drive an "active" visual state.
-#[component]
-fn BubbleToggleButton() -> impl IntoView {
-    view! {
-        <button
-            type="button"
-            class="bubble-toggle"
-            on:click=move |_| crate::bubble_ipc::toggle_webcam_bubble()
-        >
-            "Show webcam bubble"
-        </button>
-    }
-}
-
-/// Toggle whole-window click-through on the webcam bubble
-/// (M-BUBBLE.1 v0 / AUT-274). When enabled, the bubble window passes
-/// every mouse event through to whatever's underneath — useful when
-/// recording the bubble overlaying slides or a browser. To turn it
-/// back off, click this button again (the bubble itself can't catch
-/// clicks while passthrough is on, hence the AppShell-side toggle).
-///
-/// The "active" state lives in a local Leptos signal — the Rust
-/// side doesn't currently report ignore-cursor-events status back to
-/// the UI, so the signal can drift if the user manually overrides
-/// the window state via a future menu / IPC. Acceptable for v0.
-#[component]
-fn BubbleClickthroughToggle() -> impl IntoView {
-    let clickthrough = RwSignal::new(false);
-    let on_click = move |_| {
-        let next = !clickthrough.get();
-        clickthrough.set(next);
-        crate::bubble_ipc::set_bubble_clickthrough(next);
-    };
-    view! {
-        <button
-            type="button"
-            class="bubble-toggle bubble-toggle--clickthrough"
-            data-active=move || if clickthrough.get() { "true" } else { "false" }
-            on:click=on_click
-        >
-            {move || if clickthrough.get() {
-                "Click-through ON — click to disable"
-            } else {
-                "Make bubble click-through"
-            }}
-        </button>
     }
 }
 
