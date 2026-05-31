@@ -83,19 +83,6 @@
   pointer-events: none;
 }
 
-/* Tray-popover stub surface (M-TRAY.0 / AUT-249). Rendered when the
- * Tauri `tray-popover` window opens the bundle with `?tray=stub` in
- * the URL — a deliberately empty filled rectangle so the click→show
- * round-trip is visible. The `transparent: true` window flag in
- * tauri.conf.json means we MUST paint a background here, or the popover
- * would be invisible (footgun documented in CLAUDE.md / AUT-249). */
-.tray-popover-stub {
-  position: fixed;
-  inset: 0;
-  background: var(--surface-1, #1a1d21);
-  border-radius: 12px;
-}
-
 /* Camera preview surface (M-CAM.3 / AUT-257 + M-PIX.8 circle).
  *
  * M-PIX.8: the canvas is painted with raw rectangular BGRA frames
@@ -696,7 +683,7 @@
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace);
 }
 .recorder-controls-elapsed-time {
   font-size: 22px;
@@ -802,7 +789,7 @@
   background: rgba(255, 255, 255, 0.05);
   padding: 2px 6px;
   border-radius: 3px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace);
   word-break: break-all;
 }
 .recorder-controls-reveal {
@@ -966,6 +953,15 @@
   background: var(--border, #3a3f47);
 }
 .waveform-bar {
+  /* Absolute + vertically centred on the baseline; the inline style sets
+   * left/width (tiling, from `bar_geometry`) and height (amplitude).
+   * Without position + width the inline props are inert and the lane
+   * renders blank — the bug this fixes. */
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 1px;
+  border-radius: 1px;
   background: color-mix(in srgb, var(--accent, #4fc3f7) 55%, transparent);
 }
 
