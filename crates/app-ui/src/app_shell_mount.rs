@@ -34,6 +34,15 @@ pub fn AppShellRoot(initial: AppSection) -> impl IntoView {
         }
     });
 
+    // Drop a video anywhere in the app → open it in the editor (the
+    // `editor-project` reply trips the effect above and switches tabs).
+    // `editor_drag_active` drives the editor drop zone's drag-over
+    // highlight; provided via context for the editor surface to read.
+    crate::editor_ipc::install_file_drop_to_editor_listener();
+    let editor_drag_active = RwSignal::new(false);
+    provide_context(editor_drag_active);
+    crate::editor_ipc::install_drag_active_listeners(editor_drag_active);
+
     // ED.7 — the playhead status from the backend editor session, plus a
     // perpetual host-injected tick that advances the clock while playing.
     // Created once here (the app root), so editor-surface re-mounts can't

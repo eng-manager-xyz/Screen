@@ -2336,6 +2336,50 @@ kbd {
   border: 1px solid var(--line-subtle);
   min-height: 280px;
 }
+/* Editor drop zone — shown in the canvas when no clip is loaded. Drop a
+   video anywhere to open it for editing (handled globally by the app-root
+   file-drop listener); `--active` is the drag-over highlight. */
+.editor-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  padding: 24px;
+  background: var(--surface-base);
+  border: 2px dashed var(--line-subtle);
+  border-radius: var(--radius-panel);
+  color: var(--fg-muted);
+  text-align: center;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+.editor-dropzone--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-base));
+  color: var(--fg);
+}
+.editor-dropzone-icon {
+  font-size: 34px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.editor-dropzone-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.editor-dropzone-hint {
+  margin: 0;
+  max-width: 320px;
+  font-size: 12.5px;
+}
 .editor-inspector {
   background: var(--surface-elevated);
   border-radius: var(--radius-panel);

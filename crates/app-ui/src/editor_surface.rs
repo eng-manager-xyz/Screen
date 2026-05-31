@@ -241,6 +241,9 @@ pub fn EditorSurface() -> impl IntoView {
         .unwrap_or_else(|| RwSignal::new(EditorStatus::default()));
     let history = use_context::<StoredValue<Option<edit::History>>>();
     let selection = use_context::<RwSignal<Option<usize>>>();
+    // Drag-over highlight for the drop zone (set by the app-root drag
+    // listeners). Falls back to a local signal outside the AppShell.
+    let drag_active = use_context::<RwSignal<bool>>().unwrap_or_else(|| RwSignal::new(false));
     view! {
         <section
             class="app-surface app-surface--editor"
@@ -256,16 +259,35 @@ pub fn EditorSurface() -> impl IntoView {
                 view! {
                     <EditorShell
                         view=vm
-                        canvas=ToChildren::to_children(move || view! {
-                            <div class="editor-canvas-empty">
-                                <p class="editor-canvas-hint">
-                                    {if loaded {
-                                        "Preview renders here."
-                                    } else {
-                                        "Finish a recording to start editing it here."
-                                    }}
-                                </p>
-                            </div>
+                        canvas=ToChildren::to_children(move || {
+                            if loaded {
+                                view! {
+                                    <div class="editor-canvas-empty">
+                                        <p class="editor-canvas-hint">"Preview renders here."</p>
+                                    </div>
+                                }
+                                .into_any()
+                            } else {
+                                // Always-available drop target — drop a video
+                                // anywhere to open it here (handled globally by
+                                // the app-root file-drop listener).
+                                view! {
+                                    <div class=move || {
+                                        if drag_active.get() {
+                                            "editor-dropzone editor-dropzone--active"
+                                        } else {
+                                            "editor-dropzone"
+                                        }
+                                    }>
+                                        <div class="editor-dropzone-icon" aria-hidden="true">"⬇"</div>
+                                        <p class="editor-dropzone-title">"Drop a video to edit"</p>
+                                        <p class="editor-dropzone-hint">
+                                            "Drop a recording here, finish a new recording, or pick one from the Library."
+                                        </p>
+                                    </div>
+                                }
+                                .into_any()
+                            }
                         })
                         inspector=ToChildren::to_children(move || view! {
                             <crate::export_bar::ExportBar />
