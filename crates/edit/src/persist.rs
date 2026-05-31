@@ -8,7 +8,7 @@
 //! whole model is `serde`, save↔load is a pure, lossless round-trip — proven
 //! here without touching the filesystem.
 //!
-//! The file carries a [`SCHEMA_VERSION`](crate::project::SCHEMA_VERSION) so a
+//! The file carries a [`SCHEMA_VERSION`] so a
 //! future format change can migrate rather than mis-parse.
 
 use crate::project::{EditProject, SCHEMA_VERSION};
