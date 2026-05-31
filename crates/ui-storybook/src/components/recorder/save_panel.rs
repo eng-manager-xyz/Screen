@@ -7,9 +7,10 @@
 //! drops into the recorder column with no layout shift:
 //!
 //! - **Choosing** — a folder row (configured output dir + a Change…
-//!   button), a format dropdown (`MP4` / `WebM`), and Discard / Export
-//!   actions. The `busy` flag dims the controls and flips the Export
-//!   label to "Exporting…" during the (software-`VP9`) `WebM` transcode.
+//!   button), a format dropdown (`MP4` / `WebM`), and Discard / Edit /
+//!   Export actions (Edit saves the recording and opens it in the editor).
+//!   The `busy` flag dims the controls and flips the Export label to
+//!   "Exporting…" during the (software-`VP9`) `WebM` transcode.
 //! - **Saved** — a "Saved to `<path>`" confirmation with Done /
 //!   Reveal-in-Finder actions.
 //!
@@ -113,6 +114,10 @@ pub fn SavePanel(
     /// Discard click (Choosing state) — deletes the scratch.
     #[prop(optional, into)]
     on_discard: Option<Callback<()>>,
+    /// Edit click (Choosing state) — save the recording and open it in the
+    /// editor.
+    #[prop(optional, into)]
+    on_edit: Option<Callback<()>>,
     /// Export click (Choosing state) — runs the move / transcode.
     #[prop(optional, into)]
     on_export: Option<Callback<()>>,
@@ -132,10 +137,13 @@ pub fn SavePanel(
             output_dir,
             format,
             busy,
-            on_change_folder,
-            on_format_change,
-            on_discard,
-            on_export,
+            ChoosingCallbacks {
+                change_folder: on_change_folder,
+                format_change: on_format_change,
+                discard: on_discard,
+                edit: on_edit,
+                export: on_export,
+            },
         ),
         SavePanelView::Saved { path } => saved_body(path, on_reveal, on_done),
     };
@@ -146,19 +154,34 @@ pub fn SavePanel(
     }
 }
 
-/// The Choosing-state body: folder row + format dropdown + Discard /
-/// Export actions. Split out of [`SavePanel`] so neither branch trips
-/// the function-length lint; it carries no state (every prop is owned
-/// or a `Copy` callback).
+/// The Choosing-state callbacks, grouped so [`choosing_body`] stays under
+/// the argument-count lint. Every field is a `Copy` Leptos `Callback`.
+#[derive(Clone, Copy)]
+struct ChoosingCallbacks {
+    change_folder: Option<Callback<()>>,
+    format_change: Option<Callback<SaveFormat>>,
+    discard: Option<Callback<()>>,
+    edit: Option<Callback<()>>,
+    export: Option<Callback<()>>,
+}
+
+/// The Choosing-state body: folder row + format dropdown + Discard / Edit /
+/// Export actions. Split out of [`SavePanel`] so neither branch trips the
+/// function-length lint; it carries no state (every prop is owned or a
+/// `Copy` callback).
 fn choosing_body(
     output_dir: String,
     format: SaveFormat,
     busy: bool,
-    on_change_folder: Option<Callback<()>>,
-    on_format_change: Option<Callback<SaveFormat>>,
-    on_discard: Option<Callback<()>>,
-    on_export: Option<Callback<()>>,
+    cbs: ChoosingCallbacks,
 ) -> AnyView {
+    let ChoosingCallbacks {
+        change_folder: on_change_folder,
+        format_change: on_format_change,
+        discard: on_discard,
+        edit: on_edit,
+        export: on_export,
+    } = cbs;
     let dir_title = output_dir.clone();
     let change_click = move |_| {
         if let Some(cb) = on_change_folder {
@@ -167,6 +190,11 @@ fn choosing_body(
     };
     let discard_click = move |_| {
         if let Some(cb) = on_discard {
+            cb.run(());
+        }
+    };
+    let edit_click = move |_| {
+        if let Some(cb) = on_edit {
             cb.run(());
         }
     };
@@ -223,6 +251,12 @@ fn choosing_body(
                 on:click=discard_click
                 disabled=busy
             >"Discard"</button>
+            <button
+                type="button"
+                class="recorder-save-edit"
+                on:click=edit_click
+                disabled=busy
+            >"Edit"</button>
             <button
                 type="button"
                 class="recorder-save-export"

@@ -3854,10 +3854,11 @@ body:has(.bubble-root) {
 }
 .recorder-save-actions {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 1fr 1fr 1.5fr;
   gap: 8px;
 }
 .recorder-save-discard,
+.recorder-save-edit,
 .recorder-save-export {
   font-size: 13px;
   font-weight: 600;
@@ -3873,6 +3874,15 @@ body:has(.bubble-root) {
 .recorder-save-discard:hover:not(:disabled) {
   color: var(--text, #e6e6e6);
   border-color: rgba(255, 255, 255, 0.24);
+}
+.recorder-save-edit {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #e6e6e6);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.recorder-save-edit:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 .recorder-save-export {
   background: var(--accent, #4fc3f7);
