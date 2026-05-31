@@ -628,6 +628,31 @@ captures macOS-specific install + skip facts only.
 - **e2e (Tier-2) tests are intentionally skipped.** `tauri-driver`
   + WKWebView support is incomplete upstream; the suite prints a
   clear skip message and exits 0 on macOS.
+- **The headless GitHub `macos-latest` runner's `vtenc_h264_hw` is
+  *stricter on macroblock alignment* than a real Mac's VideoToolbox.**
+  `media::encode_integration` HW-encodes 64×64 (and `to_even`'d
+  clamped-5K) frames fine on the runner, so vtenc is NOT unavailable
+  there — but feeding it the decode fixture's **480×270** (height 270
+  is not a multiple of 16) makes the pipeline accept frame 0 then die,
+  so the *next* `push_video_frame` returns `Broken pipe (os error
+  32)`. A real Mac's VideoToolbox and Ubuntu's encoder both pad/crop
+  non-aligned dims transparently; the headless runner doesn't. The
+  exported output is verified *valid* on local macOS + Ubuntu CI, so
+  this is an environment quirk, not a product or logic bug.
+  Consequence: an e2e test that drives `LiveGstreamerEncoder` to
+  completion at arbitrary source dims (e.g.
+  `crates/app/tests/edited_export_e2e.rs`) must **skip on an
+  encoder-pipe error** (`Broken pipe` / `not-negotiated` / `encoder
+  I/O`) — NOT panic — and rely on `encode_integration` (macOS) +
+  Ubuntu CI for encode coverage and `editor_export_golden` (macOS,
+  compose-only, no encode) for the generator/retiming signal. **Always
+  diff against `encode_integration` before blaming "vtenc unavailable"
+  — if it passes, vtenc works and the difference is yours (here: the
+  dims).** (Burned on the M-EDIT export e2e: macOS `gate-screen` was
+  red from ED.21 to PR-watch time because I trusted the *local* gate —
+  real-Mac vtenc handles 480×270 — instead of watching macOS CI.
+  Lesson within the lesson: local-gate-green ≠ CI-green; watch the
+  per-commit CI, don't conflate them.)
 
 ### CI — Ubuntu (`ubuntu-latest`)
 

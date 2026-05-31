@@ -6,6 +6,24 @@ Use the template at the bottom for new entries.
 
 ---
 
+## CI fix — edited-export e2e skips headless-macOS vtenc BrokenPipe
+- **Date:** 2026-05-31
+- **Status:** ✅ done — `video-editing-v2` (PR #65). Caught at PR-watch time.
+
+### What
+
+macOS `gate-screen` had been **red since ED.21** on `edited_export_e2e`. Root cause (found by diffing against the *passing* `media::encode_integration`): the headless `macos-latest` runner's `vtenc_h264_hw` is **stricter on macroblock alignment** than a real Mac's VideoToolbox. `encode_integration` HW-encodes 64×64 / `to_even`'d dims fine on the runner — so vtenc is *not* unavailable — but the fixture's **480×270** (height 270 ∤ 16) makes vtenc accept frame 0 then die → next `push_video_frame` → `Broken pipe`. A real Mac (local: 7.4 s pass) and Ubuntu's encoder both pad/crop non-aligned dims; the headless runner doesn't. The exported output is verified *valid* on local + Ubuntu, so it's an environment quirk, not a product bug. (Earlier mis-diagnosis "vtenc needs a graphics session" was wrong — corrected.)
+
+- **`crates/app/tests/edited_export_e2e.rs`** — skips on an encoder-pipe error (`Broken pipe` / `not-negotiated` / `encoder I/O`), panicking only on a genuine logic error. Encode coverage: `encode_integration` (macOS) + Ubuntu CI; generator/retiming: `editor_export_golden` (macOS, compose-only).
+- **`CLAUDE.md`** — accurate lesson under CI → macOS (headless vtenc macroblock strictness; diff against `encode_integration` before blaming "vtenc unavailable"; local-gate-green ≠ CI-green — watch per-commit CI). **No change to the export code path** — it's correct (valid output on real Mac + Ubuntu).
+- **Process miss recorded:** I trusted the local gate (real-Mac vtenc handles 480×270) and didn't watch macOS CI, so the red persisted across ED.21→the doc fix. Going forward: watch per-commit CI, not just the local gate.
+
+### Verification: `just gate` green locally (the test runs fully — local encode works). The skip path triggers only on CI's headless encoder. Re-watching macOS `gate-screen` after push.
+
+### Issues filed: none
+
+---
+
 ## Review fixes — ED.13 + ED.20–24 adversarial audit
 - **Date:** 2026-05-30
 - **Status:** ✅ done — `video-editing-v2` (PR #65). Hardening the export/persistence surface before merge.
