@@ -2463,31 +2463,25 @@ fn start_screen_for_session(
         Some(id) if id.starts_with("window-") => ScreenCaptureSource::Window(id.to_string()),
         Some(other) => return Err(format!("unknown source_id prefix `{other}`")),
     };
-    // M-QUAL.2 — capture at the display's true Retina resolution
-    // (resolve before `source` is moved into the config).
+    // Resolve the display's native resolution (before `source` is moved
+    // into the config).
     let native_dims = media::sck_video::resolve_native_screen_dims(&source);
-    // AUT-334 — the live recording scratch is always H.264 (M-SAVE.1),
-    // and Apple's `vtenc_h264_hw` rejects caps negotiation the instant
-    // either edge exceeds 4096 px (→ broken pipe → discarded scratch →
-    // empty output dir on 5K/6K/8K displays). Clamp the whole recording
-    // to the encoder's max here: the SCK capture buffer, the compose
-    // canvas, and the encoder caps all derive from the returned dims, so
-    // a single aspect-preserving clamp keeps every stage 1:1 and legal.
-    // Uniform downscale → no skew; the camera bubble stays circular.
-    // No-op on ≤4K displays (native pass-through).
-    let dims = media::encode::fit_within_encoder_limits(
-        native_dims.0,
-        native_dims.1,
-        media::encode::OutputFormat::Mp4H264Aac,
-    );
+    // Cap the recording to 1080p regardless of monitor. Native Retina
+    // capture (M-QUAL.2) is too heavy for the live compose → read-back →
+    // encode loop to sustain 30fps, which under-delivers frames and makes
+    // recordings play fast (the encoder timestamps by count); 1080p keeps
+    // the pipeline comfortably real-time. The SCK capture buffer, the
+    // compose canvas, and the encoder caps all derive from the returned
+    // dims, so this single aspect-preserving cap keeps every stage 1:1 and
+    // well under the H.264 4096-edge limit (subsumes the AUT-334 clamp).
+    let dims = media::encode::cap_recording_dims(native_dims.0, native_dims.1);
     if dims != native_dims {
         tracing::info!(
             native_width = native_dims.0,
             native_height = native_dims.1,
             encode_width = dims.0,
             encode_height = dims.1,
-            "screen native resolution exceeds the H.264 hardware encoder limit; \
-             downscaling the recording to fit (aspect preserved)"
+            "capping recording to 1080p for real-time capture (aspect preserved)"
         );
     }
     // M-PIX.2 — plumb the shared screen frame slot from
