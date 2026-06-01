@@ -85,6 +85,13 @@ pub fn EditorToolbar(
     export_enabled: bool,
     /// `true` to enable the Share button.
     share_enabled: bool,
+    /// Fired with the chip's `id` when a (non-disabled) toolbar action is
+    /// clicked. The app maps the id to an edit op; the component stays
+    /// presentational (it only emits the id). Omit to leave chips inert.
+    /// Plain `optional` (not `into`) so [`EditorShell`] can forward its own
+    /// already-`Option` value straight through.
+    #[prop(optional)]
+    on_action: Option<Callback<String>>,
 ) -> impl IntoView {
     let action_chips: Vec<_> = actions
         .into_iter()
@@ -102,7 +109,17 @@ pub fn EditorToolbar(
             let disabled = a.disabled;
             let pressed = a.selected;
             view! {
-                <button class=class data-id=id disabled=disabled aria-pressed=pressed>
+                <button
+                    class=class
+                    data-id=id
+                    disabled=disabled
+                    aria-pressed=pressed
+                    on:click=move |_| {
+                        if let Some(cb) = on_action {
+                            cb.run(id.to_owned());
+                        }
+                    }
+                >
                     <span class="editor-action-icon" aria-hidden="true">{icon}</span>
                     <span class="editor-action-label">{label}</span>
                 </button>
@@ -133,6 +150,10 @@ pub fn EditorShell(
     /// Bottom timeline slot.
     #[prop(optional)]
     timeline: Option<Children>,
+    /// Forwarded to [`EditorToolbar`]: fired with a toolbar chip's `id` on
+    /// click. Omit to leave the toolbar inert.
+    #[prop(optional, into)]
+    on_action: Option<Callback<String>>,
 ) -> impl IntoView {
     let EditorShellView {
         document_title,
@@ -149,7 +170,12 @@ pub fn EditorShell(
                 subtitle=document_subtitle.unwrap_or_default()
                 has_clip_loaded=has_clip_loaded
             />
-            <EditorToolbar actions=toolbar_actions export_enabled=export_enabled share_enabled=share_enabled />
+            <EditorToolbar
+                actions=toolbar_actions
+                export_enabled=export_enabled
+                share_enabled=share_enabled
+                on_action=on_action.unwrap_or_else(|| Callback::new(|_: String| {}))
+            />
             <div class="editor-body">
                 <div class="editor-canvas">
                     {canvas.map(|c| c())}

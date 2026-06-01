@@ -244,6 +244,22 @@ pub fn EditorSurface() -> impl IntoView {
     // Drag-over highlight for the drop zone (set by the app-root drag
     // listeners). Falls back to a local signal outside the AppShell.
     let drag_active = use_context::<RwSignal<bool>>().unwrap_or_else(|| RwSignal::new(false));
+    // Toolbar chips emit their id on click; map the actionable ones to edit
+    // ops at the playhead (the same ops the keyboard shortcuts fire). `split`
+    // is the must-fix (the razor); `zoom` drops a punch-in. Other chips
+    // (trim/crop/aspect/annotate/captions) are not wired yet — they no-op
+    // until their interactions land, rather than silently doing nothing with
+    // no code path at all.
+    let on_toolbar_action = Callback::new(move |id: String| {
+        if let (Some(p), Some(h)) = (project, history) {
+            let frame = status.get_untracked().current_frame;
+            match id.as_str() {
+                "split" => crate::editor_edits::split_at(p, h, frame),
+                "zoom" => crate::editor_edits::add_zoom_default(p, h, frame),
+                _ => {}
+            }
+        }
+    });
     view! {
         <section
             class="app-surface app-surface--editor"
@@ -259,6 +275,7 @@ pub fn EditorSurface() -> impl IntoView {
                 view! {
                     <EditorShell
                         view=vm
+                        on_action=on_toolbar_action
                         canvas=ToChildren::to_children(move || {
                             if loaded {
                                 view! {
@@ -353,6 +370,20 @@ mod tests {
                 .iter()
                 .any(|a| a.id == "aspect" && a.selected)
         );
+    }
+
+    #[test]
+    fn wired_toolbar_actions_exist_as_chips() {
+        // The toolbar dispatch (EditorSurface's on_toolbar_action) only acts on
+        // these ids; guard that each still names a real chip, so a rename of
+        // the toolbar can't silently make the Split/Zoom buttons inert again.
+        let v = shell_view_for(None);
+        for wired in ["split", "zoom"] {
+            assert!(
+                v.toolbar_actions.iter().any(|a| a.id == wired),
+                "wired toolbar action `{wired}` must exist as a chip"
+            );
+        }
     }
 
     #[test]
