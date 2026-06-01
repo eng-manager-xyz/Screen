@@ -24,7 +24,7 @@ use edit::style::{BackgroundConfig, BackgroundSource, CropRect, CursorConfig};
 use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
 use wisp::recording::{CursorRipple, StreamDimensions};
-use wisp::{Color, MaskShape, Rect, Transform, Vec2};
+use wisp::{Color, MaskShape, Rect, Stroke, Transform, Vec2};
 
 use crate::recording::FrameSlot;
 use crate::recording_compose::{ComposedFrame, RecordingCompose};
@@ -186,8 +186,9 @@ impl EditorPreview {
     /// transform, the screen sprite is clipped to the rounded window, and the
     /// backdrop renders behind it.
     ///
-    /// Drop-shadow (`shadow`) and the inset border (`inset`) are not yet
-    /// rendered — see ISS-14. A `Wallpaper` source falls back to the default
+    /// Drop-shadow (`shadow`) lifts the screen off the backdrop; the inset
+    /// border (`inset`) traces a colored edge just inside the frame — both
+    /// rendered here (ED.18). A `Wallpaper` source falls back to the default
     /// gradient (no wallpaper asset pipeline yet — ISS-15).
     pub fn set_background(&mut self, bg: &BackgroundConfig) {
         let (window, corner_ndc, pad) =
@@ -195,6 +196,7 @@ impl EditorPreview {
         self.pad = pad;
         self.compose
             .set_screen_clip(Some(MaskShape::rounded_rect(window, corner_ndc)));
+        self.apply_shadow_and_border(bg, window, corner_ndc);
 
         match &bg.source {
             BackgroundSource::Gradient {
@@ -231,6 +233,41 @@ impl EditorPreview {
                     );
                 }
             }
+        }
+    }
+
+    /// Apply the drop shadow + inset border for the frame window (ED.18).
+    /// `shadow` (0..=100) scales a dark, down-right-offset rounded-rect behind
+    /// the screen; `inset` (px) strokes a colored border tracing the window.
+    /// Each hides its node when its value is 0.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "shadow/border NDC magnitudes are small fractions, well within f32 precision"
+    )]
+    fn apply_shadow_and_border(&mut self, bg: &BackgroundConfig, window: Rect, corner_ndc: f32) {
+        if bg.shadow > 0 {
+            let s = f32::from(u16::try_from(bg.shadow.min(100)).unwrap_or(60)) / 100.0;
+            let mag = s * 0.035;
+            self.compose.set_frame_shadow(
+                window,
+                corner_ndc,
+                // Down (+y is up, so down = −y) and slightly right.
+                Vec2::new(mag * 0.5, -mag),
+                Color::rgba(0.0, 0.0, 0.0, (s * 0.55).min(0.55)),
+            );
+        } else {
+            self.compose.set_frame_shadow_visible(false);
+        }
+
+        if bg.inset > 0 {
+            let stroke_ndc = (2.0 * f64::from(bg.inset) / f64::from(self.width.max(1))) as f32;
+            self.compose.set_frame_border(
+                window,
+                corner_ndc,
+                Stroke::new(stroke_ndc, Color::rgba(1.0, 1.0, 1.0, 0.7)),
+            );
+        } else {
+            self.compose.set_frame_border_visible(false);
         }
     }
 
@@ -609,6 +646,46 @@ mod tests {
         assert!(
             !(red > 230 && green > 230 && blue > 230),
             "not the white screen"
+        );
+    }
+
+    /// GPU: the drop shadow + inset border (ED.18) visibly change the composed
+    /// frame versus the same backdrop with `shadow = 0, inset = 0`. Pure
+    /// Graphics (no blur) → runs on every CI OS, no lavapipe guard.
+    #[test]
+    fn render_with_shadow_and_border_differs_from_without() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let cfg = |shadow: u32, inset: u32| BackgroundConfig {
+            source: BackgroundSource::Color {
+                rgb: [235, 235, 240],
+            },
+            padding: 18,
+            corner_radius: 10,
+            shadow,
+            inset,
+        };
+        let gray = || vec![128u8; SIDE * SIDE * 4];
+
+        pv.set_background(&cfg(0, 0));
+        let plain = pv
+            .render_framed(gray(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        pv.set_background(&cfg(95, 8));
+        let decorated = pv
+            .render_framed(gray(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+
+        let diff = plain
+            .bytes
+            .iter()
+            .zip(decorated.bytes.iter())
+            .filter(|(a, b)| a.abs_diff(**b) > 16)
+            .count();
+        assert!(
+            diff > 200,
+            "shadow + inset border visibly change the frame ({diff} bytes differ)"
         );
     }
 

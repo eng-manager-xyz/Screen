@@ -40,7 +40,7 @@ use crate::render::{RenderStats, Renderer};
 use crate::scene::Stage;
 use crate::scene::clip::MaskShape;
 use crate::scene::container::Container;
-use crate::scene::graphics::{Fill, Graphics};
+use crate::scene::graphics::{Fill, Graphics, Stroke};
 use crate::scene::node::{Node, NodeId};
 use crate::scene::sprite::Sprite;
 use crate::scene::transform::Transform;
@@ -180,6 +180,14 @@ pub struct RecordingScene {
     /// [`Self::set_cursor`] call; the recorder never touches it (its live
     /// capture already has a cursor baked into the screen frame).
     cursor: Option<NodeId>,
+    /// Editor-only drop-shadow node (ED.18): a dark, offset rounded-rect drawn
+    /// *behind* the framed screen (Phase 1, like the backdrop), so the offset
+    /// sliver reads as a shadow. Lazily created by [`Self::set_frame_shadow`].
+    shadow: Option<NodeId>,
+    /// Editor-only inset-border node (ED.18): a rounded-rect *stroke* tracing
+    /// the frame window, drawn *over* the screen (Phase 2, like the cursor).
+    /// Lazily created by [`Self::set_frame_border`].
+    border: Option<NodeId>,
 }
 
 impl std::fmt::Debug for RecordingScene {
@@ -307,6 +315,8 @@ impl RecordingScene {
             cam_sprite: cam_sprite_id,
             backdrop: None,
             cursor: None,
+            shadow: None,
+            border: None,
         }
     }
 
@@ -585,6 +595,99 @@ impl RecordingScene {
             node.container_mut().visible = visible;
         }
     }
+
+    /// Lazily insert (or fetch) the drop-shadow `Graphics` node — an
+    /// *unclipped* root child, so it renders in advanced-dispatch Phase 1
+    /// (behind the dispatched, clipped screen sprite). Added after the backdrop
+    /// so the shadow composites over the backdrop but under the screen.
+    fn shadow_graphics_mut(&mut self) -> &mut Graphics {
+        if self.shadow.is_none() {
+            let root = self.stage.root();
+            let id = self
+                .stage
+                .add_child(root, Graphics::new())
+                .expect("Stage root is alive");
+            self.shadow = Some(id);
+        }
+        let id = self.shadow.expect("shadow node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("shadow node is always a Graphics"),
+        }
+    }
+
+    /// Draw the framed-screen drop shadow (ED.18): a `color` rounded-rect the
+    /// shape of the frame `window`, offset by `offset` (NDC), drawn behind the
+    /// screen so only the offset sliver shows. Editor-only — the recorder never
+    /// calls this, so its scene has no shadow node.
+    pub fn set_frame_shadow(
+        &mut self,
+        window: Rect,
+        corner_radius: f32,
+        offset: Vec2,
+        color: Color,
+    ) {
+        let g = self.shadow_graphics_mut();
+        g.primitives.clear();
+        g.stroke(None);
+        g.fill(Fill::Solid(color));
+        let shifted = Rect::new(
+            window.min.x + offset.x,
+            window.min.y + offset.y,
+            window.size.x,
+            window.size.y,
+        );
+        g.draw_rounded_rect(shifted, corner_radius);
+        g.container.visible = true;
+    }
+
+    /// Toggle the drop-shadow's visibility. No-op if unset (recorder path).
+    pub fn set_frame_shadow_visible(&mut self, visible: bool) {
+        if let Some(id) = self.shadow
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
+
+    /// Lazily insert (or fetch) the inset-border `Graphics` node — carries a
+    /// full-NDC clip so it dispatches in Phase 2 (over the framed screen),
+    /// mirroring the cursor overlay.
+    fn border_graphics_mut(&mut self) -> &mut Graphics {
+        if self.border.is_none() {
+            let root = self.stage.root();
+            let mut g = Graphics::new();
+            g.container.clip = Some(MaskShape::rect(Rect::new(-1.0, -1.0, 2.0, 2.0)));
+            let id = self.stage.add_child(root, g).expect("Stage root is alive");
+            self.border = Some(id);
+        }
+        let id = self.border.expect("border node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("border node is always a Graphics"),
+        }
+    }
+
+    /// Draw the inset border (ED.18): a `stroke`d rounded-rect tracing the
+    /// frame `window`, over the screen. Transparent fill so only the stroke
+    /// shows. Editor-only.
+    pub fn set_frame_border(&mut self, window: Rect, corner_radius: f32, stroke: Stroke) {
+        let g = self.border_graphics_mut();
+        g.primitives.clear();
+        g.fill(Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)));
+        g.stroke(Some(stroke));
+        g.draw_rounded_rect(window, corner_radius);
+        g.container.visible = true;
+    }
+
+    /// Toggle the inset border's visibility. No-op if unset (recorder path).
+    pub fn set_frame_border_visible(&mut self, visible: bool) {
+        if let Some(id) = self.border
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -645,6 +748,14 @@ mod tests {
         assert!(scene.backdrop.is_none(), "no backdrop until set_background");
         assert!(scene.cursor.is_none(), "no cursor overlay until set_cursor");
         assert!(
+            scene.shadow.is_none(),
+            "no drop shadow until set_frame_shadow"
+        );
+        assert!(
+            scene.border.is_none(),
+            "no inset border until set_frame_border"
+        );
+        assert!(
             scene
                 .stage()
                 .get(scene.screen_sprite_id())
@@ -687,6 +798,52 @@ mod tests {
         // Toggle off.
         scene.set_cursor_visible(false);
         assert!(!scene.stage().get(id).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_frame_shadow_and_border_add_one_node_each_with_right_dispatch() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        let window = Rect::new(-0.8, -0.8, 1.6, 1.6);
+
+        // Shadow: an UNCLIPPED node (Phase 1, behind the screen).
+        scene.set_frame_shadow(
+            window,
+            0.05,
+            Vec2::new(0.02, -0.02),
+            Color::rgba(0.0, 0.0, 0.0, 0.4),
+        );
+        assert_eq!(scene.stage().len(), before + 1);
+        let sid = scene.shadow.expect("shadow created");
+        assert!(scene.stage().get(sid).unwrap().container().visible);
+        assert!(
+            scene.stage().get(sid).unwrap().container().clip.is_none(),
+            "shadow is unclipped (Phase 1, behind the screen)"
+        );
+
+        // Border: a full-NDC-clipped node (Phase 2, over the screen).
+        scene.set_frame_border(window, 0.05, Stroke::new(0.01, Color::WHITE));
+        assert_eq!(scene.stage().len(), before + 2);
+        let bid = scene.border.expect("border created");
+        assert!(
+            scene.stage().get(bid).unwrap().container().clip.is_some(),
+            "border dispatches (clip set) so it composites over the screen"
+        );
+
+        // Reuse + toggle.
+        scene.set_frame_shadow(window, 0.05, Vec2::ZERO, Color::BLACK);
+        scene.set_frame_border(window, 0.05, Stroke::new(0.02, Color::BLACK));
+        assert_eq!(scene.stage().len(), before + 2, "nodes reused, no leak");
+        scene.set_frame_shadow_visible(false);
+        scene.set_frame_border_visible(false);
+        assert!(!scene.stage().get(sid).unwrap().container().visible);
+        assert!(!scene.stage().get(bid).unwrap().container().visible);
     }
 
     #[test]

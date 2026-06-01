@@ -139,8 +139,8 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 176
     - 248
   - - 88
-    - 104
-    - 184
+    - 112
+    - 192
     - 248
   - - 104
     - 112
@@ -164,7 +164,7 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 248
   - - 216
     - 192
-    - 208
+    - 200
     - 248
   - - 184
     - 176
@@ -186,17 +186,17 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 144
     - 168
     - 248
-  - - 208
+  - - 200
+    - 168
+    - 184
+    - 248
+  - - 216
     - 176
     - 184
     - 248
   - - 224
-    - 184
-    - 184
-    - 248
-  - - 240
-    - 168
-    - 168
+    - 160
+    - 160
     - 248
 Bitmap text (M0.15):
   - - 16

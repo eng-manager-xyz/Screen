@@ -58,11 +58,14 @@ composes exactly with crop and zoom (`pad ∘ zoom ∘ crop`). Because the
 recorder never calls `set_background_*` / `set_screen_clip`, its scene is
 unchanged: no backdrop node, no screen clip, a plain full-bleed compose.
 
-```admonish warning title="Shadow + inset + wallpaper are deferred (ISS-14 / ISS-15)"
-`shadow` and `inset` are authored and persisted but **not yet rendered** — a
-drop shadow needs a per-frame offscreen blur pre-pass (and is
-lavapipe-incompatible), so it lands behind its own GPU guard rather than
-slowing the headless gate. A `Wallpaper` source has no asset pipeline yet, so
-it falls back to the default gradient (with a `tracing::warn`) — loud, so a
-wallpaper project renders a framed backdrop rather than reading as a bug.
+```admonish note title="Shadow + inset render; wallpaper is next (ISS-15)"
+`shadow` and `inset` now render: the drop shadow is a dark, offset rounded-rect
+the shape of the frame window, drawn *behind* the screen (a Phase-1 unclipped
+`Graphics` node like the backdrop) so the offset sliver reads as a shadow — a
+hard-edged single-draw-call shadow, deliberately **not** the
+lavapipe-incompatible blur, so it stays verifiable on every CI runner. The
+inset border is a rounded-rect *stroke* tracing the same window, drawn *over*
+the screen (a Phase-2 full-NDC-clipped node like the cursor). A `Wallpaper`
+source still falls back to the default gradient (asset pipeline pending —
+ISS-15).
 ```
