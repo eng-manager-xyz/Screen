@@ -199,11 +199,9 @@ pub fn RecorderPage() -> impl IntoView {
         // (every modern Mac display is 2× Retina) for the label.
         let (w_pt, h_pt) = active.map_or((1920, 1080), |d| (d.width, d.height));
         let (w, h) = (w_pt * 2, h_pt * 2);
-        let name = if active.is_some() {
-            "Built-in Retina".to_owned()
-        } else {
-            "No display detected".to_owned()
-        };
+        // AUT-271: use the real display name (was hardcoded "Built-in Retina",
+        // so every monitor showed that), falling back when none is detected.
+        let name = active.map_or_else(|| "No display detected".to_owned(), display_label);
         DisplaySummary {
             name,
             size_label: format_display_size(w, h),
@@ -665,6 +663,46 @@ pub fn RecorderPage() -> impl IntoView {
                         }
                     }}
                     <Show when=move || open_picker.get() == OpenPicker::Display fallback=|| view! { <></> }>
+                        // AUT-271: pick which display to record. Clicking a row
+                        // sets `display_selected`, which feeds the recording's
+                        // `screen_source_id` — so the recording captures the
+                        // chosen monitor, not always the primary.
+                        <ul class="recorder-display-list" role="listbox" aria-label="Choose a display">
+                            {move || {
+                                let selected = display_selected.get();
+                                displays
+                                    .get()
+                                    .into_iter()
+                                    .map(|d| {
+                                        let id = d.id.clone();
+                                        let is_active = selected.as_deref() == Some(id.as_str());
+                                        let sub = format!(
+                                            "{} × {}{}",
+                                            d.width * 2,
+                                            d.height * 2,
+                                            if d.is_primary { " · primary" } else { "" },
+                                        );
+                                        view! {
+                                            <li
+                                                class="recorder-display-row"
+                                                role="option"
+                                                aria-selected=is_active
+                                                data-active=if is_active { "true" } else { "false" }
+                                                on:click=move |_| display_selected.set(Some(id.clone()))
+                                            >
+                                                <span class="recorder-display-row-check" aria-hidden="true">
+                                                    {if is_active { "✓" } else { " " }}
+                                                </span>
+                                                <span class="recorder-display-row-label">
+                                                    {display_label(&d)}
+                                                </span>
+                                                <span class="recorder-display-row-sub">{sub}</span>
+                                            </li>
+                                        }
+                                    })
+                                    .collect_view()
+                            }}
+                        </ul>
                         {move || {
                             let dims = display_summary().dimensions_label;
                             view! {
@@ -1379,6 +1417,16 @@ fn capture_mode_slug(m: CaptureMode) -> &'static str {
     }
 }
 
+/// Display row label (AUT-271) — the source's real name, or a generic
+/// fallback when the platform reports an empty label. Pure + unit-tested.
+fn display_label(d: &IpcDisplaySourceView) -> String {
+    if d.label.trim().is_empty() {
+        "Display".to_owned()
+    } else {
+        d.label.clone()
+    }
+}
+
 fn default_on_screen_options() -> Vec<OnScreenOptionView> {
     vec![
         OnScreenOptionView {
@@ -1721,6 +1769,28 @@ mod tests {
         assert_eq!(capture_mode_slug(CaptureMode::Screen), "screen");
         assert_eq!(capture_mode_slug(CaptureMode::Window), "window");
         assert_eq!(capture_mode_slug(CaptureMode::Area), "area");
+    }
+
+    #[test]
+    fn display_label_uses_real_name_or_falls_back() {
+        let named = IpcDisplaySourceView {
+            id: "display-1".to_owned(),
+            label: "DELL U2723QE".to_owned(),
+            width: 3840,
+            height: 2160,
+            is_primary: false,
+        };
+        assert_eq!(display_label(&named), "DELL U2723QE");
+        // Empty / whitespace label → generic fallback (never the old hardcoded
+        // "Built-in Retina", which mislabeled every external monitor).
+        let blank = IpcDisplaySourceView {
+            id: "display-2".to_owned(),
+            label: "   ".to_owned(),
+            width: 1920,
+            height: 1080,
+            is_primary: true,
+        };
+        assert_eq!(display_label(&blank), "Display");
     }
 
     #[test]

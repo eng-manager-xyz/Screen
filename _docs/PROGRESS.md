@@ -6,6 +6,18 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ AUT-271 — pick which display to record (real names + display selector), branch `aut-271-display-picker`
+
+The recorder always recorded the primary display and labeled every monitor "Built-in Retina" — the audit found the `ScreenPicker` component was authored but never mounted, and the live recorder had no way to switch displays. Fixed by driving the recorder's **existing** recording-source signal (`display_selected` → `RecordingConfig.screen_source_id`), which was already wired into capture but had no UI to change it.
+
+- Real display name: `display_summary().name` now uses the active display's actual `label` (pure `display_label` helper, unit-tested) instead of the hardcoded `"Built-in Retina"`.
+- Display selector: the expanded display section now renders a clickable list of all enumerated displays (`displays` signal); clicking a row sets `display_selected`, so the recording captures the chosen monitor. The preview + name update reactively.
+- CSS for the list in `shell.css`.
+
+Verified: `display_label` unit test, app-ui native + wasm clippy, fmt — all clean. GUI (click a second monitor → it records that one) needs a real-Mac eyeball. **Window-source selection is a follow-up** (the recording backend already resolves window ids, but the recorder UI lists displays only); noted on AUT-271. This is the focused, on-goal slice — a better design than mounting the standalone `ScreenPicker` (which ran its own capture session separate from the recording source).
+
+---
+
 ## ✅ AUT-513 — real aspect-ratio export (9:16 / 1:1 / 4:3 matte), branch `aut-513-aspect-export`
 
 Fixed the one genuine export defect the verification pass found: the framing-inspector aspect presets were a no-op on export (`AspectRatio::canvas_dims` had zero non-test callers; export composed at source dims). Now the aspect selection actually reframes the exported video — and the live preview — letterboxing/pillarboxing the source into the chosen canvas without stretch.
