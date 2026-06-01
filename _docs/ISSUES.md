@@ -25,6 +25,15 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-18: ED.21 — pitch-preserving audio retime (enhancement)
+- **Filed:** 2026-06-01
+- **By:** ED.21 closeout
+- **Severity:** deferral / enhancement
+- **Affects:** `crates/app/src/editor_export.rs` (`retime_audio`)
+- **Status:** open (deliberate v1 decision, not a bug)
+- **Description:** `retime_audio` resamples per segment, so a sped-up segment rises in pitch (and a slowed one drops) — the **industry-default** for editor speed ramps (Premiere / FCP / DaVinci / Loom all default to speed-with-pitch). This is the intended v1 behavior, pinned by the `retime_audio_double_speed_shifts_pitch_with_tempo` contract test. A pitch-*preserving* retime (time-stretch) is an enhancement, not a fix.
+- **Resolution:** When implemented: a pure-Rust WSOLA / overlap-add time-stretch (~100–200 lines, stays CI-testable) slotted in behind the *same* pure `(samples, segments, source_fps, sample_rate, channels) -> Vec<f32>` contract — callers + the existing tests don't change. (Rejected: per-segment gst `scaletempo`, which reintroduces the per-segment gst-trim complexity the team deliberately avoided and isn't unit-testable.) (open)
+
 ## ISS-17: ED.17 — cursor capture assumes the main display (multi-display refinement)
 - **Filed:** 2026-05-31
 - **By:** ED.17 (cursor capture)

@@ -165,9 +165,13 @@ impl ExportFrameGenerator {
 /// sample-frames keeps it click-free; the segments are then concatenated, so
 /// the result matches the retimed video frame-for-frame.
 ///
-/// Speed changes pitch with tempo (no pitch-correction) — the common
-/// screen-recording convention; a pitch-preserving retime (`scaletempo`) is a
-/// follow-up. Pure — no gst, exhaustively testable.
+/// **v1 ships speed-with-pitch by design**: a sped-up segment rises in pitch,
+/// a slowed one drops — the industry default for editor speed ramps (Premiere
+/// / FCP / Resolve / Loom all default to it). Pitch-*preserving* retime
+/// (time-stretch) is a tracked enhancement, **ISS-18**: it slots in behind
+/// this exact pure `(samples, segments, fps, rate, channels) -> Vec<f32>`
+/// contract, so callers and tests don't change when it lands. Pure — no gst,
+/// exhaustively testable.
 #[must_use]
 #[allow(
     clippy::cast_precision_loss,
@@ -366,8 +370,14 @@ mod tests {
         assert!((out[299] - 299.0).abs() < 1e-3);
     }
 
+    /// The **speed-with-pitch contract** (ED.21, ISS-18): a 2× segment emits
+    /// half the sample-frames *and* strides the source 2× — which is exactly
+    /// what raises the pitch with the tempo. This is the deliberate v1
+    /// behavior; a pitch-preserving time-stretch would keep `out[1]` near the
+    /// *unstrided* source while still halving the length. Asserting the stride
+    /// pins the contract so a future ISS-18 change is a conscious one.
     #[test]
-    fn retime_audio_double_speed_halves_sample_frames() {
+    fn retime_audio_double_speed_shifts_pitch_with_tempo() {
         let full = mono_ramp(300);
         let out = retime_audio(
             &[full.as_slice()].concat(),
@@ -376,10 +386,11 @@ mod tests {
             RATE,
             1,
         );
-        // 300 source sample-frames / 2.0 → 150.
+        // 300 source sample-frames / 2.0 → 150 (tempo doubled).
         assert_eq!(out.len(), 150);
-        // Output strides the source 2× → out[1] samples source position 2.
-        assert!((out[1] - 2.0).abs() < 1e-3);
+        // Output strides the source 2× (pitch rises with tempo): out[1] samples
+        // source position 2, out[10] position 20 — NOT 1 and 10.
+        assert!((out[1] - 2.0).abs() < 1e-3, "2× stride → pitch shift");
         assert!((out[10] - 20.0).abs() < 1e-3);
     }
 
