@@ -47,8 +47,16 @@ impl EditorPreviewSession {
         let source_path = project.source.path.clone();
         let stream = EditorVideoStream::open_with_cache(&source_path, PREVIEW_CACHE_FRAMES)
             .map_err(|e| format!("open source: {e}"))?;
-        let mut preview = EditorPreview::new(project.source.width, project.source.height)
-            .map_err(|e| format!("init compose: {e}"))?;
+        // Compose at the project's aspect-ratio canvas (AUT-513) — the source
+        // is aspect-fit into it, so the live preview matches the export.
+        let (canvas_w, canvas_h) = project.canvas_dims();
+        let mut preview = EditorPreview::with_canvas(
+            project.source.width,
+            project.source.height,
+            canvas_w,
+            canvas_h,
+        )
+        .map_err(|e| format!("init compose: {e}"))?;
         // Background framing is applied once (not per frame), like the export.
         preview.set_background(&project.background);
         Ok(Self {
@@ -75,8 +83,9 @@ impl EditorPreviewState {
     /// Open or update the preview for `project`.
     ///
     /// Re-opens the decode stream + compose pipeline only when the source clip
-    /// (or its dimensions) changed; otherwise it just swaps the stored project
-    /// — re-applying the background only when it changed — so edits
+    /// or the **output canvas** changed (a new clip, or an aspect-ratio change
+    /// that reshapes the canvas — AUT-513); otherwise it just swaps the stored
+    /// project — re-applying the background only when it changed — so edits
     /// (zoom / speed / crop / cursor) take effect on the next composed frame
     /// without rebuilding wgpu on every keystroke.
     ///
@@ -89,9 +98,10 @@ impl EditorPreviewState {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The preview renders at the project's aspect canvas, so an aspect
+        // change (which reshapes `canvas_dims`) forces a rebuild too.
         let same_clip = guard.as_ref().is_some_and(|s| {
-            s.source_path == project.source.path
-                && s.preview.dimensions() == (project.source.width, project.source.height)
+            s.source_path == project.source.path && s.preview.dimensions() == project.canvas_dims()
         });
         if same_clip {
             let s = guard

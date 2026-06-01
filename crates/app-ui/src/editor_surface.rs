@@ -285,13 +285,12 @@ pub fn EditorSurface() -> impl IntoView {
                         canvas=ToChildren::to_children(move || {
                             if loaded {
                                 // AUT-510: the live preview canvas. Sized to the
-                                // clip's source dimensions (putImageData doesn't
-                                // scale; CSS fits it to the pane). Painted by the
-                                // poll installed above, by DOM id.
+                                // project's aspect-ratio canvas (AUT-513), which the
+                                // backend composes the source into (putImageData
+                                // doesn't scale; CSS fits it to the pane). Painted by
+                                // the poll installed above, by DOM id.
                                 let (cw, ch) = project
-                                    .and_then(|s| {
-                                        s.with(|o| o.as_ref().map(|p| (p.source.width, p.source.height)))
-                                    })
+                                    .and_then(|s| s.with(|o| o.as_ref().map(EditProject::canvas_dims)))
                                     .unwrap_or((1, 1));
                                 view! {
                                     <canvas

@@ -207,7 +207,27 @@ fn wallpaper_rgba(name: &str, width: u32, height: u32) -> Vec<u8> {
     out
 }
 
-/// Composes the editor preview frame for a clip of `width × height`.
+/// Per-axis screen shrink that fits a `source_w × source_h` frame inside a
+/// `canvas_w × canvas_h` output canvas **without stretch** (AUT-513). The
+/// screen sprite's base transform fills NDC `[-1, 1]²` (the whole canvas), so
+/// when the canvas aspect differs from the source aspect the source would
+/// stretch; this factor shrinks the over-long axis so the source keeps its
+/// shape and the remainder becomes a matte (letterbox / pillarbox).
+///
+/// `r = source_aspect / canvas_aspect`: `r > 1` (source relatively wider) fits
+/// to width and shrinks height (`1/r`) → letterbox top/bottom; `r < 1` (source
+/// relatively taller) fits to height and shrinks width (`r`) → pillarbox sides;
+/// `r == 1` (same aspect) is `(1, 1)` (full fill, unchanged behaviour). Pure.
+#[must_use]
+fn aspect_fit_factor(source_w: u32, source_h: u32, canvas_w: u32, canvas_h: u32) -> (f64, f64) {
+    let source_aspect = f64::from(source_w.max(1)) / f64::from(source_h.max(1));
+    let canvas_aspect = f64::from(canvas_w.max(1)) / f64::from(canvas_h.max(1));
+    let r = source_aspect / canvas_aspect;
+    if r >= 1.0 { (1.0, 1.0 / r) } else { (r, 1.0) }
+}
+
+/// Composes the editor preview frame for a `source_w × source_h` clip into a
+/// `canvas_w × canvas_h` output (the project's aspect-ratio canvas).
 pub struct EditorPreview {
     compose: RecordingCompose,
     screen_slot: FrameSlot,
@@ -216,32 +236,67 @@ pub struct EditorPreview {
     cam_slot: FrameSlot,
     width: u32,
     height: u32,
-    /// Per-axis padding shrink factor applied to the screen transform (ED.18).
-    /// `(1, 1)` until [`Self::set_background`] folds the config's padding in.
+    /// Per-axis screen shrink applied to the transform: the aspect-fit matte
+    /// (AUT-513) optionally multiplied by the [`Self::set_background`] padding
+    /// inset (ED.18). Defaults to the aspect-fit so an un-styled render still
+    /// letterboxes the source into a differently-shaped canvas.
     pad: (f64, f64),
+    /// The aspect-fit-only factor (no padding) — the matte that fits the source
+    /// into the canvas. `set_background` re-derives `pad` as `padding · this`.
+    aspect_fit: (f64, f64),
 }
 
 impl EditorPreview {
-    /// Allocate the compose pipeline for a clip of the given dimensions.
+    /// Allocate the compose pipeline for a clip rendered at its own
+    /// dimensions (source aspect == canvas aspect, no matte). Equivalent to
+    /// [`Self::with_canvas`]`(width, height, width, height)`.
     ///
     /// # Errors
     ///
     /// Returns the underlying [`wisp::Error`] if the wgpu device can't be
     /// created.
     pub fn new(width: u32, height: u32) -> Result<Self, wisp::Error> {
-        let screen = StreamDimensions::new(width, height);
+        Self::with_canvas(width, height, width, height)
+    }
+
+    /// Allocate the compose pipeline for a `source_w × source_h` clip rendered
+    /// into a `canvas_w × canvas_h` output canvas (AUT-513). When the canvas
+    /// aspect differs from the source aspect the source is **aspect-fit** into
+    /// the canvas (letterbox / pillarbox) rather than stretched — the matte
+    /// area shows the background. Use [`EditProject::canvas_dims`] for the
+    /// canvas; the export path additionally clamps it to the HW-encoder edge cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying [`wisp::Error`] if the wgpu device can't be
+    /// created.
+    pub fn with_canvas(
+        source_w: u32,
+        source_h: u32,
+        canvas_w: u32,
+        canvas_h: u32,
+    ) -> Result<Self, wisp::Error> {
+        // The screen *texture* is the source's dimensions; the render target
+        // (and `width`/`height`) is the canvas. `compose_frame` validates the
+        // uploaded bytes against the screen texture, so callers keep passing
+        // source-sized BGRA.
+        let screen = StreamDimensions::new(source_w, source_h);
         // `RecordingScene::new` requires non-zero cam dims even though the
         // cam never renders here; a 2×2 placeholder is the cheapest legal
         // texture. No cam frame is ever uploaded, so it stays hidden.
         let cam = StreamDimensions::new(2, 2);
-        let compose = RecordingCompose::new(width, height, screen, cam)?;
+        let compose = RecordingCompose::new(canvas_w, canvas_h, screen, cam)?;
+        let aspect_fit = aspect_fit_factor(source_w, source_h, canvas_w, canvas_h);
         Ok(Self {
             compose,
             screen_slot: Arc::new(Mutex::new(None)),
             cam_slot: Arc::new(Mutex::new(None)),
-            width,
-            height,
-            pad: (1.0, 1.0),
+            width: canvas_w,
+            height: canvas_h,
+            // Default to the matte so an un-styled render letterboxes; a
+            // `set_background` call folds the padding inset in on top.
+            pad: aspect_fit,
+            aspect_fit,
         })
     }
 
@@ -257,10 +312,25 @@ impl EditorPreview {
     /// border (`inset`) traces a colored edge just inside the frame — both
     /// rendered here (ED.18). A `Wallpaper` source renders a procedural
     /// backdrop ([`wallpaper_rgba`], ISS-15) — license-clean, no bundled asset.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "aspect-fit factors are in (0, 1] and the NDC window extents are small; the f64→f32 narrowing of the scaled window is well within f32 precision"
+    )]
     pub fn set_background(&mut self, bg: &BackgroundConfig) {
-        let (window, corner_ndc, pad) =
+        let (window0, corner_ndc, (k_x, k_y)) =
             background_geometry(self.width, self.height, bg.padding, bg.corner_radius);
-        self.pad = pad;
+        // Fold the aspect-fit matte (AUT-513) into both the screen transform
+        // padding and the frame window, so the rounded-corner clip / shadow /
+        // border trace the *letterboxed* screen rect, not the full canvas.
+        let (fx, fy) = self.aspect_fit;
+        self.pad = (k_x * fx, k_y * fy);
+        let (fxf, fyf) = (fx as f32, fy as f32);
+        let window = Rect::new(
+            window0.min.x * fxf,
+            window0.min.y * fyf,
+            window0.size.x * fxf,
+            window0.size.y * fyf,
+        );
         self.compose
             .set_screen_clip(Some(MaskShape::rounded_rect(window, corner_ndc)));
         self.apply_shadow_and_border(bg, window, corner_ndc);
@@ -478,6 +548,70 @@ mod tests {
         // A byte count that doesn't match 64×64×4 is dropped by the
         // compositor → no composed frame.
         assert!(preview.render_frame(vec![0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn aspect_fit_factor_is_unit_for_equal_aspects() {
+        // Same aspect (any scale) → no matte, full fill — preserves the old
+        // source==canvas behaviour exactly.
+        let (fx, fy) = aspect_fit_factor(1920, 1080, 1920, 1080);
+        assert!((fx - 1.0).abs() < 1e-9 && (fy - 1.0).abs() < 1e-9);
+        let (fx, fy) = aspect_fit_factor(1280, 720, 640, 360);
+        assert!((fx - 1.0).abs() < 1e-9 && (fy - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn aspect_fit_factor_letterboxes_a_wide_source_in_a_tall_canvas() {
+        // 16:9 source into a 9:16 canvas: fit width, shrink height by
+        // canvas_aspect/source_aspect = 0.5625/1.7778 = 0.31640625.
+        let (fx, fy) = aspect_fit_factor(1920, 1080, 1080, 1920);
+        assert!((fx - 1.0).abs() < 1e-9, "fills width");
+        assert!(
+            (fy - 0.316_406_25).abs() < 1e-6,
+            "shrinks height (letterbox)"
+        );
+        // 16:9 into 1:1: shrink height by 9/16 = 0.5625.
+        let (fx, fy) = aspect_fit_factor(1920, 1080, 1080, 1080);
+        assert!((fx - 1.0).abs() < 1e-9 && (fy - 0.5625).abs() < 1e-6);
+    }
+
+    #[test]
+    fn aspect_fit_factor_pillarboxes_a_tall_source_in_a_wide_canvas() {
+        // 9:16 source into a 16:9 canvas: fit height, shrink width.
+        let (fx, fy) = aspect_fit_factor(1080, 1920, 1920, 1080);
+        assert!((fy - 1.0).abs() < 1e-9, "fills height");
+        assert!(
+            (fx - 0.316_406_25).abs() < 1e-6,
+            "shrinks width (pillarbox)"
+        );
+    }
+
+    /// GPU: a 16:9 white source composed into a 9:16 canvas is a centred
+    /// horizontal band with dark matte bars top + bottom (letterbox), at the
+    /// canvas dimensions — proving the aspect reframe is honored without
+    /// stretching the source. Single-pass compose, no blur → every CI OS.
+    #[test]
+    fn with_canvas_letterboxes_a_wide_source_into_a_tall_canvas() {
+        // 160×90 (16:9) source → 90×160 (9:16) canvas.
+        let mut pv = EditorPreview::with_canvas(160, 90, 90, 160).expect("init wgpu");
+        assert_eq!(pv.dimensions(), (90, 160), "renders at the 9:16 canvas");
+        let white = vec![255u8; 160 * 90 * 4];
+        let f = pv
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        assert_eq!((f.width, f.height), (90, 160));
+        let px = |col: usize, row: usize| {
+            let i = (row * 90 + col) * 4;
+            [f.bytes[i], f.bytes[i + 1], f.bytes[i + 2]]
+        };
+        let is_white = |p: [u8; 3]| p[0] > 230 && p[1] > 230 && p[2] > 230;
+        let is_dark = |p: [u8; 3]| u16::from(p[0]) + u16::from(p[1]) + u16::from(p[2]) < 60;
+        // Centre column, mid-row: the source band.
+        assert!(is_white(px(45, 80)), "centre is the source (not matte)");
+        // The source band is ~31.6% of the height (≈50 of 160 px) centred, so
+        // rows near the top + bottom edges are matte bars.
+        assert!(is_dark(px(45, 3)), "top letterbox bar is dark");
+        assert!(is_dark(px(45, 156)), "bottom letterbox bar is dark");
     }
 
     #[test]

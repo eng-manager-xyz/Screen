@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ AUT-513 — real aspect-ratio export (9:16 / 1:1 / 4:3 matte), branch `aut-513-aspect-export`
+
+Fixed the one genuine export defect the verification pass found: the framing-inspector aspect presets were a no-op on export (`AspectRatio::canvas_dims` had zero non-test callers; export composed at source dims). Now the aspect selection actually reframes the exported video — and the live preview — letterboxing/pillarboxing the source into the chosen canvas without stretch.
+
+- `EditProject::canvas_dims()` (pure, `edit`) — source's longer edge reframed to the aspect, even dims.
+- `EditorPreview::with_canvas(source_w, source_h, canvas_w, canvas_h)` — composes the source texture into a differently-shaped canvas via a pure `aspect_fit_factor` (shrinks the over-long axis → matte). The fit folds into the screen transform `pad` **and** the rounded-corner clip / shadow / border window; cursor + zoom ride the same transform. `new(w, h)` delegates to `with_canvas(w, h, w, h)` so all existing square call-sites are unchanged.
+- `editor_export` composes + encodes at `canvas_dims` clamped by `fit_within_encoder_limits` (AUT-334's vtenc 4096/per-axis + even-dim invariants preserved); `editor_preview_session` + the live-preview canvas (`editor_preview_canvas.rs` / `editor_surface.rs`) size to the unclamped `canvas_dims` so preview ≡ export, and an aspect change rebuilds the preview session.
+- Tests (verified locally one-binary-at-a-time): `edit::canvas_dims` (4 ratios + portrait seed); `editor_preview` pure `aspect_fit_factor` (letterbox / pillarbox / unit) + GPU `with_canvas_letterboxes_a_wide_source_into_a_tall_canvas`; `editor_export_golden::generator_composes_at_the_aspect_ratio_canvas` (Vertical fixture → 9:16 canvas, no regression to the Wide forward-walk). fmt + clippy (native + wasm) clean on the touched crates (the local-only `duration_suboptimal_units` noise is in untouched `click_capture.rs`; main is green with it).
+
+Resolves [[ISS-23]] / AUT-513. A dedicated storybook story/chapter for the matte is a follow-up; the GPU tests are the verification of record. The GUI (selecting 9:16 → seeing the vertical preview + export) needs a real-Mac eyeball.
+
+---
+
 ## ✅ 2026-06-01 — Record→Edit→Export flow verified end-to-end + Linear closeout (branch `dig-deeper`)
 
 User goal: confirm the full loop works — **record (mic + system audio + webcam + screen) → open the same clip in the edit tab → fast-forward (speed) + zoom-to-cursor + snip (split) + crop the ends (remove sections) → export** — and close every active/incomplete Linear issue, filing+executing any gaps.

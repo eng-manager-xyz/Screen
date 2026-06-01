@@ -162,6 +162,22 @@ impl EditProject {
         self.locate(project_frame).map(|(_, frame)| frame)
     }
 
+    /// The composed-output **canvas** dimensions in pixels — the source's
+    /// longer edge reframed to the project's [`aspect`](Self::aspect) ratio
+    /// (e.g. a 1920×1080 recording → 1080×1920 when `aspect` is `Vertical`).
+    /// Both edges are even (H.264 chroma subsampling needs it). The source
+    /// frame is letterboxed/pillarboxed into this canvas at render time, so
+    /// changing the aspect reframes the export without distorting the content.
+    ///
+    /// This is the **unclamped** canvas (the live preview composes at it
+    /// directly); the export path additionally passes it through
+    /// `media::encode::fit_within_encoder_limits` for the HW-encoder edge cap.
+    #[must_use]
+    pub fn canvas_dims(&self) -> (u32, u32) {
+        let long = self.source.width.max(self.source.height).max(2);
+        self.aspect.canvas_dims(long)
+    }
+
     /// The normalized `(x, y)` a cursor-targeted zoom should punch into at
     /// project `frame` — the cursor's position there from
     /// [`cursor_track`](Self::cursor_track), or the frame centre `(0.5, 0.5)`
@@ -230,6 +246,40 @@ mod tests {
         assert_eq!(proj.project_fps, DEFAULT_PROJECT_FPS);
         assert_eq!(proj.schema_version, SCHEMA_VERSION);
         assert_eq!(proj.aspect, AspectRatio::Wide);
+    }
+
+    #[test]
+    fn canvas_dims_reframes_the_source_to_the_aspect() {
+        // 1920×1080 source (long edge 1920).
+        let mut proj = EditProject::from_recording(sample_clip());
+        // Wide (default) keeps the source shape.
+        assert_eq!(proj.canvas_dims(), (1920, 1080));
+        // Vertical swaps to a 9:16 canvas seeded by the same long edge.
+        proj.aspect = AspectRatio::Vertical;
+        assert_eq!(proj.canvas_dims(), (1080, 1920));
+        // Square → a 1:1 canvas; Classic → 4:3. Both even.
+        proj.aspect = AspectRatio::Square;
+        assert_eq!(proj.canvas_dims(), (1920, 1920));
+        proj.aspect = AspectRatio::Classic;
+        let (w, h) = proj.canvas_dims();
+        assert_eq!((w, h), (1920, 1440));
+        assert_eq!((w & 1, h & 1), (0, 0), "canvas dims are even");
+    }
+
+    #[test]
+    fn canvas_dims_seeds_from_the_longer_source_edge_for_portrait_sources() {
+        // A portrait source (1080×1920, long edge 1920) exported Wide → a
+        // 16:9 canvas the portrait content pillarboxes into.
+        let mut proj = EditProject::from_recording(ClipRef::new(
+            PathBuf::from("/tmp/p.mp4"),
+            1080,
+            1920,
+            30,
+            60,
+        ));
+        assert_eq!(proj.canvas_dims(), (1920, 1080));
+        proj.aspect = AspectRatio::Vertical;
+        assert_eq!(proj.canvas_dims(), (1080, 1920), "stays full vertical");
     }
 
     #[test]
