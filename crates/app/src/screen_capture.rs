@@ -6,13 +6,14 @@
 //! [`crate::system_audio::SystemAudioCaptureState`] for the video
 //! capture path.
 //!
-//! ```admonish important title="Partial implementation"
-//! Per the M-RECORDER-completeness PR scope, this commit ships the
-//! lifecycle surface only — the frame `Channel<T>` that pipes BGRA
-//! pixels to the Leptos side is intentionally skipped (the user's
-//! "data delivered" exclusion). The `start_screen_capture` command
-//! returns `Ok(())` once the SCStream is up; observable state
-//! is the cumulative frame counter via `screen_capture_counters`.
+//! ```admonish note title="Preview frame channel (AUT-269)"
+//! The preview frame channel ships: `start_screen_capture` plumbs a
+//! **downscaled** [`ScreenFrameSlot`] (see [`PREVIEW_WIDTH`]) into the
+//! SCK delegate, and `latest_screen_frame_bgra` returns the latest
+//! frame to the webview — the same poll pattern as the camera preview
+//! ([`crate::commands::latest_camera_frame_bgra`]). The recording path
+//! is unaffected: it passes its own full-resolution slot via
+//! [`Self::start_with_frame_slot`], bypassing the preview slot.
 //! ```
 //!
 //! macOS-only — `crate::media::sck_video::ScreenCaptureStream` is
@@ -22,7 +23,16 @@
 
 use std::sync::Mutex;
 
-use media::sck_video::{ScreenCaptureConfig, ScreenCaptureStream, ScreenError};
+use media::sck_video::{ScreenCaptureConfig, ScreenCaptureStream, ScreenError, ScreenFrameSlot};
+
+/// Downscaled preview-capture width (AUT-269). The recorder preview polls the
+/// composed frame over IPC at ~15 fps; the full 1920×1080 capture is 8 MB/frame
+/// (124 MB/s) — far too heavy for a smooth poll. 1280×720 is ~3.7 MB/frame,
+/// crisp enough for a live preview, and the `SCStream` downscales the display
+/// into it. The recording path keeps native resolution (it uses its own slot).
+pub const PREVIEW_WIDTH: u32 = 1280;
+/// See [`PREVIEW_WIDTH`]. 16:9; the `SCStream` scales the display into this box.
+pub const PREVIEW_HEIGHT: u32 = 720;
 
 /// Resolve the `webcam-bubble` Tauri window's `CGWindowID` so it can
 /// be passed to [`ScreenCaptureConfig::excluded_window_ids`].
@@ -39,16 +49,42 @@ use media::sck_video::{ScreenCaptureConfig, ScreenCaptureStream, ScreenError};
 /// Uses the `NSWindow` → `windowNumber` → `CGWindowID` equivalence
 /// documented at <https://developer.apple.com/documentation/appkit/nswindow/1419068-windownumber>.
 #[must_use]
+pub fn bubble_window_cg_id(app: &tauri::AppHandle) -> Option<u32> {
+    window_cg_id(app, "webcam-bubble")
+}
+
+/// The recorder's **own** window `CGWindowID`s (AUT-269) — `main`,
+/// `webcam-bubble`, `tray-popover` — for [`ScreenCaptureConfig::excluded_window_ids`]
+/// so a live screen *preview* doesn't capture the recorder UI showing the
+/// preview (the screen-of-its-own-screen feedback loop). Missing / not-yet-shown
+/// windows are simply skipped.
+#[must_use]
+pub fn own_window_cg_ids(app: &tauri::AppHandle) -> Vec<u32> {
+    ["main", "webcam-bubble", "tray-popover"]
+        .into_iter()
+        .filter_map(|label| window_cg_id(app, label))
+        .collect()
+}
+
+/// Resolve a Tauri window label's `CGWindowID` (== `NSWindow.windowNumber`).
+///
+/// Returns `None` if the window isn't registered, Tauri can't hand us the raw
+/// `NSWindow`, or the `NSWindow` hasn't been assigned a number yet (`<= 0`,
+/// before it has ever been shown). All paths log via `tracing::debug!`.
+///
+/// Uses the `NSWindow` → `windowNumber` → `CGWindowID` equivalence documented at
+/// <https://developer.apple.com/documentation/appkit/nswindow/1419068-windownumber>.
+#[must_use]
 #[allow(
     unsafe_code,
     reason = "objc2 msg_send to NSWindow for windowNumber. The selector is no-arg, NSInteger return; sound to call on any non-null NSWindow*."
 )]
-pub fn bubble_window_cg_id(app: &tauri::AppHandle) -> Option<u32> {
+pub fn window_cg_id(app: &tauri::AppHandle, label: &str) -> Option<u32> {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use tauri::Manager;
 
-    let window = app.get_webview_window("webcam-bubble")?;
+    let window = app.get_webview_window(label)?;
     let ns_window_ptr = match window.ns_window() {
         Ok(ptr) => ptr.cast::<AnyObject>(),
         Err(err) => {
@@ -74,30 +110,42 @@ pub fn bubble_window_cg_id(app: &tauri::AppHandle) -> Option<u32> {
     u32::try_from(window_number).ok()
 }
 
-/// Tauri-managed wrapper. The four `screen_*` Tauri commands
-/// (`list_screen_displays`, `start_screen_capture`,
-/// `stop_screen_capture`, `screen_capture_status`) read from /
-/// write to this.
+/// Tauri-managed wrapper for the screen-capture preview session. The
+/// `screen_*` Tauri commands (`list_screen_displays`,
+/// `start_screen_capture`, `stop_screen_capture`, `screen_capture_status`,
+/// `latest_screen_frame_bgra`) read from / write to this.
 #[derive(Default)]
-pub struct ScreenCaptureState(pub Mutex<Option<ScreenCaptureStream>>);
+pub struct ScreenCaptureState {
+    /// The active SCK stream, if any.
+    stream: Mutex<Option<ScreenCaptureStream>>,
+    /// Latest downscaled preview frame (AUT-269). [`Self::start`] plumbs this
+    /// into the SCK delegate; `latest_screen_frame_bgra` reads it. The
+    /// recording path passes its own full-res slot via
+    /// [`Self::start_with_frame_slot`] and never touches this one.
+    preview_slot: ScreenFrameSlot,
+}
 
 impl ScreenCaptureState {
-    /// Start a session. Drops any in-flight stream first so SCK
-    /// isn't asked to run two captures simultaneously.
+    /// Start a **preview** session: the captured frames land in the shared
+    /// preview slot ([`Self::latest_frame`]) so the webview can poll them.
+    /// Drops any in-flight stream first so SCK isn't asked to run two
+    /// captures simultaneously.
     pub fn start(&self, config: ScreenCaptureConfig) -> Result<(), ScreenError> {
-        self.start_with_frame_slot(config, None)
+        let slot = ScreenFrameSlot::clone(&self.preview_slot);
+        self.start_with_frame_slot(config, Some(slot))
     }
 
-    /// Same as [`Self::start`] but plumbs the M-PIX.2 frame slot
-    /// into the SCK delegate so each captured frame's BGRA bytes
-    /// are written to the shared slot for the encoder feed thread.
+    /// Same as [`Self::start`] but plumbs an explicit M-PIX.2 frame slot
+    /// into the SCK delegate so each captured frame's BGRA bytes are
+    /// written to it. The recording orchestrator uses this with its own
+    /// full-resolution slot.
     pub fn start_with_frame_slot(
         &self,
         config: ScreenCaptureConfig,
-        frame_slot: Option<media::sck_video::ScreenFrameSlot>,
+        frame_slot: Option<ScreenFrameSlot>,
     ) -> Result<(), ScreenError> {
         let mut guard = self
-            .0
+            .stream
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = None;
@@ -106,13 +154,29 @@ impl ScreenCaptureState {
         Ok(())
     }
 
-    /// Stop the active session, if any.
+    /// Stop the active session, if any. Clears the preview slot so a stale
+    /// frame can't paint after the preview is torn down.
     pub fn stop(&self) {
         let mut guard = self
-            .0
+            .stream
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = None;
+        *self
+            .preview_slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    /// The latest preview frame's BGRA bytes (AUT-269), or empty when no
+    /// frame has arrived. Cloned so the caller doesn't hold the slot lock.
+    #[must_use]
+    pub fn latest_frame(&self) -> Vec<u8> {
+        self.preview_slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .unwrap_or_default()
     }
 
     /// Snapshot of the cumulative frame counter (`0` when no
@@ -120,7 +184,7 @@ impl ScreenCaptureState {
     /// + future frame-rate monitor.
     #[must_use]
     pub fn frames_received(&self) -> u64 {
-        self.0
+        self.stream
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
@@ -130,7 +194,7 @@ impl ScreenCaptureState {
     /// `true` when a session is currently held.
     #[must_use]
     pub fn is_active(&self) -> bool {
-        self.0
+        self.stream
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_some()

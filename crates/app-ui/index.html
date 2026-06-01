@@ -243,6 +243,11 @@
       window.__screenLatestCameraFrameBgra = () =>
         window.__TAURI__?.core?.invoke("latest_camera_frame_bgra") ?? Promise.resolve(new ArrayBuffer(0));
 
+      // AUT-269 — latest downscaled screen-preview frame (raw ArrayBuffer).
+      // Empty until the preview capture produces its first frame.
+      window.__screenLatestScreenFrameBgra = () =>
+        window.__TAURI__?.core?.invoke("latest_screen_frame_bgra") ?? Promise.resolve(new ArrayBuffer(0));
+
       // M-PIX.9 — proactive TCC permission requester. Fires the
       // macOS prompts for Camera + Mic + Screen Recording so the
       // bundle id registers in TCC; returns the final status of

@@ -1642,6 +1642,7 @@ pub fn list_screen_windows() -> Result<Vec<WindowSourceView>, String> {
 #[cfg(target_os = "macos")]
 #[tauri::command]
 pub fn start_screen_capture(
+    app: tauri::AppHandle,
     state: State<'_, ScreenCaptureState>,
     source_id: Option<String>,
 ) -> Result<(), String> {
@@ -1657,9 +1658,14 @@ pub fn start_screen_capture(
             ));
         }
     };
-    state
-        .start(ScreenCaptureConfig::for_source(source))
-        .map_err(|err| err.to_string())
+    // AUT-269 — this is the *preview* path: capture downscaled (so the ~15 fps
+    // webview poll stays cheap) and exclude the recorder's own windows so the
+    // preview doesn't capture itself (the screen-of-its-own-screen feedback).
+    let mut config = ScreenCaptureConfig::for_source(source);
+    config.width = crate::screen_capture::PREVIEW_WIDTH;
+    config.height = crate::screen_capture::PREVIEW_HEIGHT;
+    config.excluded_window_ids = crate::screen_capture::own_window_cg_ids(&app);
+    state.start(config).map_err(|err| err.to_string())
 }
 
 /// Non-macOS stub for `start_screen_capture`. Returns the
@@ -1674,6 +1680,25 @@ pub fn start_screen_capture(
 #[tauri::command]
 pub fn start_screen_capture(_source_id: Option<String>) -> Result<(), String> {
     Err("screen capture requires macOS 13.0+".into())
+}
+
+/// Latest downscaled screen-preview frame as raw BGRA bytes (AUT-269), as a
+/// [`tauri::ipc::Response`] (an `ArrayBuffer` in JS — no JSON). Empty when no
+/// preview frame has arrived. Mirrors [`latest_camera_frame_bgra`]; the webview
+/// polls it at ~15 fps and `putImageData`s it into the recorder canvas.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[must_use]
+pub fn latest_screen_frame_bgra(state: State<'_, ScreenCaptureState>) -> tauri::ipc::Response {
+    tauri::ipc::Response::new(state.latest_frame())
+}
+
+/// Non-macOS stub for `latest_screen_frame_bgra`. Always empty.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+#[must_use]
+pub fn latest_screen_frame_bgra() -> tauri::ipc::Response {
+    tauri::ipc::Response::new(Vec::new())
 }
 
 /// Stop the active screen-capture session, if any.
