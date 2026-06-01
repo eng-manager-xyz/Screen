@@ -8,8 +8,9 @@ click ripple that marks where the user acted.
 
 The overlay is a single `Graphics` node over the framed screen:
 
-- **Pointer** — two stacked CCW triangles (`draw_polygon`), a dark one behind
-  a white one, sized by the project's `size_pct`.
+- **Pointer** — a single convex arrow quad (`draw_polygon`: tip, left edge,
+  tail point, right barb), a dark outline copy behind a white one, sized by
+  the project's `size_pct`.
 - **Ripples** — fading, expanding discs (`draw_ellipse`) at each recent
   click, their radius growing and alpha decaying across a ~0.4 s window
   (`edit::telemetry::ripples_at`).

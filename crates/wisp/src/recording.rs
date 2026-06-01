@@ -105,6 +105,22 @@ pub struct CursorRipple {
     pub alpha: f32,
 }
 
+/// Append the arrow-cursor silhouette to `g`: a classic pointer filled with
+/// `color`, sized by NDC half-extent `half`, anchored at its hot-spot `tip`.
+///
+/// A single *convex* quad — tip, vertical left edge, tail point, right barb —
+/// because [`Graphics::draw_polygon`] fan-triangulates from the first vertex
+/// (a notched arrow would self-overlap) and because the dark-outline-behind
+/// trick (`set_cursor` draws a larger dark copy then a white one) only stays
+/// registered for a compact shape near the `tip`: scaling a far-from-tip tail
+/// about the tip would bloat its border out of proportion. The four points
+/// read unmistakably as a pointer while keeping both invariants.
+fn draw_pointer(g: &mut Graphics, tip: Vec2, half: f32, color: Color) {
+    let p = |x: f32, y: f32| tip + Vec2::new(x, y) * half;
+    g.fill(Fill::Solid(color));
+    g.draw_polygon(&[p(0.0, 0.0), p(0.0, -1.5), p(0.45, -1.75), p(1.05, -0.95)]);
+}
+
 /// Dimensions for one of the composed input streams. Used at
 /// [`RecordingScene::new`] time to allocate the backing
 /// [`VideoTexture`]s; subsequent `set_*_frame` calls must pass a
@@ -577,21 +593,11 @@ impl RecordingScene {
             g.fill(Fill::Solid(Color::rgba(1.0, 1.0, 1.0, r.alpha)));
             g.draw_ellipse(r.center, Vec2::splat(r.radius));
         }
-        // Pointer triangle (CCW), scaled by `half` about its hot-spot tip. A
-        // dark, slightly-larger triangle behind a white one reads on any
-        // backdrop.
-        let arrow = |s: f32| {
-            let scale = half * s;
-            [
-                pointer_ndc + Vec2::new(0.0, 0.0) * scale,
-                pointer_ndc + Vec2::new(0.0, -1.7) * scale,
-                pointer_ndc + Vec2::new(1.15, -1.05) * scale,
-            ]
-        };
-        g.fill(Fill::Solid(Color::rgb_u8(20, 20, 20)));
-        g.draw_polygon(&arrow(1.3));
-        g.fill(Fill::Solid(Color::WHITE));
-        g.draw_polygon(&arrow(1.0));
+        // Arrow pointer: an arrowhead + tail, scaled by `half` about its
+        // hot-spot tip. A dark, slightly-larger copy behind a white one reads
+        // on any backdrop.
+        draw_pointer(g, pointer_ndc, half * 1.25, Color::rgb_u8(20, 20, 20));
+        draw_pointer(g, pointer_ndc, half, Color::WHITE);
         g.container.visible = true;
     }
 

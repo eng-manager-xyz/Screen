@@ -33,13 +33,18 @@ framed screen by
 [`EditorPreview::render_framed_with_cursor`](../../api/screen_app/editor_preview/struct.EditorPreview.html),
 driven by the recorded **cursor track** (`EditProject::cursor_track`):
 
-- a scaled, dark-outlined white **pointer** (two stacked `draw_polygon`
-  triangles, sized by `size_pct`),
+- a scaled, dark-outlined white **arrow pointer** (a single convex
+  `draw_polygon` quad — tip, left edge, tail point, right barb — sized by
+  `size_pct`),
 - expanding, fading **click ripples** (`draw_ellipse` discs) at each recent
   click, radius growing + alpha decaying across a ~0.4 s window
   ([`ripples_at`](../../api/edit/telemetry/fn.ripples_at.html)),
 - **smoothing** as a pure EMA over the track
-  ([`cursor_at`](../../api/edit/telemetry/fn.cursor_at.html)).
+  ([`cursor_at`](../../api/edit/telemetry/fn.cursor_at.html)),
+- **hide-when-static**: a parked pointer fades off-stage
+  ([`cursor_is_static`](../../api/edit/telemetry/fn.cursor_is_static.html)),
+  but a live click ripple keeps it visible — a click is an action worth
+  showing even when the cursor hasn't moved.
 
 ```admonish important title="The cursor rides the zoom"
 The captured position is normalized to the *source* frame, so the overlay is
@@ -54,6 +59,7 @@ under a zoom (rides-the-transform, not output-space pinning).
 The overlay renders from a recorded **or synthetic** track (and is tested
 with a synthetic one, so it's gate-green without real capture). The recorded
 track is produced by the per-OS telemetry capture in
-[ED.17](./ed17-auto-zoom.md). A bitmap cursor glyph and the `hide_static`
-gap are follow-up polish; the auto-zoom toggle is already live.
+[ED.17](./ed17-auto-zoom.md). The pointer is a vector arrow glyph and
+`hide_static` is honored at render; a pixel-sampled native cursor bitmap
+remains a possible future nicety, not a gap.
 ```

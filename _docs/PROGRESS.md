@@ -6,6 +6,38 @@ Use the template at the bottom for new entries.
 
 ---
 
+## 🏁 RESUME STATUS — M-EDIT closeout track (branch `m-edit-closeout`)
+
+The "last 20 %": every deferred ISS-NN from PR #67 driven to genuine 100 % so
+each Linear ticket is confidently closeable. Same one-binary-at-a-time
+verification discipline (16 GB machine; CI's clean runners are the authority).
+**Base `main`** (post-#67 merge). Verified per-item locally; pushed + CI-watched
+as a batch.
+
+| Item | Ticket | State |
+|---|---|---|
+| ED.21 pitch (speed-with-pitch v1, doc + contract test, ISS-18 for WSOLA) | AUT-356 | ✅ committed; `edit`/`retime_audio` green |
+| ISS-14 ED.18 drop-shadow + inset border (hard-edged Graphics, no blur → lavapipe-safe) | AUT-353 | ✅ committed; `recording::` + `editor_preview::` GPU diff tests, PNG eyeballed |
+| ISS-15 ED.18 procedural wallpaper backdrop (pure-Rust RGBA → full-NDC Sprite) | AUT-353 | ✅ committed; pure + GPU (ocean blue-margin) tests; ISS-19 for real-asset/aspect |
+| ISS-17 ED.17 multi-display cursor rect (`parse_display_id` → `CGDisplayBounds`) | AUT-352 | ✅ committed; `parse_display_id` unit test |
+| ED.19 cursor glyph + `hide_static` | AUT-354 | ✅ convex arrow glyph (replaces triangle) + `hide_static` honored at render (click ripple overrides); `cursor_is_static` + `cursor_for_frame` unit tests, fingerprint stable, PNG eyeballed |
+| ED.16 animated MP4 asset | AUT-351 | ⏳ next (CI-verifiable) |
+| ISS-16 ED.17 click capture (CGEventTap) | AUT-352 | ⏳ last (runtime-only, no CI) |
+
+**ED.19 closeout detail.** The pointer is now a single **convex arrow quad**
+(tip, left edge, tail point, right barb) instead of the placeholder triangle —
+kept convex so `draw_polygon`'s fan-triangulation is well-defined and the
+dark-outline-behind-white trick (a larger dark copy scaled about the hot-spot
+tip) stays registered (a far-from-tip tail would bloat the border, so no
+two-piece tail). `hide_static` is honored in the export generator's pure
+`cursor_for_frame`: a parked pointer (`edit::telemetry::cursor_is_static`,
+~0.4 s lookback under a ~0.4 % threshold) is hidden **unless** a live click
+ripple is active — a click is an action worth showing even when the cursor
+hasn't moved (the Screen Studio rule). The wisp glyph + the storybook story
+share one shape; fingerprint snapshot unchanged at quadrant resolution.
+
+---
+
 ## 🔧 RESUME STATUS — render-integration track (PR #67)
 
 The dev machine (16 GB, 18-day uptime) can't run the full-workspace `just gate`
