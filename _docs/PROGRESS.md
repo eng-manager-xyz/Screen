@@ -57,6 +57,16 @@ CI); the pure `samples_to_clicks`, the `RecordingState` handoff, and a
 every OS — needs one real-Mac smoke (grant the permission, click, confirm
 auto-zoom + ripples) before declaring AUT-352 visually verified.
 
+**The AUT-352 headline now actually fires.** A gap caught during closeout:
+clicks were captured + attached to `project.clicks`, but **nothing converted
+them into zooms on import** — so "the recording arrives already punched-in"
+wasn't true. Fixed with `EditProject::generate_auto_zooms` (pure, unit-tested:
+detect-toggle + idempotent non-clobber guard), called in `open_in_editor`
+right after the click handoff. A fresh recording now opens with auto-zoom
+blocks already on the timeline (editable like any other `ZoomSegment`). The
+third AUT-352 telemetry signal — **active-window** events — is deferred as
+ISS-20 (secondary to the click-cluster headline).
+
 **Bottom line:** all six closeout items are code-complete + gate-green-locally.
 AUT-351 (ED.16 asset), AUT-353 (ED.18 full), AUT-354 (ED.19 full) are
 confidently closeable. AUT-352 (ED.17) is now *complete in code* — cursor

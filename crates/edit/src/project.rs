@@ -161,6 +161,36 @@ impl EditProject {
     pub fn source_time(&self, project_frame: Frame) -> Option<Frame> {
         self.locate(project_frame).map(|(_, frame)| frame)
     }
+
+    /// Generate auto-zoom blocks from the captured click log (ED.17 — the
+    /// "Auto-Zoom: detect from cursor" feature). Returns the number generated.
+    ///
+    /// A no-op (returns `0`) unless detection is enabled
+    /// ([`CursorConfig::auto_zoom`](crate::style::CursorConfig::auto_zoom)), a
+    /// click log is present, **and no zooms exist yet** — so a freshly recorded
+    /// clip arrives already punched-in on its click clusters, while a re-opened
+    /// edit keeps the zooms the user already tuned (the generator never
+    /// clobbers an existing list). The blocks are ordinary editable
+    /// [`ZoomSegment`]s ([`crate::telemetry::auto_zoom_segments`]) — the user
+    /// nudges, deletes, or retunes them like any other zoom.
+    pub fn generate_auto_zooms(&mut self) -> usize {
+        if !self.zooms.is_empty() {
+            return 0;
+        }
+        let Some(clicks) = self.clicks.as_deref() else {
+            return 0;
+        };
+        let zooms =
+            crate::telemetry::auto_zoom_segments(clicks, self.project_fps, &self.cursor.auto_zoom);
+        let n = zooms.len();
+        if n > 0 {
+            // Keep the id allocator ahead of the generated blocks so a later
+            // manual zoom can't collide with an auto one.
+            self.next_zoom_id = self.next_zoom_id.max(u32::try_from(n).unwrap_or(u32::MAX));
+            self.zooms = zooms;
+        }
+        n
+    }
 }
 
 #[cfg(test)]
@@ -187,6 +217,38 @@ mod tests {
         assert_eq!(proj.project_fps, DEFAULT_PROJECT_FPS);
         assert_eq!(proj.schema_version, SCHEMA_VERSION);
         assert_eq!(proj.aspect, AspectRatio::Wide);
+    }
+
+    #[test]
+    fn generate_auto_zooms_punches_in_on_clicks() {
+        let mut proj = EditProject::from_recording(sample_clip());
+        // No click log → nothing generated.
+        assert_eq!(proj.generate_auto_zooms(), 0);
+        assert!(proj.zooms.is_empty());
+
+        // A click → one auto-zoom block (detect_from_cursor defaults on).
+        proj.clicks = Some(vec![ClickEvent::new(100, 0.4, 0.6)]);
+        let n = proj.generate_auto_zooms();
+        assert_eq!(n, 1, "one click cluster → one zoom");
+        assert_eq!(proj.zooms.len(), 1);
+        assert!(
+            proj.next_zoom_id >= 1,
+            "id allocator advanced past the auto block"
+        );
+
+        // Idempotent: never clobbers an existing (e.g. user-tuned) zoom list.
+        proj.clicks = Some(vec![ClickEvent::new(500, 0.2, 0.2)]);
+        assert_eq!(proj.generate_auto_zooms(), 0, "guarded by non-empty zooms");
+        assert_eq!(proj.zooms.len(), 1);
+    }
+
+    #[test]
+    fn generate_auto_zooms_respects_the_detect_toggle() {
+        let mut proj = EditProject::from_recording(sample_clip());
+        proj.cursor.auto_zoom.detect_from_cursor = false;
+        proj.clicks = Some(vec![ClickEvent::new(100, 0.5, 0.5)]);
+        assert_eq!(proj.generate_auto_zooms(), 0, "detection off → no zooms");
+        assert!(proj.zooms.is_empty());
     }
 
     #[test]

@@ -25,6 +25,15 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-20: ED.17 — active-window telemetry for window-aware auto-zoom (enhancement)
+- **Filed:** 2026-06-01
+- **By:** ISS-16 closeout (AUT-352)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/click_capture.rs` / `cursor_capture.rs`, `crates/edit/src/telemetry.rs`
+- **Status:** open
+- **Description:** AUT-352's "Done when" lists three telemetry signals — cursor-move, click, **active-window** events. The first two ship (cursor poll + `CGEventTap` click log → `auto_zoom_segments` → `project.zooms` on import). The **active-window** signal (which app/window has focus, for window-framed auto-zoom and tighter cluster targeting) is not captured. The click-cluster auto-zoom is the headline and is delivered; active-window is a secondary refinement.
+- **Resolution:** When implemented: observe focus changes (macOS `NSWorkspace.didActivateApplicationNotification` or the AX API) on the same recording clock, persist as a window-event track, and feed it into the auto-zoom generator to bias cluster centroids / windows toward the focused window's frame. Pure-test the generator extension; the capture is runtime-only like the click tap. (open)
+
 ## ISS-18: ED.21 — pitch-preserving audio retime (enhancement)
 - **Filed:** 2026-06-01
 - **By:** ED.21 closeout
