@@ -218,6 +218,22 @@ extern "C" {
     /// Request cancellation of the in-flight export.
     #[wasm_bindgen(js_namespace = window, js_name = "__screenEditorExportCancel", catch)]
     fn screen_editor_export_cancel_js() -> Result<JsValue, JsValue>;
+
+    /// Open / update the live editor preview (AUT-510) for `project` — builds
+    /// the compose pipeline (and re-applies edits) so `editor_preview_frame`
+    /// composes the current edit. Fire-and-forget.
+    #[wasm_bindgen(js_namespace = window, js_name = "__screenEditorPreviewOpen", catch)]
+    fn screen_editor_preview_open_js(project: JsValue) -> Result<JsValue, JsValue>;
+}
+
+/// Open / update the live editor preview for `project` (AUT-510). Call on the
+/// initial load and whenever an edit mutates the project, so the next composed
+/// frame reflects it. The composed frames themselves come from the canvas poll
+/// (`__screenEditorPreviewFrame`).
+pub fn editor_preview_open(project: &EditProject) {
+    if let Ok(js) = serde_wasm_bindgen::to_value(project) {
+        let _ = screen_editor_preview_open_js(js);
+    }
 }
 
 /// Start exporting `project` to `format` (e.g. `"mp4"`). Progress + result

@@ -129,6 +129,7 @@ pub mod clip_inspector;
 pub mod cursor_inspector;
 pub mod editor_edits;
 pub mod editor_ipc;
+pub mod editor_preview_canvas;
 pub mod editor_surface;
 pub mod export_bar;
 pub mod filmstrip;

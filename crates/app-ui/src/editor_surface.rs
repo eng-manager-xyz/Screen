@@ -244,6 +244,10 @@ pub fn EditorSurface() -> impl IntoView {
     // Drag-over highlight for the drop zone (set by the app-root drag
     // listeners). Falls back to a local signal outside the AppShell.
     let drag_active = use_context::<RwSignal<bool>>().unwrap_or_else(|| RwSignal::new(false));
+    // AUT-510: install the live-preview hooks once per mount (re-open on edit
+    // + the repaint poll). Must be in the body, not the reactive view block,
+    // or each rebuild would leak another poll.
+    crate::editor_preview_canvas::install_editor_preview(project, status);
     // Toolbar chips emit their id on click; map the actionable ones to edit
     // ops at the playhead (the same ops the keyboard shortcuts fire). `split`
     // is the must-fix (the razor); `zoom` drops a punch-in. Other chips
@@ -280,10 +284,23 @@ pub fn EditorSurface() -> impl IntoView {
                         on_action=on_toolbar_action
                         canvas=ToChildren::to_children(move || {
                             if loaded {
+                                // AUT-510: the live preview canvas. Sized to the
+                                // clip's source dimensions (putImageData doesn't
+                                // scale; CSS fits it to the pane). Painted by the
+                                // poll installed above, by DOM id.
+                                let (cw, ch) = project
+                                    .and_then(|s| {
+                                        s.with(|o| o.as_ref().map(|p| (p.source.width, p.source.height)))
+                                    })
+                                    .unwrap_or((1, 1));
                                 view! {
-                                    <div class="editor-canvas-empty">
-                                        <p class="editor-canvas-hint">"Preview renders here."</p>
-                                    </div>
+                                    <canvas
+                                        id=crate::editor_preview_canvas::EDITOR_PREVIEW_CANVAS_ID
+                                        class="editor-preview-canvas"
+                                        width=cw
+                                        height=ch
+                                        aria-label="Editor preview"
+                                    />
                                 }
                                 .into_any()
                             } else {
