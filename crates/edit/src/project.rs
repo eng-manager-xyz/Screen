@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::clip::ClipRef;
 use crate::segment::{Frame, TimelineSegment};
 use crate::style::{AspectRatio, BackgroundConfig, CropRect, CursorConfig};
+use crate::telemetry::{ClickEvent, CursorSample};
 use crate::zoom::ZoomSegment;
 
 /// On-disk schema version. Bumped when the project file format changes
@@ -69,6 +70,17 @@ pub struct EditProject {
     /// (managed by edit operations in ED.2).
     #[serde(default)]
     pub next_zoom_id: u32,
+    /// Per-frame cursor track captured at record time (ED.17). `None` for
+    /// projects recorded before cursor capture, or when the macOS
+    /// input-monitoring permission was denied. Drives the cursor overlay
+    /// (ED.19).
+    #[serde(default)]
+    pub cursor_track: Option<Vec<CursorSample>>,
+    /// Click log captured at record time. Feeds auto-zoom detection
+    /// ([`crate::telemetry::auto_zoom_segments`]) and the cursor click-ripple
+    /// overlay (ED.19). `None` = no telemetry captured.
+    #[serde(default)]
+    pub clicks: Option<Vec<ClickEvent>>,
 }
 
 impl EditProject {
@@ -89,6 +101,8 @@ impl EditProject {
             aspect: AspectRatio::default(),
             project_fps: DEFAULT_PROJECT_FPS,
             next_zoom_id: 0,
+            cursor_track: None,
+            clicks: None,
         }
     }
 
@@ -153,6 +167,7 @@ impl EditProject {
 mod tests {
     use super::*;
     use crate::style::CropRect;
+    use crate::telemetry::{ClickEvent, CursorSample};
     use crate::zoom::{ZoomId, ZoomSegment};
 
     fn sample_clip() -> ClipRef {
@@ -249,6 +264,12 @@ mod tests {
             height: 1.0,
         });
         proj.aspect = AspectRatio::Vertical;
+        // ED.17/ED.19 telemetry round-trips losslessly too.
+        proj.cursor_track = Some(vec![
+            CursorSample::new(0, 0.1, 0.2),
+            CursorSample::new(15, 0.5, 0.5),
+        ]);
+        proj.clicks = Some(vec![ClickEvent::new(15, 0.5, 0.5)]);
 
         let json = serde_json::to_string_pretty(&proj).expect("serialize");
         let back: EditProject = serde_json::from_str(&json).expect("deserialize");
@@ -271,5 +292,18 @@ mod tests {
         assert!(proj.crop.is_none());
         assert_eq!(proj.background, BackgroundConfig::default());
         assert_eq!(proj.project_duration(), 600);
+        // A pre-ED.17 project (no telemetry fields) deserializes with the
+        // track/clicks absent — forward-compat for cursor capture.
+        assert!(proj.cursor_track.is_none());
+        assert!(proj.clicks.is_none());
+    }
+
+    #[test]
+    fn from_recording_has_no_telemetry() {
+        // A fresh project carries no cursor track or click log until capture
+        // (ED.17) attaches one at Record→Edit import.
+        let proj = EditProject::from_recording(sample_clip());
+        assert!(proj.cursor_track.is_none());
+        assert!(proj.clicks.is_none());
     }
 }

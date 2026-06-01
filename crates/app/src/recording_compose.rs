@@ -19,7 +19,7 @@
 
 use wisp::application::{AppConfig, Application};
 use wisp::color::Color;
-use wisp::recording::{CamLayout, RecordingScene, StreamDimensions};
+use wisp::recording::{CamLayout, CursorRipple, RecordingScene, StreamDimensions};
 use wisp::render::Renderer;
 use wisp::texture::render_texture::RenderTexture;
 
@@ -183,6 +183,43 @@ impl RecordingCompose {
             width: self.width,
             height: self.height,
         })
+    }
+
+    /// Set the screen sprite's local transform — the editor's crop-then-zoom
+    /// framing (ED.15/ED.16). The recorder never calls this, so its screen
+    /// stays at the base fill transform. Apply before [`Self::compose_frame`]
+    /// so it lands on that frame.
+    pub fn set_screen_transform(&mut self, transform: wisp::Transform) {
+        self.scene.set_screen_transform(transform);
+    }
+
+    /// Set (or clear) the screen sprite's clip — the editor's rounded-corner
+    /// frame window (ED.18). The recorder never calls this, so its screen
+    /// stays full-bleed and un-clipped.
+    pub fn set_screen_clip(&mut self, shape: Option<wisp::MaskShape>) {
+        self.scene.set_screen_clip(shape);
+    }
+
+    /// Paint the editor backdrop as a linear gradient (ED.18). The recorder
+    /// never calls this, so its scene has no backdrop node.
+    pub fn set_background_gradient(&mut self, from: Color, to: Color, angle_deg: f32) {
+        self.scene.set_background_gradient(from, to, angle_deg);
+    }
+
+    /// Paint the editor backdrop as a flat color (ED.18).
+    pub fn set_background_color(&mut self, color: Color) {
+        self.scene.set_background_color(color);
+    }
+
+    /// Draw the editor cursor overlay (ED.19) — pointer at `pointer_ndc`
+    /// sized by `half`, with click `ripples`. The recorder never calls this.
+    pub fn set_cursor(&mut self, pointer_ndc: wisp::Vec2, half: f32, ripples: &[CursorRipple]) {
+        self.scene.set_cursor(pointer_ndc, half, ripples);
+    }
+
+    /// Toggle the editor cursor overlay's visibility (ED.19).
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        self.scene.set_cursor_visible(visible);
     }
 
     /// Output dimensions in pixels.

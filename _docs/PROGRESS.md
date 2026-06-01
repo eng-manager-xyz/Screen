@@ -6,6 +6,130 @@ Use the template at the bottom for new entries.
 
 ---
 
+## 🔧 RESUME STATUS — render-integration track (PR #67)
+
+The dev machine (16 GB, 18-day uptime) can't run the full-workspace `just gate`
+— `nextest` spawning 60+ large wgpu/`wisp-chart` debug binaries at once
+exhausts RAM and thrashes the page cache. Workaround that *does* work on this
+machine: **one test binary at a time** (`cargo test -p <crate> --test <name>` /
+`--lib <filter>`) loads fine. Each chunk is verified that way + via CI's clean
+runners (the project's designed authority).
+
+**Branch:** `editor-render-integration` → **PR #67**. Base `main`.
+
+| Chunk | Ticket | State |
+|---|---|---|
+| ED.16 zoom render | AUT-351 | ✅ `91ad85f`, **CI green** |
+| ED.18 background framing | AUT-353 | ✅ `6c9ddd9` + snapshot `7700175`; **CI green** (recording:: 19/19, editor_preview:: 15/15, PNG eyeballed) |
+| ED.21 export audio | AUT-356 | ✅ `9157c1e`/`f666ae8`; **CI green** + e2e on a real Mac incl. **real audio mux** |
+| ED.19 cursor overlay | AUT-354 | ✅ `3da5729`; render verified (GPU test: pointer draws + **rides the zoom**; story + fingerprint + PNG), drives from `cursor_track` |
+| ED.17 telemetry capture | AUT-352 | 🟢 **cursor (position) capture wired end-to-end** (`3c4cba5` mechanism + `1a6b22f` live record→edit wiring); no-permission `CGEvent` poll → `samples_to_track` → `EditProject::cursor_track` → ED.19 overlay. **Clicks** (auto-zoom/ripples) deferred to ISS-16; multi-display to ISS-17 |
+
+**ED.17 nuance (be honest at closeout).** The **cursor position** half is now
+wired live: a recording starts a `CursorPoller` (no-permission `CGEvent`
+polling, additive — can't affect the encoded mp4), `stop_recording` resamples
+it via `samples_to_track`, and `open_in_editor` attaches it to
+`EditProject::cursor_track` (consume-once, unit-tested), so ED.19 draws the
+real recorded cursor. The macOS poll + the display rect are **runtime-verified**
+(record → Edit → scrub). Still deferred: (a) the **click** log (auto-zoom +
+ripples) needs a `CGEventTap` + Input-Monitoring permission (ISS-16,
+can't-run-in-CI); (b) **multi-display** targeting (ISS-17, currently assumes
+the main display). So AUT-352's *cursor* deliverable is done; its *click*
+deliverable (the auto-zoom headline) remains ISS-16.
+
+**Closeout:** ED.16/18/19/21 are genuinely done (CI green / verified) →
+closeable. ED.17 (AUT-352): cursor-position capture done + wired; **clicks
+remain (ISS-16)** so auto-zoom-from-real-clicks isn't captured yet — keep
+AUT-352 open until ISS-16 unless you scope the ticket to position-only. Verify
+each ticket's "Done when" before closing (partial sub-criteria: ED.16 wants an
+animated MP4 asset; ED.18 shadow/wallpaper are ISS-14/ISS-15;
+ED.21 pitch-preservation is a follow-up). Do NOT close on PR-pass alone.
+
+### ED.21 verification (done on this machine, one binary at a time)
+`retime_audio` 6/6 ✅, `media build_audio_decode_args` ✅, `edited_export_golden`
+(generator/retiming) ✅, **`edited_export_e2e` 2/2** ✅ — incl. the new
+`edited_export_muxes_retimed_source_audio`, which builds an audio-bearing
+source (stream-copy the known-good video + synthetic AAC) and proves the export
+carries a *retimed* audio track (`decode_source_audio_f32` → `retime_audio` →
+`push_audio_chunk` → remux). fmt + clippy (`screen-app --tests`, `media
+--all-targets`) clean. Audio approach: `GStreamer` decodes intake to raw F32LE;
+pure-Rust `retime_audio` does per-segment trim + speed (linear-interp resample,
+pitch follows tempo); the existing `build_remux_args` muxes it — no new mux
+pipeline. The originally-planned `build_edited_audio_args` (per-segment gst
+`speed`+`concat`) was replaced by this decode→Rust-retime→remux design: gst
+can't cleanly time-trim per branch, and this reuses the proven remux path.
+
+---
+
+## ED.18 — background framing compose (backdrop · padding · rounded corners)
+- **Date:** 2026-05-31
+- **Status:** ✅ implemented + verified in isolation; full-workspace gate left to CI (PR #67) — see "Verification" note below.
+
+### What
+
+The cinematic "framed screen" look now renders at preview + export. ED.18's
+Style panel (already shipped) authors `BackgroundConfig`; this chunk makes the
+backdrop / padding / rounded-corner window **draw**. Two layers, mapped onto
+wisp's advanced-dispatch path:
+
+- **Backdrop** — `wisp::RecordingScene::set_background_gradient` /
+  `set_background_color` lazily add a full-NDC `Graphics` rect (gradient or
+  flat fill) as a non-clipped Phase-1 node, so it draws *behind* everything.
+- **Framed screen** — `set_screen_clip(Some(RoundedRect(window, radius)))`
+  clips the screen sprite to the padded frame window; the clip makes it a
+  dispatched Phase-2 node that composites *over* the backdrop, with the
+  rounded-corner SDF cutting its alpha.
+
+App side: `EditorPreview::set_background(&BackgroundConfig)` is the single
+`edit → wisp` translation site — it computes the px→NDC window + corner radius
++ per-axis padding factor `k = 1 − 2·padding/axis`, sets the clip + backdrop,
+and stores `k`. `render_framed` then folds `k` into the ED.16 transform
+(`framed_transform_padded`: `scale *= k`, `position *= k` — exact, since both
+the fill and the zoom focal-pin are about the NDC origin). The export
+generator calls `set_background` once at construction. The recorder never
+calls any `set_background_*` / `set_screen_clip`, so its scene is
+bit-identical (no backdrop node, no screen clip) — isolation by
+non-invocation, locked by a regression test.
+
+Deferred (filed): drop-shadow + inset border (ISS-14 — shadow needs a
+per-frame offscreen blur pre-pass and is lavapipe-incompatible) and the
+`Wallpaper` source (ISS-15 — no asset pipeline yet; falls back to the default
+gradient with a `tracing::warn`).
+
+### Tests / asset
+
+- `wisp` `recording.rs`: recorder-isolation regression (fresh scene has no
+  backdrop, screen clip `None`); `set_background_gradient` adds exactly one
+  reused node; `set_screen_clip` sets/clears. 19/19 `recording::` pass.
+- `app` `editor_preview.rs`: 5 pure tests (`framed_transform_padded` unit ==
+  unpadded, centre-shrink, focal-corner-pinned-to-window; `background_geometry`
+  reference defaults + pathological-padding clamp) + 2 GPU integration tests
+  (gradient backdrop frames a white screen — centre white, corners backdrop,
+  gradient varies; flat-colour fills the margin). Single-bind-group (no blur)
+  → runs on every CI OS, no lavapipe guard. 15/15 `editor_preview::` pass.
+- New wisp-storybook story `editor-background-framing` (covered by
+  `story_smoke`); PNG regenerated to
+  `_docs/wisp-book/src/assets/wisp/editor-background-framing.png` and
+  **verified by eye** — the default 135° gradient renders warm-coral
+  (bottom-right) → navy (top-left) correctly; the +y-flip risk the research
+  flagged did not materialize (no `dir.y` negation needed).
+- Chapter `ed18-style.md` extended with the "From config to pixels" section.
+
+### Verification
+
+fmt ✓, workspace `check` ✓, clippy (wisp + app + storybook, `--all-targets
+--all-features`) ✓, `recording::` 19/19 ✓, `editor_preview::` 15/15 ✓, gate's
+lenient `docs` ✓ (changed crates), all 5 `doc-gates` ✓. The full-workspace
+`nextest` could not complete **locally** — the dev machine hit RAM exhaustion
+(≈80 MB free, ~20 GB in the macOS compressor on an 18-day uptime, worsened by a
+concurrent unrelated build) and `nextest` spawning 60+ large wgpu/`wisp-chart`
+debug binaries thrashed the page cache. That is an environment failure on
+crates ED.18 does not touch; CI's clean runners (green for ED.16 on the same
+branch) are the authoritative full gate. **The Linear ticket (AUT-353) stays
+open until PR #67 CI is green.**
+
+---
+
 ## Editor drop-zone smoke gates — the full ED.1–24 feature set on a dropped clip
 - **Date:** 2026-05-31
 - **Status:** ✅ done — `video-editing-v2`.

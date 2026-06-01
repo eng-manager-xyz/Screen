@@ -35,11 +35,13 @@ use glam::Vec2;
 
 use crate::application::Application;
 use crate::color::Color;
+use crate::math::Rect;
 use crate::render::{RenderStats, Renderer};
 use crate::scene::Stage;
 use crate::scene::clip::MaskShape;
 use crate::scene::container::Container;
-use crate::scene::node::NodeId;
+use crate::scene::graphics::{Fill, Graphics};
+use crate::scene::node::{Node, NodeId};
 use crate::scene::sprite::Sprite;
 use crate::scene::transform::Transform;
 use crate::texture::video_texture::VideoTexture;
@@ -85,6 +87,21 @@ impl Default for CamLayout {
     fn default() -> Self {
         Self::BOTTOM_LEFT
     }
+}
+
+/// One click ripple to draw under the cursor (ED.19): an expanding,
+/// fading ring centered at a click, in output NDC. The app derives these
+/// from the click log (`edit::telemetry::ripples_at`) — `center` is already
+/// mapped through the screen transform, `radius` grows with age, `alpha`
+/// fades `1 → 0`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CursorRipple {
+    /// Ring center in NDC.
+    pub center: Vec2,
+    /// Ring radius in NDC units.
+    pub radius: f32,
+    /// Ring opacity, `0.0..=1.0`.
+    pub alpha: f32,
 }
 
 /// Dimensions for one of the composed input streams. Used at
@@ -153,6 +170,16 @@ pub struct RecordingScene {
     screen_sprite: NodeId,
     cam_container: NodeId,
     cam_sprite: NodeId,
+    /// Editor-only backdrop node (a full-NDC `Graphics` rect drawn behind
+    /// the screen). Lazily created on the first `set_background_*` call;
+    /// the recorder never touches it, so its scene stays a plain
+    /// three-node screen + cam stage.
+    backdrop: Option<NodeId>,
+    /// Editor-only cursor-overlay node (a `Graphics` pointer + click ripples,
+    /// drawn over the framed screen). Lazily created on the first
+    /// [`Self::set_cursor`] call; the recorder never touches it (its live
+    /// capture already has a cursor baked into the screen frame).
+    cursor: Option<NodeId>,
 }
 
 impl std::fmt::Debug for RecordingScene {
@@ -278,6 +305,8 @@ impl RecordingScene {
             screen_sprite: screen_sprite_id,
             cam_container: cam_container_id,
             cam_sprite: cam_sprite_id,
+            backdrop: None,
+            cursor: None,
         }
     }
 
@@ -410,6 +439,152 @@ impl RecordingScene {
             node.container_mut().visible = visible;
         }
     }
+
+    /// Set the screen sprite's local transform. The recorder leaves this at
+    /// the base fill-NDC transform (`position 0`, `scale 2`); the editor
+    /// (ED.16/ED.15) writes a per-frame crop-then-zoom transform here so the
+    /// composed frame punches in / reframes. The screen sprite is anchored
+    /// centre, so a `scale` of `2 * z` magnifies the source by `z` about the
+    /// frame centre, and `position` shifts the focal point in NDC.
+    pub fn set_screen_transform(&mut self, transform: Transform) {
+        if let Some(node) = self.stage.get_mut(self.screen_sprite) {
+            node.container_mut().transform = transform;
+        }
+    }
+
+    /// Set (or clear) the screen sprite's clip — the editor's
+    /// rounded-corner *frame window* (ED.18). The shape is in fixed output
+    /// NDC (the clip is screen-space, not transform-aware), so the window
+    /// stays put while the screen transform punches in inside it. Setting a
+    /// clip makes the screen a dispatched node that composites *over* the
+    /// backdrop. The recorder leaves this `None` (full-bleed, no clip).
+    pub fn set_screen_clip(&mut self, shape: Option<MaskShape>) {
+        if let Some(node) = self.stage.get_mut(self.screen_sprite) {
+            node.container_mut().clip = shape;
+        }
+    }
+
+    /// Lazily insert (or fetch) the backdrop `Graphics` node. It is added as
+    /// a child of root with no clip, so it renders in the advanced-dispatch
+    /// Phase 1 (behind the clipped, dispatched screen sprite). The recorder
+    /// never calls a `set_background_*` method, so this node is never created
+    /// for a recording scene.
+    fn backdrop_graphics_mut(&mut self) -> &mut Graphics {
+        if self.backdrop.is_none() {
+            let root = self.stage.root();
+            let id = self
+                .stage
+                .add_child(root, Graphics::new())
+                .expect("Stage root is alive");
+            self.backdrop = Some(id);
+        }
+        let id = self.backdrop.expect("backdrop node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("backdrop node is always a Graphics"),
+        }
+    }
+
+    /// Paint the backdrop as a linear gradient between two colors at
+    /// `angle_deg` (0 = left→right, 90 = bottom→top), and make it visible.
+    /// Editor-only (the framed-screen look behind the rounded canvas).
+    pub fn set_background_gradient(&mut self, from: Color, to: Color, angle_deg: f32) {
+        let theta = angle_deg.to_radians();
+        // Endpoints in primitive-local coords ([-1, 1] for a full-NDC rect).
+        let dir = Vec2::new(theta.cos(), theta.sin());
+        let g = self.backdrop_graphics_mut();
+        g.primitives.clear();
+        g.fill(Fill::LinearGradient {
+            start: -dir,
+            end: dir,
+            color_a: from,
+            color_b: to,
+        });
+        g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
+        g.container.visible = true;
+    }
+
+    /// Paint the backdrop as a flat color fill, and make it visible.
+    pub fn set_background_color(&mut self, color: Color) {
+        let g = self.backdrop_graphics_mut();
+        g.primitives.clear();
+        g.fill(Fill::Solid(color));
+        g.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
+        g.container.visible = true;
+    }
+
+    /// Toggle the backdrop's visibility. No-op if no backdrop has been set
+    /// (the recorder path).
+    pub fn set_background_visible(&mut self, visible: bool) {
+        if let Some(id) = self.backdrop
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
+
+    /// Lazily insert (or fetch) the cursor-overlay `Graphics` node. It carries
+    /// a full-NDC clip so it renders in the advanced-dispatch Phase 2 (over
+    /// the framed, also-dispatched screen sprite), and is added after the
+    /// screen so it composites on top. Editor-only — never created for a
+    /// recording scene.
+    fn cursor_graphics_mut(&mut self) -> &mut Graphics {
+        if self.cursor.is_none() {
+            let root = self.stage.root();
+            let mut g = Graphics::new();
+            g.container.clip = Some(MaskShape::rect(Rect::new(-1.0, -1.0, 2.0, 2.0)));
+            let id = self.stage.add_child(root, g).expect("Stage root is alive");
+            self.cursor = Some(id);
+        }
+        let id = self.cursor.expect("cursor node just ensured");
+        match self.stage.get_mut(id) {
+            Some(Node::Graphics(g)) => g,
+            _ => unreachable!("cursor node is always a Graphics"),
+        }
+    }
+
+    /// Draw the cursor overlay (ED.19): expanding click ripples under a
+    /// dark-outlined white pointer at `pointer_ndc`, with the pointer sized by
+    /// `half` (NDC half-extent). All coordinates are output NDC — the app maps
+    /// the captured normalized position through the screen transform so the
+    /// pointer stays glued to its pixel through zoom/crop/padding. Makes the
+    /// overlay visible. Editor-only.
+    pub fn set_cursor(&mut self, pointer_ndc: Vec2, half: f32, ripples: &[CursorRipple]) {
+        let g = self.cursor_graphics_mut();
+        g.primitives.clear();
+        g.stroke(None);
+        // Ripples first (under the pointer): expanding, fading discs.
+        for r in ripples {
+            g.fill(Fill::Solid(Color::rgba(1.0, 1.0, 1.0, r.alpha)));
+            g.draw_ellipse(r.center, Vec2::splat(r.radius));
+        }
+        // Pointer triangle (CCW), scaled by `half` about its hot-spot tip. A
+        // dark, slightly-larger triangle behind a white one reads on any
+        // backdrop.
+        let arrow = |s: f32| {
+            let scale = half * s;
+            [
+                pointer_ndc + Vec2::new(0.0, 0.0) * scale,
+                pointer_ndc + Vec2::new(0.0, -1.7) * scale,
+                pointer_ndc + Vec2::new(1.15, -1.05) * scale,
+            ]
+        };
+        g.fill(Fill::Solid(Color::rgb_u8(20, 20, 20)));
+        g.draw_polygon(&arrow(1.3));
+        g.fill(Fill::Solid(Color::WHITE));
+        g.draw_polygon(&arrow(1.0));
+        g.container.visible = true;
+    }
+
+    /// Toggle the cursor overlay's visibility. No-op if no cursor has been set
+    /// (the recorder path).
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        if let Some(id) = self.cursor
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -462,6 +637,138 @@ mod tests {
         assert_eq!(scene.stage().len(), 4);
         assert_eq!(scene.screen_dims().width, 128);
         assert_eq!(scene.cam_dims().height, 64);
+        // Recorder isolation (ED.18): a fresh scene has no backdrop node
+        // and the screen sprite is un-clipped (full-bleed). The editor's
+        // `set_background_*` / `set_screen_clip` are the only mutators, and
+        // the recorder never calls them — so a recording scene is
+        // bit-identical to pre-ED.18.
+        assert!(scene.backdrop.is_none(), "no backdrop until set_background");
+        assert!(scene.cursor.is_none(), "no cursor overlay until set_cursor");
+        assert!(
+            scene
+                .stage()
+                .get(scene.screen_sprite_id())
+                .unwrap()
+                .container()
+                .clip
+                .is_none(),
+            "screen sprite is un-clipped in the recorder path"
+        );
+    }
+
+    #[test]
+    fn set_cursor_adds_one_overlay_node_and_toggles() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        let ripples = [CursorRipple {
+            center: Vec2::new(0.2, -0.3),
+            radius: 0.1,
+            alpha: 0.5,
+        }];
+        scene.set_cursor(Vec2::new(0.1, 0.2), 0.08, &ripples);
+        // One new node (the cursor Graphics).
+        assert_eq!(scene.stage().len(), before + 1);
+        let id = scene.cursor.expect("cursor created");
+        assert!(scene.stage().get(id).unwrap().container().visible);
+        // The node carries a full-NDC clip so it dispatches over the screen.
+        assert!(
+            scene.stage().get(id).unwrap().container().clip.is_some(),
+            "cursor node dispatches (clip set) so it composites on top"
+        );
+        // A second call reuses the node — no leak.
+        scene.set_cursor(Vec2::new(-0.4, 0.5), 0.06, &[]);
+        assert_eq!(scene.stage().len(), before + 1, "cursor node reused");
+        // Toggle off.
+        scene.set_cursor_visible(false);
+        assert!(!scene.stage().get(id).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_background_gradient_adds_one_visible_backdrop_node() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        scene.set_background_gradient(
+            Color::rgb_u8(255, 138, 128),
+            Color::rgb_u8(40, 53, 147),
+            135.0,
+        );
+        // Exactly one new node (the backdrop Graphics).
+        assert_eq!(scene.stage().len(), before + 1);
+        let id = scene.backdrop.expect("backdrop created");
+        assert!(scene.stage().get(id).unwrap().container().visible);
+        // A second call reuses the node — no leak.
+        scene.set_background_color(Color::rgb_u8(10, 20, 30));
+        assert_eq!(scene.stage().len(), before + 1, "backdrop node is reused");
+        // Toggle visibility off.
+        scene.set_background_visible(false);
+        assert!(!scene.stage().get(id).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_screen_clip_sets_and_clears_the_screen_clip() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let window = Rect::new(-0.9, -0.9, 1.8, 1.8);
+        scene.set_screen_clip(Some(MaskShape::rounded_rect(window, 0.05)));
+        let clip = scene
+            .stage()
+            .get(scene.screen_sprite_id())
+            .unwrap()
+            .container()
+            .clip
+            .expect("clip set");
+        assert!(matches!(clip, MaskShape::RoundedRect { .. }));
+        scene.set_screen_clip(None);
+        assert!(
+            scene
+                .stage()
+                .get(scene.screen_sprite_id())
+                .unwrap()
+                .container()
+                .clip
+                .is_none(),
+            "clip cleared"
+        );
+    }
+
+    #[test]
+    fn set_screen_transform_updates_the_screen_sprite() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        // A zoom-style transform (4× = 2× the base fill scale, shifted).
+        let t = Transform {
+            scale: Vec2::splat(4.0),
+            position: Vec2::new(0.5, -0.25),
+            ..Transform::IDENTITY
+        };
+        scene.set_screen_transform(t);
+        let node = scene
+            .stage()
+            .get(scene.screen_sprite_id())
+            .expect("screen sprite node");
+        assert_eq!(node.container().transform, t);
     }
 
     #[test]

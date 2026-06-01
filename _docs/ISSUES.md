@@ -25,6 +25,42 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-17: ED.17 — cursor capture assumes the main display (multi-display refinement)
+- **Filed:** 2026-05-31
+- **By:** ED.17 (cursor capture)
+- **Severity:** deferral / tech-debt
+- **Affects:** `crates/app/src/cursor_capture.rs` (`main_display_bounds`)
+- **Status:** open
+- **Description:** The live record→editor cursor-capture wiring **is now connected** (`RecordingState::{start,finish}_cursor_capture`, `take_cursor_track`; `start_recording` → `stop_recording` → `open_in_editor`). The remaining gap: the poller normalizes the global cursor against **`CGMainDisplayID`'s bounds** (`main_display_bounds`). When the user records a *non-primary* display (or a window source), the cursor will be normalized against the wrong rect, so the overlay lands in the wrong place. `normalize_cursor_to_frame` already takes a flexible `(origin, w, h)` rect — the fix is to thread the *captured* display's id (from the SCK `ScreenCaptureConfig` / source id) into `start_cursor_capture` instead of hard-coding the main display.
+- **Resolution:** When refined: resolve the captured display's `CGDirectDisplayID` from the recording's screen-source id and pass its `CGDisplayBounds` to the poller. Window-source captures need the window's frame instead. Runtime-verify on a multi-display setup. (open)
+
+## ISS-16: ED.17 — click capture (auto-zoom + ripples) needs a CGEventTap
+- **Filed:** 2026-05-31
+- **By:** ED.17 (cursor capture)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/cursor_capture.rs`
+- **Status:** open
+- **Description:** ED.17's **position** track ships via no-permission `CGEvent` polling, but the **click log** — which feeds the already-tested `auto_zoom_segments` and ED.19's click ripples — needs a `CGEventTap` (`objc2_core_graphics::CGEvent::tap_create`, listen-only). A tap requires the **Input-Monitoring** permission (prompts the user, cannot be granted in CI/headless) and a `CFRunLoop` callback on a worker thread (`objc2-core-foundation` is not yet a dep). The data model is ready: `EditProject::clicks: Option<Vec<ClickEvent>>` (serde-persisted) and `ripples_at` consume it.
+- **Resolution:** When implemented: add `objc2-core-foundation` (CFRunLoop/CFMachPort), create a listen-only tap for `kCGEventLeftMouseDown | kCGEventRightMouseDown`, run a private `CFRunLoop` on the poller thread, accumulate `ClickEvent`s (drain per feed-tick, never latest-wins), degrade gracefully (null tap → warn → no clicks, recording proceeds). Verify on a real macOS session with the permission granted. (open)
+
+## ISS-15: ED.18 — `Wallpaper` background source has no asset pipeline
+- **Filed:** 2026-05-31
+- **By:** ED.18 (background-framing render integration)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundSource::Wallpaper`)
+- **Status:** open
+- **Description:** `BackgroundSource::Wallpaper { name }` is in the data model and authored by the Style panel, but there is no bundled wallpaper asset set, no `name → bytes` resolver, and no loader anywhere in the workspace. ED.18 maps a `Wallpaper` source to the **default gradient** as a documented fallback (with a `tracing::warn` so it isn't mistaken for a render bug). The default project uses `Gradient`, so this doesn't block end-to-end rendering.
+- **Resolution:** When implemented: bundle a license-clean wallpaper set under `crates/app/assets/wallpapers/` (or similar), add a `name → wisp::Texture` resolver, and add the backdrop as a base `Sprite` (anchor 0.5, scale 2) — a non-clipped Phase-1 node, same layering guarantee as the gradient `Graphics`. (open)
+
+## ISS-14: ED.18 — drop-shadow + inset border are authored but not rendered
+- **Filed:** 2026-05-31
+- **By:** ED.18 (background-framing render integration)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundConfig.shadow` / `.inset`)
+- **Status:** open
+- **Description:** `BackgroundConfig.shadow` (0..=100) and `.inset` (px) are authored + persisted by the Style panel and round-trip in the project file, but ED.18 does **not** render them. Two compounding costs justify deferral: (1) a drop shadow needs a per-frame *offscreen blur pre-pass* — `Container` has no per-node filter field, so the shadow can't ride the live compose path; it requires drawing the rounded screen to an input RT, `Renderer::apply_filter(&DropShadowFilter{..})`, then compositing the result — a real per-frame full-canvas blur. (2) `DropShadowFilter` runs `filter::blur::run_blur_pass` → **lavapipe-incompatible**, so every test/story composing with a shadow must be `WISP_SKIP_GPU_FILTER_TESTS`-guarded on Ubuntu CI and any storybook id added to `LAVAPIPE_INCOMPATIBLE`. Shipping padding + rounded corners + gradient/color backdrop first keeps ED.18 single-bind-group (zero lavapipe exposure, fully testable on every CI OS).
+- **Resolution:** When implemented: `shadow == 0` → skip the filter entirely (no `run_blur_pass`, no guard); else `blur = f32::from(shadow)·k`, `color.a = f32::from(shadow)/100·0.6`, `offset = (0, −shadow_px)` (downward in +y-up). Inset border is cheapest as a rounded-rect stroke inside the screen's dispatched subtree. Both need the wisp test + story + snapshot + chapter gate + a lavapipe guard. (open)
+
 ## ISS-13: review — assorted deferred polish/robustness items
 - **Filed:** 2026-05-31
 - **By:** user (aggressive editor-track review)

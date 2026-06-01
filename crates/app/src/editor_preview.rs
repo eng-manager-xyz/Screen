@@ -20,11 +20,125 @@
 use std::sync::{Arc, Mutex};
 
 use decode::EditorVideoStream;
+use edit::style::{BackgroundConfig, BackgroundSource, CropRect, CursorConfig};
+use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
-use wisp::recording::StreamDimensions;
+use wisp::recording::{CursorRipple, StreamDimensions};
+use wisp::{Color, MaskShape, Rect, Transform, Vec2};
 
 use crate::recording::FrameSlot;
 use crate::recording_compose::{ComposedFrame, RecordingCompose};
+
+/// Base scale that fills the NDC `[-1, 1]` viewport: the screen sprite is
+/// anchored centre with a `[0, 1]²` local rect, so a scale of `2` maps the
+/// full source frame onto `[-1, 1]`.
+const FILL_SCALE: f64 = 2.0;
+
+/// Cursor pointer half-extent in NDC at 100 % size and 1× zoom (ED.19). The
+/// pointer grows with `size_pct` and with the zoom (it's part of the
+/// magnified content).
+const CURSOR_BASE_HALF: f32 = 0.05;
+
+/// Build the screen-sprite transform that applies `crop` then `zoom`.
+///
+/// The base screen sprite maps a normalized source point `(u, v)` to NDC
+/// `(2u − 1, −(2v − 1))` (centre-anchored, scale 2; the `−` on `v` is wisp's
+/// `+y`-up convention — the decoded top-down frame is flipped bottom-up at
+/// upload). This composes two affines into the single transform the sprite
+/// carries:
+///
+/// 1. **Crop** `[x, y, w, h]` → fill the sub-rect: scale `2/w, 2/h` and
+///    recentre so the crop centre lands at NDC `(0, 0)`.
+/// 2. **Zoom** by `z` about the focal NDC point `(2·fx − 1, −(2·fy − 1))`,
+///    keeping that point fixed: `pos += focal · (1 − z)`.
+///
+/// Composed `zoom ∘ crop`: `scale = z · crop_scale`,
+/// `pos = z · crop_pos + zoom_pos`. Pure — no GPU, exhaustively testable.
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "screen-space NDC transform components are small; the f64→f32 narrowing for the wisp Vec2 is intentional and well within f32 precision"
+)]
+fn framed_transform(zoom: ZoomTransform, crop: CropRect) -> Transform {
+    // Crop arm: fill sub-rect [x, x+w] × [y, y+h]. `CropRect` is sanitized
+    // to a non-zero in-frame rect, but clamp defensively against /0.
+    let w = f64::from(crop.width).max(1e-3);
+    let h = f64::from(crop.height).max(1e-3);
+    let crop_scale = (FILL_SCALE / w, FILL_SCALE / h);
+    let crop_pos = (
+        (1.0 - 2.0 * f64::from(crop.x)) / w - 1.0,
+        (2.0 * f64::from(crop.y) - 1.0) / h + 1.0,
+    );
+
+    // Zoom arm: magnify by `z` about the focal NDC point, keeping it fixed.
+    let z = zoom.scale.max(1.0);
+    let focal = (2.0 * zoom.center_x - 1.0, -(2.0 * zoom.center_y - 1.0));
+    let zoom_pos = (focal.0 * (1.0 - z), focal.1 * (1.0 - z));
+
+    Transform {
+        scale: Vec2::new((z * crop_scale.0) as f32, (z * crop_scale.1) as f32),
+        position: Vec2::new(
+            (z * crop_pos.0 + zoom_pos.0) as f32,
+            (z * crop_pos.1 + zoom_pos.1) as f32,
+        ),
+        ..Transform::IDENTITY
+    }
+}
+
+/// [`framed_transform`] with a uniform **padding** inset folded in (ED.18).
+///
+/// Background framing lifts the screen off its backdrop by `padding` pixels.
+/// In NDC that's a centred shrink by `(k_x, k_y)` about the origin, and since
+/// both the base fill and the zoom focal-pin are about the origin, the inset
+/// is *exactly* a post-multiply: `scale *= k`, `position *= k`. With
+/// `k = (1, 1)` it reduces to [`framed_transform`].
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "padding factors are in (0, 1] and the transform components are small NDC values, well within f32 precision"
+)]
+fn framed_transform_padded(zoom: ZoomTransform, crop: CropRect, k_x: f64, k_y: f64) -> Transform {
+    let t = framed_transform(zoom, crop);
+    let (kx, ky) = (k_x as f32, k_y as f32);
+    Transform {
+        scale: Vec2::new(t.scale.x * kx, t.scale.y * ky),
+        position: Vec2::new(t.position.x * kx, t.position.y * ky),
+        ..t
+    }
+}
+
+/// Derive the rounded-corner frame window + corner radius (both NDC) and the
+/// per-axis padding shrink factor from the canvas dims and the config's
+/// pixel padding / corner radius (ED.18). Pure — unit-tested without a GPU.
+///
+/// `padding` px → NDC margin `2·padding/axis` (NDC spans `[-1, 1]` = 2 units
+/// per axis), so the screen shrinks to `[-k, k]` with `k = 1 − 2·padding/axis`.
+/// The window rect is that `[-k, k]²` region; `corner_radius` px → NDC
+/// `2·corner_radius/width` (isotropic in NDC).
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "NDC window extents (|·| ≤ 2) and the corner radius fraction are small, well within f32 precision"
+)]
+fn background_geometry(
+    width: u32,
+    height: u32,
+    padding: u32,
+    corner_radius: u32,
+) -> (Rect, f32, (f64, f64)) {
+    let w = f64::from(width.max(1));
+    let h = f64::from(height.max(1));
+    let k_x = (1.0 - 2.0 * f64::from(padding) / w).clamp(0.05, 1.0);
+    let k_y = (1.0 - 2.0 * f64::from(padding) / h).clamp(0.05, 1.0);
+    let window = Rect::new(
+        -(k_x as f32),
+        -(k_y as f32),
+        (2.0 * k_x) as f32,
+        (2.0 * k_y) as f32,
+    );
+    let corner_ndc = (2.0 * f64::from(corner_radius) / w) as f32;
+    (window, corner_ndc, (k_x, k_y))
+}
 
 /// Composes the editor preview frame for a clip of `width × height`.
 pub struct EditorPreview {
@@ -35,6 +149,9 @@ pub struct EditorPreview {
     cam_slot: FrameSlot,
     width: u32,
     height: u32,
+    /// Per-axis padding shrink factor applied to the screen transform (ED.18).
+    /// `(1, 1)` until [`Self::set_background`] folds the config's padding in.
+    pad: (f64, f64),
 }
 
 impl EditorPreview {
@@ -57,7 +174,64 @@ impl EditorPreview {
             cam_slot: Arc::new(Mutex::new(None)),
             width,
             height,
+            pad: (1.0, 1.0),
         })
+    }
+
+    /// Apply the project's **background framing** (ED.18): the backdrop fill,
+    /// the padding inset, and the rounded-corner frame window. Call once when
+    /// the config changes — the export sets it once at generator construction;
+    /// a live preview re-applies it on edit. After this, the per-frame
+    /// [`Self::render_framed`] folds the stored padding factor into the screen
+    /// transform, the screen sprite is clipped to the rounded window, and the
+    /// backdrop renders behind it.
+    ///
+    /// Drop-shadow (`shadow`) and the inset border (`inset`) are not yet
+    /// rendered — see ISS-14. A `Wallpaper` source falls back to the default
+    /// gradient (no wallpaper asset pipeline yet — ISS-15).
+    pub fn set_background(&mut self, bg: &BackgroundConfig) {
+        let (window, corner_ndc, pad) =
+            background_geometry(self.width, self.height, bg.padding, bg.corner_radius);
+        self.pad = pad;
+        self.compose
+            .set_screen_clip(Some(MaskShape::rounded_rect(window, corner_ndc)));
+
+        match &bg.source {
+            BackgroundSource::Gradient {
+                from,
+                to,
+                angle_deg,
+            } => self.compose.set_background_gradient(
+                Color::rgb_u8(from[0], from[1], from[2]),
+                Color::rgb_u8(to[0], to[1], to[2]),
+                *angle_deg,
+            ),
+            BackgroundSource::Color { rgb } => self
+                .compose
+                .set_background_color(Color::rgb_u8(rgb[0], rgb[1], rgb[2])),
+            BackgroundSource::Wallpaper { name } => {
+                // No wallpaper asset pipeline yet (ISS-15) — fall back to the
+                // default gradient so a wallpaper project still renders a
+                // framed backdrop rather than black. Loud so it isn't taken
+                // for a rendering bug.
+                tracing::warn!(
+                    wallpaper = %name,
+                    "wallpaper backgrounds not yet supported — falling back to the default gradient"
+                );
+                if let BackgroundSource::Gradient {
+                    from,
+                    to,
+                    angle_deg,
+                } = BackgroundSource::default()
+                {
+                    self.compose.set_background_gradient(
+                        Color::rgb_u8(from[0], from[1], from[2]),
+                        Color::rgb_u8(to[0], to[1], to[2]),
+                        angle_deg,
+                    );
+                }
+            }
+        }
     }
 
     /// Compose a single source frame. `bgra` is top-down packed BGRA8 of
@@ -75,6 +249,90 @@ impl EditorPreview {
         }
         self.compose
             .compose_frame(&self.cam_slot, &self.screen_slot)
+    }
+
+    /// Compose a source frame with the editor's **framing** applied — the
+    /// `crop`/aspect reframe (ED.15), the `zoom` punch-in (ED.16), and the
+    /// background **padding** inset (ED.18) are written into the screen
+    /// sprite's transform, then the frame composes through the same path as
+    /// [`Self::render_frame`]. The backdrop + rounded-corner clip are set
+    /// once via [`Self::set_background`]; this only updates the per-frame
+    /// transform. The padding factor is `(1, 1)` until `set_background` runs,
+    /// so an un-styled call is the plain ED.16 transform. This is the export
+    /// generator's entry point (ED.20), so preview and export agree
+    /// frame-for-frame. `bgra` is top-down packed BGRA8 of `width*height*4`.
+    #[must_use]
+    pub fn render_framed(
+        &mut self,
+        bgra: Vec<u8>,
+        zoom: ZoomTransform,
+        crop: CropRect,
+    ) -> Option<ComposedFrame> {
+        let (k_x, k_y) = self.pad;
+        self.compose
+            .set_screen_transform(framed_transform_padded(zoom, crop, k_x, k_y));
+        self.render_frame(bgra)
+    }
+
+    /// Like [`Self::render_framed`], plus the cursor overlay (ED.19). `cursor`
+    /// is the smoothed normalized position at this frame
+    /// ([`edit::telemetry::cursor_at`]); `ripples` are the active click
+    /// ripples (`(x, y, age)` from [`edit::telemetry::ripples_at`]). Both the
+    /// pointer and each ripple are mapped through the **same** screen
+    /// transform as the frame, so the cursor stays glued to its pixel through
+    /// zoom / crop / padding. `cursor = None` hides the overlay (e.g. before
+    /// any sample, or a `hide_static` gap the caller decides).
+    #[must_use]
+    pub fn render_framed_with_cursor(
+        &mut self,
+        bgra: Vec<u8>,
+        zoom: ZoomTransform,
+        crop: CropRect,
+        cursor: Option<(f32, f32)>,
+        ripples: &[(f32, f32, f32)],
+        cfg: &CursorConfig,
+    ) -> Option<ComposedFrame> {
+        let (k_x, k_y) = self.pad;
+        let t = framed_transform_padded(zoom, crop, k_x, k_y);
+        self.compose.set_screen_transform(t);
+
+        // Map a normalized source point (top-left origin) through the same
+        // transform the screen sprite carries — `pos + scale · (local)` with
+        // the `+y`-up flip on the local `y` (matching `framed_transform`).
+        let map = |x: f32, y: f32| {
+            Vec2::new(
+                t.position.x + t.scale.x * (x - 0.5),
+                t.position.y + t.scale.y * -(y - 0.5),
+            )
+        };
+
+        if let Some((cx, cy)) = cursor {
+            // Pointer half-size: base × size_pct, grown by the transform's
+            // scale (base scale is 2, so `scale.y / 2` is the z·k_y zoom
+            // factor) — the cursor magnifies with the punch-in.
+            let size_factor = f32::from(u16::try_from(cfg.size_pct).unwrap_or(180)) / 100.0;
+            // Base sprite scale is 2 (`FILL_SCALE`), so `scale.y / 2` is the
+            // z·k_y zoom factor — the pointer magnifies with the punch-in.
+            let zoom_scale = (t.scale.y / 2.0).abs();
+            let half = CURSOR_BASE_HALF * size_factor * zoom_scale;
+            let rings: Vec<CursorRipple> = if cfg.click_ripples {
+                ripples
+                    .iter()
+                    .map(|&(rx, ry, age)| CursorRipple {
+                        center: map(rx, ry),
+                        radius: half * (1.0 + 3.0 * age),
+                        alpha: (1.0 - age) * 0.35,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            self.compose.set_cursor(map(cx, cy), half, &rings);
+            self.compose.set_cursor_visible(true);
+        } else {
+            self.compose.set_cursor_visible(false);
+        }
+        self.render_frame(bgra)
     }
 
     /// Compose the frame at the player's current playhead, pulling it from
@@ -120,5 +378,396 @@ mod tests {
         // A byte count that doesn't match 64×64×4 is dropped by the
         // compositor → no composed frame.
         assert!(preview.render_frame(vec![0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn framed_transform_is_base_fill_with_no_zoom_no_crop() {
+        let t = framed_transform(ZoomTransform::identity(), CropRect::full());
+        assert!((t.scale.x - 2.0).abs() < 1e-5 && (t.scale.y - 2.0).abs() < 1e-5);
+        assert!(t.position.x.abs() < 1e-5 && t.position.y.abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_zoom_at_centre_magnifies_in_place() {
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 0.5,
+            center_y: 0.5,
+        };
+        let t = framed_transform(z, CropRect::full());
+        // 2× the base fill (→ 4) about the centred focal → no translation.
+        assert!((t.scale.x - 4.0).abs() < 1e-5 && (t.scale.y - 4.0).abs() < 1e-5);
+        assert!(t.position.x.abs() < 1e-5 && t.position.y.abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_zoom_pins_the_focal_corner() {
+        // 2× at top-right (1, 0): focal NDC (1, 1) stays fixed →
+        // pos = (1, 1) · (1 − 2) = (−1, −1).
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 1.0,
+            center_y: 0.0,
+        };
+        let t = framed_transform(z, CropRect::full());
+        assert!((t.scale.x - 4.0).abs() < 1e-5);
+        assert!((t.position.x + 1.0).abs() < 1e-5, "right edge pinned");
+        assert!((t.position.y + 1.0).abs() < 1e-5, "top edge pinned");
+    }
+
+    #[test]
+    fn framed_transform_crop_fills_the_subrect() {
+        // Top-left quadrant [0, 0, 0.5, 0.5] fills the frame: scale
+        // 2 / 0.5 = 4 each; the quadrant maps [0, 0.5] → [−1, 1] (pos (1, −1)).
+        let crop = CropRect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.5,
+            height: 0.5,
+        };
+        let t = framed_transform(ZoomTransform::identity(), crop);
+        assert!((t.scale.x - 4.0).abs() < 1e-5 && (t.scale.y - 4.0).abs() < 1e-5);
+        assert!((t.position.x - 1.0).abs() < 1e-5);
+        assert!((t.position.y + 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn framed_transform_padded_with_unit_factor_equals_unpadded() {
+        // k = (1, 1) ⇒ no inset ⇒ identical to framed_transform.
+        let z = ZoomTransform {
+            scale: 1.6,
+            center_x: 0.3,
+            center_y: 0.7,
+        };
+        let crop = CropRect {
+            x: 0.1,
+            y: 0.05,
+            width: 0.7,
+            height: 0.8,
+        };
+        let plain = framed_transform(z, crop);
+        let padded = framed_transform_padded(z, crop, 1.0, 1.0);
+        assert!((plain.scale.x - padded.scale.x).abs() < 1e-6);
+        assert!((plain.scale.y - padded.scale.y).abs() < 1e-6);
+        assert!((plain.position.x - padded.position.x).abs() < 1e-6);
+        assert!((plain.position.y - padded.position.y).abs() < 1e-6);
+    }
+
+    #[test]
+    fn framed_transform_padded_shrinks_about_the_centre() {
+        // No zoom / crop: base fill scale 2 → with k = 0.5 → scale 1, pos 0.
+        let t = framed_transform_padded(ZoomTransform::identity(), CropRect::full(), 0.5, 0.5);
+        assert!((t.scale.x - 1.0).abs() < 1e-6 && (t.scale.y - 1.0).abs() < 1e-6);
+        assert!(t.position.x.abs() < 1e-6 && t.position.y.abs() < 1e-6);
+    }
+
+    #[test]
+    fn framed_transform_padded_pins_the_focal_corner_inside_the_window() {
+        // 2× at top-right pins focal NDC (1, 1) → unpadded pos (−1, −1),
+        // scale 4. With k = 0.5 the pinned corner lands at the padded
+        // window corner: scale 2, pos (−0.5, −0.5).
+        let z = ZoomTransform {
+            scale: 2.0,
+            center_x: 1.0,
+            center_y: 0.0,
+        };
+        let t = framed_transform_padded(z, CropRect::full(), 0.5, 0.5);
+        assert!((t.scale.x - 2.0).abs() < 1e-6);
+        assert!(
+            (t.position.x + 0.5).abs() < 1e-6,
+            "right edge pinned to window"
+        );
+        assert!(
+            (t.position.y + 0.5).abs() < 1e-6,
+            "top edge pinned to window"
+        );
+    }
+
+    #[test]
+    fn background_geometry_matches_reference_defaults() {
+        // Reference design: padding 64, corner 14, on a 1920×1080 canvas.
+        let (window, corner, (k_x, k_y)) = background_geometry(1920, 1080, 64, 14);
+        // k_x = 1 − 128/1920 = 0.93333; k_y = 1 − 128/1080 = 0.88148.
+        assert!((k_x - 0.933_333).abs() < 1e-4);
+        assert!((k_y - 0.881_481).abs() < 1e-4);
+        assert!((window.min.x + 0.933_333).abs() < 1e-4);
+        assert!((window.min.y + 0.881_481).abs() < 1e-4);
+        assert!((window.size.x - 1.866_667).abs() < 1e-4);
+        assert!((window.size.y - 1.762_963).abs() < 1e-4);
+        // corner_ndc = 2·14/1920 = 0.014583.
+        assert!((corner - 0.014_583).abs() < 1e-5);
+    }
+
+    #[test]
+    fn background_geometry_clamps_pathological_padding() {
+        // Padding ≥ half the canvas would invert the screen — clamp to a
+        // small positive factor instead.
+        let (_w, _c, (k_x, k_y)) = background_geometry(128, 128, 200, 0);
+        assert!(
+            k_x >= 0.05 && k_y >= 0.05,
+            "padding clamped, screen survives"
+        );
+    }
+
+    /// GPU: a gradient backdrop + padding + rounded corners on a solid-white
+    /// "screen" frame. The centre stays white (screen visible); the corner
+    /// margin is the backdrop (rounded corners cut the white + padding reveals
+    /// the backdrop); and the backdrop is a real gradient (the margin colour
+    /// varies across the canvas, not a flat fill). Single-bind-group clip +
+    /// graphics — no blur — so it runs on every CI OS (no lavapipe guard).
+    #[test]
+    fn render_framed_with_gradient_background_frames_the_screen() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut preview = EditorPreview::new(dim, dim).expect("init wgpu");
+        let bg = BackgroundConfig {
+            source: BackgroundSource::Gradient {
+                from: [255, 138, 128],
+                to: [40, 53, 147],
+                angle_deg: 135.0,
+            },
+            padding: 16,
+            corner_radius: 24,
+            shadow: 0,
+            inset: 0,
+        };
+        preview.set_background(&bg);
+        let white = vec![255u8; SIDE * SIDE * 4];
+        let frame = preview
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        let pixel = |col: usize, row: usize| {
+            let base = (row * SIDE + col) * 4;
+            [
+                frame.bytes[base],
+                frame.bytes[base + 1],
+                frame.bytes[base + 2],
+            ] // B, G, R
+        };
+        let is_white = |bgr: [u8; 3]| bgr[0] > 230 && bgr[1] > 230 && bgr[2] > 230;
+        // Centre: the white screen shows through the rounded window.
+        assert!(
+            is_white(pixel(SIDE / 2, SIDE / 2)),
+            "centre is the white screen"
+        );
+        // Corners: padding margin + rounded-corner cut → backdrop, not white,
+        // and not black (the gradient drew).
+        let corners = [
+            pixel(3, 3),
+            pixel(3, SIDE - 4),
+            pixel(SIDE - 4, 3),
+            pixel(SIDE - 4, SIDE - 4),
+        ];
+        for bgr in corners {
+            assert!(
+                !is_white(bgr),
+                "corner is backdrop, not the white screen ({bgr:?})"
+            );
+            let lum = u16::from(bgr[0]) + u16::from(bgr[1]) + u16::from(bgr[2]);
+            assert!(lum > 30, "backdrop drew (not black) at a corner ({bgr:?})");
+        }
+        // It's a gradient, not a flat fill: the corner colours span a range.
+        let reds: Vec<i32> = corners.iter().map(|bgr| i32::from(bgr[2])).collect();
+        let spread = reds.iter().max().unwrap() - reds.iter().min().unwrap();
+        assert!(
+            spread > 15,
+            "backdrop varies across the canvas (gradient), spread={spread}"
+        );
+    }
+
+    /// GPU: a flat-colour backdrop. The margin equals the requested colour's
+    /// channel ordering (R-dominant here) and is neither white nor black.
+    #[test]
+    fn render_framed_with_color_background_fills_the_margin() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut preview = EditorPreview::new(dim, dim).expect("init wgpu");
+        preview.set_background(&BackgroundConfig {
+            source: BackgroundSource::Color { rgb: [210, 40, 70] },
+            padding: 16,
+            corner_radius: 8,
+            shadow: 0,
+            inset: 0,
+        });
+        let white = vec![255u8; SIDE * SIDE * 4];
+        let frame = preview
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        // A mid-edge margin pixel (outside the padded window, away from the
+        // rounded corners): the flat backdrop colour.
+        let base = ((SIDE / 2) * SIDE + 3) * 4; // row centre, col 3 → left margin
+        let (blue, green, red) = (
+            frame.bytes[base],
+            frame.bytes[base + 1],
+            frame.bytes[base + 2],
+        );
+        assert!(
+            red > green && red > blue,
+            "R-dominant fill (got B{blue} G{green} R{red})"
+        );
+        assert!(red > 60, "backdrop colour drew (not black)");
+        assert!(
+            !(red > 230 && green > 230 && blue > 230),
+            "not the white screen"
+        );
+    }
+
+    /// GPU: the cursor overlay (ED.19) draws a pointer and — the load-bearing
+    /// decision — *rides the screen transform*: the same source point lands
+    /// further from centre under a zoom (glued to its pixel), not pinned in
+    /// output space. Detected via the pointer's white inner triangle on a
+    /// mid-grey screen. Single-bind-group graphics — no blur, no lavapipe
+    /// guard.
+    #[test]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "SIDE = 128, so every pixel count / coordinate is a small integer exact in f64"
+    )]
+    fn render_framed_with_cursor_rides_the_zoom() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let cfg = CursorConfig::default();
+        let gray = || vec![128u8; SIDE * SIDE * 4];
+
+        // The pointer's white inner triangle — count + centroid of white px.
+        let white = |f: &ComposedFrame| -> (usize, f64, f64) {
+            let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
+            for row in 0..SIDE {
+                for col in 0..SIDE {
+                    let i = (row * SIDE + col) * 4;
+                    if f.bytes[i] > 220 && f.bytes[i + 1] > 220 && f.bytes[i + 2] > 220 {
+                        n += 1;
+                        sx += col as f64;
+                        sy += row as f64;
+                    }
+                }
+            }
+            if n == 0 {
+                (0, 0.0, 0.0)
+            } else {
+                (n, sx / n as f64, sy / n as f64)
+            }
+        };
+
+        // No cursor → a flat grey frame has no white pointer pixels.
+        let none = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform::identity(),
+                CropRect::full(),
+                None,
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        assert_eq!(white(&none).0, 0, "no pointer drawn when position is None");
+
+        // Cursor at the top-left quadrant (0.25, 0.25) at 1×.
+        let one = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform::identity(),
+                CropRect::full(),
+                Some((0.25, 0.25)),
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        let (n1, cx1, cy1) = white(&one);
+        assert!(n1 > 4, "pointer visible at 1× ({n1} white px)");
+
+        // Same source point under a 2× centre zoom → it rides toward the
+        // corner (further from centre), proving the cursor is glued to its
+        // pixel rather than pinned in output space.
+        let two = pv
+            .render_framed_with_cursor(
+                gray(),
+                ZoomTransform {
+                    scale: 2.0,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                },
+                CropRect::full(),
+                Some((0.25, 0.25)),
+                &[],
+                &cfg,
+            )
+            .expect("compose");
+        let (n2, cx2, cy2) = white(&two);
+        assert!(n2 > 4, "pointer visible at 2× ({n2} white px)");
+
+        let center = (SIDE as f64) / 2.0;
+        let d1 = (cx1 - center).hypot(cy1 - center);
+        let d2 = (cx2 - center).hypot(cy2 - center);
+        assert!(
+            d2 > d1,
+            "cursor rides the zoom toward the corner (1×→{d1:.1}, 2×→{d2:.1} from centre)"
+        );
+    }
+
+    #[test]
+    fn framed_transform_clamps_sub_one_zoom_to_no_zoom() {
+        // A sub-1.0 amount can't shrink (clamped in zoom_at; defended here).
+        let z = ZoomTransform {
+            scale: 0.5,
+            center_x: 0.5,
+            center_y: 0.5,
+        };
+        let t = framed_transform(z, CropRect::full());
+        assert!((t.scale.x - 2.0).abs() < 1e-5, "clamped to base fill");
+    }
+
+    /// Golden render: a centred white marker on a dark field, composed with
+    /// and without a 2× centre zoom. The zoom must *magnify* (not shrink or
+    /// vanish), so the marker covers ~4× the pixels (2× linear → 4× area).
+    /// A coarse pixel count is robust to driver AA / sub-pixel variation.
+    #[test]
+    fn render_framed_zoom_magnifies_the_focal_region() {
+        const S: usize = 128;
+        let pattern = {
+            let mut b = vec![0u8; S * S * 4];
+            for y in 0..S {
+                for x in 0..S {
+                    let i = (y * S + x) * 4;
+                    if x.abs_diff(S / 2) < 8 && y.abs_diff(S / 2) < 8 {
+                        b[i] = 255;
+                        b[i + 1] = 255;
+                        b[i + 2] = 255;
+                    }
+                    b[i + 3] = 255;
+                }
+            }
+            b
+        };
+        let dim = u32::try_from(S).expect("S fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let white = |f: &ComposedFrame| {
+            f.bytes
+                .chunks_exact(4)
+                .filter(|p| p[0] > 240 && p[1] > 240 && p[2] > 240)
+                .count()
+        };
+        let none = pv
+            .render_framed(pattern.clone(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        let zoomed = pv
+            .render_framed(
+                pattern,
+                ZoomTransform {
+                    scale: 2.0,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                },
+                CropRect::full(),
+            )
+            .expect("compose");
+        let (a, z) = (white(&none), white(&zoomed));
+        assert!(a > 0 && z > 0, "marker visible in both ({a}, {z})");
+        // 2× linear ⇒ ~4× area; allow [3×, 5×] for AA + clamping.
+        assert!(
+            z >= 3 * a && z <= 5 * a,
+            "2× zoom should ~4× the marker area (got {a} → {z})"
+        );
     }
 }

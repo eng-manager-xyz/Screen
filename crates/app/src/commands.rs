@@ -1985,6 +1985,10 @@ pub fn start_recording(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = Some(session);
     }
+    // ED.17: start capturing the cursor track for the editor's overlay /
+    // auto-zoom. No-op on non-macOS; macOS polls the global pointer with no
+    // Input-Monitoring permission.
+    recording_state.start_cursor_capture();
     spawn_status_emitter(app.clone(), session_id);
     Ok(session_id)
 }
@@ -2130,6 +2134,11 @@ pub fn stop_recording(
         None
     };
 
+    // ED.17: stop the cursor poller + stash the resampled track for the
+    // Record→Edit handoff (`open_in_editor` consumes it). Always called so the
+    // poller thread never outlives the recording.
+    recording_state.finish_cursor_capture(edit::DEFAULT_PROJECT_FPS);
+
     let summary = RecordingSummary {
         session_id: session.id,
         elapsed_ms,
@@ -2228,6 +2237,9 @@ pub async fn export_recording(
         .state::<RecordingState>()
         .take_pending_export()
         .ok_or("no recording is awaiting export")?;
+    // ED.17: a raw export doesn't use the cursor track — drop it so it can't
+    // leak onto a later, unrelated edit.
+    app.state::<RecordingState>().clear_cursor_track();
     let format = format
         .as_deref()
         .and_then(OutputFormat::from_slug)
@@ -2313,6 +2325,8 @@ pub async fn export_recording(
     reason = "IPC signature stability — a delete failure may be surfaced in future."
 )]
 pub fn discard_recording(recording_state: State<'_, RecordingState>) -> Result<(), String> {
+    // ED.17: a discarded recording's cursor track is moot — drop it.
+    recording_state.clear_cursor_track();
     if let Some(pending) = recording_state.take_pending_export() {
         match std::fs::remove_file(&pending.scratch_path) {
             Ok(()) => {

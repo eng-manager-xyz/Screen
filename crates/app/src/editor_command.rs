@@ -82,13 +82,23 @@ pub async fn open_in_editor(app: tauri::AppHandle, path: String) -> Result<EditP
     .await
     .map_err(|err| format!("probe task failed to join: {err}"))??;
 
-    let project = project_from_metadata(
+    let mut project = project_from_metadata(
         PathBuf::from(path),
         meta.width,
         meta.height,
         meta.frame_rate,
         meta.frame_count.unwrap_or(0),
     );
+    // ED.17: attach the cursor track captured during the just-finished
+    // recording (the Record→Edit handoff). `take` consumes it so it can't
+    // re-attach to a later, unrelated clip; `None` for clips opened without a
+    // fresh recording (e.g. a re-opened file).
+    if let Some(track) = app
+        .state::<crate::recording::RecordingState>()
+        .take_cursor_track()
+    {
+        project.cursor_track = Some(track);
+    }
     // Spin up the playhead session for this clip (ED.7 transport drives it).
     // Resolved by handle since the `.await` above rules out holding a
     // `State<'_>` borrow across it.

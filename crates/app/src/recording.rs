@@ -33,9 +33,12 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use edit::CursorSample;
 use media::audio_mix::AudioMixer;
 use media::encode::{LiveGstreamerEncoder, VideoEncoder};
 use serde::{Deserialize, Serialize};
+
+use crate::cursor_capture::CursorPoller;
 
 /// Default audio mixer channel count (stereo). Matches the
 /// `EncoderConfig` default + the SCK / mic worker output formats.
@@ -345,6 +348,16 @@ pub struct RecordingState {
     /// variant for it (keeps the state-machine matches + LED colour
     /// map untouched).
     pub pending_export: Mutex<Option<PendingExport>>,
+    /// Cursor-position capture worker (ED.17), live for the duration of a
+    /// recording. `Some` while recording; stopped + drained at
+    /// `stop_recording`. macOS-only in practice (the non-macOS poller is a
+    /// no-op).
+    pub cursor_poller: Mutex<Option<CursorPoller>>,
+    /// The cursor track from the most-recent recording, awaiting the
+    /// Record→Edit handoff (ED.17). Set at stop; consumed by `open_in_editor`
+    /// (attached to the project); cleared on a new recording / export /
+    /// discard so it never leaks onto an unrelated clip.
+    pub pending_cursor_track: Mutex<Option<Vec<CursorSample>>>,
 }
 
 impl Default for RecordingState {
@@ -356,6 +369,8 @@ impl Default for RecordingState {
             screen_frame_slot: new_frame_slot(),
             audio_mixer: new_audio_mixer(),
             pending_export: Mutex::new(None),
+            cursor_poller: Mutex::new(None),
+            pending_cursor_track: Mutex::new(None),
         }
     }
 }
@@ -368,6 +383,58 @@ impl RecordingState {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_some()
+    }
+
+    /// Start cursor-position capture for a new recording (ED.17). Clears any
+    /// stale pending track first so it can't leak onto this recording's edit.
+    pub fn start_cursor_capture(&self) {
+        *self
+            .pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        let rect = crate::cursor_capture::main_display_bounds();
+        *self
+            .cursor_poller
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(CursorPoller::start(rect));
+    }
+
+    /// Stop cursor capture and stash the resampled track for the Record→Edit
+    /// handoff (ED.17). `project_fps` is the editor's timeline authority.
+    pub fn finish_cursor_capture(&self, project_fps: u32) {
+        let poller = self
+            .cursor_poller
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(poller) = poller {
+            let samples = poller.stop();
+            let track = crate::cursor_capture::samples_to_track(&samples, project_fps);
+            if !track.is_empty() {
+                *self
+                    .pending_cursor_track
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(track);
+            }
+        }
+    }
+
+    /// Take the pending cursor track (the Record→Edit handoff consumes it).
+    #[must_use]
+    pub fn take_cursor_track(&self) -> Option<Vec<CursorSample>> {
+        self.pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    /// Discard any pending cursor track (the export / discard paths, so a
+    /// track never leaks onto an unrelated later edit).
+    pub fn clear_cursor_track(&self) {
+        *self
+            .pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     /// Snapshot of the active session, if any. Cloned so callers
@@ -1223,6 +1290,34 @@ mod tests {
     fn new_frame_slot_starts_none() {
         let slot = new_frame_slot();
         assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn cursor_track_handoff_is_consume_once_and_clearable() {
+        // ED.17: the Record→Edit handoff consumes the pending cursor track
+        // exactly once (so it can't re-attach to a later clip), and the
+        // export/discard paths can drop it.
+        let state = RecordingState::default();
+        assert!(
+            state.take_cursor_track().is_none(),
+            "none until a recording"
+        );
+
+        *state
+            .pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(vec![CursorSample::new(0, 0.5, 0.5)]);
+        assert_eq!(state.take_cursor_track().map(|t| t.len()), Some(1), "taken");
+        assert!(state.take_cursor_track().is_none(), "consumed once");
+
+        *state
+            .pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(vec![CursorSample::new(1, 0.1, 0.1)]);
+        state.clear_cursor_track();
+        assert!(state.take_cursor_track().is_none(), "cleared");
     }
 
     #[test]

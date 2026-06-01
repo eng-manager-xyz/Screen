@@ -27,12 +27,25 @@ overlap. The output is an ordinary list of [`ZoomSegment`](../../api/edit/zoom/s
 hand-authored ones, and the [zoom lane](./ed12-zoom-lane.md) renders them
 for editing.
 
-```admonish note title="Concrete targets now; capture is the follow-up"
-The generated regions are concrete `Manual`-targeted zooms (the click
-centroid), not `Auto` — so they punch into the click *immediately* under
-the existing engine rather than falling back to frame-centre, and they're
-fully editable. What's deferred is the other half: the **OS-level capture**
-that records the click log during a recording (a per-platform surface,
-macOS first — `CGEventTap` and friends). The generator that consumes the
-log is done and tested; wiring it at import waits on that capture landing.
+## Capturing the telemetry
+
+The generator consumes a click log + a cursor track; the capture that
+*produces* them lives in `app::cursor_capture` (macOS first):
+
+- **Cursor position** — a `CursorPoller` samples the global pointer at ~60 Hz
+  via `CGEventCreate(NULL)` + `CGEventGetLocation`, which read the current
+  position with **no Input-Monitoring permission** and no event tap.
+  `samples_to_track` resamples the timestamped samples onto the project frame
+  grid; `normalize_cursor_to_frame` maps display points into the `[0, 1]`
+  [`CursorSample`](../../api/edit/telemetry/struct.CursorSample.html)
+  convention. Both are pure + unit-tested; the poller thread is runtime-only.
+
+```admonish note title="Clicks + live wiring are the remaining runtime pieces"
+The **click log** (the auto-zoom input above + ED.19's ripples) needs a
+`CGEventTap` — which *does* require the Input-Monitoring permission and a
+`CFRunLoop` callback, so it can't run in CI (ISS-16). Connecting the poller
+into the live record→editor flow (start/stop + attach the track to the
+project) is the additive, runtime-verified wiring in ISS-17. The generated
+zooms are concrete `Manual`-targeted zooms (the click centroid), not `Auto`,
+so they punch into the click immediately and stay fully editable.
 ```

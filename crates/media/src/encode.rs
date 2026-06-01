@@ -726,6 +726,87 @@ pub fn build_remux_args(
     args
 }
 
+// ---- ED.21 — edited-export audio (decode → retime → remux) ----------
+
+/// Build the `gst-launch-1.0` argv that decodes `source`'s audio track to
+/// raw **interleaved F32LE** on stdout at `sample_rate` / `channels` (ED.21).
+///
+/// The edited export has no `.f32` scratch at edit time (the audio lives
+/// inside the source MP4), so the per-segment retime can't be expressed as a
+/// live capture. Instead we decode the whole source audio to raw samples with
+/// this one pass, slice + retime it per the project's segments in pure Rust
+/// (`screen_app::editor_export::retime_audio`), then feed the result to the
+/// encoder's audio scratch via [`VideoEncoder::push_audio_chunk`] — so the
+/// existing [`build_remux_args`] finalize muxes it exactly as for a live
+/// recording. GStreamer owns the intake; Rust owns the edit arithmetic.
+///
+/// Shape: `-q filesrc location=SRC ! decodebin ! audioconvert ! audioresample
+/// ! audio/x-raw,format=F32LE,rate=R,channels=C,layout=interleaved ! fdsink
+/// fd=1` — the input mirror of the `fdsink fd=1` decode pattern the `decode`
+/// crate uses for video.
+#[must_use]
+pub fn build_audio_decode_args(source: &Path, sample_rate: u32, channels: u8) -> Vec<String> {
+    vec![
+        "-q".to_string(),
+        "filesrc".to_string(),
+        format!("location={}", source.display()),
+        "!".to_string(),
+        "decodebin".to_string(),
+        "!".to_string(),
+        "audioconvert".to_string(),
+        "!".to_string(),
+        "audioresample".to_string(),
+        "!".to_string(),
+        format!(
+            "audio/x-raw,format=F32LE,rate={sample_rate},channels={channels},layout=interleaved"
+        ),
+        "!".to_string(),
+        "fdsink".to_string(),
+        "fd=1".to_string(),
+    ]
+}
+
+/// Decode `source`'s audio track to interleaved F32LE samples at
+/// `sample_rate` / `channels` (ED.21). Returns an **empty** `Vec` when the
+/// source has no audio track (probed via [`scratch_has_audio`]) — the caller
+/// then exports video-only.
+///
+/// # Errors
+///
+/// [`EncodeError::Spawn`] if `gst-launch-1.0` isn't on PATH;
+/// [`EncodeError::PipelineFailed`] if the decode pipeline exits non-zero.
+pub fn decode_source_audio_f32(
+    source: &Path,
+    sample_rate: u32,
+    channels: u8,
+) -> Result<Vec<f32>, EncodeError> {
+    if !scratch_has_audio(source) {
+        return Ok(Vec::new());
+    }
+    let args = build_audio_decode_args(source, sample_rate, channels);
+    let output = Command::new("gst-launch-1.0")
+        .args(&args)
+        .output()
+        .map_err(|err| EncodeError::Spawn {
+            source: err,
+            path: std::env::var("PATH").unwrap_or_else(|_| "<unset>".into()),
+        })?;
+    if !output.status.success() {
+        return Err(EncodeError::PipelineFailed {
+            exit: output.status.code(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+    // Reinterpret the raw F32LE byte stream as `f32` samples (drop any
+    // trailing partial sample the pipe may leave on an abrupt EOS).
+    let samples = output
+        .stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect();
+    Ok(samples)
+}
+
 // ---- M-EXPORT.5 — AVIF poster-frame thumbnail -----------------------
 
 /// Generate an AVIF poster image next to the encoded video.
@@ -1301,6 +1382,32 @@ mod tests {
         // Mux + sink to the final output.
         assert!(args.iter().any(|a| a == "mp4mux"));
         assert!(args.iter().any(|a| a == "location=/tmp/test.x"));
+    }
+
+    #[test]
+    fn audio_decode_args_pipe_raw_f32le_to_stdout() {
+        // ED.21: the edited-export audio intake decodes the source's audio to
+        // raw interleaved F32LE on stdout at the encoder's caps, so the
+        // per-segment retime can slice it in Rust.
+        let args = build_audio_decode_args(Path::new("/tmp/source.mp4"), 48_000, 2);
+        assert_eq!(args.first().map(String::as_str), Some("-q"));
+        assert!(args.iter().any(|a| a == "location=/tmp/source.mp4"));
+        assert!(args.iter().any(|a| a == "decodebin"));
+        assert!(args.iter().any(|a| a == "audioconvert"));
+        assert!(args.iter().any(|a| a == "audioresample"));
+        // Caps must match the encoder's audio scratch (F32LE @ 48k stereo)
+        // so the finalize remux's rawaudioparse reads them correctly.
+        assert!(args.iter().any(|a| a.contains("format=F32LE")
+            && a.contains("rate=48000")
+            && a.contains("channels=2")
+            && a.contains("layout=interleaved")));
+        // Raw samples come out on stdout (fd 1), the input mirror of the
+        // video decode pattern.
+        assert!(args.iter().any(|a| a == "fdsink"));
+        assert!(args.iter().any(|a| a == "fd=1"));
+        // It's a decode, not an encode — no encoder / mux elements.
+        assert!(!args.iter().any(|a| a == "avenc_aac"));
+        assert!(!args.iter().any(|a| a == "mp4mux"));
     }
 
     #[test]

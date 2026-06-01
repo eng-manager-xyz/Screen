@@ -14,6 +14,7 @@
 
 pub mod audio;
 pub mod commands;
+pub mod cursor_capture;
 pub mod editor_command;
 pub mod editor_export;
 pub mod editor_preview;
