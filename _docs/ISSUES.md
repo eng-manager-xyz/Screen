@@ -25,14 +25,14 @@ Copy and fill when filing a new issue.
 
 ---
 
-## ISS-17: ED.17 — live cursor-capture wiring (record → editor) not yet connected
+## ISS-17: ED.17 — cursor capture assumes the main display (multi-display refinement)
 - **Filed:** 2026-05-31
 - **By:** ED.17 (cursor capture)
-- **Severity:** deferral
-- **Affects:** `crates/app/src/{commands.rs,recording.rs,editor_command.rs}`
+- **Severity:** deferral / tech-debt
+- **Affects:** `crates/app/src/cursor_capture.rs` (`main_display_bounds`)
 - **Status:** open
-- **Description:** The cursor-capture **mechanism** ships (`app::cursor_capture::CursorPoller` polls the global pointer with no permission; `samples_to_track` / `normalize_cursor_to_frame` are unit-tested), and the **consumer** ships (ED.19 renders `EditProject::cursor_track`). The live **wiring** between them is not connected: a recording doesn't yet start a `CursorPoller`, stop it, and attach the resulting track to the project at Record→Edit import. The integration is additive (a separate poller thread; it cannot affect the video/audio capture) but un-CI-verifiable (needs a real recording session), and has one real correctness dependency to get right: the poller must normalize against the captured **display bounds in points** (`CGDisplayBounds`, *not* the post-1080p-cap capture pixels), and handle multi-display origins (`normalize_cursor_to_frame` already takes a `(origin, w, h)` rect for this).
-- **Resolution:** When wired: add `cursor_poller: Mutex<Option<CursorPoller>>` to `RecordingState`; in `start_recording` start it with the captured display's point-bounds; in `stop_recording` `stop()` it, run `samples_to_track(samples, project_fps)`, and carry the track on `PendingExport`; in `open_in_editor` set `project.cursor_track = Some(track)`. Runtime-verify by recording + scrubbing the editor (the pointer rides the zoom). (open)
+- **Description:** The live record→editor cursor-capture wiring **is now connected** (`RecordingState::{start,finish}_cursor_capture`, `take_cursor_track`; `start_recording` → `stop_recording` → `open_in_editor`). The remaining gap: the poller normalizes the global cursor against **`CGMainDisplayID`'s bounds** (`main_display_bounds`). When the user records a *non-primary* display (or a window source), the cursor will be normalized against the wrong rect, so the overlay lands in the wrong place. `normalize_cursor_to_frame` already takes a flexible `(origin, w, h)` rect — the fix is to thread the *captured* display's id (from the SCK `ScreenCaptureConfig` / source id) into `start_cursor_capture` instead of hard-coding the main display.
+- **Resolution:** When refined: resolve the captured display's `CGDirectDisplayID` from the recording's screen-source id and pass its `CGDisplayBounds` to the poller. Window-source captures need the window's frame instead. Runtime-verify on a multi-display setup. (open)
 
 ## ISS-16: ED.17 — click capture (auto-zoom + ripples) needs a CGEventTap
 - **Filed:** 2026-05-31

@@ -23,20 +23,25 @@ runners (the project's designed authority).
 | ED.18 background framing | AUT-353 | ✅ `6c9ddd9` + snapshot `7700175`; **CI green** (recording:: 19/19, editor_preview:: 15/15, PNG eyeballed) |
 | ED.21 export audio | AUT-356 | ✅ `9157c1e`/`f666ae8`; **CI green** + e2e on a real Mac incl. **real audio mux** |
 | ED.19 cursor overlay | AUT-354 | ✅ `3da5729`; render verified (GPU test: pointer draws + **rides the zoom**; story + fingerprint + PNG), drives from `cursor_track` |
-| ED.17 telemetry capture | AUT-352 | 🟡 `3c4cba5` — capture **mechanism** + pure math shipped + tested (no-permission `CGEvent` poll); live wiring (ISS-17) + click-tap (ISS-16) are runtime follow-ups |
+| ED.17 telemetry capture | AUT-352 | 🟢 **cursor (position) capture wired end-to-end** (`3c4cba5` mechanism + `1a6b22f` live record→edit wiring); no-permission `CGEvent` poll → `samples_to_track` → `EditProject::cursor_track` → ED.19 overlay. **Clicks** (auto-zoom/ripples) deferred to ISS-16; multi-display to ISS-17 |
 
-**ED.17 nuance (be honest at closeout).** The cursor-capture *mechanism*
-(`app::cursor_capture::CursorPoller`, no-permission `CGEvent` polling) +
-`normalize_cursor_to_frame` + `samples_to_track` ship + are unit-tested, and
-the data model + ED.19 consumer are done. NOT yet done: (a) the additive live
-record→editor wiring (ISS-17 — needs a real session to verify the
-display-bounds rect), (b) the click-tap for auto-zoom/ripples (ISS-16 —
-Input-Monitoring permission + `CFRunLoop`, can't run in CI). So AUT-352 is
-*advanced but not 100%*; closing it as Done would require those runtime pieces.
+**ED.17 nuance (be honest at closeout).** The **cursor position** half is now
+wired live: a recording starts a `CursorPoller` (no-permission `CGEvent`
+polling, additive — can't affect the encoded mp4), `stop_recording` resamples
+it via `samples_to_track`, and `open_in_editor` attaches it to
+`EditProject::cursor_track` (consume-once, unit-tested), so ED.19 draws the
+real recorded cursor. The macOS poll + the display rect are **runtime-verified**
+(record → Edit → scrub). Still deferred: (a) the **click** log (auto-zoom +
+ripples) needs a `CGEventTap` + Input-Monitoring permission (ISS-16,
+can't-run-in-CI); (b) **multi-display** targeting (ISS-17, currently assumes
+the main display). So AUT-352's *cursor* deliverable is done; its *click*
+deliverable (the auto-zoom headline) remains ISS-16.
 
 **Closeout:** ED.16/18/19/21 are genuinely done (CI green / verified) →
-closeable. ED.17 (AUT-352) stays open pending ISS-16/ISS-17. Verify each
-ticket's "Done when" before closing (partial sub-criteria: ED.16 wants an
+closeable. ED.17 (AUT-352): cursor-position capture done + wired; **clicks
+remain (ISS-16)** so auto-zoom-from-real-clicks isn't captured yet — keep
+AUT-352 open until ISS-16 unless you scope the ticket to position-only. Verify
+each ticket's "Done when" before closing (partial sub-criteria: ED.16 wants an
 animated MP4 asset; ED.18 shadow/wallpaper are ISS-14/ISS-15;
 ED.21 pitch-preservation is a follow-up). Do NOT close on PR-pass alone.
 
