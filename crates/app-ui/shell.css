@@ -401,6 +401,17 @@
   grid-row: 1 / span 2;
   opacity: 0.6;
 }
+/* AUT-288 — real app icon (inline PNG). Full opacity (it's a real icon, not
+   the dimmed glyph); sized to the icon slot. */
+.system-audio-picker-row-icon:has(.system-audio-picker-row-img) {
+  opacity: 1;
+}
+.system-audio-picker-row-img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
+}
 .system-audio-picker-row-label {
   grid-column: 2;
   grid-row: 1;

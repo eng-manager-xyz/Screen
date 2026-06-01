@@ -200,13 +200,9 @@ impl From<AudioChunkError> for SystemAudioError {
 /// One audio-producing (or audio-capable) app currently running.
 /// Returned by [`list_audio_apps`]; consumed by [`AudioAppFilter`].
 ///
-/// `icon_png_bytes` is reserved for the M-AUDIO-SYS.2 picker UI but
-/// **shipped empty in v0** — pulling the macOS bundle icon via
-/// `NSWorkspace.iconForFile(at:)` + downscale + PNG encode requires
-/// adding `objc2-app-kit` + `image` deps to the macOS-only target.
-/// The bundle-id is enough for the Tauri seam contract to round-trip;
-/// the icon-extraction is a discrete follow-up (file as
-/// M-AUDIO-SYS.1.1).
+/// `icon_png_bytes` carries the app's icon (AUT-288) for the picker — see the
+/// field doc. Empty when the OS reports no icon for the pid (or on a headless
+/// runner with no window server).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioApp {
     /// Process identifier as observed at enumeration time. Use
@@ -219,8 +215,10 @@ pub struct AudioApp {
     pub bundle_id: String,
     /// Human-readable app name (`"Spotify"`).
     pub display_name: String,
-    /// 32×32 PNG bytes for the picker icon stack. `Vec::new()` in v0;
-    /// real icon-bytes land in the M-AUDIO-SYS.1.1 follow-up.
+    /// The running app's icon as PNG bytes (AUT-288), at its native size, or
+    /// `Vec::new()` when the OS has no icon for the pid. The picker inlines it
+    /// as a `data:` URL (`icon_data_url`) and falls back to a glyph when empty.
+    /// A 32×32 downscale (to shrink the IPC payload) is a noted refinement.
     pub icon_png_bytes: Vec<u8>,
 }
 
@@ -920,14 +918,58 @@ pub fn list_audio_apps() -> Result<Vec<AudioApp>, SystemAudioError> {
             pid,
             bundle_id,
             display_name,
-            // v0: icon-bytes are deferred to M-AUDIO-SYS.1.1 (needs
-            // objc2-app-kit dep for NSWorkspace.iconForFile + an
-            // image-encode step). The picker's icon stack renders a
-            // generic placeholder for empty payloads.
-            icon_png_bytes: Vec::new(),
+            // AUT-288 — the running app's icon as PNG (native size; empty when
+            // the OS has no icon for the pid → the picker shows its glyph).
+            icon_png_bytes: icon_png_for_pid(pid_raw),
         });
     }
     Ok(out)
+}
+
+/// AUT-288 — the running app's icon as PNG bytes, or empty on any miss.
+///
+/// Reads `NSRunningApplication(pid).icon` and re-encodes it to PNG via
+/// `NSBitmapImageRep`. **Every step is `Option`-guarded**, so a nil at any
+/// stage (no such pid, no icon, encode failure) degrades to empty bytes — the
+/// picker then renders its glyph placeholder, never a panic.
+///
+/// ```admonish warning title="Real-Mac verify (AUT-288)"
+/// AppKit icon access is read-only and broadly thread-tolerant, but
+/// `list_audio_apps` runs on a Tauri worker thread and a **headless CI runner
+/// has no window server**, so the icons are populated + visually confirmed only
+/// in an interactive macOS session. CI verifies the call compiles + degrades
+/// safely (empty → placeholder); it cannot confirm a real icon renders.
+/// ```
+#[cfg(target_os = "macos")]
+fn icon_png_for_pid(pid: i32) -> Vec<u8> {
+    use objc2::AllocAnyThread;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSRunningApplication};
+    use objc2_foundation::NSDictionary;
+
+    // SAFETY: read-only AppKit calls; every result is checked for nil before
+    // use, so no invalid pointer is ever dereferenced.
+    unsafe {
+        let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else {
+            return Vec::new();
+        };
+        let Some(image) = app.icon() else {
+            return Vec::new();
+        };
+        let Some(tiff) = image.TIFFRepresentation() else {
+            return Vec::new();
+        };
+        let Some(rep) = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff) else {
+            return Vec::new();
+        };
+        // Empty properties dict (default PNG encoding). `NSBitmapImageRepPropertyKey`
+        // is an alias for `NSString`; the value type is `AnyObject`.
+        let props: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::new();
+        match rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &props) {
+            Some(png) => png.to_vec(),
+            None => Vec::new(),
+        }
+    }
 }
 
 /// Build an `SCContentFilter` from a shareable-content snapshot + a
