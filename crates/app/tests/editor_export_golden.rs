@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use decode::EditorVideoStream;
 use edit::EditOp;
+use edit::style::AspectRatio;
 use media::gstreamer::is_available as gstreamer_available;
 use screen_app::editor_command::project_from_metadata;
 use screen_app::editor_export::ExportFrameGenerator;
@@ -92,6 +93,50 @@ fn generator_walks_edited_timeline_forward_only() {
         1,
         "forward walk must not re-spawn the decoder"
     );
+}
+
+/// AUT-513: a `Vertical` (9:16) project composes the 16:9 fixture into the
+/// **reframed** canvas — the generator's frames carry the 9:16 canvas
+/// dimensions (`EditProject::canvas_dims`), not the source's, proving the
+/// aspect-ratio preset actually reframes the export instead of being a no-op.
+#[test]
+fn generator_composes_at_the_aspect_ratio_canvas() {
+    if !gstreamer_available() {
+        eprintln!("gstreamer not on PATH — skipping aspect-canvas export test");
+        return;
+    }
+
+    let probe = EditorVideoStream::open(Path::new(FIXTURE)).expect("open probe");
+    let (width, height) = (probe.width(), probe.height());
+    let frame_rate = probe.frame_rate();
+    let frame_count = probe.frame_count().unwrap_or(0).max(2);
+    drop(probe);
+
+    let mut project = project_from_metadata(
+        PathBuf::from(FIXTURE),
+        width,
+        height,
+        frame_rate,
+        frame_count,
+    );
+    project.aspect = AspectRatio::Vertical;
+    let (cw, ch) = project.canvas_dims();
+    assert_ne!(
+        (cw, ch),
+        (width, height),
+        "9:16 canvas must differ from the 16:9 source"
+    );
+    assert!(ch > cw, "vertical canvas is taller than wide");
+
+    let mut generator =
+        ExportFrameGenerator::new(project, Path::new(FIXTURE)).expect("init generator");
+    let ef = generator.next_frame().expect("frame 0 composes");
+    assert_eq!(
+        (ef.frame.width, ef.frame.height),
+        (cw, ch),
+        "composed at the 9:16 aspect canvas, not the source dims"
+    );
+    assert_eq!(ef.frame.bytes.len(), (cw as usize) * (ch as usize) * 4);
 }
 
 /// AUT-510: the shared `compose_project_frame` (used by BOTH the export

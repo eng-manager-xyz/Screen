@@ -66,13 +66,34 @@ pub struct ExportFrameGenerator {
 }
 
 impl ExportFrameGenerator {
-    /// Open the source clip + compose pipeline for `project`.
+    /// Open the source clip + compose pipeline for `project`, composing at the
+    /// project's aspect-ratio canvas ([`EditProject::canvas_dims`], AUT-513).
     ///
     /// # Errors
     ///
     /// Returns a message if the source can't be opened or the wgpu compose
     /// pipeline can't be created.
     pub fn new(project: EditProject, source: &Path) -> Result<Self, String> {
+        let (cw, ch) = project.canvas_dims();
+        Self::with_canvas(project, source, cw, ch)
+    }
+
+    /// Like [`Self::new`] but composes into an explicit `canvas_w × canvas_h`
+    /// output — the export path passes the aspect canvas after clamping it to
+    /// the HW-encoder edge cap (`fit_within_encoder_limits`) so the generator
+    /// and the encoder agree on dimensions. The source is aspect-fit
+    /// (letterbox / pillarbox) into the canvas.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message if the source can't be opened or the wgpu compose
+    /// pipeline can't be created.
+    pub fn with_canvas(
+        project: EditProject,
+        source: &Path,
+        canvas_w: u32,
+        canvas_h: u32,
+    ) -> Result<Self, String> {
         // Export is a strictly-forward, monotonic walk (`source_time` is
         // non-decreasing across project frames), so a single-frame cache is
         // sufficient — it still serves the repeated source frame a slow-
@@ -80,8 +101,13 @@ impl ExportFrameGenerator {
         // pin ~2.5 GB of decoded BGRA at 1080p for no benefit.
         let stream = EditorVideoStream::open_with_cache(source, 1)
             .map_err(|e| format!("open source: {e}"))?;
-        let mut preview = EditorPreview::new(project.source.width, project.source.height)
-            .map_err(|e| format!("init compose: {e}"))?;
+        let mut preview = EditorPreview::with_canvas(
+            project.source.width,
+            project.source.height,
+            canvas_w,
+            canvas_h,
+        )
+        .map_err(|e| format!("init compose: {e}"))?;
         // Background framing (ED.18) is constant across the export — set the
         // backdrop + rounded-corner clip + padding once, here, so the
         // per-frame `render_framed` only updates the zoom/crop transform.
@@ -278,11 +304,13 @@ fn retime_audio(
 /// blocking task. `cancel` is polled once per frame (for the export UI,
 /// ED.22) and `on_progress(done, total)` reports after each frame.
 ///
-/// The output is composed at the **source** clip's dimensions. The zoom
-/// punch-ins (ED.16), crop / aspect reframe (ED.15), and background framing
-/// (ED.18 — backdrop, padding, rounded corners) are all baked into each
-/// frame by the generator; the per-segment audio retime (ED.21) muxes on at
-/// finalize. Drop-shadow + inset border are deferred (ISS-14).
+/// The output is composed at the project's **aspect-ratio canvas**
+/// ([`EditProject::canvas_dims`], AUT-513) — the source reframed to 16:9 /
+/// 9:16 / 1:1 / 4:3, letterboxed/pillarboxed without stretch — clamped to the
+/// HW-encoder edge cap. The zoom punch-ins (ED.16), crop (ED.15), and
+/// background framing (ED.18 — backdrop, padding, rounded corners, shadow,
+/// inset border) are all baked into each frame by the generator; the
+/// per-segment audio retime (ED.21) muxes on at finalize.
 ///
 /// # Errors
 ///
@@ -297,9 +325,17 @@ pub fn export_edited_project(
     mut on_progress: impl FnMut(u64, u64),
 ) -> Result<PathBuf, String> {
     let total = project.project_duration();
+    // Output canvas = the project's aspect-ratio reframe (AUT-513), clamped to
+    // the HW-encoder per-axis edge cap (AUT-334). The generator composes at the
+    // same dims so the encoder caps match the composed frames.
+    let (canvas_w, canvas_h) = media::encode::fit_within_encoder_limits(
+        project.canvas_dims().0,
+        project.canvas_dims().1,
+        format,
+    );
     let mut config = EncoderConfig::for_output(output_path, format);
-    config.width = project.source.width;
-    config.height = project.source.height;
+    config.width = canvas_w;
+    config.height = canvas_h;
     config.framerate = project.project_fps;
 
     // Capture the audio-retime inputs before `project` moves into the
@@ -309,7 +345,7 @@ pub fn export_edited_project(
     let source_fps = project.source.source_fps;
     let (sample_rate, channels) = (config.sample_rate, config.channels);
 
-    let mut generator = ExportFrameGenerator::new(project, source)?;
+    let mut generator = ExportFrameGenerator::with_canvas(project, source, canvas_w, canvas_h)?;
     let mut encoder =
         LiveGstreamerEncoder::new(config).map_err(|e| format!("start encoder: {e}"))?;
 

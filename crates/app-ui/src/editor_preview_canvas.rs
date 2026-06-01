@@ -93,9 +93,12 @@ async fn paint_one_editor_frame(
     use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
     // Clip dimensions (the composed frame size) come from the loaded project.
+    // The composed frame is the project's aspect-ratio canvas (AUT-513), which
+    // differs from the source when a non-16:9 aspect is selected — size the
+    // poll buffer to the canvas so `putImageData` matches the backend frame.
     let Some((width, height)) = project
         .and_then(|sig| sig.get_untracked())
-        .map(|p| (p.source.width, p.source.height))
+        .map(|p| p.canvas_dims())
     else {
         return;
     };
