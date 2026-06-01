@@ -6,6 +6,35 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ 2026-06-01 — Record→Edit→Export flow verified end-to-end + Linear closeout (branch `dig-deeper`)
+
+User goal: confirm the full loop works — **record (mic + system audio + webcam + screen) → open the same clip in the edit tab → fast-forward (speed) + zoom-to-cursor + snip (split) + crop the ends (remove sections) → export** — and close every active/incomplete Linear issue, filing+executing any gaps.
+
+**Outcome: the named flow works end-to-end.** Verified by a 7-agent adversarial audit workflow (flow legs × ticket clusters) against the merged code — every leg has a concrete wired path:
+
+| Leg | Where |
+|---|---|
+| 4-source capture + single mux | `commands.rs::start_recording` spawns each worker → `RecordingState` slots/mixer; `recording.rs::feed_real_capture` composes screen+cam + pulls mic+sys `AudioMixer` → one `LiveGstreamerEncoder` (H.264 video + AAC audio → one mp4) |
+| Record→Edit handoff | `editor_command.rs::open_in_editor` opens the same file + attaches cursor/click tracks + `generate_auto_zooms` |
+| Fast-forward (speed) | `clip_inspector.rs` presets → `SetSpeed` → `timescale` → `source_time` (export) + `retime_audio` |
+| Zoom-to-cursor | `+ Cursor` button / toolbar Zoom → `add_zoom_at_cursor` → `zoom_cursor_target` (cursor track) |
+| Snip (split) | toolbar Split + `S` → `split_at` → `EditOp::Split` |
+| Crop ends | filmstrip click-select → `Delete` → `ripple_delete_selected` → `EditOp::RippleDelete` |
+| Live preview | `editor_preview_session.rs` (`editor_preview_open/frame`) + `editor_preview_canvas.rs` poll — SAME `compose_project_frame` as export |
+| Export | `export_bar` → `editor_command::editor_export` → composed video (zoom/crop/bg/cursor) + retimed audio → muxed mp4 (`edited_export_e2e` decodes it back) |
+
+**Shipped this pass:** merged **PR #69** (editor UX gaps → AUT-510 live preview, AUT-511 toolbar Split, AUT-512 zoom-to-cursor); green on macOS/Ubuntu/Windows. Last gap before it: the canvas was a `"Preview renders here."` placeholder and toolbar buttons were inert.
+
+**Linear closed (14):** AUT-510/511/512 (#69), AUT-334 (>4K clamp, #64), and 10 stale-but-shipped In-Review tickets confirmed by the audit — AUT-267/268 (SCK capture+enum), AUT-284 (per-device mic), AUT-287 (RMS meters), AUT-261/272/286 (perm deny deep-links), AUT-285 (real AVCaptureDevice probes), AUT-257 (circular webcam mask), AUT-273 (bubble window).
+
+**Linear kept open with honest residual-gap comments (audit found genuinely-incomplete, all OUTSIDE the named flow):** AUT-269 (screen *preview channel* unshipped; recording works via shared slot), AUT-271 (`ScreenPicker` authored but **dead code** — live RecorderPage hardcodes the primary display, no display/window menu), AUT-288 (system-audio app icons unshipped; 3/4 items shipped), AUT-274/276 (webcam-bubble per-pixel hit-test / resize / snap / context-menu polish).
+
+**New issue filed (genuine export defect found, not executed this pass):** **AUT-513** / [[ISS-23]] — export ignores the output aspect-ratio preset (9:16/1:1/4:3 are no-ops; `AspectRatio::canvas_dims` has zero non-test callers). Filed with a full fix plan; deferred because it's a delicate matte render-math change + 3-surface dims plumbing + the renderable-feature story/snapshot/chapter convention (own focused PR), and it's adjacent to the named goal which already works.
+
+**Caveats (not blockers):** no automated 4-source live-capture integration test (live path needs macOS + TCC — matches the documented can't-run-in-CI pattern); audio PTS approximated by frame count so long-session A/V drift isn't regression-guarded.
+
+---
+
 ## 🛠️ RESUME STATUS — editor UX gaps (branch `editor-ux-gaps`)
 
 The usability audit (record→edit→export, run after the closeout merged) found

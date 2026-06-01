@@ -25,6 +25,16 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-23: export ignores the output aspect-ratio preset (9:16 / 1:1 / 4:3 are no-ops)
+- **Filed:** 2026-06-01
+- **By:** record→edit→export end-to-end verification (post-#69)
+- **Severity:** bug
+- **Affects:** `crates/app/src/editor_export.rs` (dims setup), `crates/app/src/editor_preview.rs` (`framed_transform*` / `background_geometry`), `crates/app/src/editor_preview_session.rs` + `crates/app-ui/src/editor_preview_canvas.rs` (live canvas dims), `crates/edit/src/style.rs` (`AspectRatio::canvas_dims`)
+- **Linear:** AUT-513
+- **Status:** open
+- **Description:** The framing inspector exposes 16:9 / 9:16 / 1:1 / 4:3 presets (`framing_inspector.rs`, `ASPECTS`) → `set_aspect` → `EditOp::SetAspect` → `EditProject.aspect` (persisted). But `editor_export.rs` sets `EditorPreview::new(...)` and `EncoderConfig` dims from `project.source.width/height` ONLY — `AspectRatio::canvas_dims` has **zero non-test callers** (grep-verified). So picking 9:16/1:1/4:3 mutates+persists the project but the exported video stays at the source aspect; the control silently lies. Crop (`CropRect`) IS honored — only the aspect *matte* is unwired.
+- **Resolution:** When implemented: derive the export+preview canvas dims from `project.aspect` via `canvas_dims(source_long_edge)`, pass through even-dims + `fit_within_encoder_limits` (keep AUT-334's vtenc 4096/per-axis + even-dim invariants), and compose the source as a matte/letterbox — the screen sprite aspect-fits inside the canvas (no stretch) and the background fills the remainder. The screen sprite uses `FILL_SCALE = 2.0` (source→NDC `[-1,1]`), so a different-aspect canvas stretches unless an aspect-fit factor is folded into `background_geometry`'s `pad`/`window` (the rounded-corner clip, shadow, border, and cursor mapping all derive from that transform, so they follow). Live preview canvas (AUT-510) sizes to the same dims so preview ≡ export. Renderable feature → ships a storybook story + snapshot + mdBook chapter per the repo convention. (open)
+
 ## ISS-22: path-boolean De Morgan proptest is seed-flaky at boundary points
 - **Filed:** 2026-06-01
 - **By:** M-EDIT closeout (surfaced on a macOS gate run, unrelated to the branch)
