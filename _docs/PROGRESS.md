@@ -22,7 +22,7 @@ as a batch.
 | ISS-17 ED.17 multi-display cursor rect (`parse_display_id` → `CGDisplayBounds`) | AUT-352 | ✅ committed; `parse_display_id` unit test |
 | ED.19 cursor glyph + `hide_static` | AUT-354 | ✅ convex arrow glyph (replaces triangle) + `hide_static` honored at render (click ripple overrides); `cursor_is_static` + `cursor_for_frame` unit tests, fingerprint stable, PNG eyeballed |
 | ED.16 animated MP4 asset | AUT-351 | ✅ `editor-zoom-pushin` animated story (three-phase push-in, focal-pin math mirrors `render_framed`) → MP4 via `wisp-export-animated`; smoke + fingerprint (additive) green; hold/ramp-out frames eyeballed |
-| ISS-16 ED.17 click capture (CGEventTap) | AUT-352 | ⏳ last (runtime-only, no CI) |
+| ISS-16 ED.17 click capture (CGEventTap) | AUT-352 | ✅ `click_capture.rs`: listen-only tap → `CFRunLoop` worker → `samples_to_clicks` → `project.clicks` (auto-zoom + ED.19 ripples). `CFRetained` `!Send` solved via run-loop-pointer-as-`AtomicUsize`. Pure + handoff + auto-zoom-contract tests green on every OS; live tap runtime-only |
 
 **ED.19 closeout detail.** The pointer is now a single **convex arrow quad**
 (tip, left edge, tail point, right barb) instead of the placeholder triangle —
@@ -35,6 +35,34 @@ two-piece tail). `hide_static` is honored in the export generator's pure
 ripple is active — a click is an action worth showing even when the cursor
 hasn't moved (the Screen Studio rule). The wisp glyph + the storybook story
 share one shape; fingerprint snapshot unchanged at quadrant resolution.
+
+**ISS-16 click-tap closeout detail.** The AUT-352 headline (auto-zoom from
+*real* clicks) is now wired end-to-end. `click_capture.rs` runs a listen-only
+`CGEventTap` for left/right mouse-down; its `CFMachPort` source is pumped on a
+dedicated worker thread's `CFRunLoop`, the `extern "C-unwind"` callback
+normalizes each click against the captured display and timestamps it, and at
+stop the pure `samples_to_clicks` maps them onto the project frame grid. It
+rides the **same consume-once Record→Edit handoff** as the cursor track
+(`start/finish/take/clear_clicks` on `RecordingState`, attached to
+`project.clicks` in `open_in_editor`) and **degrades gracefully** when
+Input-Monitoring isn't granted (null tap → warn → empty log, recording never
+blocked). The load-bearing FFI subtlety: `CFRetained<CFRunLoop>` is `!Send`, so
+storing it in the shared `RecordingState` would make the whole state `!Sync`
+and break Tauri — instead the run loop is shared as a `usize` pointer
+(`AtomicUsize`) and the thread-safe `CFRunLoopStop` is called through it (the
+`CFRetained` lives only on the worker). Captured the pattern as a CLAUDE.md
+lesson. **The live tap is runtime-only** (Input-Monitoring can't be granted in
+CI); the pure `samples_to_clicks`, the `RecordingState` handoff, and a
+`samples_to_clicks → auto_zoom_segments` contract test cover the wiring on
+every OS — needs one real-Mac smoke (grant the permission, click, confirm
+auto-zoom + ripples) before declaring AUT-352 visually verified.
+
+**Bottom line:** all six closeout items are code-complete + gate-green-locally.
+AUT-351 (ED.16 asset), AUT-353 (ED.18 full), AUT-354 (ED.19 full) are
+confidently closeable. AUT-352 (ED.17) is now *complete in code* — cursor
+position + multi-display + clicks — with the single caveat that the click tap's
+visual confirmation is runtime-only (one real-Mac smoke). Push `m-edit-closeout`
+→ watch gate-screen on all three OSes → then close the Linear tickets.
 
 ---
 

@@ -14,8 +14,9 @@
 //!
 //! The **click log** (for click ripples + auto-zoom) needs a `CGEventTap`,
 //! which *does* require Input-Monitoring permission and a `CFRunLoop`
-//! callback — see ISS-16. The data model + the plumbing are ready for it;
-//! this module ships the no-permission position half.
+//! callback — that is its sibling module
+//! [`click_capture`](crate::click_capture) (ISS-16, resolved). This module
+//! ships the no-permission position half.
 //!
 //! The pure parts ([`normalize_cursor_to_frame`], [`samples_to_track`]) are
 //! exhaustively unit-tested; the macOS poller thread is runtime-only.

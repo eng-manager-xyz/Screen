@@ -133,8 +133,13 @@ impl ExportFrameGenerator {
             let ripples = edit::telemetry::ripples_at(clicks, f, ripple_frames);
             // `hide_static` fades the pointer out while it is parked, but a
             // live click ripple keeps it visible (see `cursor_for_frame`).
-            let cursor =
-                cursor_for_frame(track, &cfg, self.project.project_fps, f, !ripples.is_empty());
+            let cursor = cursor_for_frame(
+                track,
+                &cfg,
+                self.project.project_fps,
+                f,
+                !ripples.is_empty(),
+            );
             self.preview.render_framed_with_cursor(
                 decoded.bgra,
                 zoom,

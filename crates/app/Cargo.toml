@@ -72,10 +72,20 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = [
     # ED.17 cursor capture: CGEventCreate(NULL) + CGEventGetLocation poll the
     # global cursor position with no Input-Monitoring permission;
     # CGMainDisplayID + CGDisplayBounds give the display rect to normalize to.
+    # ISS-16 click capture also uses CGEventTapCreate / CGEventTapEnable from
+    # CGEvent + the tap location/options enums in CGEventTypes.
     "CGEvent",
     "CGEventTypes",
     "CGDirectDisplay",
     "CGGeometry",
+] }
+# ISS-16 click capture: the CGEventTap delivers via a CFMachPort run-loop
+# source pumped on a worker thread's CFRunLoop (stopped by CFRunLoopStop).
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "CFBase",
+    "CFRunLoop",
+    "CFMachPort",
 ] }
 # M-PIX.9 — block2 closures for AVCaptureDevice requestAccess
 # completion handler; objc2 runtime types for the Bool result.

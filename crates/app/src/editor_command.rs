@@ -99,6 +99,14 @@ pub async fn open_in_editor(app: tauri::AppHandle, path: String) -> Result<EditP
     {
         project.cursor_track = Some(track);
     }
+    // ED.17 / ISS-16: attach the click log captured during the recording — it
+    // feeds auto-zoom + the ED.19 click ripples. Same consume-once handoff.
+    if let Some(clicks) = app
+        .state::<crate::recording::RecordingState>()
+        .take_clicks()
+    {
+        project.clicks = Some(clicks);
+    }
     // Spin up the playhead session for this clip (ED.7 transport drives it).
     // Resolved by handle since the `.await` above rules out holding a
     // `State<'_>` borrow across it.
