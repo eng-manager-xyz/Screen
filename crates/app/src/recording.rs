@@ -387,12 +387,14 @@ impl RecordingState {
 
     /// Start cursor-position capture for a new recording (ED.17). Clears any
     /// stale pending track first so it can't leak onto this recording's edit.
-    pub fn start_cursor_capture(&self) {
+    pub fn start_cursor_capture(&self, screen_source_id: Option<&str>) {
         *self
             .pending_cursor_track
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        let rect = crate::cursor_capture::main_display_bounds();
+        // ISS-17: normalize against the *captured* display's bounds, not always
+        // the main display.
+        let rect = crate::cursor_capture::display_bounds_for_source(screen_source_id);
         *self
             .cursor_poller
             .lock()

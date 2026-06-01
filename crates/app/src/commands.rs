@@ -1987,8 +1987,9 @@ pub fn start_recording(
     }
     // ED.17: start capturing the cursor track for the editor's overlay /
     // auto-zoom. No-op on non-macOS; macOS polls the global pointer with no
-    // Input-Monitoring permission.
-    recording_state.start_cursor_capture();
+    // Input-Monitoring permission. Normalized against the captured display
+    // (ISS-17).
+    recording_state.start_cursor_capture(config.screen_source_id.as_deref());
     spawn_status_emitter(app.clone(), session_id);
     Ok(session_id)
 }

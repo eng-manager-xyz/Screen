@@ -38,10 +38,10 @@ Copy and fill when filing a new issue.
 - **Filed:** 2026-05-31
 - **By:** ED.17 (cursor capture)
 - **Severity:** deferral / tech-debt
-- **Affects:** `crates/app/src/cursor_capture.rs` (`main_display_bounds`)
-- **Status:** open
-- **Description:** The live record→editor cursor-capture wiring **is now connected** (`RecordingState::{start,finish}_cursor_capture`, `take_cursor_track`; `start_recording` → `stop_recording` → `open_in_editor`). The remaining gap: the poller normalizes the global cursor against **`CGMainDisplayID`'s bounds** (`main_display_bounds`). When the user records a *non-primary* display (or a window source), the cursor will be normalized against the wrong rect, so the overlay lands in the wrong place. `normalize_cursor_to_frame` already takes a flexible `(origin, w, h)` rect — the fix is to thread the *captured* display's id (from the SCK `ScreenCaptureConfig` / source id) into `start_cursor_capture` instead of hard-coding the main display.
-- **Resolution:** When refined: resolve the captured display's `CGDirectDisplayID` from the recording's screen-source id and pass its `CGDisplayBounds` to the poller. Window-source captures need the window's frame instead. Runtime-verify on a multi-display setup. (open)
+- **Affects:** `crates/app/src/cursor_capture.rs` (`parse_display_id` / `display_bounds_for_source`)
+- **Status:** ✅ resolved 2026-06-01 (window-source framing still a refinement)
+- **Description:** The cursor poller normalized the global cursor against the **main** display, so recording a non-primary display put the overlay in the wrong place.
+- **Resolution:** `cursor_capture::display_bounds_for_source(source_id)` parses the recording's screen-source id (`parse_display_id`: `"display-<CGDirectDisplayID>"` → the id, pure + unit-tested) and passes that display's `CGDisplayBounds` to the poller; `start_cursor_capture` now takes the `screen_source_id` (threaded from `RecordingConfig` in `start_recording`). Primary / window / malformed ids fall back to the main display. **Remaining refinement:** a *window* source should normalize against the captured window's frame, not its display — out of scope here (multi-display *display* capture is the common case + now correct). (resolved)
 
 ## ISS-16: ED.17 — click capture (auto-zoom + ripples) needs a CGEventTap
 - **Filed:** 2026-05-31
