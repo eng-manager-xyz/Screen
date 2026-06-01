@@ -66,6 +66,8 @@ hard-edged single-draw-call shadow, deliberately **not** the
 lavapipe-incompatible blur, so it stays verifiable on every CI runner. The
 inset border is a rounded-rect *stroke* tracing the same window, drawn *over*
 the screen (a Phase-2 full-NDC-clipped node like the cursor). A `Wallpaper`
-source still falls back to the default gradient (asset pipeline pending —
-ISS-15).
+source renders a **procedural** backdrop (`wallpaper_rgba` — a soft diagonal
+gradient keyed on the wallpaper name, license-clean, no bundled asset) as a
+full-NDC `Sprite`; it's the backmost layer and mutually exclusive with the
+gradient/color backdrop. Real bundled + aspect-correct wallpapers are ISS-19.
 ```

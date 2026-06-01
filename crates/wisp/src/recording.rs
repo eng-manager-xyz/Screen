@@ -44,6 +44,7 @@ use crate::scene::graphics::{Fill, Graphics, Stroke};
 use crate::scene::node::{Node, NodeId};
 use crate::scene::sprite::Sprite;
 use crate::scene::transform::Transform;
+use crate::texture::Texture;
 use crate::texture::video_texture::VideoTexture;
 
 /// Position + size of the circular webcam bubble within the composed
@@ -188,6 +189,13 @@ pub struct RecordingScene {
     /// the frame window, drawn *over* the screen (Phase 2, like the cursor).
     /// Lazily created by [`Self::set_frame_border`].
     border: Option<NodeId>,
+    /// Editor-only wallpaper backdrop (ED.18): a full-NDC `Sprite` of a decoded
+    /// image, drawn behind everything. A `Sprite` (not `Graphics`) so the
+    /// renderer's batch order paints it before the gradient/shadow graphics —
+    /// the backmost layer. Mutually exclusive with the gradient/color backdrop
+    /// (the app hides one when the other is set). Created by
+    /// [`Self::set_background_wallpaper`].
+    wallpaper: Option<NodeId>,
 }
 
 impl std::fmt::Debug for RecordingScene {
@@ -317,6 +325,7 @@ impl RecordingScene {
             cursor: None,
             shadow: None,
             border: None,
+            wallpaper: None,
         }
     }
 
@@ -688,6 +697,51 @@ impl RecordingScene {
             node.container_mut().visible = visible;
         }
     }
+
+    /// Set the wallpaper backdrop (ED.18) from decoded RGBA8 (`width*height*4`
+    /// bytes — the app decodes the image; wisp must not gain an asset path).
+    /// A full-NDC `Sprite`, the backmost layer. The caller is responsible for
+    /// hiding the gradient/color backdrop (they're mutually exclusive — a
+    /// `Sprite` and a `Graphics` backdrop fight the batch order). Rebuilds the
+    /// node on each call (wallpaper changes are user-driven + rare).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `rgba.len() != width * height * 4` (via `Texture::from_rgba`).
+    pub fn set_background_wallpaper(
+        &mut self,
+        app: &Application,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) {
+        let tex = Texture::from_rgba(app, width, height, rgba);
+        let mut sprite = Sprite::from_texture(tex).with_anchor(Vec2::splat(0.5));
+        sprite.container.transform = Transform {
+            scale: Vec2::splat(2.0),
+            ..Transform::IDENTITY
+        };
+        // A Sprite can't swap its texture in place; rebuild the node.
+        if let Some(old) = self.wallpaper.take() {
+            self.stage.destroy(old);
+        }
+        let root = self.stage.root();
+        let id = self
+            .stage
+            .add_child(root, sprite)
+            .expect("Stage root is alive");
+        self.wallpaper = Some(id);
+    }
+
+    /// Toggle the wallpaper backdrop's visibility. No-op if unset (recorder
+    /// path); also the app's lever for the wallpaper↔gradient mutual exclusion.
+    pub fn set_background_wallpaper_visible(&mut self, visible: bool) {
+        if let Some(id) = self.wallpaper
+            && let Some(node) = self.stage.get_mut(id)
+        {
+            node.container_mut().visible = visible;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -754,6 +808,10 @@ mod tests {
         assert!(
             scene.border.is_none(),
             "no inset border until set_frame_border"
+        );
+        assert!(
+            scene.wallpaper.is_none(),
+            "no wallpaper until set_background_wallpaper"
         );
         assert!(
             scene
@@ -844,6 +902,30 @@ mod tests {
         scene.set_frame_border_visible(false);
         assert!(!scene.stage().get(sid).unwrap().container().visible);
         assert!(!scene.stage().get(bid).unwrap().container().visible);
+    }
+
+    #[test]
+    fn set_background_wallpaper_adds_one_sprite_and_rebuilds() {
+        let app = boot();
+        let mut scene = RecordingScene::new(
+            &app,
+            StreamDimensions::new(64, 64),
+            StreamDimensions::new(32, 32),
+            CamLayout::default(),
+        );
+        let before = scene.stage().len();
+        let rgba = vec![120u8; 16 * 16 * 4];
+        scene.set_background_wallpaper(&app, 16, 16, &rgba);
+        assert_eq!(scene.stage().len(), before + 1, "one wallpaper sprite");
+        let first = scene.wallpaper.expect("wallpaper created");
+        assert!(scene.stage().get(first).unwrap().container().visible);
+        // A second call rebuilds the node (texture can't swap in place) — still
+        // exactly one wallpaper node, no leak.
+        scene.set_background_wallpaper(&app, 8, 8, &vec![200u8; 8 * 8 * 4]);
+        assert_eq!(scene.stage().len(), before + 1, "rebuilt, no leak");
+        scene.set_background_wallpaper_visible(false);
+        let id = scene.wallpaper.expect("wallpaper present");
+        assert!(!scene.stage().get(id).unwrap().container().visible);
     }
 
     #[test]

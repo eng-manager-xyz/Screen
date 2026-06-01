@@ -211,6 +211,11 @@ impl RecordingCompose {
         self.scene.set_background_color(color);
     }
 
+    /// Toggle the gradient/color backdrop (ED.18) — the wallpaper↔gradient lever.
+    pub fn set_background_visible(&mut self, visible: bool) {
+        self.scene.set_background_visible(visible);
+    }
+
     /// Draw the framed-screen drop shadow (ED.18). The recorder never calls
     /// this, so its scene has no shadow.
     pub fn set_frame_shadow(
@@ -242,6 +247,18 @@ impl RecordingCompose {
     /// Toggle the inset border (ED.18).
     pub fn set_frame_border_visible(&mut self, visible: bool) {
         self.scene.set_frame_border_visible(visible);
+    }
+
+    /// Set the wallpaper backdrop from decoded RGBA8 (ED.18). The recorder
+    /// never calls this.
+    pub fn set_background_wallpaper(&mut self, width: u32, height: u32, rgba: &[u8]) {
+        self.scene
+            .set_background_wallpaper(&self.app, width, height, rgba);
+    }
+
+    /// Toggle the wallpaper backdrop (ED.18) — the wallpaper↔gradient lever.
+    pub fn set_background_wallpaper_visible(&mut self, visible: bool) {
+        self.scene.set_background_wallpaper_visible(visible);
     }
 
     /// Draw the editor cursor overlay (ED.19) — pointer at `pointer_ndc`

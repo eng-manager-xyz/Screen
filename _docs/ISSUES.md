@@ -56,10 +56,19 @@ Copy and fill when filing a new issue.
 - **Filed:** 2026-05-31
 - **By:** ED.18 (background-framing render integration)
 - **Severity:** deferral
-- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundSource::Wallpaper`)
+- **Affects:** `crates/app/src/editor_preview.rs` (`wallpaper_rgba` / `set_background`), `crates/wisp/src/recording.rs` (`set_background_wallpaper`)
+- **Status:** ✅ resolved 2026-06-01
+- **Description:** `BackgroundSource::Wallpaper { name }` was authored but not rendered (fell back to the default gradient).
+- **Resolution:** Render a **procedural** wallpaper — no bundled asset, license-clean, deterministic. `app::editor_preview::wallpaper_rgba(name, w, h)` generates a soft diagonal three-stop gradient + faint aurora band, keyed on `name`'s palette (aurora / sunset / ocean / forest), as RGBA8 (pure + unit-tested). `wisp::RecordingScene::set_background_wallpaper(app, w, h, rgba)` uploads it as a full-NDC `Sprite` — the backmost layer (a `Sprite` paints before the gradient/shadow `Graphics` per the renderer's batch order). The wallpaper and the gradient/color backdrop are **mutually exclusive** (a Sprite and a Graphics backdrop fight the batch order): the app shows one and hides the other (`set_background_visible` / `set_background_wallpaper_visible`). Isolation assert keeps recorder output bit-identical. Verified: wisp node test, app pure + GPU (blue-dominant "ocean" margin) tests. Real bundled/aspect-correct wallpapers are a follow-up — see ISS-19. (resolved)
+
+## ISS-19: ED.18 — wallpaper is procedural + stretch-scaled (real-asset / aspect-correct follow-up)
+- **Filed:** 2026-06-01
+- **By:** ISS-15 closeout
+- **Severity:** enhancement
+- **Affects:** `crates/app/src/editor_preview.rs` (`wallpaper_rgba`), `crates/wisp/src/recording.rs` (`set_background_wallpaper`)
 - **Status:** open
-- **Description:** `BackgroundSource::Wallpaper { name }` is in the data model and authored by the Style panel, but there is no bundled wallpaper asset set, no `name → bytes` resolver, and no loader anywhere in the workspace. ED.18 maps a `Wallpaper` source to the **default gradient** as a documented fallback (with a `tracing::warn` so it isn't mistaken for a render bug). The default project uses `Gradient`, so this doesn't block end-to-end rendering.
-- **Resolution:** When implemented: bundle a license-clean wallpaper set under `crates/app/assets/wallpapers/` (or similar), add a `name → wisp::Texture` resolver, and add the backdrop as a base `Sprite` (anchor 0.5, scale 2) — a non-clipped Phase-1 node, same layering guarantee as the gradient `Graphics`. (open)
+- **Description:** v1 wallpapers are *procedurally generated* (four palettes) and the Sprite *stretches* to fill NDC (scale 2), so a non-16:9 wallpaper would distort — acceptable because the procedural gradients are aspect-agnostic. Two enhancements: (a) bundle real license-clean wallpaper images + a `name → bytes` resolver (decode app-side via the `image` crate, pass RGBA to `set_background_wallpaper` unchanged); (b) aspect-correct cover-scaling (scale the Sprite per-axis from the image aspect vs the canvas aspect) so real photos don't distort.
+- **Resolution:** (open)
 
 ## ISS-14: ED.18 — drop-shadow + inset border are authored but not rendered
 - **Filed:** 2026-05-31
