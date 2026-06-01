@@ -25,6 +25,15 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-22: path-boolean De Morgan proptest is seed-flaky at boundary points
+- **Filed:** 2026-06-01
+- **By:** M-EDIT closeout (surfaced on a macOS gate run, unrelated to the branch)
+- **Severity:** bug (test reliability) — pre-existing, NOT introduced by M-EDIT
+- **Affects:** `crates/wisp/tests/path_boolean_proptest.rs` (`de_morgan_on_samples`), `crates/wisp` path-boolean point classification
+- **Status:** open
+- **Description:** `de_morgan_on_samples` intermittently fails in CI: `De Morgan failed at Vec2(0.0, 0.0): in_union=false, in_a=true, in_b=false`. The property checks `in_union == in_a || in_b`; it broke at exactly `(0,0)` — almost certainly a sampled test point landing **exactly on a path vertex/edge**, where point-in-region classification is ambiguous (boundary points are implementation-dependent under even-odd / winding). The same code passed on the immediately-prior commit and on Ubuntu+Windows; the failure is **seed-dependent**. Worse, CI logs `proptest: FileFailurePersistence::SourceParallel set, but failed to find lib.rs or main.rs` — proptest can't write the failing seed to a `.proptest-regressions` file from the CI cwd, so failing cases are never pinned and the test stays silently flaky. Last touched in `9caadbb` (M-BOOL); untouched by the M-EDIT branch — confirmed via `git diff main...HEAD`.
+- **Resolution:** When fixed (its own focused PR, not the M-EDIT closeout): make the proptest robust by **not sampling within an epsilon of any path boundary** (boundary-sensitive equality must avoid boundary points), or assert the property with a boundary-exclusion guard; and fix the regression-file persistence (set an explicit `FileFailurePersistence::Direct(path)` or a `PROPTEST_REGRESSIONS` location that exists in CI) so failing seeds are pinned and reproducible. Optionally make boundary-point classification deterministic in the path-boolean impl. (open)
+
 ## ISS-21: live editor preview is a placeholder — cinematic compose is export-only
 - **Filed:** 2026-06-01
 - **By:** M-EDIT closeout (verifying AUT-351/353/354 "reflected in preview")
