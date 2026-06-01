@@ -6,6 +6,40 @@ Use the template at the bottom for new entries.
 
 ---
 
+## 🛠️ RESUME STATUS — editor UX gaps (branch `editor-ux-gaps`)
+
+The usability audit (record→edit→export, run after the closeout merged) found
+the pipeline produces a correct exported mp4 but the **editing experience** had
+three real gaps. This branch closes all three. Branched from `main` post-#68.
+
+| Gap | Ticket | What shipped |
+|---|---|---|
+| Toolbar Split chip inert (split was keyboard-only) | AUT-511 | `EditorShell` gains an `on_action: Callback<String>` prop; app-ui maps `split`→`split_at`, `zoom`→cursor-targeted zoom. Guard test: wired ids exist as chips. |
+| No manual "zoom into the cursor" (+ Zoom was centre-only) | AUT-512 | `EditProject::zoom_cursor_target` (pure, tested) + `add_zoom_at_cursor` + a "+ Cursor" zoom-lane button + toolbar Zoom targets the cursor. |
+| **Live preview was a placeholder** ("Preview renders here.") | AUT-510 | The big one — see below. Resolves ISS-21. |
+
+**AUT-510 (live preview) detail.** The editor was edit-blind: `EditorPreview`
+composed zoom/crop/background/cursor only at export. Now: the per-frame compose
+is extracted to a shared `editor_export::compose_project_frame` (so preview =
+export, parity by construction); a `Mutex<Option<EditorPreviewSession>>` Tauri
+state holds the wgpu compose pipeline + a seekable decode stream (`EditorPreview`
+is `Send` but `!Sync` — the Mutex lifts it to the `Send + Sync` `State` needs);
+`editor_preview_open`/`editor_preview_frame` commands open the session + return
+composed BGRA at any playhead frame; and the editor canvas polls + `putImageData`s
+it (mirroring `<CameraPreview/>`), re-opening on each edit. Backend is
+headless-tested (`compose_project_frame_produces_full_bgra` — real decoded
+fixture → full non-empty BGRA); the **live canvas display is GUI-only** (no
+headless webview), so it needs a real-Mac eyeball: `trunk build`, open a clip,
+scrub, confirm zoom/crop/background/cursor render live.
+
+**Verification ceiling (honest):** the *backend* compose + the pure logic
+(toolbar id mapping, zoom-cursor-target) are unit/integration tested cross-OS.
+The *GUI* halves — clicking Split, the "+ Cursor" button, and the live preview
+painting — are code-correct + mirror proven patterns but **cannot be run
+headless**; they need the user's eyeball on a real Mac.
+
+---
+
 ## 🏁 RESUME STATUS — M-EDIT closeout track (branch `m-edit-closeout`)
 
 The "last 20 %": every deferred ISS-NN from PR #67 driven to genuine 100 % so

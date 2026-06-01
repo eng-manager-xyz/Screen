@@ -244,6 +244,28 @@ pub fn EditorSurface() -> impl IntoView {
     // Drag-over highlight for the drop zone (set by the app-root drag
     // listeners). Falls back to a local signal outside the AppShell.
     let drag_active = use_context::<RwSignal<bool>>().unwrap_or_else(|| RwSignal::new(false));
+    // AUT-510: install the live-preview hooks once per mount (re-open on edit
+    // + the repaint poll). Must be in the body, not the reactive view block,
+    // or each rebuild would leak another poll.
+    crate::editor_preview_canvas::install_editor_preview(project, status);
+    // Toolbar chips emit their id on click; map the actionable ones to edit
+    // ops at the playhead (the same ops the keyboard shortcuts fire). `split`
+    // is the must-fix (the razor); `zoom` drops a punch-in. Other chips
+    // (trim/crop/aspect/annotate/captions) are not wired yet — they no-op
+    // until their interactions land, rather than silently doing nothing with
+    // no code path at all.
+    let on_toolbar_action = Callback::new(move |id: String| {
+        if let (Some(p), Some(h)) = (project, history) {
+            let frame = status.get_untracked().current_frame;
+            match id.as_str() {
+                "split" => crate::editor_edits::split_at(p, h, frame),
+                // The toolbar Zoom button punches in on the cursor (the
+                // defining move); the zoom lane's "+ Zoom" stays centre-default.
+                "zoom" => crate::editor_edits::add_zoom_at_cursor(p, h, frame),
+                _ => {}
+            }
+        }
+    });
     view! {
         <section
             class="app-surface app-surface--editor"
@@ -259,12 +281,26 @@ pub fn EditorSurface() -> impl IntoView {
                 view! {
                     <EditorShell
                         view=vm
+                        on_action=on_toolbar_action
                         canvas=ToChildren::to_children(move || {
                             if loaded {
+                                // AUT-510: the live preview canvas. Sized to the
+                                // clip's source dimensions (putImageData doesn't
+                                // scale; CSS fits it to the pane). Painted by the
+                                // poll installed above, by DOM id.
+                                let (cw, ch) = project
+                                    .and_then(|s| {
+                                        s.with(|o| o.as_ref().map(|p| (p.source.width, p.source.height)))
+                                    })
+                                    .unwrap_or((1, 1));
                                 view! {
-                                    <div class="editor-canvas-empty">
-                                        <p class="editor-canvas-hint">"Preview renders here."</p>
-                                    </div>
+                                    <canvas
+                                        id=crate::editor_preview_canvas::EDITOR_PREVIEW_CANVAS_ID
+                                        class="editor-preview-canvas"
+                                        width=cw
+                                        height=ch
+                                        aria-label="Editor preview"
+                                    />
                                 }
                                 .into_any()
                             } else {
@@ -353,6 +389,20 @@ mod tests {
                 .iter()
                 .any(|a| a.id == "aspect" && a.selected)
         );
+    }
+
+    #[test]
+    fn wired_toolbar_actions_exist_as_chips() {
+        // The toolbar dispatch (EditorSurface's on_toolbar_action) only acts on
+        // these ids; guard that each still names a real chip, so a rename of
+        // the toolbar can't silently make the Split/Zoom buttons inert again.
+        let v = shell_view_for(None);
+        for wired in ["split", "zoom"] {
+            assert!(
+                v.toolbar_actions.iter().any(|a| a.id == wired),
+                "wired toolbar action `{wired}` must exist as a chip"
+            );
+        }
     }
 
     #[test]

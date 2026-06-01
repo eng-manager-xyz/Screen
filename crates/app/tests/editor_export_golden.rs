@@ -93,3 +93,53 @@ fn generator_walks_edited_timeline_forward_only() {
         "forward walk must not re-spawn the decoder"
     );
 }
+
+/// AUT-510: the shared `compose_project_frame` (used by BOTH the export
+/// generator and the live editor preview) composes a real source frame into a
+/// full BGRA buffer of the clip's dimensions. This is the preview/export
+/// parity guarantee at the shared-function level — the live preview renders
+/// the exact same composed pixels the export bakes, without a webview.
+#[test]
+fn compose_project_frame_produces_full_bgra() {
+    if !gstreamer_available() {
+        eprintln!("gstreamer not on PATH — skipping compose_project_frame parity test");
+        return;
+    }
+
+    let probe = EditorVideoStream::open(Path::new(FIXTURE)).expect("open probe");
+    let (width, height) = (probe.width(), probe.height());
+    let frame_rate = probe.frame_rate();
+    let frame_count = probe.frame_count().unwrap_or(0).max(2);
+    drop(probe);
+
+    let project = project_from_metadata(
+        PathBuf::from(FIXTURE),
+        width,
+        height,
+        frame_rate,
+        frame_count,
+    );
+    let mut stream =
+        EditorVideoStream::open_with_cache(Path::new(FIXTURE), 8).expect("open stream");
+    let mut preview =
+        screen_app::editor_preview::EditorPreview::new(width, height).expect("init wgpu compose");
+    preview.set_background(&project.background);
+
+    let composed =
+        screen_app::editor_export::compose_project_frame(&mut preview, &mut stream, &project, 0)
+            .expect("frame 0 composes");
+    assert_eq!(
+        (composed.width, composed.height),
+        (width, height),
+        "composed at the clip's dimensions"
+    );
+    assert_eq!(
+        composed.bytes.len(),
+        (width as usize) * (height as usize) * 4,
+        "full BGRA buffer, no padding"
+    );
+    assert!(
+        composed.bytes.iter().any(|&b| b != 0),
+        "composed frame is non-empty (real decoded pixels, not a black frame)"
+    );
+}

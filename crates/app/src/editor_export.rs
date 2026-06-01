@@ -114,43 +114,10 @@ impl ExportFrameGenerator {
             return None;
         }
         let f = self.next;
+        // Kept for the returned `source_frame` (verification); the compose
+        // itself re-derives it inside `compose_project_frame`.
         let source_frame = self.project.source_time(f)?;
-        let decoded = self.stream.frame(source_frame)?;
-        // Apply the cinematic framing for this project frame: the zoom
-        // punch-in sampled from the active region (ED.16) + the crop/aspect
-        // reframe (ED.15). Same call the live preview uses → preview/export
-        // parity by construction.
-        let zoom = active_zoom_at(&self.project, f);
-        let crop = self.project.crop.unwrap_or_else(CropRect::full);
-        // Cursor overlay (ED.19): when the project carries a captured cursor
-        // track, draw the smoothed pointer + click ripples; otherwise the
-        // plain framed path (no overlay).
-        let frame = if let Some(track) = self.project.cursor_track.as_deref() {
-            let cfg = self.project.cursor;
-            // Ripple window ≈ 0.4 s.
-            let ripple_frames = (self.project.project_fps * 2 / 5).max(1);
-            let clicks = self.project.clicks.as_deref().unwrap_or(&[]);
-            let ripples = edit::telemetry::ripples_at(clicks, f, ripple_frames);
-            // `hide_static` fades the pointer out while it is parked, but a
-            // live click ripple keeps it visible (see `cursor_for_frame`).
-            let cursor = cursor_for_frame(
-                track,
-                &cfg,
-                self.project.project_fps,
-                f,
-                !ripples.is_empty(),
-            );
-            self.preview.render_framed_with_cursor(
-                decoded.bgra,
-                zoom,
-                crop,
-                cursor,
-                &ripples,
-                &cfg,
-            )?
-        } else {
-            self.preview.render_framed(decoded.bgra, zoom, crop)?
-        };
+        let frame = compose_project_frame(&mut self.preview, &mut self.stream, &self.project, f)?;
         let fps = u64::from(self.project.project_fps.max(1));
         let pts = Duration::from_micros(f * (1_000_000 / fps));
         self.next += 1;
@@ -159,6 +126,42 @@ impl ExportFrameGenerator {
             pts,
             source_frame,
         })
+    }
+}
+
+/// Compose project frame `frame` into a [`ComposedFrame`] — the single
+/// per-frame compose shared by the deferred **export** generator and the live
+/// editor **preview** (AUT-510), so what you scrub is what you ship.
+///
+/// Maps the project frame to its source frame (trim / split / speed via
+/// [`EditProject::source_time`]), decodes it from `stream`, then applies the
+/// cinematic framing: the zoom punch-in ([`active_zoom_at`], ED.16), the crop /
+/// aspect reframe (ED.15), and — when the project carries a cursor track — the
+/// cursor overlay + click ripples ([`cursor_for_frame`] + `ripples_at`, ED.19).
+/// Returns `None` past the end of the timeline or on a decode miss.
+#[must_use]
+pub fn compose_project_frame(
+    preview: &mut EditorPreview,
+    stream: &mut EditorVideoStream,
+    project: &EditProject,
+    frame: u64,
+) -> Option<ComposedFrame> {
+    let source_frame = project.source_time(frame)?;
+    let decoded = stream.frame(source_frame)?;
+    let zoom = active_zoom_at(project, frame);
+    let crop = project.crop.unwrap_or_else(CropRect::full);
+    if let Some(track) = project.cursor_track.as_deref() {
+        let cfg = project.cursor;
+        // Ripple window ≈ 0.4 s.
+        let ripple_frames = (project.project_fps * 2 / 5).max(1);
+        let clicks = project.clicks.as_deref().unwrap_or(&[]);
+        let ripples = edit::telemetry::ripples_at(clicks, frame, ripple_frames);
+        // `hide_static` fades the pointer out while parked, but a live click
+        // ripple keeps it visible (see `cursor_for_frame`).
+        let cursor = cursor_for_frame(track, &cfg, project.project_fps, frame, !ripples.is_empty());
+        preview.render_framed_with_cursor(decoded.bgra, zoom, crop, cursor, &ripples, &cfg)
+    } else {
+        preview.render_framed(decoded.bgra, zoom, crop)
     }
 }
 

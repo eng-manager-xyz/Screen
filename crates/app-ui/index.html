@@ -113,6 +113,14 @@
             window.dispatchEvent(new CustomEvent("recordings-listed", { detail: entries })))
           .catch((e) => console.error("list_recordings failed", e));
 
+      // AUT-510 — live editor preview. `Open` (re)builds the compose pipeline
+      // for the current project; `Frame` returns the composed BGRA bytes at a
+      // playhead frame as an ArrayBuffer (raw, no JSON) for the canvas poll.
+      window.__screenEditorPreviewOpen = (project) =>
+        window.__TAURI__?.core?.invoke("editor_preview_open", { project }) ?? Promise.resolve();
+      window.__screenEditorPreviewFrame = (frame) =>
+        window.__TAURI__?.core?.invoke("editor_preview_frame", { frame }) ?? Promise.resolve(new ArrayBuffer(0));
+
       // M-CAM.2 / AUT-256 camera-IPC bridges. Each is a thin wrapper
       // around the Tauri invoke; consumed by Rust via the
       // `crate::camera_ipc` extern declarations.

@@ -162,6 +162,19 @@ impl EditProject {
         self.locate(project_frame).map(|(_, frame)| frame)
     }
 
+    /// The normalized `(x, y)` a cursor-targeted zoom should punch into at
+    /// project `frame` — the cursor's position there from
+    /// [`cursor_track`](Self::cursor_track), or the frame centre `(0.5, 0.5)`
+    /// when no track was captured. Pure; the basis for the editor's
+    /// "zoom to cursor" authoring action.
+    #[must_use]
+    pub fn zoom_cursor_target(&self, frame: Frame) -> (f32, f32) {
+        self.cursor_track
+            .as_deref()
+            .and_then(|track| crate::telemetry::cursor_at(track, frame, 0))
+            .unwrap_or((0.5, 0.5))
+    }
+
     /// Generate auto-zoom blocks from the captured click log (ED.17 — the
     /// "Auto-Zoom: detect from cursor" feature). Returns the number generated.
     ///
@@ -240,6 +253,27 @@ mod tests {
         proj.clicks = Some(vec![ClickEvent::new(500, 0.2, 0.2)]);
         assert_eq!(proj.generate_auto_zooms(), 0, "guarded by non-empty zooms");
         assert_eq!(proj.zooms.len(), 1);
+    }
+
+    #[test]
+    fn zoom_cursor_target_uses_the_track_or_falls_back_to_centre() {
+        let mut proj = EditProject::from_recording(sample_clip());
+        // No track → centre.
+        let (cx, cy) = proj.zoom_cursor_target(100);
+        assert!(
+            (cx - 0.5).abs() < 1e-6 && (cy - 0.5).abs() < 1e-6,
+            "no track → centre"
+        );
+        // With a track → the cursor position at that frame (smoothing 0 = raw).
+        proj.cursor_track = Some(vec![
+            CursorSample::new(0, 0.1, 0.1),
+            CursorSample::new(100, 0.8, 0.3),
+        ]);
+        let (tx, ty) = proj.zoom_cursor_target(100);
+        assert!(
+            (tx - 0.8).abs() < 1e-6 && (ty - 0.3).abs() < 1e-6,
+            "track → cursor at frame"
+        );
     }
 
     #[test]
