@@ -123,6 +123,37 @@ pub fn add_zoom_default(
     });
 }
 
+/// Like [`add_zoom_default`] but punches in on the **cursor** at the playhead
+/// — the manual "zoom into the cursor" action. The target is the cursor's
+/// position at `at` from the project's captured track
+/// ([`EditProject::zoom_cursor_target`]), falling back to centre when no track
+/// was captured (so it degrades to the same result as `add_zoom_default`).
+pub fn add_zoom_at_cursor(
+    project: RwSignal<Option<EditProject>>,
+    history: StoredValue<Option<History>>,
+    at: u64,
+) {
+    let Some(current) = project.get_untracked() else {
+        return;
+    };
+    let duration = current.project_duration();
+    if duration == 0 {
+        return;
+    }
+    let start = at.min(duration.saturating_sub(1));
+    let window = (u64::from(current.project_fps) * 3 / 2).max(1); // ~1.5 s
+    let end = (start + window).min(duration);
+    if end <= start {
+        return;
+    }
+    let (x, y) = current.zoom_cursor_target(start);
+    let mut zoom = edit::zoom::ZoomSegment::manual(edit::zoom::ZoomId(0), start, end, 1.6);
+    zoom.mode = edit::zoom::ZoomMode::Manual { x, y };
+    run(project, history, |hist| {
+        apply_logged(hist, &EditOp::AddZoom { zoom });
+    });
+}
+
 /// Remove the zoom region with the given id.
 pub fn remove_zoom(
     project: RwSignal<Option<EditProject>>,

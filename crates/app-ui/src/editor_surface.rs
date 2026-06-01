@@ -255,7 +255,9 @@ pub fn EditorSurface() -> impl IntoView {
             let frame = status.get_untracked().current_frame;
             match id.as_str() {
                 "split" => crate::editor_edits::split_at(p, h, frame),
-                "zoom" => crate::editor_edits::add_zoom_default(p, h, frame),
+                // The toolbar Zoom button punches in on the cursor (the
+                // defining move); the zoom lane's "+ Zoom" stays centre-default.
+                "zoom" => crate::editor_edits::add_zoom_at_cursor(p, h, frame),
                 _ => {}
             }
         }

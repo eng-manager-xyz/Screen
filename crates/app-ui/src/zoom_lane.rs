@@ -84,6 +84,17 @@ pub fn ZoomLane() -> impl IntoView {
             >
                 "+ Zoom"
             </button>
+            <button
+                class="zoom-lane-add zoom-lane-add--cursor"
+                title="Add a zoom that punches in on the cursor at the playhead"
+                on:click=move |_| {
+                    if let (Some(p), Some(h)) = (project, history) {
+                        crate::editor_edits::add_zoom_at_cursor(p, h, status.get_untracked().current_frame);
+                    }
+                }
+            >
+                "+ Cursor"
+            </button>
             {move || {
                 let spans = project
                     .and_then(|signal| signal.get().as_ref().map(zoom_spans))
