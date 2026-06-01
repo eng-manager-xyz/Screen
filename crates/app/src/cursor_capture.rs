@@ -77,6 +77,29 @@ pub fn samples_to_track(samples: &[(Duration, f32, f32)], project_fps: u32) -> V
     out
 }
 
+/// The main display's bounds in CG points (`(origin_x, origin_y, width,
+/// height)`) — the rect [`CursorPoller`] normalizes the global cursor against.
+/// On non-macOS (no capture) returns a 1080p placeholder. The captured
+/// display is assumed to be the main one (multi-display targeting is a
+/// refinement — see ISS-17).
+#[must_use]
+pub fn main_display_bounds() -> (f64, f64, f64, f64) {
+    #[cfg(target_os = "macos")]
+    {
+        let bounds = objc2_core_graphics::CGDisplayBounds(objc2_core_graphics::CGMainDisplayID());
+        (
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            bounds.size.height,
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        (0.0, 0.0, 1920.0, 1080.0)
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use std::sync::Arc;

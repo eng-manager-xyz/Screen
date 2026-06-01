@@ -70,9 +70,12 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = [
     "std",
     "CGWindow",
     # ED.17 cursor capture: CGEventCreate(NULL) + CGEventGetLocation poll the
-    # global cursor position with no Input-Monitoring permission.
+    # global cursor position with no Input-Monitoring permission;
+    # CGMainDisplayID + CGDisplayBounds give the display rect to normalize to.
     "CGEvent",
     "CGEventTypes",
+    "CGDirectDisplay",
+    "CGGeometry",
 ] }
 # M-PIX.9 — block2 closures for AVCaptureDevice requestAccess
 # completion handler; objc2 runtime types for the Bool result.
