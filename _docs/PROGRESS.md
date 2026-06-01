@@ -67,12 +67,35 @@ blocks already on the timeline (editable like any other `ZoomSegment`). The
 third AUT-352 telemetry signal — **active-window** events — is deferred as
 ISS-20 (secondary to the click-cluster headline).
 
-**Bottom line:** all six closeout items are code-complete + gate-green-locally.
-AUT-351 (ED.16 asset), AUT-353 (ED.18 full), AUT-354 (ED.19 full) are
-confidently closeable. AUT-352 (ED.17) is now *complete in code* — cursor
-position + multi-display + clicks — with the single caveat that the click tap's
-visual confirmation is runtime-only (one real-Mac smoke). Push `m-edit-closeout`
-→ watch gate-screen on all three OSes → then close the Linear tickets.
+**Bottom line:** all six closeout items + the auto-zoom-generation fix are
+shipped on `m-edit-closeout` → **PR #68, CI green across macOS / Ubuntu /
+Windows** (`gate-screen`, `gate-wisp`, `gate-wisp-chart`, `gate-all`). The
+click-capture FFI + its non-macOS stub passed `-D warnings` cross-OS.
+
+**Per-ticket closeout (decision: close on export-side; live preview tracked
+separately as ISS-21 / AUT-341):**
+
+- **AUT-351 (ED.16 zoom)** — closeable. Engine + animated MP4 asset shipped;
+  drives the export compose. (Preview is AUT-341/ISS-21.)
+- **AUT-353 (ED.18 background)** — closeable. Backdrop + padding + radius +
+  shadow + inset border + procedural wallpaper, all in the export compose;
+  ISS-19 (real-asset wallpaper) is a noted enhancement.
+- **AUT-356 (ED.21 export)** — closeable. Edited mp4 with retimed video +
+  muxed audio, real-audio e2e verified; ISS-18 (pitch-preserving) is an
+  enhancement.
+- **AUT-354 (ED.19 cursor)** — closeable on the export deliverable: arrow
+  glyph + smoothing + ripples + `hide_static` in the export compose. Two
+  notes: smoothing is EMA (not a literal spring); "reflected in preview" is
+  ISS-21/AUT-341.
+- **AUT-352 (ED.17 auto-zoom)** — closeable on the click-cluster headline:
+  cursor + click capture → `generate_auto_zooms` → editable zooms on import,
+  multi-display aware. Two notes: the live click tap needs one real-Mac smoke
+  (Input-Monitoring can't run in CI); active-window telemetry is ISS-20.
+
+**Tracked follow-ups filed this pass:** ISS-18 (pitch-preserving retime),
+ISS-19 (real/aspect wallpaper), ISS-20 (active-window telemetry), ISS-21 (live
+editor preview is export-only — the AUT-341 surface). Close the tickets after
+PR #68 merges.
 
 ---
 

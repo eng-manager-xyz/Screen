@@ -25,6 +25,15 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-21: live editor preview is a placeholder — cinematic compose is export-only
+- **Filed:** 2026-06-01
+- **By:** M-EDIT closeout (verifying AUT-351/353/354 "reflected in preview")
+- **Severity:** tech-debt / deferral (affects ticket closeability)
+- **Affects:** `crates/app-ui/src/editor_surface.rs` (the canvas placeholder), `crates/app/src/editor_preview.rs` (`EditorPreview` is constructed only by `editor_export.rs`), AUT-341 (ED.6) / AUT-351 / AUT-353 / AUT-354
+- **Status:** open
+- **Description:** The render-integration features (zoom ED.16, crop ED.15, background ED.18, cursor ED.19) are wired into the **export** path (`ExportFrameGenerator` → `EditorPreview::render_framed[_with_cursor]`) and verified there. But the **live on-screen editor preview** does not render the composed frame: `editor_surface.rs` shows a literal `"Preview renders here."` placeholder, `EditorPreview::render_at` has **no production caller**, and there is **no winit sibling window** for the editor. So zoom/crop/background/cursor are currently **export-only**, and the "reflected in preview" half of AUT-351/353/354's "Done when" is not visually true in committed code. This is the domain of **AUT-341 (ED.6 — Native wgpu editor preview canvas)**, which is marked *Done* but, per this investigation, appears to have shipped the compose pipeline + a manually-verified prototype rather than a committed production render loop into `WispCanvasHost`.
+- **Resolution:** When implemented (this is the AUT-341 surface, not an ISS-NN deferral): drive `EditorPreview` from the editor playhead — either a winit sibling window (the `preview` crate's pattern) or an offscreen RT pushed to the webview canvas — calling `render_framed_with_cursor` at `EditorSession::current_frame()` so the same compose the export uses appears live. Because the export path already shares `EditorPreview`, the features need no change; only the live driver is missing. (open)
+
 ## ISS-20: ED.17 — active-window telemetry for window-aware auto-zoom (enhancement)
 - **Filed:** 2026-06-01
 - **By:** ISS-16 closeout (AUT-352)
