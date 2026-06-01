@@ -99,6 +99,25 @@ pub async fn open_in_editor(app: tauri::AppHandle, path: String) -> Result<EditP
     {
         project.cursor_track = Some(track);
     }
+    // ED.17 / ISS-16: attach the click log captured during the recording — it
+    // feeds auto-zoom + the ED.19 click ripples. Same consume-once handoff.
+    if let Some(clicks) = app
+        .state::<crate::recording::RecordingState>()
+        .take_clicks()
+    {
+        project.clicks = Some(clicks);
+    }
+    // ED.17 (AUT-352 headline): turn the click log into auto-zoom blocks so the
+    // recording arrives already punched-in on its click clusters. No-op when
+    // detection is off, there are no clicks, or zooms already exist (a re-opened
+    // edit keeps its tuned zooms). The blocks are normal editable ZoomSegments.
+    let auto_zoomed = project.generate_auto_zooms();
+    if auto_zoomed > 0 {
+        tracing::info!(
+            count = auto_zoomed,
+            "open_in_editor: generated auto-zoom blocks from clicks"
+        );
+    }
     // Spin up the playhead session for this clip (ED.7 transport drives it).
     // Resolved by handle since the `.await` above rules out holding a
     // `State<'_>` borrow across it.

@@ -23,6 +23,15 @@ the transform for any frame on demand. That's the editor's founding rule —
 *never cut the negative* — applied to motion: the zoom is a function of the
 frame, evaluated at preview and again at export, never a destructive bake.
 
+```admonish note title="See the move in motion"
+The three-phase push-in is animated in the **`editor-zoom-pushin`**
+storybook story ([Wisp stories]({{wisp-link wisp/stories}})): a mock app card
+eases in toward an accent button, holds, then eases back out — the same
+focal-pin math (`position = focal · (1 − z)`) this chapter describes, captured
+to MP4 by `wisp-export-animated`. A static frame can't show the move; the
+story is the source of truth for the motion.
+```
+
 ## The three-phase profile
 
 Over a zoom's `[start, end)` window the scale follows an eased ramp-in to

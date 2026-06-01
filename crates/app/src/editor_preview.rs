@@ -24,7 +24,7 @@ use edit::style::{BackgroundConfig, BackgroundSource, CropRect, CursorConfig};
 use edit::zoom_anim::ZoomTransform;
 use playback::EditorPlayer;
 use wisp::recording::{CursorRipple, StreamDimensions};
-use wisp::{Color, MaskShape, Rect, Transform, Vec2};
+use wisp::{Color, MaskShape, Rect, Stroke, Transform, Vec2};
 
 use crate::recording::FrameSlot;
 use crate::recording_compose::{ComposedFrame, RecordingCompose};
@@ -38,6 +38,12 @@ const FILL_SCALE: f64 = 2.0;
 /// pointer grows with `size_pct` and with the zoom (it's part of the
 /// magnified content).
 const CURSOR_BASE_HALF: f32 = 0.05;
+
+/// Resolution the procedural wallpaper (ISS-15) is generated at — small, since
+/// a soft gradient stretches cleanly to fill the frame.
+const WALLPAPER_GEN_W: u32 = 320;
+/// See [`WALLPAPER_GEN_W`].
+const WALLPAPER_GEN_H: u32 = 180;
 
 /// Build the screen-sprite transform that applies `crop` then `zoom`.
 ///
@@ -140,6 +146,67 @@ fn background_geometry(
     (window, corner_ndc, (k_x, k_y))
 }
 
+/// Three RGB anchor colors for a named wallpaper palette (ISS-15). Unknown
+/// names fall to the default "aurora".
+fn wallpaper_palette(name: &str) -> [[u8; 3]; 3] {
+    match name.to_ascii_lowercase().as_str() {
+        "sunset" => [[255, 94, 98], [255, 195, 113], [113, 70, 132]],
+        "ocean" | "aqua" => [[0, 79, 131], [0, 160, 176], [137, 218, 196]],
+        "forest" | "mint" => [[20, 60, 50], [44, 110, 73], [149, 200, 120]],
+        // "aurora" / default — warm→cool diagonal, matching the gradient default.
+        _ => [[40, 53, 147], [123, 67, 151], [255, 138, 128]],
+    }
+}
+
+/// Generate a procedural wallpaper backdrop as packed RGBA8 (`width*height*4`).
+/// A soft diagonal three-stop gradient with a faint aurora band, keyed on
+/// `name`'s palette. License-clean (no bundled asset), deterministic, and pure
+/// — exhaustively testable. (ISS-15.)
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "pixel coords + small dims are exact in f32; the channel result is clamped to [0,255] and rounded before the f32→u8 cast"
+)]
+fn wallpaper_rgba(name: &str, width: u32, height: u32) -> Vec<u8> {
+    let [c0, c1, c2] = wallpaper_palette(name);
+    let cols = width.max(1) as usize;
+    let rows = height.max(1) as usize;
+    let (wf, hf) = (cols as f32, rows as f32);
+    let lerp = |lo: [u8; 3], hi: [u8; 3], t: f32| -> [u8; 3] {
+        let t = t.clamp(0.0, 1.0);
+        let chan = |lc: u8, hc: u8| (f32::from(lc) + (f32::from(hc) - f32::from(lc)) * t).round();
+        [
+            chan(lo[0], hi[0]) as u8,
+            chan(lo[1], hi[1]) as u8,
+            chan(lo[2], hi[2]) as u8,
+        ]
+    };
+    let mut out = vec![0u8; cols * rows * 4];
+    for row in 0..rows {
+        for col in 0..cols {
+            let (xf, yf) = (col as f32, row as f32);
+            // Diagonal sweep across the two halves of the palette.
+            let diag = (xf / wf).midpoint(yf / hf);
+            // A faint aurora band on the cross-diagonal, lifting toward c2.
+            let band = (((xf / wf - yf / hf) * std::f32::consts::TAU).sin() * 0.5 + 0.5) * 0.22;
+            let base = if diag < 0.5 {
+                lerp(c0, c1, diag * 2.0)
+            } else {
+                lerp(c1, c2, (diag - 0.5) * 2.0)
+            };
+            let px = lerp(base, c2, band);
+            let idx = (row * cols + col) * 4;
+            out[idx] = px[0];
+            out[idx + 1] = px[1];
+            out[idx + 2] = px[2];
+            out[idx + 3] = 255;
+        }
+    }
+    out
+}
+
 /// Composes the editor preview frame for a clip of `width × height`.
 pub struct EditorPreview {
     compose: RecordingCompose,
@@ -186,51 +253,84 @@ impl EditorPreview {
     /// transform, the screen sprite is clipped to the rounded window, and the
     /// backdrop renders behind it.
     ///
-    /// Drop-shadow (`shadow`) and the inset border (`inset`) are not yet
-    /// rendered — see ISS-14. A `Wallpaper` source falls back to the default
-    /// gradient (no wallpaper asset pipeline yet — ISS-15).
+    /// Drop-shadow (`shadow`) lifts the screen off the backdrop; the inset
+    /// border (`inset`) traces a colored edge just inside the frame — both
+    /// rendered here (ED.18). A `Wallpaper` source renders a procedural
+    /// backdrop ([`wallpaper_rgba`], ISS-15) — license-clean, no bundled asset.
     pub fn set_background(&mut self, bg: &BackgroundConfig) {
         let (window, corner_ndc, pad) =
             background_geometry(self.width, self.height, bg.padding, bg.corner_radius);
         self.pad = pad;
         self.compose
             .set_screen_clip(Some(MaskShape::rounded_rect(window, corner_ndc)));
+        self.apply_shadow_and_border(bg, window, corner_ndc);
 
+        // The wallpaper is a Sprite; the gradient/color is a Graphics. The
+        // renderer batches by pipeline, so the two backdrop layers can't
+        // coexist (the Graphics would paint over the Sprite) — they're
+        // mutually exclusive. Each arm shows its layer and hides the other.
         match &bg.source {
             BackgroundSource::Gradient {
                 from,
                 to,
                 angle_deg,
-            } => self.compose.set_background_gradient(
-                Color::rgb_u8(from[0], from[1], from[2]),
-                Color::rgb_u8(to[0], to[1], to[2]),
-                *angle_deg,
-            ),
-            BackgroundSource::Color { rgb } => self
-                .compose
-                .set_background_color(Color::rgb_u8(rgb[0], rgb[1], rgb[2])),
-            BackgroundSource::Wallpaper { name } => {
-                // No wallpaper asset pipeline yet (ISS-15) — fall back to the
-                // default gradient so a wallpaper project still renders a
-                // framed backdrop rather than black. Loud so it isn't taken
-                // for a rendering bug.
-                tracing::warn!(
-                    wallpaper = %name,
-                    "wallpaper backgrounds not yet supported — falling back to the default gradient"
+            } => {
+                self.compose.set_background_gradient(
+                    Color::rgb_u8(from[0], from[1], from[2]),
+                    Color::rgb_u8(to[0], to[1], to[2]),
+                    *angle_deg,
                 );
-                if let BackgroundSource::Gradient {
-                    from,
-                    to,
-                    angle_deg,
-                } = BackgroundSource::default()
-                {
-                    self.compose.set_background_gradient(
-                        Color::rgb_u8(from[0], from[1], from[2]),
-                        Color::rgb_u8(to[0], to[1], to[2]),
-                        angle_deg,
-                    );
-                }
+                self.compose.set_background_wallpaper_visible(false);
             }
+            BackgroundSource::Color { rgb } => {
+                self.compose
+                    .set_background_color(Color::rgb_u8(rgb[0], rgb[1], rgb[2]));
+                self.compose.set_background_wallpaper_visible(false);
+            }
+            BackgroundSource::Wallpaper { name } => {
+                // Procedural wallpaper (ISS-15) — license-clean, no bundled
+                // asset, deterministic per `name`. Generated small + stretched
+                // by the Sprite (a soft gradient doesn't need resolution).
+                let rgba = wallpaper_rgba(name, WALLPAPER_GEN_W, WALLPAPER_GEN_H);
+                self.compose
+                    .set_background_wallpaper(WALLPAPER_GEN_W, WALLPAPER_GEN_H, &rgba);
+                self.compose.set_background_visible(false);
+            }
+        }
+    }
+
+    /// Apply the drop shadow + inset border for the frame window (ED.18).
+    /// `shadow` (0..=100) scales a dark, down-right-offset rounded-rect behind
+    /// the screen; `inset` (px) strokes a colored border tracing the window.
+    /// Each hides its node when its value is 0.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "shadow/border NDC magnitudes are small fractions, well within f32 precision"
+    )]
+    fn apply_shadow_and_border(&mut self, bg: &BackgroundConfig, window: Rect, corner_ndc: f32) {
+        if bg.shadow > 0 {
+            let s = f32::from(u16::try_from(bg.shadow.min(100)).unwrap_or(60)) / 100.0;
+            let mag = s * 0.035;
+            self.compose.set_frame_shadow(
+                window,
+                corner_ndc,
+                // Down (+y is up, so down = −y) and slightly right.
+                Vec2::new(mag * 0.5, -mag),
+                Color::rgba(0.0, 0.0, 0.0, (s * 0.55).min(0.55)),
+            );
+        } else {
+            self.compose.set_frame_shadow_visible(false);
+        }
+
+        if bg.inset > 0 {
+            let stroke_ndc = (2.0 * f64::from(bg.inset) / f64::from(self.width.max(1))) as f32;
+            self.compose.set_frame_border(
+                window,
+                corner_ndc,
+                Stroke::new(stroke_ndc, Color::rgba(1.0, 1.0, 1.0, 0.7)),
+            );
+        } else {
+            self.compose.set_frame_border_visible(false);
         }
     }
 
@@ -609,6 +709,106 @@ mod tests {
         assert!(
             !(red > 230 && green > 230 && blue > 230),
             "not the white screen"
+        );
+    }
+
+    /// GPU: the drop shadow + inset border (ED.18) visibly change the composed
+    /// frame versus the same backdrop with `shadow = 0, inset = 0`. Pure
+    /// Graphics (no blur) → runs on every CI OS, no lavapipe guard.
+    #[test]
+    fn render_with_shadow_and_border_differs_from_without() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        let cfg = |shadow: u32, inset: u32| BackgroundConfig {
+            source: BackgroundSource::Color {
+                rgb: [235, 235, 240],
+            },
+            padding: 18,
+            corner_radius: 10,
+            shadow,
+            inset,
+        };
+        let gray = || vec![128u8; SIDE * SIDE * 4];
+
+        pv.set_background(&cfg(0, 0));
+        let plain = pv
+            .render_framed(gray(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        pv.set_background(&cfg(95, 8));
+        let decorated = pv
+            .render_framed(gray(), ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+
+        let diff = plain
+            .bytes
+            .iter()
+            .zip(decorated.bytes.iter())
+            .filter(|(a, b)| a.abs_diff(**b) > 16)
+            .count();
+        assert!(
+            diff > 200,
+            "shadow + inset border visibly change the frame ({diff} bytes differ)"
+        );
+    }
+
+    #[test]
+    fn wallpaper_rgba_is_well_formed_and_name_keyed() {
+        let aurora = wallpaper_rgba("aurora", 32, 18);
+        assert_eq!(aurora.len(), 32 * 18 * 4, "packed RGBA8 of the right size");
+        assert!(aurora.chunks_exact(4).all(|p| p[3] == 255), "opaque");
+        // Unknown name falls to the default (aurora).
+        assert_eq!(wallpaper_rgba("nonsense", 32, 18), aurora);
+        // Different palettes produce different pixels.
+        let ocean = wallpaper_rgba("ocean", 32, 18);
+        assert_ne!(ocean, aurora, "named palettes differ");
+        // Ocean is blue-dominant (its anchors are all blue/teal).
+        assert!(
+            ocean
+                .chunks_exact(4)
+                .all(|p| u16::from(p[2]) >= u16::from(p[0])),
+            "ocean wallpaper: blue ≥ red everywhere"
+        );
+    }
+
+    /// GPU: a `Wallpaper` backdrop fills the margin with the (procedural)
+    /// wallpaper — here the blue-dominant "ocean" palette — behind the white
+    /// screen. Sprite backdrop, single-bind-group → no lavapipe guard.
+    #[test]
+    fn render_with_wallpaper_backdrop_fills_the_margin() {
+        const SIDE: usize = 128;
+        let dim = u32::try_from(SIDE).expect("SIDE fits u32");
+        let mut pv = EditorPreview::new(dim, dim).expect("init wgpu");
+        pv.set_background(&BackgroundConfig {
+            source: BackgroundSource::Wallpaper {
+                name: "ocean".to_string(),
+            },
+            padding: 18,
+            corner_radius: 8,
+            shadow: 0,
+            inset: 0,
+        });
+        let white = vec![255u8; SIDE * SIDE * 4];
+        let f = pv
+            .render_framed(white, ZoomTransform::identity(), CropRect::full())
+            .expect("compose");
+        // Centre: the white screen.
+        let ci = ((SIDE / 2) * SIDE + SIDE / 2) * 4;
+        assert!(
+            f.bytes[ci] > 230 && f.bytes[ci + 1] > 230 && f.bytes[ci + 2] > 230,
+            "centre is the white screen"
+        );
+        // A margin pixel (outside the padded window): the ocean wallpaper —
+        // blue-dominant (B > R), not white.
+        let mi = (4 * SIDE + 4) * 4;
+        let (b, g, r) = (f.bytes[mi], f.bytes[mi + 1], f.bytes[mi + 2]);
+        assert!(
+            b > r,
+            "ocean wallpaper is blue-dominant in the margin (B{b} R{r})"
+        );
+        assert!(
+            !(b > 230 && g > 230 && r > 230),
+            "margin is the wallpaper, not the white screen"
         );
     }
 

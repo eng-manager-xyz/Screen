@@ -12,7 +12,7 @@
 
 use wisp::application::Application;
 use wisp::math::Rect;
-use wisp::{Color, Container, Fill, Graphics, MaskShape, Node, Stage};
+use wisp::{Color, Container, Fill, Graphics, MaskShape, Node, Stage, Stroke};
 
 pub fn story() -> crate::story::Story {
     crate::story::Story {
@@ -40,6 +40,15 @@ fn build(_app: &Application, stage: &mut Stage) {
     });
     backdrop.draw_rect(Rect::new(-1.0, -1.0, 2.0, 2.0));
     let _ = stage.add_child(stage.root(), backdrop);
+
+    // Drop shadow (ED.18): a dark rounded-rect the shape of the frame window,
+    // offset down-right, drawn behind the screen so the offset sliver reads as
+    // a shadow lifting the screen off the backdrop. Phase-1 (unclipped),
+    // composited after the backdrop and under the screen.
+    let mut shadow = Graphics::new();
+    shadow.fill(Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.45)));
+    shadow.draw_rounded_rect(Rect::new(-0.84 + 0.03, -0.78 - 0.05, 1.68, 1.56), 0.06);
+    let _ = stage.add_child(stage.root(), shadow);
 
     // The framed screen: a rounded-rect window, inset by the padding. In the
     // real compose this is the clipped screen sprite (dispatched Phase 2, so
@@ -71,4 +80,14 @@ fn build(_app: &Application, stage: &mut Stage) {
     screen.fill(Fill::Solid(Color::rgb_u8(60, 110, 220)));
     screen.draw_rect(Rect::new(-0.84, 0.58, 1.68, 0.2));
     let _ = stage.add_child(window_id, screen);
+
+    // Inset border (ED.18): a rounded-rect stroke tracing the frame window,
+    // over the screen. A full-NDC clip forces Phase-2 dispatch so it composites
+    // on top (mirrors RecordingScene::set_frame_border).
+    let mut border = Graphics::new();
+    border.container.clip = Some(MaskShape::rect(Rect::new(-1.0, -1.0, 2.0, 2.0)));
+    border.fill(Fill::Solid(Color::rgba(0.0, 0.0, 0.0, 0.0)));
+    border.stroke(Some(Stroke::new(0.012, Color::rgba(1.0, 1.0, 1.0, 0.85))));
+    border.draw_rounded_rect(Rect::new(-0.84, -0.78, 1.68, 1.56), 0.06);
+    let _ = stage.add_child(stage.root(), border);
 }

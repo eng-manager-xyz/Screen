@@ -25,41 +25,86 @@ Copy and fill when filing a new issue.
 
 ---
 
+## ISS-22: path-boolean De Morgan proptest is seed-flaky at boundary points
+- **Filed:** 2026-06-01
+- **By:** M-EDIT closeout (surfaced on a macOS gate run, unrelated to the branch)
+- **Severity:** bug (test reliability) — pre-existing, NOT introduced by M-EDIT
+- **Affects:** `crates/wisp/tests/path_boolean_proptest.rs` (`de_morgan_on_samples`), `crates/wisp` path-boolean point classification
+- **Status:** open
+- **Description:** `de_morgan_on_samples` intermittently fails in CI: `De Morgan failed at Vec2(0.0, 0.0): in_union=false, in_a=true, in_b=false`. The property checks `in_union == in_a || in_b`; it broke at exactly `(0,0)` — almost certainly a sampled test point landing **exactly on a path vertex/edge**, where point-in-region classification is ambiguous (boundary points are implementation-dependent under even-odd / winding). The same code passed on the immediately-prior commit and on Ubuntu+Windows; the failure is **seed-dependent**. Worse, CI logs `proptest: FileFailurePersistence::SourceParallel set, but failed to find lib.rs or main.rs` — proptest can't write the failing seed to a `.proptest-regressions` file from the CI cwd, so failing cases are never pinned and the test stays silently flaky. Last touched in `9caadbb` (M-BOOL); untouched by the M-EDIT branch — confirmed via `git diff main...HEAD`.
+- **Resolution:** When fixed (its own focused PR, not the M-EDIT closeout): make the proptest robust by **not sampling within an epsilon of any path boundary** (boundary-sensitive equality must avoid boundary points), or assert the property with a boundary-exclusion guard; and fix the regression-file persistence (set an explicit `FileFailurePersistence::Direct(path)` or a `PROPTEST_REGRESSIONS` location that exists in CI) so failing seeds are pinned and reproducible. Optionally make boundary-point classification deterministic in the path-boolean impl. (open)
+
+## ISS-21: live editor preview is a placeholder — cinematic compose is export-only
+- **Filed:** 2026-06-01
+- **By:** M-EDIT closeout (verifying AUT-351/353/354 "reflected in preview")
+- **Severity:** tech-debt / deferral (affects ticket closeability)
+- **Affects:** `crates/app-ui/src/editor_surface.rs` (the canvas placeholder), `crates/app/src/editor_preview.rs` (`EditorPreview` is constructed only by `editor_export.rs`), AUT-341 (ED.6) / AUT-351 / AUT-353 / AUT-354
+- **Status:** open
+- **Description:** The render-integration features (zoom ED.16, crop ED.15, background ED.18, cursor ED.19) are wired into the **export** path (`ExportFrameGenerator` → `EditorPreview::render_framed[_with_cursor]`) and verified there. But the **live on-screen editor preview** does not render the composed frame: `editor_surface.rs` shows a literal `"Preview renders here."` placeholder, `EditorPreview::render_at` has **no production caller**, and there is **no winit sibling window** for the editor. So zoom/crop/background/cursor are currently **export-only**, and the "reflected in preview" half of AUT-351/353/354's "Done when" is not visually true in committed code. This is the domain of **AUT-341 (ED.6 — Native wgpu editor preview canvas)**, which is marked *Done* but, per this investigation, appears to have shipped the compose pipeline + a manually-verified prototype rather than a committed production render loop into `WispCanvasHost`.
+- **Resolution:** When implemented (this is the AUT-341 surface, not an ISS-NN deferral): drive `EditorPreview` from the editor playhead — either a winit sibling window (the `preview` crate's pattern) or an offscreen RT pushed to the webview canvas — calling `render_framed_with_cursor` at `EditorSession::current_frame()` so the same compose the export uses appears live. Because the export path already shares `EditorPreview`, the features need no change; only the live driver is missing. (open)
+
+## ISS-20: ED.17 — active-window telemetry for window-aware auto-zoom (enhancement)
+- **Filed:** 2026-06-01
+- **By:** ISS-16 closeout (AUT-352)
+- **Severity:** deferral
+- **Affects:** `crates/app/src/click_capture.rs` / `cursor_capture.rs`, `crates/edit/src/telemetry.rs`
+- **Status:** open
+- **Description:** AUT-352's "Done when" lists three telemetry signals — cursor-move, click, **active-window** events. The first two ship (cursor poll + `CGEventTap` click log → `auto_zoom_segments` → `project.zooms` on import). The **active-window** signal (which app/window has focus, for window-framed auto-zoom and tighter cluster targeting) is not captured. The click-cluster auto-zoom is the headline and is delivered; active-window is a secondary refinement.
+- **Resolution:** When implemented: observe focus changes (macOS `NSWorkspace.didActivateApplicationNotification` or the AX API) on the same recording clock, persist as a window-event track, and feed it into the auto-zoom generator to bias cluster centroids / windows toward the focused window's frame. Pure-test the generator extension; the capture is runtime-only like the click tap. (open)
+
+## ISS-18: ED.21 — pitch-preserving audio retime (enhancement)
+- **Filed:** 2026-06-01
+- **By:** ED.21 closeout
+- **Severity:** deferral / enhancement
+- **Affects:** `crates/app/src/editor_export.rs` (`retime_audio`)
+- **Status:** open (deliberate v1 decision, not a bug)
+- **Description:** `retime_audio` resamples per segment, so a sped-up segment rises in pitch (and a slowed one drops) — the **industry-default** for editor speed ramps (Premiere / FCP / DaVinci / Loom all default to speed-with-pitch). This is the intended v1 behavior, pinned by the `retime_audio_double_speed_shifts_pitch_with_tempo` contract test. A pitch-*preserving* retime (time-stretch) is an enhancement, not a fix.
+- **Resolution:** When implemented: a pure-Rust WSOLA / overlap-add time-stretch (~100–200 lines, stays CI-testable) slotted in behind the *same* pure `(samples, segments, source_fps, sample_rate, channels) -> Vec<f32>` contract — callers + the existing tests don't change. (Rejected: per-segment gst `scaletempo`, which reintroduces the per-segment gst-trim complexity the team deliberately avoided and isn't unit-testable.) (open)
+
 ## ISS-17: ED.17 — cursor capture assumes the main display (multi-display refinement)
 - **Filed:** 2026-05-31
 - **By:** ED.17 (cursor capture)
 - **Severity:** deferral / tech-debt
-- **Affects:** `crates/app/src/cursor_capture.rs` (`main_display_bounds`)
-- **Status:** open
-- **Description:** The live record→editor cursor-capture wiring **is now connected** (`RecordingState::{start,finish}_cursor_capture`, `take_cursor_track`; `start_recording` → `stop_recording` → `open_in_editor`). The remaining gap: the poller normalizes the global cursor against **`CGMainDisplayID`'s bounds** (`main_display_bounds`). When the user records a *non-primary* display (or a window source), the cursor will be normalized against the wrong rect, so the overlay lands in the wrong place. `normalize_cursor_to_frame` already takes a flexible `(origin, w, h)` rect — the fix is to thread the *captured* display's id (from the SCK `ScreenCaptureConfig` / source id) into `start_cursor_capture` instead of hard-coding the main display.
-- **Resolution:** When refined: resolve the captured display's `CGDirectDisplayID` from the recording's screen-source id and pass its `CGDisplayBounds` to the poller. Window-source captures need the window's frame instead. Runtime-verify on a multi-display setup. (open)
+- **Affects:** `crates/app/src/cursor_capture.rs` (`parse_display_id` / `display_bounds_for_source`)
+- **Status:** ✅ resolved 2026-06-01 (window-source framing still a refinement)
+- **Description:** The cursor poller normalized the global cursor against the **main** display, so recording a non-primary display put the overlay in the wrong place.
+- **Resolution:** `cursor_capture::display_bounds_for_source(source_id)` parses the recording's screen-source id (`parse_display_id`: `"display-<CGDirectDisplayID>"` → the id, pure + unit-tested) and passes that display's `CGDisplayBounds` to the poller; `start_cursor_capture` now takes the `screen_source_id` (threaded from `RecordingConfig` in `start_recording`). Primary / window / malformed ids fall back to the main display. **Remaining refinement:** a *window* source should normalize against the captured window's frame, not its display — out of scope here (multi-display *display* capture is the common case + now correct). (resolved)
 
 ## ISS-16: ED.17 — click capture (auto-zoom + ripples) needs a CGEventTap
 - **Filed:** 2026-05-31
 - **By:** ED.17 (cursor capture)
 - **Severity:** deferral
-- **Affects:** `crates/app/src/cursor_capture.rs`
-- **Status:** open
-- **Description:** ED.17's **position** track ships via no-permission `CGEvent` polling, but the **click log** — which feeds the already-tested `auto_zoom_segments` and ED.19's click ripples — needs a `CGEventTap` (`objc2_core_graphics::CGEvent::tap_create`, listen-only). A tap requires the **Input-Monitoring** permission (prompts the user, cannot be granted in CI/headless) and a `CFRunLoop` callback on a worker thread (`objc2-core-foundation` is not yet a dep). The data model is ready: `EditProject::clicks: Option<Vec<ClickEvent>>` (serde-persisted) and `ripples_at` consume it.
-- **Resolution:** When implemented: add `objc2-core-foundation` (CFRunLoop/CFMachPort), create a listen-only tap for `kCGEventLeftMouseDown | kCGEventRightMouseDown`, run a private `CFRunLoop` on the poller thread, accumulate `ClickEvent`s (drain per feed-tick, never latest-wins), degrade gracefully (null tap → warn → no clicks, recording proceeds). Verify on a real macOS session with the permission granted. (open)
+- **Affects:** `crates/app/src/click_capture.rs`, `crates/app/src/recording.rs`, `crates/app/src/commands.rs`, `crates/app/src/editor_command.rs`
+- **Status:** ✅ resolved 2026-06-01
+- **Description:** ED.17's **position** track ships via no-permission `CGEvent` polling, but the **click log** — which feeds the already-tested `auto_zoom_segments` and ED.19's click ripples — needs a `CGEventTap` (`objc2_core_graphics::CGEvent::tap_create`, listen-only). A tap requires the **Input-Monitoring** permission (prompts the user, cannot be granted in CI/headless) and a `CFRunLoop` callback on a worker thread.
+- **Resolution:** New `crates/app/src/click_capture.rs`: a listen-only `CGEventTap` for `LeftMouseDown | RightMouseDown`, its `CFMachPort` source pumped on a dedicated worker thread's `CFRunLoop` (added `objc2-core-foundation` with `CFRunLoop`/`CFMachPort`). The C `extern "C-unwind"` callback normalizes each click against the captured display (reusing `cursor_capture::normalize_cursor_to_frame`) and accumulates `(elapsed, x, y)`; at stop, the pure `samples_to_clicks` maps them onto the project frame grid. Wired through `RecordingState` (`start_click_capture` / `finish_click_capture` / `take_clicks` / `clear_clicks`) on the **same consume-once Record→Edit handoff** as the cursor track, and attached to `project.clicks` in `open_in_editor`. **Graceful degrade**: a null tap (permission not granted) logs + leaves an empty log; the recording is never blocked. **Key FFI subtlety:** `CFRetained<CFRunLoop>` is `!Send`, so the run loop is stored as a `usize` *pointer* (`AtomicUsize`) — the `CFRetained` lives only on the worker thread; `stop()` calls the thread-safe `CFRunLoopStop` through the address. This keeps `ClickTap` (and thus the shared `RecordingState`) `Send + Sync`. The live tap is **runtime-only** (no CI); the pure `samples_to_clicks` + the `RecordingState` handoff + a `samples_to_clicks → auto_zoom_segments` contract test cover the wiring on every OS. **Verify on a real macOS session** with Input-Monitoring granted: clicks → auto-zoom regions + ED.19 ripples in the editor. (resolved)
 
 ## ISS-15: ED.18 — `Wallpaper` background source has no asset pipeline
 - **Filed:** 2026-05-31
 - **By:** ED.18 (background-framing render integration)
 - **Severity:** deferral
-- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundSource::Wallpaper`)
+- **Affects:** `crates/app/src/editor_preview.rs` (`wallpaper_rgba` / `set_background`), `crates/wisp/src/recording.rs` (`set_background_wallpaper`)
+- **Status:** ✅ resolved 2026-06-01
+- **Description:** `BackgroundSource::Wallpaper { name }` was authored but not rendered (fell back to the default gradient).
+- **Resolution:** Render a **procedural** wallpaper — no bundled asset, license-clean, deterministic. `app::editor_preview::wallpaper_rgba(name, w, h)` generates a soft diagonal three-stop gradient + faint aurora band, keyed on `name`'s palette (aurora / sunset / ocean / forest), as RGBA8 (pure + unit-tested). `wisp::RecordingScene::set_background_wallpaper(app, w, h, rgba)` uploads it as a full-NDC `Sprite` — the backmost layer (a `Sprite` paints before the gradient/shadow `Graphics` per the renderer's batch order). The wallpaper and the gradient/color backdrop are **mutually exclusive** (a Sprite and a Graphics backdrop fight the batch order): the app shows one and hides the other (`set_background_visible` / `set_background_wallpaper_visible`). Isolation assert keeps recorder output bit-identical. Verified: wisp node test, app pure + GPU (blue-dominant "ocean" margin) tests. Real bundled/aspect-correct wallpapers are a follow-up — see ISS-19. (resolved)
+
+## ISS-19: ED.18 — wallpaper is procedural + stretch-scaled (real-asset / aspect-correct follow-up)
+- **Filed:** 2026-06-01
+- **By:** ISS-15 closeout
+- **Severity:** enhancement
+- **Affects:** `crates/app/src/editor_preview.rs` (`wallpaper_rgba`), `crates/wisp/src/recording.rs` (`set_background_wallpaper`)
 - **Status:** open
-- **Description:** `BackgroundSource::Wallpaper { name }` is in the data model and authored by the Style panel, but there is no bundled wallpaper asset set, no `name → bytes` resolver, and no loader anywhere in the workspace. ED.18 maps a `Wallpaper` source to the **default gradient** as a documented fallback (with a `tracing::warn` so it isn't mistaken for a render bug). The default project uses `Gradient`, so this doesn't block end-to-end rendering.
-- **Resolution:** When implemented: bundle a license-clean wallpaper set under `crates/app/assets/wallpapers/` (or similar), add a `name → wisp::Texture` resolver, and add the backdrop as a base `Sprite` (anchor 0.5, scale 2) — a non-clipped Phase-1 node, same layering guarantee as the gradient `Graphics`. (open)
+- **Description:** v1 wallpapers are *procedurally generated* (four palettes) and the Sprite *stretches* to fill NDC (scale 2), so a non-16:9 wallpaper would distort — acceptable because the procedural gradients are aspect-agnostic. Two enhancements: (a) bundle real license-clean wallpaper images + a `name → bytes` resolver (decode app-side via the `image` crate, pass RGBA to `set_background_wallpaper` unchanged); (b) aspect-correct cover-scaling (scale the Sprite per-axis from the image aspect vs the canvas aspect) so real photos don't distort.
+- **Resolution:** (open)
 
 ## ISS-14: ED.18 — drop-shadow + inset border are authored but not rendered
 - **Filed:** 2026-05-31
 - **By:** ED.18 (background-framing render integration)
 - **Severity:** deferral
-- **Affects:** `crates/app/src/editor_preview.rs` (`set_background`), `crates/edit/src/style.rs` (`BackgroundConfig.shadow` / `.inset`)
-- **Status:** open
-- **Description:** `BackgroundConfig.shadow` (0..=100) and `.inset` (px) are authored + persisted by the Style panel and round-trip in the project file, but ED.18 does **not** render them. Two compounding costs justify deferral: (1) a drop shadow needs a per-frame *offscreen blur pre-pass* — `Container` has no per-node filter field, so the shadow can't ride the live compose path; it requires drawing the rounded screen to an input RT, `Renderer::apply_filter(&DropShadowFilter{..})`, then compositing the result — a real per-frame full-canvas blur. (2) `DropShadowFilter` runs `filter::blur::run_blur_pass` → **lavapipe-incompatible**, so every test/story composing with a shadow must be `WISP_SKIP_GPU_FILTER_TESTS`-guarded on Ubuntu CI and any storybook id added to `LAVAPIPE_INCOMPATIBLE`. Shipping padding + rounded corners + gradient/color backdrop first keeps ED.18 single-bind-group (zero lavapipe exposure, fully testable on every CI OS).
-- **Resolution:** When implemented: `shadow == 0` → skip the filter entirely (no `run_blur_pass`, no guard); else `blur = f32::from(shadow)·k`, `color.a = f32::from(shadow)/100·0.6`, `offset = (0, −shadow_px)` (downward in +y-up). Inset border is cheapest as a rounded-rect stroke inside the screen's dispatched subtree. Both need the wisp test + story + snapshot + chapter gate + a lavapipe guard. (open)
+- **Affects:** `crates/app/src/editor_preview.rs` (`set_background` / `apply_shadow_and_border`), `crates/wisp/src/recording.rs` (`set_frame_shadow` / `set_frame_border`)
+- **Status:** ✅ resolved 2026-06-01
+- **Description:** `BackgroundConfig.shadow` (0..=100) and `.inset` (px) were authored + persisted but not rendered. The blur path was deferred because `DropShadowFilter` runs `filter::blur::run_blur_pass` → lavapipe-incompatible (would force a `WISP_SKIP_GPU_FILTER_TESTS` guard + a skipped Ubuntu snapshot).
+- **Resolution:** Rendered **without** blur, so it stays single-bind-group + fully CI-verifiable. The shadow is `RecordingScene::set_frame_shadow` — a `color` rounded-rect the shape of the frame window, offset down-right, as a Phase-1 unclipped `Graphics` node behind the screen (the offset sliver reads as a shadow). The inset border is `set_frame_border` — a rounded-rect stroke tracing the window, as a Phase-2 full-NDC-clipped node over the screen. App-side `EditorPreview::apply_shadow_and_border` derives them from `BackgroundConfig` (alpha/offset scale with `shadow`; stroke width = `2·inset/W` NDC). Isolation asserts (`shadow`/`border` `None` on a fresh scene) keep recorder output bit-identical. Verified: wisp node/dispatch test, app GPU diff-with/without test, storybook PNG (shadow + white border read clearly), no lavapipe guard needed. (resolved)
 
 ## ISS-13: review — assorted deferred polish/robustness items
 - **Filed:** 2026-05-31

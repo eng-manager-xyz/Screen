@@ -1,6 +1,5 @@
 ---
 source: crates/wisp-storybook/tests/story_fingerprints.rs
-assertion_line: 111
 expression: all
 ---
 Animated click ripple (M0.13):
@@ -139,8 +138,8 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 176
     - 248
   - - 88
-    - 104
-    - 184
+    - 112
+    - 192
     - 248
   - - 104
     - 112
@@ -164,7 +163,7 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 248
   - - 216
     - 192
-    - 208
+    - 200
     - 248
   - - 184
     - 176
@@ -186,17 +185,17 @@ Background framing — backdrop · padding · rounded corners (ED.18):
     - 144
     - 168
     - 248
-  - - 208
+  - - 200
+    - 168
+    - 184
+    - 248
+  - - 216
     - 176
     - 184
     - 248
   - - 224
-    - 184
-    - 184
-    - 248
-  - - 240
-    - 168
-    - 168
+    - 160
+    - 160
     - 248
 Bitmap text (M0.15):
   - - 16
@@ -2732,4 +2731,69 @@ Word-wrapped caption block (M-TEXT.9):
   - - 48
     - 64
     - 96
+    - 248
+Zoom push-in — the rostrum move (ED.16):
+  - - 112
+    - 120
+    - 136
+    - 248
+  - - 136
+    - 144
+    - 160
+    - 248
+  - - 136
+    - 144
+    - 160
+    - 248
+  - - 112
+    - 120
+    - 136
+    - 248
+  - - 160
+    - 168
+    - 176
+    - 248
+  - - 208
+    - 208
+    - 216
+    - 248
+  - - 232
+    - 240
+    - 240
+    - 248
+  - - 176
+    - 184
+    - 192
+    - 248
+  - - 168
+    - 176
+    - 184
+    - 248
+  - - 240
+    - 240
+    - 240
+    - 248
+  - - 216
+    - 224
+    - 240
+    - 248
+  - - 168
+    - 176
+    - 184
+    - 248
+  - - 96
+    - 104
+    - 112
+    - 248
+  - - 128
+    - 136
+    - 144
+    - 248
+  - - 128
+    - 136
+    - 144
+    - 248
+  - - 96
+    - 104
+    - 112
     - 248

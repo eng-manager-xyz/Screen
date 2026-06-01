@@ -187,6 +187,32 @@ pub fn cursor_at(track: &[CursorSample], frame: Frame, smoothing: u32) -> Option
     Some(pos)
 }
 
+/// Whether the cursor is effectively stationary at project `frame` — the
+/// basis for [`CursorConfig::hide_static`](crate::style::CursorConfig).
+///
+/// A pointer that hasn't moved for a beat is visual noise the viewer's eye has
+/// already filed away; cinematic recorders fade it out until it moves again.
+/// This returns `true` when the raw cursor has drifted less than ~0.4 % of the
+/// frame (Euclidean) over the trailing ~0.4 s window ending at `frame` — which
+/// includes the case where no new sample landed in the window at all. Returns
+/// `false` only for an empty track (there is no position to settle on). Pure
+/// arithmetic, so the hide-while-static behaviour is exhaustively testable
+/// without a renderer.
+#[must_use]
+pub fn cursor_is_static(track: &[CursorSample], frame: Frame, fps: u32) -> bool {
+    let window = (u64::from(fps.max(1)) * 2) / 5; // ~0.4 s lookback
+    let past_frame = frame.saturating_sub(window);
+    match (cursor_at(track, frame, 0), cursor_at(track, past_frame, 0)) {
+        (Some((nx, ny)), Some((px, py))) => {
+            let (dx, dy) = (nx - px, ny - py);
+            // Squared-distance vs squared-threshold avoids a sqrt (and the
+            // clippy float lint that comes with it).
+            dx.mul_add(dx, dy * dy) < 0.004 * 0.004
+        }
+        _ => false,
+    }
+}
+
 /// Active click ripples at project `frame`, for the ED.19 overlay.
 ///
 /// Each entry is `(x, y, age)` where `age` ramps `0.0` (at the click) →
@@ -337,6 +363,29 @@ mod tests {
             lag > 0.0 && lag < 1.0,
             "max smoothing lags between (got {lag})"
         );
+    }
+
+    #[test]
+    fn cursor_is_static_detects_a_settled_pointer() {
+        // fps 30 → ~0.4 s window = 12 frames.
+        // Empty track: never static (nothing to settle on).
+        assert!(!cursor_is_static(&[], 100, 30));
+        // A pointer that hasn't emitted a new sample for the whole window is
+        // static (both ends resolve to the same trailing sample).
+        let parked = [CursorSample::new(0, 0.5, 0.5)];
+        assert!(cursor_is_static(&parked, 100, 30));
+        // A pointer mid-sweep (0 → 1 across the window) is NOT static.
+        let moving = [
+            CursorSample::new(88, 0.0, 0.0),
+            CursorSample::new(100, 1.0, 1.0),
+        ];
+        assert!(!cursor_is_static(&moving, 100, 30));
+        // A sub-threshold jitter (< 0.4 %) still reads as static.
+        let jitter = [
+            CursorSample::new(88, 0.500, 0.500),
+            CursorSample::new(100, 0.502, 0.501),
+        ];
+        assert!(cursor_is_static(&jitter, 100, 30));
     }
 
     #[test]

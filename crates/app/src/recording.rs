@@ -33,11 +33,12 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use edit::CursorSample;
+use edit::{ClickEvent, CursorSample};
 use media::audio_mix::AudioMixer;
 use media::encode::{LiveGstreamerEncoder, VideoEncoder};
 use serde::{Deserialize, Serialize};
 
+use crate::click_capture::ClickTap;
 use crate::cursor_capture::CursorPoller;
 
 /// Default audio mixer channel count (stereo). Matches the
@@ -358,6 +359,16 @@ pub struct RecordingState {
     /// (attached to the project); cleared on a new recording / export /
     /// discard so it never leaks onto an unrelated clip.
     pub pending_cursor_track: Mutex<Option<Vec<CursorSample>>>,
+    /// Click-capture tap (ED.17 / ISS-16), live for the duration of a
+    /// recording. `Some` while recording (when Input-Monitoring is granted);
+    /// stopped + drained at `stop_recording`. macOS-only (the non-macOS tap is
+    /// a no-op).
+    pub click_tap: Mutex<Option<ClickTap>>,
+    /// The click log from the most-recent recording, awaiting the Record→Edit
+    /// handoff (ED.17). Same lifecycle as [`Self::pending_cursor_track`]: set
+    /// at stop, consumed by `open_in_editor`, cleared on a new recording /
+    /// export / discard. Feeds auto-zoom + the ED.19 click ripples.
+    pub pending_clicks: Mutex<Option<Vec<ClickEvent>>>,
 }
 
 impl Default for RecordingState {
@@ -371,6 +382,8 @@ impl Default for RecordingState {
             pending_export: Mutex::new(None),
             cursor_poller: Mutex::new(None),
             pending_cursor_track: Mutex::new(None),
+            click_tap: Mutex::new(None),
+            pending_clicks: Mutex::new(None),
         }
     }
 }
@@ -387,12 +400,14 @@ impl RecordingState {
 
     /// Start cursor-position capture for a new recording (ED.17). Clears any
     /// stale pending track first so it can't leak onto this recording's edit.
-    pub fn start_cursor_capture(&self) {
+    pub fn start_cursor_capture(&self, screen_source_id: Option<&str>) {
         *self
             .pending_cursor_track
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        let rect = crate::cursor_capture::main_display_bounds();
+        // ISS-17: normalize against the *captured* display's bounds, not always
+        // the main display.
+        let rect = crate::cursor_capture::display_bounds_for_source(screen_source_id);
         *self
             .cursor_poller
             .lock()
@@ -433,6 +448,60 @@ impl RecordingState {
     pub fn clear_cursor_track(&self) {
         *self
             .pending_cursor_track
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    /// Start click capture for a new recording (ED.17 / ISS-16). Clears any
+    /// stale pending clicks first so they can't leak onto this recording's
+    /// edit. Normalizes against the *captured* display's bounds (ISS-17).
+    pub fn start_click_capture(&self, screen_source_id: Option<&str>) {
+        *self
+            .pending_clicks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        let rect = crate::cursor_capture::display_bounds_for_source(screen_source_id);
+        *self
+            .click_tap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ClickTap::start(rect));
+    }
+
+    /// Stop click capture and stash the resampled click log for the
+    /// Record→Edit handoff (ED.17 / ISS-16). `project_fps` is the editor's
+    /// timeline authority. A degraded (empty) tap leaves no pending clicks.
+    pub fn finish_click_capture(&self, project_fps: u32) {
+        let tap = self
+            .click_tap
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(tap) = tap {
+            let samples = tap.stop();
+            let clicks = crate::click_capture::samples_to_clicks(&samples, project_fps);
+            if !clicks.is_empty() {
+                *self
+                    .pending_clicks
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(clicks);
+            }
+        }
+    }
+
+    /// Take the pending click log (the Record→Edit handoff consumes it).
+    #[must_use]
+    pub fn take_clicks(&self) -> Option<Vec<ClickEvent>> {
+        self.pending_clicks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    /// Discard any pending click log (the export / discard paths, so a log
+    /// never leaks onto an unrelated later edit).
+    pub fn clear_clicks(&self) {
+        *self
+            .pending_clicks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
@@ -1318,6 +1387,30 @@ mod tests {
             Some(vec![CursorSample::new(1, 0.1, 0.1)]);
         state.clear_cursor_track();
         assert!(state.take_cursor_track().is_none(), "cleared");
+    }
+
+    #[test]
+    fn click_log_handoff_is_consume_once_and_clearable() {
+        // ED.17 / ISS-16: the click log rides the same consume-once Record→Edit
+        // handoff as the cursor track, and the export/discard paths drop it.
+        let state = RecordingState::default();
+        assert!(state.take_clicks().is_none(), "none until a recording");
+
+        *state
+            .pending_clicks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(vec![ClickEvent::new(10, 0.4, 0.6)]);
+        assert_eq!(state.take_clicks().map(|c| c.len()), Some(1), "taken");
+        assert!(state.take_clicks().is_none(), "consumed once");
+
+        *state
+            .pending_clicks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(vec![ClickEvent::new(20, 0.1, 0.1)]);
+        state.clear_clicks();
+        assert!(state.take_clicks().is_none(), "cleared");
     }
 
     #[test]

@@ -1987,8 +1987,13 @@ pub fn start_recording(
     }
     // ED.17: start capturing the cursor track for the editor's overlay /
     // auto-zoom. No-op on non-macOS; macOS polls the global pointer with no
-    // Input-Monitoring permission.
-    recording_state.start_cursor_capture();
+    // Input-Monitoring permission. Normalized against the captured display
+    // (ISS-17).
+    recording_state.start_cursor_capture(config.screen_source_id.as_deref());
+    // ED.17 / ISS-16: also capture the click log (auto-zoom + ED.19 ripples)
+    // via a listen-only CGEventTap. No-op on non-macOS; on macOS it degrades
+    // to an empty log if Input-Monitoring permission isn't granted.
+    recording_state.start_click_capture(config.screen_source_id.as_deref());
     spawn_status_emitter(app.clone(), session_id);
     Ok(session_id)
 }
@@ -2138,6 +2143,10 @@ pub fn stop_recording(
     // Record→Edit handoff (`open_in_editor` consumes it). Always called so the
     // poller thread never outlives the recording.
     recording_state.finish_cursor_capture(edit::DEFAULT_PROJECT_FPS);
+    // ED.17 / ISS-16: stop the click tap + stash the resampled click log
+    // (same handoff). Always called so the run-loop worker never outlives the
+    // recording.
+    recording_state.finish_click_capture(edit::DEFAULT_PROJECT_FPS);
 
     let summary = RecordingSummary {
         session_id: session.id,
@@ -2237,9 +2246,10 @@ pub async fn export_recording(
         .state::<RecordingState>()
         .take_pending_export()
         .ok_or("no recording is awaiting export")?;
-    // ED.17: a raw export doesn't use the cursor track — drop it so it can't
-    // leak onto a later, unrelated edit.
+    // ED.17: a raw export doesn't use the cursor track or click log — drop
+    // them so they can't leak onto a later, unrelated edit.
     app.state::<RecordingState>().clear_cursor_track();
+    app.state::<RecordingState>().clear_clicks();
     let format = format
         .as_deref()
         .and_then(OutputFormat::from_slug)
@@ -2325,8 +2335,9 @@ pub async fn export_recording(
     reason = "IPC signature stability — a delete failure may be surfaced in future."
 )]
 pub fn discard_recording(recording_state: State<'_, RecordingState>) -> Result<(), String> {
-    // ED.17: a discarded recording's cursor track is moot — drop it.
+    // ED.17: a discarded recording's cursor track + click log are moot — drop.
     recording_state.clear_cursor_track();
+    recording_state.clear_clicks();
     if let Some(pending) = recording_state.take_pending_export() {
         match std::fs::remove_file(&pending.scratch_path) {
             Ok(()) => {

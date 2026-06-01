@@ -13,6 +13,7 @@
 //!   `PlayerSession`. Thin — every method delegates straight through.
 
 pub mod audio;
+pub mod click_capture;
 pub mod commands;
 pub mod cursor_capture;
 pub mod editor_command;

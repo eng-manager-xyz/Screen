@@ -14,8 +14,9 @@
 //!
 //! The **click log** (for click ripples + auto-zoom) needs a `CGEventTap`,
 //! which *does* require Input-Monitoring permission and a `CFRunLoop`
-//! callback — see ISS-16. The data model + the plumbing are ready for it;
-//! this module ships the no-permission position half.
+//! callback — that is its sibling module
+//! [`click_capture`](crate::click_capture) (ISS-16, resolved). This module
+//! ships the no-permission position half.
 //!
 //! The pure parts ([`normalize_cursor_to_frame`], [`samples_to_track`]) are
 //! exhaustively unit-tested; the macOS poller thread is runtime-only.
@@ -97,6 +98,42 @@ pub fn main_display_bounds() -> (f64, f64, f64, f64) {
     #[cfg(not(target_os = "macos"))]
     {
         (0.0, 0.0, 1920.0, 1080.0)
+    }
+}
+
+/// Parse a `CGDirectDisplayID` out of a recording's screen-source id
+/// (`"display-<id>"`). Returns `None` for the primary display (`None` / `""`),
+/// a window source (`"window-..."`), or a malformed id. Pure.
+#[must_use]
+pub fn parse_display_id(source_id: Option<&str>) -> Option<u32> {
+    source_id?.strip_prefix("display-")?.parse::<u32>().ok()
+}
+
+/// Bounds (CG points) of the *captured* display, from the recording's
+/// screen-source id (ISS-17). `"display-<id>"` → that display's
+/// [`main_display_bounds`]-style rect; primary / window / malformed → the main
+/// display (window-source framing is a further refinement). Non-macOS: the
+/// 1080p placeholder.
+#[must_use]
+pub fn display_bounds_for_source(source_id: Option<&str>) -> (f64, f64, f64, f64) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(id) = parse_display_id(source_id) {
+            let bounds = objc2_core_graphics::CGDisplayBounds(id);
+            return (
+                bounds.origin.x,
+                bounds.origin.y,
+                bounds.size.width,
+                bounds.size.height,
+            );
+        }
+        main_display_bounds()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Keep `source_id` used + the parse path exercised off macOS.
+        let _ = parse_display_id(source_id);
+        main_display_bounds()
     }
 }
 
@@ -257,5 +294,18 @@ mod tests {
     #[test]
     fn samples_to_track_empty_is_empty() {
         assert!(samples_to_track(&[], 30).is_empty());
+    }
+
+    #[test]
+    fn parse_display_id_handles_the_source_id_forms() {
+        // ISS-17: "display-<CGDirectDisplayID>" → the id; everything else →
+        // None (so the caller falls back to the main display).
+        assert_eq!(parse_display_id(Some("display-69733382")), Some(69_733_382));
+        assert_eq!(parse_display_id(Some("display-1")), Some(1));
+        assert_eq!(parse_display_id(None), None, "primary display");
+        assert_eq!(parse_display_id(Some("")), None);
+        assert_eq!(parse_display_id(Some("window-42")), None, "window source");
+        assert_eq!(parse_display_id(Some("display-")), None, "malformed");
+        assert_eq!(parse_display_id(Some("display-abc")), None, "non-numeric");
     }
 }

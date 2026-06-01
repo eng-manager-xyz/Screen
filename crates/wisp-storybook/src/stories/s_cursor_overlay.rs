@@ -49,19 +49,15 @@ fn build(_app: &Application, stage: &mut Stage) {
     overlay.draw_ellipse(point, glam::Vec2::splat(half * 2.6));
     overlay.fill(Fill::Solid(Color::rgba(0.25, 0.5, 0.95, 0.30)));
     overlay.draw_ellipse(point, glam::Vec2::splat(half * 1.6));
-    // Pointer triangle (CCW), dark outline behind a white fill — same shape
-    // RecordingScene::set_cursor draws.
-    let arrow = |s: f32| {
+    // A single convex arrow quad, dark outline behind a white fill — the same
+    // shape RecordingScene::set_cursor draws.
+    let pointer = |overlay: &mut Graphics, s: f32, color: Color| {
         let scale = half * s;
-        [
-            point + glam::Vec2::new(0.0, 0.0) * scale,
-            point + glam::Vec2::new(0.0, -1.7) * scale,
-            point + glam::Vec2::new(1.15, -1.05) * scale,
-        ]
+        let p = |x: f32, y: f32| point + glam::Vec2::new(x, y) * scale;
+        overlay.fill(Fill::Solid(color));
+        overlay.draw_polygon(&[p(0.0, 0.0), p(0.0, -1.5), p(0.45, -1.75), p(1.05, -0.95)]);
     };
-    overlay.fill(Fill::Solid(Color::rgb_u8(20, 20, 20)));
-    overlay.draw_polygon(&arrow(1.3));
-    overlay.fill(Fill::Solid(Color::WHITE));
-    overlay.draw_polygon(&arrow(1.0));
+    pointer(&mut overlay, 1.25, Color::rgb_u8(20, 20, 20));
+    pointer(&mut overlay, 1.0, Color::WHITE);
     let _ = stage.add_child(stage.root(), overlay);
 }

@@ -6,6 +6,99 @@ Use the template at the bottom for new entries.
 
 ---
 
+## 🏁 RESUME STATUS — M-EDIT closeout track (branch `m-edit-closeout`)
+
+The "last 20 %": every deferred ISS-NN from PR #67 driven to genuine 100 % so
+each Linear ticket is confidently closeable. Same one-binary-at-a-time
+verification discipline (16 GB machine; CI's clean runners are the authority).
+**Base `main`** (post-#67 merge). Verified per-item locally; pushed + CI-watched
+as a batch.
+
+| Item | Ticket | State |
+|---|---|---|
+| ED.21 pitch (speed-with-pitch v1, doc + contract test, ISS-18 for WSOLA) | AUT-356 | ✅ committed; `edit`/`retime_audio` green |
+| ISS-14 ED.18 drop-shadow + inset border (hard-edged Graphics, no blur → lavapipe-safe) | AUT-353 | ✅ committed; `recording::` + `editor_preview::` GPU diff tests, PNG eyeballed |
+| ISS-15 ED.18 procedural wallpaper backdrop (pure-Rust RGBA → full-NDC Sprite) | AUT-353 | ✅ committed; pure + GPU (ocean blue-margin) tests; ISS-19 for real-asset/aspect |
+| ISS-17 ED.17 multi-display cursor rect (`parse_display_id` → `CGDisplayBounds`) | AUT-352 | ✅ committed; `parse_display_id` unit test |
+| ED.19 cursor glyph + `hide_static` | AUT-354 | ✅ convex arrow glyph (replaces triangle) + `hide_static` honored at render (click ripple overrides); `cursor_is_static` + `cursor_for_frame` unit tests, fingerprint stable, PNG eyeballed |
+| ED.16 animated MP4 asset | AUT-351 | ✅ `editor-zoom-pushin` animated story (three-phase push-in, focal-pin math mirrors `render_framed`) → MP4 via `wisp-export-animated`; smoke + fingerprint (additive) green; hold/ramp-out frames eyeballed |
+| ISS-16 ED.17 click capture (CGEventTap) | AUT-352 | ✅ `click_capture.rs`: listen-only tap → `CFRunLoop` worker → `samples_to_clicks` → `project.clicks` (auto-zoom + ED.19 ripples). `CFRetained` `!Send` solved via run-loop-pointer-as-`AtomicUsize`. Pure + handoff + auto-zoom-contract tests green on every OS; live tap runtime-only |
+
+**ED.19 closeout detail.** The pointer is now a single **convex arrow quad**
+(tip, left edge, tail point, right barb) instead of the placeholder triangle —
+kept convex so `draw_polygon`'s fan-triangulation is well-defined and the
+dark-outline-behind-white trick (a larger dark copy scaled about the hot-spot
+tip) stays registered (a far-from-tip tail would bloat the border, so no
+two-piece tail). `hide_static` is honored in the export generator's pure
+`cursor_for_frame`: a parked pointer (`edit::telemetry::cursor_is_static`,
+~0.4 s lookback under a ~0.4 % threshold) is hidden **unless** a live click
+ripple is active — a click is an action worth showing even when the cursor
+hasn't moved (the Screen Studio rule). The wisp glyph + the storybook story
+share one shape; fingerprint snapshot unchanged at quadrant resolution.
+
+**ISS-16 click-tap closeout detail.** The AUT-352 headline (auto-zoom from
+*real* clicks) is now wired end-to-end. `click_capture.rs` runs a listen-only
+`CGEventTap` for left/right mouse-down; its `CFMachPort` source is pumped on a
+dedicated worker thread's `CFRunLoop`, the `extern "C-unwind"` callback
+normalizes each click against the captured display and timestamps it, and at
+stop the pure `samples_to_clicks` maps them onto the project frame grid. It
+rides the **same consume-once Record→Edit handoff** as the cursor track
+(`start/finish/take/clear_clicks` on `RecordingState`, attached to
+`project.clicks` in `open_in_editor`) and **degrades gracefully** when
+Input-Monitoring isn't granted (null tap → warn → empty log, recording never
+blocked). The load-bearing FFI subtlety: `CFRetained<CFRunLoop>` is `!Send`, so
+storing it in the shared `RecordingState` would make the whole state `!Sync`
+and break Tauri — instead the run loop is shared as a `usize` pointer
+(`AtomicUsize`) and the thread-safe `CFRunLoopStop` is called through it (the
+`CFRetained` lives only on the worker). Captured the pattern as a CLAUDE.md
+lesson. **The live tap is runtime-only** (Input-Monitoring can't be granted in
+CI); the pure `samples_to_clicks`, the `RecordingState` handoff, and a
+`samples_to_clicks → auto_zoom_segments` contract test cover the wiring on
+every OS — needs one real-Mac smoke (grant the permission, click, confirm
+auto-zoom + ripples) before declaring AUT-352 visually verified.
+
+**The AUT-352 headline now actually fires.** A gap caught during closeout:
+clicks were captured + attached to `project.clicks`, but **nothing converted
+them into zooms on import** — so "the recording arrives already punched-in"
+wasn't true. Fixed with `EditProject::generate_auto_zooms` (pure, unit-tested:
+detect-toggle + idempotent non-clobber guard), called in `open_in_editor`
+right after the click handoff. A fresh recording now opens with auto-zoom
+blocks already on the timeline (editable like any other `ZoomSegment`). The
+third AUT-352 telemetry signal — **active-window** events — is deferred as
+ISS-20 (secondary to the click-cluster headline).
+
+**Bottom line:** all six closeout items + the auto-zoom-generation fix are
+shipped on `m-edit-closeout` → **PR #68, CI green across macOS / Ubuntu /
+Windows** (`gate-screen`, `gate-wisp`, `gate-wisp-chart`, `gate-all`). The
+click-capture FFI + its non-macOS stub passed `-D warnings` cross-OS.
+
+**Per-ticket closeout (decision: close on export-side; live preview tracked
+separately as ISS-21 / AUT-341):**
+
+- **AUT-351 (ED.16 zoom)** — closeable. Engine + animated MP4 asset shipped;
+  drives the export compose. (Preview is AUT-341/ISS-21.)
+- **AUT-353 (ED.18 background)** — closeable. Backdrop + padding + radius +
+  shadow + inset border + procedural wallpaper, all in the export compose;
+  ISS-19 (real-asset wallpaper) is a noted enhancement.
+- **AUT-356 (ED.21 export)** — closeable. Edited mp4 with retimed video +
+  muxed audio, real-audio e2e verified; ISS-18 (pitch-preserving) is an
+  enhancement.
+- **AUT-354 (ED.19 cursor)** — closeable on the export deliverable: arrow
+  glyph + smoothing + ripples + `hide_static` in the export compose. Two
+  notes: smoothing is EMA (not a literal spring); "reflected in preview" is
+  ISS-21/AUT-341.
+- **AUT-352 (ED.17 auto-zoom)** — closeable on the click-cluster headline:
+  cursor + click capture → `generate_auto_zooms` → editable zooms on import,
+  multi-display aware. Two notes: the live click tap needs one real-Mac smoke
+  (Input-Monitoring can't run in CI); active-window telemetry is ISS-20.
+
+**Tracked follow-ups filed this pass:** ISS-18 (pitch-preserving retime),
+ISS-19 (real/aspect wallpaper), ISS-20 (active-window telemetry), ISS-21 (live
+editor preview is export-only — the AUT-341 surface). Close the tickets after
+PR #68 merges.
+
+---
+
 ## 🔧 RESUME STATUS — render-integration track (PR #67)
 
 The dev machine (16 GB, 18-day uptime) can't run the full-workspace `just gate`
