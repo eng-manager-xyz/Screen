@@ -21,7 +21,7 @@ as a batch.
 | ISS-15 ED.18 procedural wallpaper backdrop (pure-Rust RGBA → full-NDC Sprite) | AUT-353 | ✅ committed; pure + GPU (ocean blue-margin) tests; ISS-19 for real-asset/aspect |
 | ISS-17 ED.17 multi-display cursor rect (`parse_display_id` → `CGDisplayBounds`) | AUT-352 | ✅ committed; `parse_display_id` unit test |
 | ED.19 cursor glyph + `hide_static` | AUT-354 | ✅ convex arrow glyph (replaces triangle) + `hide_static` honored at render (click ripple overrides); `cursor_is_static` + `cursor_for_frame` unit tests, fingerprint stable, PNG eyeballed |
-| ED.16 animated MP4 asset | AUT-351 | ⏳ next (CI-verifiable) |
+| ED.16 animated MP4 asset | AUT-351 | ✅ `editor-zoom-pushin` animated story (three-phase push-in, focal-pin math mirrors `render_framed`) → MP4 via `wisp-export-animated`; smoke + fingerprint (additive) green; hold/ramp-out frames eyeballed |
 | ISS-16 ED.17 click capture (CGEventTap) | AUT-352 | ⏳ last (runtime-only, no CI) |
 
 **ED.19 closeout detail.** The pointer is now a single **convex arrow quad**

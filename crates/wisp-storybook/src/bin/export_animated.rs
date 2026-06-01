@@ -47,7 +47,7 @@ const DURATION_SECS: f32 = 3.0;
 /// Story IDs we render to MP4. Each id must correspond to a story
 /// with `tick: Some(...)`; otherwise the loop renders a static
 /// 3-second clip of the same frame (still valid, just boring).
-const ANIMATED: &[&str] = &["mesh-perspective"];
+const ANIMATED: &[&str] = &["mesh-perspective", "editor-zoom-pushin"];
 
 fn main() {
     tracing_subscriber::fmt()
