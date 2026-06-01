@@ -6,6 +6,22 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ AUT-288 — real app icons in the system-audio picker, branch `aut-288-app-icons`
+
+Completed the last unshipped slice of the system-audio picker polish ticket: the app rows showed a generic glyph because `AudioApp.icon_png_bytes` was hardcoded `Vec::new()`. Now each row shows the running app's real icon.
+
+- **Backend (macOS):** `media::sck_audio::icon_png_for_pid` reads `NSRunningApplication(pid).icon` and re-encodes it to PNG via `NSBitmapImageRep` (added `objc2-app-kit` — already in the tree transitively — with the `libc` feature for the by-pid constructor, + `NSData`/`NSDictionary` Foundation features). **Crash-safe:** every FFI step is `Option`-guarded, so a nil at any stage degrades to empty bytes (→ glyph), never a panic. Filled into `list_audio_apps`.
+- **UI:** `system_audio_picker` inlines the bytes as a `data:image/png;base64,…` URL (tiny pure `base64_encode` — no dep — + `icon_data_url`) and renders an `<img>`, falling back to the glyph when empty. CSS sizes it. The icon bytes already flowed through the IPC mirrors end-to-end; only population + render were missing.
+- Doc-rot fix: the `system_audio_picker` module header + the `AudioApp` icon docs claimed icons were deferred — corrected to match the shipped code.
+
+Tests: `base64_encode` (RFC-4648 vectors) + `icon_data_url` (empty→None, PNG-magic→data URL) — pure, native. media builds + clippy clean; app-ui native + wasm clippy + fmt clean.
+
+```admonish warning title="Real-Mac verify (AUT-288)"
+The icon **population** runs on a Tauri worker thread and a **headless CI runner has no window server**, so CI verifies the FFI compiles + degrades safely (empty → glyph) but **cannot confirm a real icon renders** — that needs an interactive macOS session. AppKit icon read is broadly thread-tolerant; if a thread-affinity issue surfaces on a real Mac, the fix is a main-thread dispatch. A 32×32 downscale (to shrink the IPC payload from native-size PNGs) is a noted refinement.
+```
+
+---
+
 ## ✅ AUT-271 — pick which display to record (real names + display selector), branch `aut-271-display-picker`
 
 The recorder always recorded the primary display and labeled every monitor "Built-in Retina" — the audit found the `ScreenPicker` component was authored but never mounted, and the live recorder had no way to switch displays. Fixed by driving the recorder's **existing** recording-source signal (`display_selected` → `RecordingConfig.screen_source_id`), which was already wired into capture but had no UI to change it.

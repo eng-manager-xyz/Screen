@@ -37,6 +37,22 @@ objc2-foundation = { version = "0.3", features = [
     "NSObject",
     "NSThread",
     "NSEnumerator",
+    # AUT-288 — NSData (icon PNG bytes) + NSDictionary (empty PNG props).
+    "NSData",
+    "NSDictionary",
+] }
+# AUT-288 — running-app icon → PNG for the system-audio picker. Already in
+# the tree transitively (tao / muda); named here so `media` can read
+# NSRunningApplication.icon and encode it via NSBitmapImageRep.
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    # `runningApplicationWithProcessIdentifier:` takes `libc::pid_t`, gated
+    # behind the crate's `libc` feature.
+    "libc",
+    "NSRunningApplication",
+    "NSImage",
+    "NSImageRep",
+    "NSBitmapImageRep",
 ] }
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = [
     "std",

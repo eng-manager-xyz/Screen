@@ -13,14 +13,10 @@
 //!   checkbox; the selected bundle ids round-trip through
 //!   `LocalStorage` so a Spotify selection survives across launches.
 //!
-//! ```admonish note title="What's deferred from the ticket spec"
-//! The full ticket described filter chips (All / None / Suggested /
-//! Custom) and a suggested-app heuristic. v0 ships the underlying
-//! `AudioAppFilter` machinery + a simple multi-select grid; the
-//! filter-chip + suggested heuristic UX is a follow-up
-//! (M-AUDIO-SYS.2.1). The contract this commit ships is enough to
-//! verify the SCK per-app filtering path end-to-end.
-//! ```
+//! Ships the full picker: filter chips (All / None / Suggested / Custom) with
+//! the suggested-app heuristic, a 250 ms debounced filter-apply, real app
+//! icons (AUT-288 — inline PNG `data:` URLs from the backend, glyph fallback),
+//! and the SCK-denial settings deep-link.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -423,6 +419,47 @@ fn SystemAudioBody(
     }
 }
 
+/// Standard base64 (RFC 4648) of `input`. Tiny + pure (no dep) so it runs in
+/// the native unit tests as well as wasm — used to inline the app-icon PNG
+/// (AUT-288) as a `data:` URL.
+fn base64_encode(input: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = u32::from(chunk[0]);
+        let b1 = chunk.get(1).copied().map_or(0, u32::from);
+        let b2 = chunk.get(2).copied().map_or(0, u32::from);
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        let idx = |shift: u32| usize::try_from((n >> shift) & 63).unwrap_or(0);
+        out.push(char::from(A[idx(18)]));
+        out.push(char::from(A[idx(12)]));
+        out.push(if chunk.len() > 1 {
+            char::from(A[idx(6)])
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            char::from(A[idx(0)])
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// A `data:image/png;base64,…` URL for the app icon (AUT-288), or `None` when
+/// no icon was captured (empty bytes — the row then shows its glyph). The
+/// backend ships native-size PNGs; `None` is the headless / no-icon path.
+fn icon_data_url(png_bytes: &[u8]) -> Option<String> {
+    if png_bytes.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64_encode(png_bytes)
+    ))
+}
+
 fn render_app_row(
     app: AudioAppView,
     selected: Vec<String>,
@@ -437,6 +474,15 @@ fn render_app_row(
     let bundle_for_attr = app.bundle_id.clone();
     let bundle_for_caption = app.bundle_id.clone();
     let name = app.display_name.clone();
+    // AUT-288 — real app icon as an inline PNG when captured; the glyph
+    // placeholder otherwise (empty bytes, e.g. a headless / no-icon app).
+    let icon = match icon_data_url(&app.icon_png_bytes) {
+        Some(url) => view! {
+            <img class="system-audio-picker-row-img" src=url alt="" />
+        }
+        .into_any(),
+        None => "·".into_any(),
+    };
     view! {
         <li>
             <button
@@ -448,7 +494,7 @@ fn render_app_row(
                 on:click=move |_| on_toggle_app.run(bundle_for_click.clone())
             >
                 <span class="system-audio-picker-row-icon" aria-hidden="true">
-                    {if app.icon_png_bytes.is_empty() { "·" } else { "■" }}
+                    {icon}
                 </span>
                 <span class="system-audio-picker-row-label">{name}</span>
                 <span class="system-audio-picker-row-bundle">{bundle_for_caption}</span>
@@ -584,6 +630,27 @@ fn write_selected_ids(_ids: &[String]) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base64_encode_matches_rfc4648_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn icon_data_url_wraps_png_bytes_or_is_none() {
+        // Empty bytes (headless / no icon) → None → the row shows its glyph.
+        assert_eq!(icon_data_url(&[]), None);
+        // The PNG magic number → a proper data: URL the <img> can render.
+        let url = icon_data_url(&[0x89, 0x50, 0x4e, 0x47]).expect("non-empty → Some");
+        assert_eq!(url, "data:image/png;base64,iVBORw==");
+        assert!(url.starts_with("data:image/png;base64,"));
+    }
 
     #[test]
     fn summary_label_zero_one_many() {
