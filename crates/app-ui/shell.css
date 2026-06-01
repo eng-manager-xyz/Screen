@@ -629,6 +629,49 @@
   margin-top: 4px;
 }
 
+/* AUT-271 — recorder display picker list (choose which monitor to record). */
+.recorder-display-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recorder-display-row {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--fg, #fff);
+}
+.recorder-display-row:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+.recorder-display-row[data-active="true"] {
+  background: var(--accent-soft, rgba(120, 170, 255, 0.16));
+}
+.recorder-display-row-check {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  text-align: center;
+  color: var(--accent, #7aa2ff);
+}
+.recorder-display-row-label {
+  grid-column: 2;
+  grid-row: 1;
+}
+.recorder-display-row-sub {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--fg-muted, #9aa0a6);
+}
+
 /* M-RECORD.2 — RecorderControls (master Record button + LEDs) */
 .recorder-controls {
   background: var(--bg-elev-1, #1a1a1a);
