@@ -181,11 +181,13 @@ mod imp {
     pub struct CursorPoller;
 
     impl CursorPoller {
+        /// No-op start — no cursor capture off macOS.
         #[must_use]
         pub fn start(_rect: (f64, f64, f64, f64)) -> Self {
             Self
         }
 
+        /// No-op stop — always an empty track off macOS.
         #[must_use]
         pub fn stop(self) -> Vec<(Duration, f32, f32)> {
             Vec::new()
