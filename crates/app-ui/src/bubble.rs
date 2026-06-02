@@ -32,6 +32,10 @@ use crate::camera_preview::CameraPreview;
 /// borderless circular webcam surface with overlaid controls.
 #[component]
 pub fn BubbleRoot() -> impl IntoView {
+    // AUT-276 — local size cycle (Small → Medium → Large → Small). Medium is
+    // the `tauri.conf.json` default; the resize button drives the backend
+    // `set_bubble_size`.
+    let size_idx = RwSignal::new(1u8);
     view! {
         <div
             class="bubble-root bubble-root--design"
@@ -43,6 +47,8 @@ pub fn BubbleRoot() -> impl IntoView {
                     class="bubble-canvas-wrap"
                     data-tauri-drag-region="true"
                     aria-hidden="true"
+                    title="Double-click to snap to the nearest corner"
+                    on:dblclick=move |_| crate::bubble_ipc::snap_bubble_to_corner()
                 >
                     <CameraPreview />
                 </div>
@@ -68,6 +74,19 @@ pub fn BubbleRoot() -> impl IntoView {
                         title="Bubble settings"
                     >
                         <Icon icon=icondata::LuSettings />
+                    </button>
+                    <button
+                        type="button"
+                        class="bubble-icon-btn"
+                        aria-label="Resize bubble"
+                        title="Resize bubble (small / medium / large)"
+                        on:click=move |_| {
+                            let next = next_bubble_size_idx(size_idx.get_untracked());
+                            size_idx.set(next);
+                            crate::bubble_ipc::set_bubble_size(bubble_size_slug(next));
+                        }
+                    >
+                        <Icon icon=icondata::LuMaximize2 />
                     </button>
                 </span>
 
@@ -102,5 +121,37 @@ pub fn BubbleRoot() -> impl IntoView {
                 <span class="bubble-caption-corner">"bottom-left"</span>
             </div>
         </div>
+    }
+}
+
+/// Cycle the bubble size index: Small(0) → Medium(1) → Large(2) → Small (AUT-276).
+fn next_bubble_size_idx(idx: u8) -> u8 {
+    (idx + 1) % 3
+}
+
+/// The [`crate::bubble_ipc::set_bubble_size`] slug for a size index (AUT-276).
+/// Out-of-range indices fall back to `"medium"` (the default).
+fn bubble_size_slug(idx: u8) -> &'static str {
+    match idx {
+        0 => "small",
+        2 => "large",
+        _ => "medium",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bubble_size_cycle_wraps_and_maps_to_slugs() {
+        assert_eq!(next_bubble_size_idx(0), 1);
+        assert_eq!(next_bubble_size_idx(1), 2);
+        assert_eq!(next_bubble_size_idx(2), 0, "wraps back to small");
+        assert_eq!(bubble_size_slug(0), "small");
+        assert_eq!(bubble_size_slug(1), "medium");
+        assert_eq!(bubble_size_slug(2), "large");
+        // Out-of-range → default medium.
+        assert_eq!(bubble_size_slug(9), "medium");
     }
 }

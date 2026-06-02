@@ -292,6 +292,14 @@
       // "Click-through bubble" toggle (the only out-of-band path).
       window.__screenSetBubbleClickthrough = (enabled) =>
         window.__TAURI__?.core?.invoke("set_bubble_clickthrough", { enabled }) ?? Promise.resolve();
+
+      // AUT-276 — resize the bubble to a preset ("small"/"medium"/"large").
+      window.__screenSetBubbleSize = (size) =>
+        window.__TAURI__?.core?.invoke("set_bubble_size", { size }) ?? Promise.resolve();
+
+      // AUT-276 — snap the bubble to the nearest monitor corner (double-click).
+      window.__screenSnapBubble = () =>
+        window.__TAURI__?.core?.invoke("snap_bubble_to_corner") ?? Promise.resolve();
     </script>
   </head>
   <body>

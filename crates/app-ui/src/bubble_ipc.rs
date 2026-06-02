@@ -30,6 +30,43 @@ extern "C" {
     /// returns `Promise<void>`. M-BUBBLE.1 v0 / AUT-274.
     #[wasm_bindgen(js_name = __screenSetBubbleClickthrough, catch)]
     pub async fn set_bubble_clickthrough_js(enabled: bool) -> Result<JsValue, JsValue>;
+
+    /// `__screenSetBubbleSize(size)` in `index.html` — returns
+    /// `Promise<void>`. `size` is `"small"` / `"medium"` / `"large"`. AUT-276.
+    #[wasm_bindgen(js_name = __screenSetBubbleSize, catch)]
+    pub async fn set_bubble_size_js(size: String) -> Result<JsValue, JsValue>;
+
+    /// `__screenSnapBubble()` in `index.html` — returns `Promise<void>`.
+    /// Snaps the bubble to the nearest monitor corner. AUT-276.
+    #[wasm_bindgen(js_name = __screenSnapBubble, catch)]
+    pub async fn snap_bubble_js() -> Result<JsValue, JsValue>;
+}
+
+/// Fire-and-forget resize (AUT-276). `size` = `"small"` / `"medium"` /
+/// `"large"`. Failures log to the JS console; the Rust side warns via
+/// `tracing`.
+pub fn set_bubble_size(size: &str) {
+    let size = size.to_owned();
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(err) = set_bubble_size_js(size).await {
+            web_sys::console::warn_2(
+                &JsValue::from_str("[bubble_ipc] set_bubble_size failed:"),
+                &err,
+            );
+        }
+    });
+}
+
+/// Fire-and-forget snap-to-nearest-corner (AUT-276) — the double-click UX.
+pub fn snap_bubble_to_corner() {
+    wasm_bindgen_futures::spawn_local(async {
+        if let Err(err) = snap_bubble_js().await {
+            web_sys::console::warn_2(
+                &JsValue::from_str("[bubble_ipc] snap_bubble_to_corner failed:"),
+                &err,
+            );
+        }
+    });
 }
 
 /// Fire-and-forget toggle. Spawns the IPC call as a wasm-bindgen

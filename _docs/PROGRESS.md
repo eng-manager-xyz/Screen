@@ -6,6 +6,19 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ AUT-276 — webcam-bubble resize presets + double-click corner-snap, branch `aut-276-bubble-resize-snap`
+
+The bubble could be dragged + had position persistence, but the **resize**, **snap**, and context-menu sub-features were unwired — and `snap_to_nearest_corner` shipped fully tested yet was *never called* (dead-but-tested code). This wires the two safe, high-value slices (all via safe Tauri APIs — `set_size`/`set_position`/`current_monitor`):
+
+- **Resize:** `BubbleSize {Small, Medium, Large}` (pure, ratio-preserving dims, unit-tested) + a `set_bubble_size` command (`LogicalSize`) + a header **resize button** that cycles the presets.
+- **Snap:** the new `snap_bubble_to_corner` command finally **uses** the tested `snap_to_nearest_corner` (unbounded radius → nearest corner) computed from the window's physical position/size + its monitor; **double-clicking the bubble circle** snaps it. The resulting `set_position` fires `Moved`, so the existing position cache persists it.
+
+Commands registered in both handler arms; JS bridges (`__screenSetBubbleSize` / `__screenSnapBubble`) + wasm wrappers added; CSS unchanged (reuses bubble button styles). Pure tests: `bubble_size_dims` (ratio) + `bubble_size_cycle` (slug mapping). screen-app + app-ui native + wasm clippy + fmt clean.
+
+**Deferred (noted on AUT-276):** the 5-section right-click context menu (needs Tauri-menu wiring). **AUT-274** (per-pixel click-through on the transparent corners) is a separate follow-up — it requires an OS-level `hitTest:` override, but the bubble's contentView is Tauri's `WKWebView`; swizzling its `hitTest:` would corrupt the **main** window's webview (same class) and reparenting it is invasive, unverifiable-headless surgery on a working component — so it's intentionally **not** shipped blind. GUI (resize button + double-click snap) needs a real-Mac eyeball.
+
+---
+
 ## ✅ AUT-269 — live screen preview channel, branch `aut-269-screen-preview`
 
 The recorder showed a **mock** display preview; the SCK frame channel to the webview was explicitly skipped (the unmet headline of M-SCK.2). Now the recorder shows the **real screen being captured** (downscaled), mirroring the camera-preview pattern.
