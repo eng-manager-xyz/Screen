@@ -142,6 +142,7 @@ pub mod recordings_library;
 pub mod routing;
 pub mod screen_ipc;
 pub mod screen_picker;
+pub mod screen_preview_canvas;
 pub mod settings_ipc;
 pub mod style_inspector;
 pub mod system_audio_ipc;

@@ -6,6 +6,21 @@ Use the template at the bottom for new entries.
 
 ---
 
+## ✅ AUT-269 — live screen preview channel, branch `aut-269-screen-preview`
+
+The recorder showed a **mock** display preview; the SCK frame channel to the webview was explicitly skipped (the unmet headline of M-SCK.2). Now the recorder shows the **real screen being captured** (downscaled), mirroring the camera-preview pattern.
+
+- **Backend:** `ScreenCaptureState` gains a downscaled preview frame slot — `start()` plumbs it; `latest_frame()` reads it. The recording path is untouched (it passes its own full-res slot via `start_with_frame_slot`). `start_screen_capture` now captures at **1280×720** (`PREVIEW_WIDTH/HEIGHT`, so the ~15 fps webview poll stays cheap — the full 1920×1080 is 8 MB/frame) and **excludes the recorder's own windows** (`own_window_cg_ids`, generalized from `bubble_window_cg_id`) so the preview doesn't capture itself (the screen-of-its-own-screen feedback loop). New `latest_screen_frame_bgra` command (mirrors `latest_camera_frame_bgra`), registered in both handler arms.
+- **Frontend:** `screen_preview_canvas` installs an `Effect` (start/stop the preview capture as the display section's visibility + selected source change) + a ~15 fps poll painting the frame into a `<canvas>` **overlaid on the mock** — transparent until the first frame arrives (mock shows through as a placeholder), then the real screen covers it. JS bridge `__screenLatestScreenFrameBgra`; CSS overlay.
+
+screen-app + app-ui native + wasm clippy + fmt clean; `screen_capture` + `recorder_page` tests pass.
+
+```admonish warning title="Real-Mac verify (AUT-269)"
+The visible preview needs an interactive-Mac eyeball — a headless CI runner has no window server, so the captured frames are empty there (CI verifies the channel compiles + the poll degrades safely to the mock). Own-window exclusion prevents the self-capture feedback. The full ED.18-style "preview ≡ recording composition" (rounded corners / background) is export+editor-only (AUT-510); the recorder preview shows the raw downscaled screen, which is the WYSIWYG-before-record value.
+```
+
+---
+
 ## ✅ AUT-288 — real app icons in the system-audio picker, branch `aut-288-app-icons`
 
 Completed the last unshipped slice of the system-audio picker polish ticket: the app rows showed a generic glyph because `AudioApp.icon_png_bytes` was hardcoded `Vec::new()`. Now each row shows the running app's real icon.

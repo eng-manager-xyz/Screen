@@ -158,6 +158,12 @@ pub fn RecorderPage() -> impl IntoView {
     // ISS-05: align the bubble at mount, else first click flips opposite to camera_enabled.
     crate::bubble_ipc::set_webcam_bubble_visibility(camera_enabled.get());
 
+    // AUT-269 — live screen preview: start/stop the downscaled preview capture
+    // while the display section is open (+ on source change) and paint each
+    // frame into the canvas overlaid on the mock below. Installed once.
+    let display_active = Memo::new(move |_| open_picker.get() == OpenPicker::Display);
+    crate::screen_preview_canvas::install_screen_preview(display_active, display_selected);
+
     // -------- view-models ---------------------------------------------
     let camera_view = move || -> CaptureSourceView {
         let label = selected_camera_label(&cameras.get(), camera_selected.get().as_deref());
@@ -708,6 +714,17 @@ pub fn RecorderPage() -> impl IntoView {
                             view! {
                                 <div class="recorder-display-preview-wrap" aria-label="Preview">
                                     <DisplayPreviewFrame view=display_preview_view() />
+                                    // AUT-269 — live downscaled screen preview,
+                                    // overlaid on the mock. Transparent until the
+                                    // first frame arrives (mock shows through),
+                                    // then the real screen paints over it.
+                                    <canvas
+                                        id=crate::screen_preview_canvas::SCREEN_PREVIEW_CANVAS_ID
+                                        class="recorder-display-preview-canvas"
+                                        width=crate::screen_preview_canvas::SCREEN_PREVIEW_WIDTH
+                                        height=crate::screen_preview_canvas::SCREEN_PREVIEW_HEIGHT
+                                        aria-label="Live screen preview"
+                                    />
                                     <span class="recorder-display-preview-badge">{dims}</span>
                                 </div>
                             }
