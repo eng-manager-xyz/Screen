@@ -23,6 +23,42 @@ pub struct BubblePosition {
     pub y: i32,
 }
 
+/// Webcam-bubble size presets (AUT-276). Logical-pixel dimensions; the default
+/// (`Medium`) matches `tauri.conf.json`'s 260×300. Each preserves the bubble's
+/// ~0.867 width:height ratio so the inscribed circle stays circular at any size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BubbleSize {
+    /// Compact — 200×232.
+    Small,
+    /// Default — 260×300 (matches `tauri.conf.json`).
+    #[default]
+    Medium,
+    /// Large — 340×392.
+    Large,
+}
+
+impl BubbleSize {
+    /// Parse a UI slug (`"small"` / `"medium"` / `"large"`); unknown → `Medium`.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Self {
+        match slug {
+            "small" => Self::Small,
+            "large" => Self::Large,
+            _ => Self::Medium,
+        }
+    }
+
+    /// `(width, height)` in logical pixels for `tauri::WebviewWindow::set_size`.
+    #[must_use]
+    pub fn dims(self) -> (u32, u32) {
+        match self {
+            Self::Small => (200, 232),
+            Self::Medium => (260, 300),
+            Self::Large => (340, 392),
+        }
+    }
+}
+
 /// Which corner of a monitor a window is closest to. Returned by
 /// [`snap_to_nearest_corner`] (via `Option<(i32, i32, Corner)>`) so the
 /// caller can render a "snapped to top-right" visual hint distinct
@@ -195,6 +231,25 @@ mod tests {
         // 200×200 window, 16px inset → top-left at (16, 1080-200-16).
         let pos = default_position(200, 200, m, 16);
         assert_eq!(pos, BubblePosition { x: 16, y: 864 });
+    }
+
+    #[test]
+    fn bubble_size_dims_preserve_the_circle_ratio() {
+        let base = 260.0 / 300.0;
+        for size in [BubbleSize::Small, BubbleSize::Medium, BubbleSize::Large] {
+            let (w, h) = size.dims();
+            let ratio = f64::from(w) / f64::from(h);
+            assert!(
+                (ratio - base).abs() < 0.02,
+                "{size:?} keeps the bubble's ~0.867 ratio (got {ratio})"
+            );
+        }
+        assert_eq!(BubbleSize::default(), BubbleSize::Medium);
+        assert_eq!(BubbleSize::Medium.dims(), (260, 300));
+        assert_eq!(BubbleSize::from_slug("small"), BubbleSize::Small);
+        assert_eq!(BubbleSize::from_slug("large"), BubbleSize::Large);
+        // Unknown slug falls back to the default size.
+        assert_eq!(BubbleSize::from_slug("xxl"), BubbleSize::Medium);
     }
 
     #[test]

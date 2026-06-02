@@ -25,7 +25,9 @@ use crate::recording::{
     RecordingConfig, RecordingSession, RecordingState, RecordingStatusView, RecordingSummary,
     SessionState, SessionStreams, StreamHealth, StreamKind,
 };
-use crate::recp::bubble_position::{BubblePosition, default_position, is_on_any_monitor};
+use crate::recp::bubble_position::{
+    BubblePosition, BubbleSize, default_position, is_on_any_monitor,
+};
 use crate::recp::settings_deep_link::{SettingsPane, open_command};
 use crate::recp::tray_positioning::{MonitorBounds, pick_monitor, position_window_top_right};
 #[cfg(target_os = "macos")]
@@ -396,6 +398,65 @@ pub fn set_bubble_clickthrough(app: tauri::AppHandle, enabled: bool) {
             enabled,
             "set_ignore_cursor_events on webcam-bubble failed"
         );
+    }
+}
+
+/// Resize the webcam-bubble to a size preset (AUT-276): `"small"` / `"medium"`
+/// / `"large"`. Logical pixels, preserving the inscribed-circle ratio. No-op if
+/// the bubble window isn't registered.
+#[tauri::command]
+pub fn set_bubble_size(app: tauri::AppHandle, size: String) {
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        tracing::warn!("webcam-bubble window not found; set_bubble_size no-op");
+        return;
+    };
+    let (w, h) = BubbleSize::from_slug(&size).dims();
+    if let Err(err) = window.set_size(tauri::LogicalSize::new(w, h)) {
+        tracing::warn!(?err, %size, "set_size on webcam-bubble failed");
+    }
+}
+
+/// Snap the webcam-bubble to the **nearest** monitor corner (AUT-276) — the
+/// double-click-to-snap UX. Derives the target from the window's current
+/// physical position + size and its monitor via the pure
+/// [`snap_to_nearest_corner`](crate::recp::bubble_position::snap_to_nearest_corner),
+/// with an effectively-unbounded radius so a double-click always snaps to the
+/// closest corner (vs. the radius-gated snap-on-drag the helper was written
+/// for). The resulting `set_position` fires a `Moved` event, so the in-memory
+/// position cache updates + persists on hide as usual. No-op if the window or
+/// its monitor can't be resolved.
+#[tauri::command]
+pub fn snap_bubble_to_corner(app: tauri::AppHandle) {
+    use crate::recp::bubble_position::snap_to_nearest_corner;
+
+    let Some(window) = app.get_webview_window("webcam-bubble") else {
+        return;
+    };
+    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let mpos = monitor.position();
+    let msize = monitor.size();
+    let monitor_bounds = MonitorBounds {
+        x: mpos.x,
+        y: mpos.y,
+        width: i32::try_from(msize.width).unwrap_or(i32::MAX),
+        height: i32::try_from(msize.height).unwrap_or(i32::MAX),
+    };
+    let bubble = BubblePosition { x: pos.x, y: pos.y };
+    if let Some((snapped, corner)) = snap_to_nearest_corner(
+        bubble,
+        i32::try_from(size.width).unwrap_or(0),
+        i32::try_from(size.height).unwrap_or(0),
+        monitor_bounds,
+        i32::MAX / 4,
+        16,
+    ) {
+        tracing::debug!(?corner, "snapping webcam-bubble to nearest corner");
+        apply_position(&window, snapped);
     }
 }
 
